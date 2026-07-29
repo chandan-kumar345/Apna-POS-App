@@ -6,6 +6,7 @@ class MenuItemModel {
   final String description;
   final bool isAvailable;
   final String emoji;
+  final String imageUrl;
   final int stockQuantity;
 
   MenuItemModel({
@@ -16,6 +17,7 @@ class MenuItemModel {
     required this.description,
     this.isAvailable = true,
     this.emoji = '🍔',
+    this.imageUrl = '',
     this.stockQuantity = 50,
   });
 
@@ -27,6 +29,7 @@ class MenuItemModel {
         'description': description,
         'isAvailable': isAvailable,
         'emoji': emoji,
+        'imageUrl': imageUrl,
         'stockQuantity': stockQuantity,
       };
 
@@ -38,6 +41,7 @@ class MenuItemModel {
         description: json['description'] ?? '',
         isAvailable: json['isAvailable'] ?? true,
         emoji: json['emoji'] ?? '🍲',
+        imageUrl: json['imageUrl'] ?? '',
         stockQuantity: json['stockQuantity'] ?? 50,
       );
 
@@ -48,6 +52,7 @@ class MenuItemModel {
     String? description,
     bool? isAvailable,
     String? emoji,
+    String? imageUrl,
     int? stockQuantity,
   }) {
     return MenuItemModel(
@@ -58,6 +63,7 @@ class MenuItemModel {
       description: description ?? this.description,
       isAvailable: isAvailable ?? this.isAvailable,
       emoji: emoji ?? this.emoji,
+      imageUrl: imageUrl ?? this.imageUrl,
       stockQuantity: stockQuantity ?? this.stockQuantity,
     );
   }

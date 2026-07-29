@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
+import '../pos/receipt_dialog.dart';
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -161,17 +162,35 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                         Text(
                                           '${order.orderNumber} • ${order.tableNumber ?? "Takeaway"}',
                                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
                                           '${order.createdAt} • ${order.paymentMethod}',
                                           style: const TextStyle(color: GlassTheme.textMedium, fontSize: 10),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(width: 8),
                                   Text(
                                     '$currency${order.totalAmount.toStringAsFixed(2)}',
-                                    style: const TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.bold, fontSize: 14),
+                                    style: const TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.bold, fontSize: 13),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  IconButton(
+                                    icon: const Icon(Icons.receipt_long_rounded, color: GlassTheme.primaryCyan, size: 18),
+                                    constraints: const BoxConstraints(),
+                                    padding: const EdgeInsets.all(4),
+                                    tooltip: 'View / Print Invoice',
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (_) => ReceiptDialog(order: order, currency: currency),
+                                      );
+                                    },
                                   ),
                                 ],
                               ),
@@ -223,13 +242,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                Icon(icon, color: color, size: 16),
-                const SizedBox(width: 6),
-                Text(mode, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500)),
-              ],
+            Expanded(
+              child: Row(
+                children: [
+                  Icon(icon, color: color, size: 16),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      mode,
+                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             Text(
               '$currency${amount.toStringAsFixed(2)} (${(pct * 100).toStringAsFixed(0)}%)',
               style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),

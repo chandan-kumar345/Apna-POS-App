@@ -23,6 +23,34 @@ class DatabaseService extends ChangeNotifier {
   List<TableModel> tables = [];
   List<OrderModel> orders = [];
   List<InventoryItemModel> inventoryItems = [];
+  final List<OrderModel> _holdOrders = [];
+  List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
+
+  void holdOrder(OrderModel order) {
+    _holdOrders.add(order);
+    notifyListeners();
+  }
+
+  OrderModel? unholdOrder(String orderId) {
+    final idx = _holdOrders.indexWhere((o) => o.id == orderId);
+    if (idx >= 0) {
+      final removed = _holdOrders.removeAt(idx);
+      notifyListeners();
+      return removed;
+    }
+    return null;
+  }
+
+  TableModel? getNextAvailableTableSequence() {
+    final freeList = tables.where((t) => t.status == TableStatus.free).toList();
+    if (freeList.isEmpty) return null;
+    freeList.sort((a, b) {
+      final numA = int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 999;
+      final numB = int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 999;
+      return numA.compareTo(numB);
+    });
+    return freeList.first;
+  }
 
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
@@ -58,13 +86,13 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // 3. Load Menu Items or Seed
+    // 3. Load Menu Items
     final menuJson = _prefs?.getString('apna_pos_menu');
     if (menuJson != null) {
       final List raw = jsonDecode(menuJson);
       menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
     } else {
-      _seedDefaultMenu();
+      menuItems = [];
     }
 
     final catJson = _prefs?.getString('apna_pos_categories');
@@ -75,13 +103,28 @@ class DatabaseService extends ChangeNotifier {
       _syncCategoriesFromMenu();
     }
 
-    // 4. Load Tables or Seed
+    // 4. Load Tables or Seed Clean Floor
     final tablesJson = _prefs?.getString('apna_pos_tables');
     if (tablesJson != null) {
       final List raw = jsonDecode(tablesJson);
-      tables = raw.map((e) => TableModel.fromJson(e)).toList();
+      tables = raw.map((e) {
+        final t = TableModel.fromJson(e);
+        if (t.name.startsWith('Table ')) {
+          return TableModel(
+            id: t.id,
+            tableNumber: t.tableNumber,
+            name: 'T-${t.tableNumber}',
+            floor: t.floor,
+            capacity: t.capacity,
+            status: t.status,
+            currentOrderId: t.currentOrderId,
+            occupiedSince: t.occupiedSince,
+          );
+        }
+        return t;
+      }).toList();
     } else {
-      _seedDefaultTables(restaurant?.tableCount ?? 12);
+      _seedCleanTables(restaurant?.tableCount ?? 12);
     }
 
     // 5. Load Orders
@@ -90,16 +133,16 @@ class DatabaseService extends ChangeNotifier {
       final List raw = jsonDecode(ordersJson);
       orders = raw.map((e) => OrderModel.fromJson(e)).toList();
     } else {
-      _seedSampleOrders();
+      orders = [];
     }
 
-    // 6. Load Inventory or Seed
+    // 6. Load Inventory
     final inventoryJson = _prefs?.getString('apna_pos_inventory');
     if (inventoryJson != null) {
       final List raw = jsonDecode(inventoryJson);
       inventoryItems = raw.map((e) => InventoryItemModel.fromJson(e)).toList();
     } else {
-      _seedDefaultInventory();
+      inventoryItems = [];
     }
 
     _isInitialized = true;
@@ -179,7 +222,22 @@ class DatabaseService extends ChangeNotifier {
   Future<void> saveRestaurantOnboarding(RestaurantModel updated) async {
     restaurant = updated.copyWith(isOnboarded: true);
     await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
-    _seedDefaultTables(restaurant!.tableCount);
+    
+    // Clear demo data for clean production launch if not manually set
+    if (_prefs?.getString('apna_pos_menu') == null) {
+      menuItems = [];
+      await _saveMenuToPrefs();
+    }
+    if (_prefs?.getString('apna_pos_orders') == null) {
+      orders = [];
+      await _saveOrdersToPrefs();
+    }
+    if (_prefs?.getString('apna_pos_inventory') == null) {
+      inventoryItems = [];
+      await _saveInventoryToPrefs();
+    }
+
+    _seedCleanTables(restaurant!.tableCount);
     notifyListeners();
   }
 
@@ -273,15 +331,36 @@ class DatabaseService extends ChangeNotifier {
   Future<void> updateTableStatus(String tableId, TableStatus status, {String? orderId}) async {
     final index = tables.indexWhere((t) => t.id == tableId);
     if (index >= 0) {
+      final isFree = status == TableStatus.free;
       final nowStr = status == TableStatus.occupied ? DateTime.now().toString().substring(11, 16) : null;
-      tables[index] = tables[index].copyWith(
+      tables[index] = TableModel(
+        id: tables[index].id,
+        tableNumber: tables[index].tableNumber,
+        name: tables[index].name,
+        floor: tables[index].floor,
+        capacity: tables[index].capacity,
         status: status,
-        currentOrderId: orderId,
-        occupiedSince: nowStr,
+        currentOrderId: isFree ? null : (orderId ?? tables[index].currentOrderId),
+        occupiedSince: isFree ? null : (nowStr ?? tables[index].occupiedSince),
       );
       await _saveTablesToPrefs();
       notifyListeners();
     }
+  }
+
+  Future<void> addTable(String name, String floor, int capacity) async {
+    final nextNum = tables.isEmpty ? 1 : (tables.map((t) => t.tableNumber).reduce((a, b) => a > b ? a : b) + 1);
+    final newT = TableModel(
+      id: 'TBL-${DateTime.now().millisecondsSinceEpoch}',
+      tableNumber: nextNum,
+      name: name.trim().isEmpty ? 'T-$nextNum' : name.trim(),
+      floor: floor.trim().isEmpty ? 'Ground Floor' : floor.trim(),
+      capacity: capacity > 0 ? capacity : 4,
+      status: TableStatus.free,
+    );
+    tables.add(newT);
+    await _saveTablesToPrefs();
+    notifyListeners();
   }
 
   Future<void> _saveTablesToPrefs() async {
@@ -295,14 +374,26 @@ class DatabaseService extends ChangeNotifier {
     required OrderType orderType,
     required double discountAmount,
     required String paymentMethod,
+    String? deliveryAddress,
   }) async {
     final subtotal = items.fold(0.0, (sum, i) => sum + i.totalPrice);
     final taxRate = restaurant?.taxRate ?? 5.0;
     final taxAmount = (subtotal - discountAmount) * (taxRate / 100.0);
     final totalAmount = (subtotal - discountAmount) + taxAmount;
 
+    final now = DateTime.now();
+    final year = now.year.toString();
+    final month = now.month.toString().padLeft(2, '0');
+    final day = now.day.toString().padLeft(2, '0');
+    final hour = now.hour.toString().padLeft(2, '0');
+    final min = now.minute.toString().padLeft(2, '0');
+    String tSuffix = 'TK';
+    if (tableNumber != null && tableNumber.isNotEmpty) {
+      final cleanNum = tableNumber.replaceAll(RegExp(r'[^0-9]'), '');
+      tSuffix = cleanNum.isNotEmpty ? 'T$cleanNum' : tableNumber;
+    }
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    final orderNum = '#${(orders.length + 101)}';
+    final orderNum = '$year$month$day-$hour$min-$tSuffix';
 
     final newOrder = OrderModel(
       id: orderId,
@@ -316,6 +407,7 @@ class DatabaseService extends ChangeNotifier {
       discountAmount: discountAmount,
       totalAmount: totalAmount,
       paymentMethod: paymentMethod,
+      deliveryAddress: deliveryAddress,
       createdAt: DateTime.now().toString().substring(11, 16),
     );
 
@@ -414,18 +506,44 @@ class DatabaseService extends ChangeNotifier {
   }
 
   // SEEDERS
+  void _seedCleanTables(int count) {
+    tables = List.generate(count, (index) {
+      final num = index + 1;
+      final floor = num <= 8 ? 'Ground Floor' : 'Terrace Garden';
+      final cap = (num % 3 == 0) ? 6 : (num % 2 == 0 ? 4 : 2);
+      return TableModel(
+        id: 'tbl_$num',
+        tableNumber: num,
+        name: 'Table $num',
+        floor: floor,
+        capacity: cap,
+        status: TableStatus.free,
+        occupiedSince: null,
+      );
+    });
+    _saveTablesToPrefs();
+  }
+
+  void seedDemoTestingData() {
+    _seedDefaultMenu();
+    _seedDefaultTables(12);
+    _seedSampleOrders();
+    _seedDefaultInventory();
+    notifyListeners();
+  }
+
   void _seedDefaultMenu() {
     menuItems = [
-      MenuItemModel(id: 'm1', name: 'Paneer Butter Masala', category: 'Main Course', price: 290.0, description: 'Cottage cheese cubes in rich tomato gravy', emoji: '🥘', stockQuantity: 40),
-      MenuItemModel(id: 'm2', name: 'Dal Makhani', category: 'Main Course', price: 240.0, description: 'Slow cooked black lentils with cream & butter', emoji: '🍲', stockQuantity: 55),
-      MenuItemModel(id: 'm3', name: 'Butter Naan', category: 'Breads', price: 50.0, description: 'Traditional clay oven flatbread brushed with butter', emoji: '🫓', stockQuantity: 120),
-      MenuItemModel(id: 'm4', name: 'Special Chicken Biryani', category: 'Biryani & Rice', price: 340.0, description: 'Aromatic basmati rice cooked with spices & chicken', emoji: '🍚', stockQuantity: 30),
-      MenuItemModel(id: 'm5', name: 'Crispy Cheese Burger', category: 'Fast Food', price: 180.0, description: 'Loaded double veg patty burger with melted cheddar', emoji: '🍔', stockQuantity: 25),
-      MenuItemModel(id: 'm6', name: 'Peri Peri Fries', category: 'Fast Food', price: 130.0, description: 'Crispy golden fries tossed in spicy peri peri mix', emoji: '🍟', stockQuantity: 60),
-      MenuItemModel(id: 'm7', name: 'Cold Coffee with Ice Cream', category: 'Beverages', price: 140.0, description: 'Chilled espresso blended with thick milk & vanilla scoop', emoji: '🥤', stockQuantity: 45),
-      MenuItemModel(id: 'm8', name: 'Mango Lassi', category: 'Beverages', price: 110.0, description: 'Thick sweet yogurt drink infused with Alphonso mango', emoji: '🥭', stockQuantity: 50),
-      MenuItemModel(id: 'm9', name: 'Sizzling Brownie', category: 'Desserts', price: 220.0, description: 'Hot chocolate brownie topped with ice cream & fudge', emoji: '🍨', stockQuantity: 20),
-      MenuItemModel(id: 'm10', name: 'Gulab Jamun (2 pcs)', category: 'Desserts', price: 90.0, description: 'Warm fried milk dumplings in cardamom syrup', emoji: '🍡', stockQuantity: 65),
+      MenuItemModel(id: 'm1', name: 'Paneer Butter Masala', category: 'Main Course', price: 290.0, description: 'Cottage cheese cubes in rich tomato gravy', emoji: '🥘', imageUrl: 'https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=400&q=80', stockQuantity: 40),
+      MenuItemModel(id: 'm2', name: 'Dal Makhani', category: 'Main Course', price: 240.0, description: 'Slow cooked black lentils with cream & butter', emoji: '🍲', imageUrl: 'https://images.unsplash.com/photo-1546833999-b9f581a1996d?auto=format&fit=crop&w=400&q=80', stockQuantity: 55),
+      MenuItemModel(id: 'm3', name: 'Butter Naan', category: 'Breads', price: 50.0, description: 'Traditional clay oven flatbread brushed with butter', emoji: '🫓', imageUrl: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=400&q=80', stockQuantity: 120),
+      MenuItemModel(id: 'm4', name: 'Special Chicken Biryani', category: 'Biryani & Rice', price: 340.0, description: 'Aromatic basmati rice cooked with spices & chicken', emoji: '🍚', imageUrl: 'https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?auto=format&fit=crop&w=400&q=80', stockQuantity: 30),
+      MenuItemModel(id: 'm5', name: 'Crispy Cheese Burger', category: 'Fast Food', price: 180.0, description: 'Loaded double veg patty burger with melted cheddar', emoji: '🍔', imageUrl: 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=400&q=80', stockQuantity: 25),
+      MenuItemModel(id: 'm6', name: 'Peri Peri Fries', category: 'Fast Food', price: 130.0, description: 'Crispy golden fries tossed in spicy peri peri mix', emoji: '🍟', imageUrl: 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=400&q=80', stockQuantity: 60),
+      MenuItemModel(id: 'm7', name: 'Cold Coffee with Ice Cream', category: 'Beverages', price: 140.0, description: 'Chilled espresso blended with thick milk & vanilla scoop', emoji: '🥤', imageUrl: 'https://images.unsplash.com/photo-1517701604599-bb29b565090c?auto=format&fit=crop&w=400&q=80', stockQuantity: 45),
+      MenuItemModel(id: 'm8', name: 'Mango Lassi', category: 'Beverages', price: 110.0, description: 'Thick sweet yogurt drink infused with Alphonso mango', emoji: '🥭', imageUrl: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?auto=format&fit=crop&w=400&q=80', stockQuantity: 50),
+      MenuItemModel(id: 'm9', name: 'Sizzling Brownie', category: 'Desserts', price: 220.0, description: 'Hot chocolate brownie topped with ice cream & fudge', emoji: '🍨', imageUrl: 'https://images.unsplash.com/photo-1606313564200-e75d5e30476c?auto=format&fit=crop&w=400&q=80', stockQuantity: 20),
+      MenuItemModel(id: 'm10', name: 'Gulab Jamun (2 pcs)', category: 'Desserts', price: 90.0, description: 'Warm fried milk dumplings in cardamom syrup', emoji: '🍡', imageUrl: 'https://images.unsplash.com/photo-1589301760014-d929f3979dbc?auto=format&fit=crop&w=400&q=80', stockQuantity: 65),
     ];
     _saveMenuToPrefs();
   }
@@ -438,7 +556,7 @@ class DatabaseService extends ChangeNotifier {
       return TableModel(
         id: 'tbl_$num',
         tableNumber: num,
-        name: 'Table $num',
+        name: 'T-$num',
         floor: floor,
         capacity: cap,
         status: (num == 2 || num == 5) ? TableStatus.occupied : (num == 7 ? TableStatus.billed : TableStatus.free),

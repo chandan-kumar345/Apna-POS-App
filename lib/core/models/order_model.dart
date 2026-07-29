@@ -41,6 +41,7 @@ class OrderModel {
   final double discountAmount;
   final double totalAmount;
   final String paymentMethod; // Cash, Card, UPI
+  final String? deliveryAddress;
   final String createdAt;
 
   OrderModel({
@@ -55,6 +56,7 @@ class OrderModel {
     this.discountAmount = 0.0,
     required this.totalAmount,
     this.paymentMethod = 'UPI',
+    this.deliveryAddress,
     required this.createdAt,
   });
 
@@ -70,6 +72,7 @@ class OrderModel {
         'discountAmount': discountAmount,
         'totalAmount': totalAmount,
         'paymentMethod': paymentMethod,
+        'deliveryAddress': deliveryAddress,
         'createdAt': createdAt,
       };
 
@@ -94,12 +97,14 @@ class OrderModel {
         discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
         totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
         paymentMethod: json['paymentMethod'] ?? 'Cash',
+        deliveryAddress: json['deliveryAddress'],
         createdAt: json['createdAt'] ?? '',
       );
 
   OrderModel copyWith({
     OrderStatus? status,
     String? paymentMethod,
+    String? deliveryAddress,
   }) {
     return OrderModel(
       id: id,
@@ -113,6 +118,7 @@ class OrderModel {
       discountAmount: discountAmount,
       totalAmount: totalAmount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,
     );
   }

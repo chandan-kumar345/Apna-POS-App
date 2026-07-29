@@ -21,14 +21,16 @@ class ReceiptDialog extends StatelessWidget {
 
     return Dialog(
       backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: GlassContainer(
-          padding: const EdgeInsets.all(24),
-          borderRadius: 24,
-          blurStrength: 24,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        constraints: const BoxConstraints(maxWidth: 650),
+        child: SingleChildScrollView(
+          child: GlassContainer(
+            padding: const EdgeInsets.all(24),
+            borderRadius: 24,
+            blurStrength: 24,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
             children: [
               // Receipt Container styled like a modern glass thermal slip
               Container(
@@ -169,8 +171,9 @@ class ReceiptDialog extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildAmountRow(String label, String val, {Color? color}) {
     return Padding(

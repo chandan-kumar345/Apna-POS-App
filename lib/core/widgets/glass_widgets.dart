@@ -181,7 +181,7 @@ class GlassButton extends StatelessWidget {
           ),
           child: Container(
             alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 10),
             child: isLoading
                 ? const SizedBox(
                     width: 20,
@@ -196,16 +196,20 @@ class GlassButton extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (icon != null) ...[
-                        Icon(icon, size: 18, color: Colors.white),
-                        const SizedBox(width: 8),
+                        Icon(icon, size: 16, color: Colors.white),
+                        const SizedBox(width: 6),
                       ],
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.3,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -271,16 +275,17 @@ class GlassTextField extends StatelessWidget {
             onChanged: onChanged,
             validator: validator,
             maxLines: maxLines,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+            style: const TextStyle(color: Colors.white, fontSize: 13.5),
             decoration: InputDecoration(
               hintText: hintText,
-              hintStyle: const TextStyle(color: GlassTheme.textLow, fontSize: 14),
+              hintStyle: const TextStyle(color: GlassTheme.textLow, fontSize: 13),
               prefixIcon: prefixIcon != null
-                  ? Icon(prefixIcon, color: GlassTheme.primaryViolet, size: 20)
+                  ? Icon(prefixIcon, color: GlassTheme.primaryCyan, size: 18)
                   : null,
               suffixIcon: suffixIcon,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              isDense: true,
             ),
           ),
         ),

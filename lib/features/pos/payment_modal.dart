@@ -22,17 +22,26 @@ class _PaymentModalState extends State<PaymentModal> {
   String _selectedMethod = 'UPI';
   bool _isProcessing = false;
   final _cashTenderedController = TextEditingController();
+  final _splitCashCtrl = TextEditingController();
+  final _splitCardCtrl = TextEditingController();
+  final _splitUpiCtrl = TextEditingController();
 
   @override
   Widget build(BuildContext context) {
     final double cashTendered = double.tryParse(_cashTenderedController.text) ?? widget.order.totalAmount;
     final double changeAmount = (cashTendered - widget.order.totalAmount).clamp(0, 99999);
 
+    final double splitCash = double.tryParse(_splitCashCtrl.text) ?? 0.0;
+    final double splitCard = double.tryParse(_splitCardCtrl.text) ?? 0.0;
+    final double splitUpi = double.tryParse(_splitUpiCtrl.text) ?? 0.0;
+    final double splitTotal = splitCash + splitCard + splitUpi;
+    final double splitRemaining = widget.order.totalAmount - splitTotal;
+
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460),
+        constraints: const BoxConstraints(maxWidth: 650),
         child: SingleChildScrollView(
           child: GlassContainer(
             padding: const EdgeInsets.all(24),
@@ -46,18 +55,20 @@ class _PaymentModalState extends State<PaymentModal> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Select Payment Mode',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
-                        Text(
-                          'Complete order billing transaction',
-                          style: TextStyle(fontSize: 12, color: GlassTheme.textMedium),
-                        ),
-                      ],
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Select Payment Mode',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                          Text(
+                            'Complete order billing transaction',
+                            style: TextStyle(fontSize: 12, color: GlassTheme.textMedium),
+                          ),
+                        ],
+                      ),
                     ),
                     IconButton(
                       icon: const Icon(Icons.close_rounded, color: GlassTheme.textMedium),
@@ -89,14 +100,16 @@ class _PaymentModalState extends State<PaymentModal> {
                 ),
                 const SizedBox(height: 16),
 
-                // Payment Method Options
+                // Payment Method Options (Requirement 10)
                 Row(
                   children: [
                     _buildPaymentTab('UPI', Icons.qr_code_2_rounded, 'Instant QR'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildPaymentTab('Card', Icons.credit_card_rounded, 'POS Swiper'),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     _buildPaymentTab('Cash', Icons.payments_rounded, 'Tender Cash'),
+                    const SizedBox(width: 6),
+                    _buildPaymentTab('Split', Icons.call_split_rounded, 'Multi Mode'),
                   ],
                 ),
                 const SizedBox(height: 18),
@@ -148,6 +161,76 @@ class _PaymentModalState extends State<PaymentModal> {
                       ),
                     ],
                   ),
+                ] else if (_selectedMethod == 'Split') ...[
+                  // Split / Partial Payment Text Fields (Requirement 10)
+                  GlassContainer(
+                    padding: const EdgeInsets.all(14),
+                    borderRadius: 16,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Partial Payment Entry (Cash + Card + UPI)',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: GlassTextField(
+                                controller: _splitCashCtrl,
+                                labelText: 'Cash Paid',
+                                hintText: '0',
+                                prefixIcon: Icons.money,
+                                keyboardType: TextInputType.number,
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GlassTextField(
+                                controller: _splitCardCtrl,
+                                labelText: 'Card Paid',
+                                hintText: '0',
+                                prefixIcon: Icons.credit_card,
+                                keyboardType: TextInputType.number,
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: GlassTextField(
+                                controller: _splitUpiCtrl,
+                                labelText: 'UPI Paid',
+                                hintText: '0',
+                                prefixIcon: Icons.qr_code,
+                                keyboardType: TextInputType.number,
+                                onChanged: (val) => setState(() {}),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Entered Total: ${widget.currency}${splitTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
+                            Text(
+                              splitRemaining <= 0 ? 'Full Amount Covered!' : 'Remaining: ${widget.currency}${splitRemaining.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                color: splitRemaining <= 0 ? GlassTheme.accentNeonGreen : GlassTheme.accentAmber,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ] else ...[
                   Container(
                     padding: const EdgeInsets.all(16),
@@ -183,10 +266,15 @@ class _PaymentModalState extends State<PaymentModal> {
                     await Future.delayed(const Duration(milliseconds: 500));
                     if (!mounted) return;
                     Navigator.pop(context);
+
+                    final finalMethod = _selectedMethod == 'Split'
+                        ? 'Split (Cash: ₹${splitCash.toStringAsFixed(0)}, Card: ₹${splitCard.toStringAsFixed(0)}, UPI: ₹${splitUpi.toStringAsFixed(0)})'
+                        : _selectedMethod;
+
                     showDialog(
                       context: context,
                       builder: (_) => ReceiptDialog(
-                        order: widget.order.copyWith(paymentMethod: _selectedMethod),
+                        order: widget.order.copyWith(paymentMethod: finalMethod),
                         currency: widget.currency,
                       ),
                     );

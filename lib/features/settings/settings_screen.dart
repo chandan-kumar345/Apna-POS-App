@@ -117,7 +117,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 const SizedBox(height: 12),
-                _buildDbStatRow('Engine Type', 'Dart Persistent Local Storage'),
+                _buildDbStatRow('Engine Type', 'Apna POS Local Database'),
                 _buildDbStatRow('Menu Records', '${db.menuItems.length} Dishes'),
                 _buildDbStatRow('Tables Registered', '${db.tables.length} Tables'),
                 _buildDbStatRow('Total Orders Logged', '${db.orders.length} Bills'),
@@ -127,16 +127,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 10),
 
                 GlassButton(
-                  label: 'Re-Seed Clean Demo Data',
+                  label: 'Load Sample Demo Data',
                   icon: Icons.restart_alt_rounded,
                   isSecondary: true,
                   height: 42,
                   onPressed: () async {
-                    await db.resetDatabase();
+                    db.seedDemoTestingData();
                     if (!mounted) return;
                     setState(() {});
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Database reset & pre-seeded with fresh data!')),
+                      const SnackBar(content: Text('Sample demo data loaded successfully!')),
                     );
                   },
                 ),

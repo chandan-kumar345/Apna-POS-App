@@ -6,9 +6,12 @@ import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
 import 'payment_modal.dart';
+import 'kot_dialog.dart';
 
 class PosRegisterScreen extends StatefulWidget {
-  const PosRegisterScreen({super.key});
+  final String? initialTable;
+
+  const PosRegisterScreen({super.key, this.initialTable});
 
   @override
   State<PosRegisterScreen> createState() => _PosRegisterScreenState();
@@ -22,11 +25,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   // Cart State
   OrderType _selectedOrderType = OrderType.dineIn;
   String? _selectedTable;
+  String? _deliveryAddressText;
   final List<CartItemModel> _cartItems = [];
   double _discountAmount = 0.0;
   final _discountController = TextEditingController();
 
-  List<String> get allCategories => ['All', ...db.categories];
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialTable != null) {
+      _selectedTable = widget.initialTable;
+    }
+  }
+
+  List<String> get allCategories {
+    final activeCategories = db.categories.where((cat) => db.menuItems.any((item) => item.category == cat)).toList();
+    return ['All', ...activeCategories];
+  }
 
   List<MenuItemModel> get filteredItems {
     return db.menuItems.where((item) {
@@ -38,30 +53,47 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   void _addToCart(MenuItemModel item) {
-    if (!item.isAvailable || item.stockQuantity <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${item.name} is out of stock!')),
-      );
-      return;
-    }
-
     setState(() {
-      final existingIndex = _cartItems.indexWhere((c) => c.item.id == item.id);
+      final existingIndex = _cartItems.indexWhere((element) => element.item.id == item.id);
       if (existingIndex >= 0) {
         _cartItems[existingIndex].quantity++;
       } else {
         _cartItems.add(CartItemModel(item: item, quantity: 1));
       }
-    });
 
-    ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Added ${item.name} to cart!'),
-        duration: const Duration(seconds: 1),
-        backgroundColor: GlassTheme.primaryViolet,
-      ),
-    );
+      // Auto select sequence-wise free table & mark occupied for Dine-in
+      if (_selectedOrderType == OrderType.dineIn) {
+        if (_selectedTable == null) {
+          final freeT = db.getNextAvailableTableSequence();
+          if (freeT != null) {
+            _selectedTable = freeT.name;
+            db.updateTableStatus(freeT.id, TableStatus.occupied);
+          }
+        } else {
+          final tMatch = db.tables.where((t) => t.name == _selectedTable).firstOrNull;
+          if (tMatch != null && tMatch.status == TableStatus.free) {
+            db.updateTableStatus(tMatch.id, TableStatus.occupied);
+          }
+        }
+      }
+    });
+  }
+
+  void _decrementCartItem(MenuItemModel item) {
+    setState(() {
+      final existingIndex = _cartItems.indexWhere((element) => element.item.id == item.id);
+      if (existingIndex >= 0) {
+        _cartItems[existingIndex].quantity--;
+        if (_cartItems[existingIndex].quantity <= 0) {
+          _cartItems.removeAt(existingIndex);
+        }
+      }
+    });
+  }
+
+  int _getItemCartQuantity(MenuItemModel item) {
+    final idx = _cartItems.indexWhere((e) => e.item.id == item.id);
+    return idx >= 0 ? _cartItems[idx].quantity : 0;
   }
 
   void _updateQuantity(int index, int delta) {
@@ -81,215 +113,53 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     setState(() {
       _cartItems.clear();
       _discountAmount = 0.0;
+      _deliveryAddressText = null;
       _discountController.clear();
     });
   }
 
-  // --- DYNAMIC CATEGORY MODALS ---
-  void _showAddCategoryModal() {
-    final catCtrl = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.transparent,
-        content: GlassContainer(
-          padding: const EdgeInsets.all(20),
-          borderRadius: 20,
-          blurStrength: 20,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Add New Category', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 14),
-              GlassTextField(controller: catCtrl, labelText: 'Category Name', hintText: 'e.g. Starters, Smoothies'),
-              const SizedBox(height: 18),
-              GlassButton(
-                label: 'Add Category',
-                icon: Icons.check,
-                onPressed: () {
-                  if (catCtrl.text.trim().isNotEmpty) {
-                    db.addCategory(catCtrl.text.trim());
-                    setState(() {});
-                    Navigator.pop(context);
-                  }
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  void _showAddDeliveryAddressDialog(StateSetter setStateModal) {
+    final nameCtrl = TextEditingController();
+    final phoneCtrl = TextEditingController();
+    final addressCtrl = TextEditingController();
 
-  void _showManageCategoriesModal() {
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (context) => AlertDialog(
         backgroundColor: Colors.transparent,
         content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
-          child: GlassContainer(
-            padding: const EdgeInsets.all(20),
-            borderRadius: 20,
-            blurStrength: 20,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Manage Categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
-                    IconButton(icon: const Icon(Icons.close, color: GlassTheme.textMedium), onPressed: () => Navigator.pop(context)),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 240,
-                  child: ListView.builder(
-                    itemCount: db.categories.length,
-                    itemBuilder: (context, idx) {
-                      final cat = db.categories[idx];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        child: GlassCard(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          child: Row(
-                            children: [
-                              Expanded(child: Text(cat, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13))),
-                              IconButton(
-                                icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryCyan, size: 18),
-                                onPressed: () {
-                                  final editCtrl = TextEditingController(text: cat);
-                                  showDialog(
-                                    context: context,
-                                    builder: (_) => AlertDialog(
-                                      backgroundColor: Colors.transparent,
-                                      content: GlassContainer(
-                                        padding: const EdgeInsets.all(18),
-                                        borderRadius: 18,
-                                        child: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Text('Edit Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                            const SizedBox(height: 10),
-                                            GlassTextField(controller: editCtrl, hintText: 'Name'),
-                                            const SizedBox(height: 14),
-                                            GlassButton(
-                                              label: 'Update',
-                                              onPressed: () {
-                                                db.editCategory(cat, editCtrl.text.trim());
-                                                setState(() {});
-                                                Navigator.pop(context);
-                                              },
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline, color: GlassTheme.accentRose, size: 18),
-                                onPressed: () {
-                                  db.deleteCategory(cat);
-                                  setState(() {});
-                                  Navigator.pop(context);
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  // --- DYNAMIC PRODUCT MODALS ---
-  void _showAddEditProductModal([MenuItemModel? existing]) {
-    final nameCtrl = TextEditingController(text: existing?.name ?? '');
-    final catCtrl = TextEditingController(text: existing?.category ?? (_selectedCategory == 'All' ? 'Main Course' : _selectedCategory));
-    final priceCtrl = TextEditingController(text: existing?.price.toString() ?? '150');
-    final descCtrl = TextEditingController(text: existing?.description ?? '');
-    final emojiCtrl = TextEditingController(text: existing?.emoji ?? '🍱');
-    final stockCtrl = TextEditingController(text: existing?.stockQuantity.toString() ?? '50');
-
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: Colors.transparent,
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 440),
+          constraints: const BoxConstraints(maxWidth: 650),
           child: SingleChildScrollView(
             child: GlassContainer(
-              padding: const EdgeInsets.all(22),
-              borderRadius: 22,
+              padding: const EdgeInsets.all(20),
+              borderRadius: 20,
               blurStrength: 24,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  const Row(
                     children: [
-                      Text(
-                        existing == null ? 'Add Product to POS' : 'Edit Product',
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                      IconButton(icon: const Icon(Icons.close, color: GlassTheme.textMedium), onPressed: () => Navigator.pop(context)),
+                      Icon(Icons.delivery_dining_rounded, color: GlassTheme.primaryCyan, size: 24),
+                      SizedBox(width: 8),
+                      Text('Customer Delivery Address', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
                     ],
                   ),
                   const SizedBox(height: 14),
-
-                  GlassTextField(controller: nameCtrl, labelText: 'Product Name', hintText: 'Paneer Butter Masala'),
+                  GlassTextField(controller: nameCtrl, hintText: 'Customer Name', prefixIcon: Icons.person_outline),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: GlassTextField(controller: catCtrl, labelText: 'Category', hintText: 'Main Course')),
-                      const SizedBox(width: 10),
-                      Expanded(child: GlassTextField(controller: emojiCtrl, labelText: 'Emoji Icon', hintText: '🥘')),
-                    ],
-                  ),
+                  GlassTextField(controller: phoneCtrl, hintText: 'Phone Number', prefixIcon: Icons.phone_outlined, keyboardType: TextInputType.phone),
                   const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: GlassTextField(controller: priceCtrl, labelText: 'Price', hintText: '190', keyboardType: TextInputType.number)),
-                      const SizedBox(width: 10),
-                      Expanded(child: GlassTextField(controller: stockCtrl, labelText: 'Stock Qty', hintText: '50', keyboardType: TextInputType.number)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  GlassTextField(controller: descCtrl, labelText: 'Description', hintText: 'Tasty dish ingredients', maxLines: 2),
-
-                  const SizedBox(height: 20),
+                  GlassTextField(controller: addressCtrl, hintText: 'Full Address & Landmark', prefixIcon: Icons.home_outlined, maxLines: 2),
+                  const SizedBox(height: 16),
                   GlassButton(
-                    label: existing == null ? 'Save Product' : 'Update Product',
+                    label: 'Save Address',
                     icon: Icons.check,
-                    onPressed: () async {
-                      if (nameCtrl.text.trim().isEmpty) return;
-
-                      final newItem = MenuItemModel(
-                        id: existing?.id ?? 'prod_${DateTime.now().millisecondsSinceEpoch}',
-                        name: nameCtrl.text.trim(),
-                        category: catCtrl.text.trim(),
-                        price: double.tryParse(priceCtrl.text) ?? 100.0,
-                        description: descCtrl.text.trim(),
-                        emoji: emojiCtrl.text.trim().isEmpty ? '🍲' : emojiCtrl.text.trim(),
-                        stockQuantity: int.tryParse(stockCtrl.text) ?? 50,
-                        isAvailable: existing?.isAvailable ?? true,
-                      );
-
-                      await db.saveMenuItem(newItem);
-                      if (!mounted) return;
-                      setState(() {});
+                    onPressed: () {
+                      final full = '${nameCtrl.text.trim()} (${phoneCtrl.text.trim()}) - ${addressCtrl.text.trim()}';
+                      if (addressCtrl.text.trim().isNotEmpty) {
+                        setState(() => _deliveryAddressText = full);
+                        setStateModal(() {});
+                      }
                       Navigator.pop(context);
                     },
                   ),
@@ -302,9 +172,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  // --- DYNAMIC CATEGORY MODALS ---
   // --- FULL CART MODAL / SCREEN ---
   void _openCartModal() {
     final currency = db.restaurant?.currencySymbol ?? '₹';
+
+    if (_selectedTable == null && _selectedOrderType == OrderType.dineIn) {
+      final freeTables = db.tables.where((t) => t.status == TableStatus.free).toList();
+      if (freeTables.isNotEmpty) {
+        _selectedTable = freeTables.first.name;
+      } else if (db.tables.isNotEmpty) {
+        _selectedTable = db.tables.first.name;
+      }
+    }
 
     showModalBottomSheet(
       context: context,
@@ -314,45 +194,63 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             return FractionallySizedBox(
-              heightFactor: 0.85,
-              child: Container(
-                margin: const EdgeInsets.all(12),
-                child: GlassContainer(
-                  padding: const EdgeInsets.all(20),
-                  borderRadius: 24,
-                  blurStrength: 24,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              heightFactor: 0.88,
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 700),
+                  child: Container(
+                    margin: const EdgeInsets.all(12),
+                    child: GlassContainer(
+                      padding: const EdgeInsets.all(22),
+                      borderRadius: 24,
+                      blurStrength: 24,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                       // Cart Modal Header
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.shopping_bag, color: GlassTheme.primaryCyan, size: 24),
-                              const SizedBox(width: 8),
-                              const Text(
-                                'Order Cart Details',
-                                style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: Colors.white),
-                              ),
-                              const SizedBox(width: 8),
-                              GlassBadge(label: '${_cartItems.length} items', color: GlassTheme.primaryViolet),
-                            ],
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Icon(Icons.shopping_bag, color: GlassTheme.primaryCyan, size: 20),
+                                const SizedBox(width: 6),
+                                const Flexible(
+                                  child: Text(
+                                    'Order Cart',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                GlassBadge(label: '${_cartItems.length}', color: GlassTheme.primaryViolet, fontSize: 10),
+                              ],
+                            ),
                           ),
                           Row(
                             children: [
                               if (_cartItems.isNotEmpty)
                                 TextButton.icon(
-                                  icon: const Icon(Icons.delete_sweep, color: GlassTheme.accentRose, size: 18),
-                                  label: const Text('Clear', style: TextStyle(color: GlassTheme.accentRose)),
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                  ),
+                                  icon: const Icon(Icons.delete_sweep, color: GlassTheme.accentRose, size: 16),
+                                  label: const Text('Clear', style: TextStyle(color: GlassTheme.accentRose, fontSize: 11)),
                                   onPressed: () {
                                     _clearCart();
                                     Navigator.pop(context);
                                   },
                                 ),
+                              const SizedBox(width: 4),
                               IconButton(
-                                icon: const Icon(Icons.close_rounded, color: Colors.white),
+                                constraints: const BoxConstraints(),
+                                padding: const EdgeInsets.all(4),
+                                icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
                                 onPressed: () => Navigator.pop(context),
                               ),
                             ],
@@ -396,6 +294,38 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               }).toList(),
                               onChanged: (val) => setStateModal(() => _selectedTable = val),
                             ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
+
+                      if (_selectedOrderType == OrderType.delivery) ...[
+                        GlassCard(
+                          padding: const EdgeInsets.all(8),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.location_on_rounded, color: GlassTheme.primaryCyan, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  _deliveryAddressText ?? 'No Delivery Address Added',
+                                  style: TextStyle(
+                                    color: _deliveryAddressText != null ? Colors.white : GlassTheme.textMedium,
+                                    fontSize: 12,
+                                    fontWeight: _deliveryAddressText != null ? FontWeight.bold : FontWeight.normal,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              GlassButton(
+                                label: _deliveryAddressText == null ? 'Add Address' : 'Edit',
+                                icon: Icons.edit_location_alt_rounded,
+                                height: 30,
+                                onPressed: () => _showAddDeliveryAddressDialog(setStateModal),
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 10),
@@ -492,24 +422,105 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       ),
                       const SizedBox(height: 14),
 
-                      GlassButton(
-                        label: 'Proceed to Checkout & Pay',
-                        icon: Icons.payments_rounded,
-                        onPressed: () {
-                          Navigator.pop(context);
-                          _proceedToCheckout();
-                        },
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GlassButton(
+                              label: 'Print KOT',
+                              icon: Icons.soup_kitchen_outlined,
+                              isPrimary: false,
+                              onPressed: () {
+                                final now = DateTime.now();
+                                final tempOrder = OrderModel(
+                                  id: 'TEMP-KOT',
+                                  orderNumber: 'KOT-PREVIEW',
+                                  tableNumber: _selectedOrderType == OrderType.dineIn ? _selectedTable : 'Takeaway',
+                                  orderType: _selectedOrderType,
+                                  status: OrderStatus.pending,
+                                  items: List.from(_cartItems),
+                                  subtotal: cartSubtotal,
+                                  taxAmount: cartTax,
+                                  totalAmount: cartTotal,
+                                  paymentMethod: 'KOT',
+                                  createdAt: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+                                );
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => KotDialog(order: tempOrder),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GlassButton(
+                              label: 'Hold Bill',
+                              icon: Icons.pause_circle_outline,
+                              isPrimary: false,
+                              onPressed: () {
+                                if (_cartItems.isEmpty) return;
+                                final now = DateTime.now();
+                                final year = now.year.toString();
+                                final month = now.month.toString().padLeft(2, '0');
+                                final day = now.day.toString().padLeft(2, '0');
+                                final hour = now.hour.toString().padLeft(2, '0');
+                                final min = now.minute.toString().padLeft(2, '0');
+                                String tSuffix = 'TK';
+                                if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+                                  final cleanNum = _selectedTable!.replaceAll(RegExp(r'[^0-9]'), '');
+                                  tSuffix = cleanNum.isNotEmpty ? 'T$cleanNum' : _selectedTable!;
+                                }
+                                final heldOrder = OrderModel(
+                                  id: 'HOLD-${DateTime.now().millisecondsSinceEpoch}',
+                                  orderNumber: '$year$month$day-$hour$min-$tSuffix',
+                                  tableNumber: _selectedOrderType == OrderType.dineIn ? _selectedTable : 'Takeaway',
+                                  orderType: _selectedOrderType,
+                                  status: OrderStatus.pending,
+                                  items: List.from(_cartItems),
+                                  subtotal: cartSubtotal,
+                                  taxAmount: cartTax,
+                                  totalAmount: cartTotal,
+                                  paymentMethod: 'Hold',
+                                  createdAt: '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}',
+                                );
+                                db.holdOrder(heldOrder);
+                                _clearCart();
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Bill put on hold successfully!'),
+                                    backgroundColor: GlassTheme.accentAmber,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: GlassButton(
+                              label: 'Pay Bill',
+                              icon: Icons.payments_rounded,
+                              isPrimary: true,
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _proceedToCheckout();
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
               ),
-            );
-          },
+            ),
+          ),
         );
       },
     );
-  }
+  },
+);
+}
 
   Widget _buildModalOrderType(OrderType type, String title, IconData icon, StateSetter setStateModal) {
     final isSel = _selectedOrderType == type;
@@ -531,7 +542,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             children: [
               Icon(icon, size: 14, color: isSel ? GlassTheme.primaryCyan : GlassTheme.textMedium),
               const SizedBox(width: 4),
-              Text(title, style: TextStyle(color: isSel ? Colors.white : GlassTheme.textMedium, fontSize: 11, fontWeight: FontWeight.bold)),
+              Flexible(
+                child: Text(
+                  title,
+                  style: TextStyle(color: isSel ? Colors.white : GlassTheme.textMedium, fontSize: 11, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
@@ -557,6 +575,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       orderType: _selectedOrderType,
       discountAmount: _discountAmount,
       paymentMethod: 'UPI',
+      deliveryAddress: _selectedOrderType == OrderType.delivery ? _deliveryAddressText : null,
     );
 
     if (!mounted) return;
@@ -572,25 +591,162 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  void _showHoldBillsModal() {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.transparent,
+          contentPadding: EdgeInsets.zero,
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 650, maxHeight: 600),
+            child: GlassContainer(
+              padding: const EdgeInsets.all(22),
+              borderRadius: 22,
+              blurStrength: 24,
+              child: Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.pause_circle_filled, color: GlassTheme.accentAmber, size: 24),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Hold Bills (${db.holdOrders.length})',
+                            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: GlassTheme.textMedium),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  const Divider(color: GlassTheme.glassBorder, height: 1),
+                  const SizedBox(height: 12),
+
+                  Expanded(
+                    child: db.holdOrders.isEmpty
+                        ? const Center(
+                            child: Text('No bills currently on hold', style: TextStyle(color: GlassTheme.textMedium)),
+                          )
+                        : ListView.builder(
+                            itemCount: db.holdOrders.length,
+                            itemBuilder: (context, idx) {
+                              final order = db.holdOrders[idx];
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: GlassContainer(
+                                  padding: const EdgeInsets.all(14),
+                                  borderRadius: 14,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              'Order: ${order.orderNumber} • ${order.tableNumber ?? "Takeaway"}',
+                                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Items: ${order.items.map((e) => "${e.quantity}x ${e.item.name}").join(", ")}',
+                                              style: const TextStyle(color: GlassTheme.textMedium, fontSize: 12),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Time: ${order.createdAt} • Total: ₹${order.totalAmount.toStringAsFixed(2)}',
+                                              style: const TextStyle(color: GlassTheme.accentNeonGreen, fontSize: 12, fontWeight: FontWeight.bold),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      GlassButton(
+                                        label: 'Unhold & Resume',
+                                        icon: Icons.play_arrow_rounded,
+                                        onPressed: () {
+                                          final unheld = db.unholdOrder(order.id);
+                                          if (unheld != null) {
+                                            setState(() {
+                                              _cartItems.clear();
+                                              _cartItems.addAll(unheld.items);
+                                              _selectedTable = unheld.tableNumber;
+                                              _selectedOrderType = unheld.orderType;
+                                            });
+                                          }
+                                          Navigator.pop(context);
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final currency = db.restaurant?.currencySymbol ?? '₹';
+    return ListenableBuilder(
+      listenable: db,
+      builder: (context, _) {
+        final currency = db.restaurant?.currencySymbol ?? '₹';
 
-    return SafeArea(
-      child: Stack(
-        children: [
+        return SafeArea(
+          child: Stack(
+            children: [
           Column(
             children: [
-              // Search, Categories, and Action Buttons Bar
+              // Search and Categories Bar
               GlassContainer(
                 padding: const EdgeInsets.all(12),
                 borderRadius: 16,
                 blurStrength: 14,
                 child: Column(
                   children: [
-                    // Search Bar & Action Buttons
+                    // Search Bar & Hold Bills Quick Button
                     Row(
                       children: [
+                        if (db.holdOrders.isNotEmpty) ...[
+                          GestureDetector(
+                            onTap: _showHoldBillsModal,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: GlassTheme.accentAmber.withOpacity(0.25),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: GlassTheme.accentAmber),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.pause_circle_filled, color: GlassTheme.accentAmber, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'Hold Bills (${db.holdOrders.length})',
+                                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
                         Expanded(
                           child: GlassTextField(
                             hintText: 'Search product or category...',
@@ -598,42 +754,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             onChanged: (val) => setState(() => _searchQuery = val),
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        IconButton(
-                          icon: const Icon(Icons.category_rounded, color: GlassTheme.primaryCyan, size: 22),
-                          tooltip: 'Manage Categories',
-                          onPressed: _showManageCategoriesModal,
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_box_rounded, color: GlassTheme.primaryViolet, size: 24),
-                          tooltip: 'Add New Product',
-                          onPressed: () => _showAddEditProductModal(),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
 
-                    // Categories Bar with + Add Category pill
+                    // Categories Bar
                     SizedBox(
                       height: 36,
                       child: ListView.builder(
                         scrollDirection: Axis.horizontal,
-                        itemCount: allCategories.length + 1,
+                        itemCount: allCategories.length,
                         itemBuilder: (context, idx) {
-                          if (idx == allCategories.length) {
-                            return Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: ActionChip(
-                                avatar: const Icon(Icons.add, size: 14, color: GlassTheme.primaryCyan),
-                                label: const Text('New Category', style: TextStyle(color: GlassTheme.primaryCyan, fontSize: 11, fontWeight: FontWeight.bold)),
-                                backgroundColor: GlassTheme.glassInput,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                side: BorderSide(color: GlassTheme.primaryCyan.withOpacity(0.5)),
-                                onPressed: _showAddCategoryModal,
-                              ),
-                            );
-                          }
-
                           final cat = allCategories[idx];
                           final isSel = _selectedCategory == cat;
                           return Padding(
@@ -663,34 +794,28 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
               const SizedBox(height: 10),
 
-              // Dynamic Products Grid
+              // Dynamic Compact Products Grid
               Expanded(
                 child: filteredItems.isEmpty
-                    ? Center(
+                    ? const Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(Icons.no_food_outlined, color: GlassTheme.textLow, size: 44),
-                            const SizedBox(height: 8),
-                            const Text('No products found', style: TextStyle(color: GlassTheme.textMedium)),
-                            const SizedBox(height: 12),
-                            GlassButton(
-                              label: 'Add Product to Store',
-                              icon: Icons.add,
-                              width: 180,
-                              height: 38,
-                              onPressed: () => _showAddEditProductModal(),
-                            ),
+                            Icon(Icons.no_food_outlined, color: GlassTheme.textLow, size: 44),
+                            SizedBox(height: 8),
+                            Text('No products found', style: TextStyle(color: GlassTheme.textMedium)),
+                            SizedBox(height: 4),
+                            Text('Go to Menu & Category to add products', style: TextStyle(color: GlassTheme.textLow, fontSize: 12)),
                           ],
                         ),
                       )
                     : GridView.builder(
                         padding: const EdgeInsets.only(bottom: 80),
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                          maxCrossAxisExtent: 200,
-                          childAspectRatio: 0.82,
-                          crossAxisSpacing: 10,
-                          mainAxisSpacing: 10,
+                          maxCrossAxisExtent: 145,
+                          childAspectRatio: 0.68,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
                         ),
                         itemCount: filteredItems.length,
                         itemBuilder: (context, idx) {
@@ -711,7 +836,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               child: GestureDetector(
                 onTap: _openCartModal,
                 child: GlassContainer(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   borderRadius: 20,
                   blurStrength: 24,
                   backgroundColor: GlassTheme.primaryViolet.withOpacity(0.85),
@@ -733,23 +858,160 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         ),
                         child: Text(
                           '${_cartItems.fold(0, (sum, i) => sum + i.quantity)}',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'View Cart Order',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 16, letterSpacing: 0.5),
-                      ),
-                      const Spacer(),
-                      Text(
-                        '$currency${cartTotal.toStringAsFixed(2)}',
-                        style: TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.w800, fontSize: 17),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'View Cart Order',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 0.5),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                       const SizedBox(width: 8),
-                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 20),
+                      Text(
+                        '$currency${cartTotal.toStringAsFixed(2)}',
+                        style: TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.w800, fontSize: 16),
+                      ),
+                      const SizedBox(width: 6),
+                      const Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 18),
                     ],
                   ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+  Widget _buildDishCard(MenuItemModel dish, String currency) {
+    final hasImage = dish.imageUrl.isNotEmpty;
+    final inCartQty = _getItemCartQuantity(dish);
+
+    return GlassCard(
+      padding: const EdgeInsets.all(8),
+      onTap: inCartQty == 0 ? () => _addToCart(dish) : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: hasImage
+                    ? Image.network(
+                        dish.imageUrl,
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => _buildFallbackEmoji(dish.emoji),
+                      )
+                    : _buildFallbackEmoji(dish.emoji),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '$currency${dish.price.toStringAsFixed(0)}',
+                    style: const TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.w800, fontSize: 13),
+                  ),
+                  if (dish.stockQuantity <= 10)
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: GlassTheme.accentRose.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: GlassTheme.accentRose.withOpacity(0.5)),
+                      ),
+                      child: Text(
+                        '${dish.stockQuantity} left',
+                        style: const TextStyle(color: GlassTheme.accentRose, fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          Text(
+            dish.name,
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          Text(
+            dish.category,
+            style: const TextStyle(color: GlassTheme.textMedium, fontSize: 9),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+
+          // Bottom Action Row: Inline Stepper or Prominent ADD button
+          if (inCartQty > 0)
+            Container(
+              height: 26,
+              decoration: BoxDecoration(
+                color: GlassTheme.primaryViolet.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: GlassTheme.primaryViolet),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  InkWell(
+                    onTap: () => _decrementCartItem(dish),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Icon(Icons.remove, size: 14, color: Colors.white),
+                    ),
+                  ),
+                  Text(
+                    '$inCartQty',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  InkWell(
+                    onTap: () => _addToCart(dish),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      child: Icon(Icons.add, size: 14, color: Colors.white),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            GestureDetector(
+              onTap: () => _addToCart(dish),
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 5),
+                decoration: BoxDecoration(
+                  gradient: GlassTheme.primaryButtonGradient,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: GlassTheme.primaryViolet.withOpacity(0.4),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text('ADD', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+                  ],
                 ),
               ),
             ),
@@ -758,78 +1020,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
-  Widget _buildDishCard(MenuItemModel dish, String currency) {
-    return GlassCard(
-      padding: const EdgeInsets.all(10),
-      onTap: () => _addToCart(dish),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(dish.emoji, style: const TextStyle(fontSize: 26)),
-              Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: GlassTheme.primaryCyan, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    tooltip: 'Edit Product',
-                    onPressed: () => _showAddEditProductModal(dish),
-                  ),
-                  const SizedBox(width: 4),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, color: GlassTheme.accentRose, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    tooltip: 'Delete Product',
-                    onPressed: () async {
-                      await db.deleteMenuItem(dish.id);
-                      setState(() {});
-                    },
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const Spacer(),
-          Text(
-            dish.name,
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          Text(
-            dish.category,
-            style: const TextStyle(color: GlassTheme.textMedium, fontSize: 10),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                '$currency${dish.price.toStringAsFixed(0)}',
-                style: const TextStyle(color: GlassTheme.accentNeonGreen, fontWeight: FontWeight.bold, fontSize: 14),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  gradient: GlassTheme.primaryButtonGradient,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.add_shopping_cart, size: 12, color: Colors.white),
-                    SizedBox(width: 2),
-                    Text('ADD', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+  Widget _buildFallbackEmoji(String emoji) {
+    return Container(
+      width: 38,
+      height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: GlassTheme.glassInput,
+        borderRadius: BorderRadius.circular(10),
       ),
+      child: Text(emoji, style: const TextStyle(fontSize: 18)),
     );
   }
 

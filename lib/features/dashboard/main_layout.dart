@@ -23,11 +23,12 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> {
   int _selectedIndex = 0;
-  bool _isSidebarOpen = false; // Start closed or toggle cleanly
+  bool _isSidebarOpen = false;
+  String? _selectedTableForPos;
   final db = DatabaseService();
 
   final List<String> _titles = [
-    'POS Billing Terminal',
+    'POS Billing',
     'Interactive Floor & Tables',
     'Kitchen Display System (KDS)',
     'Menu & Category Manager',
@@ -39,9 +40,16 @@ class _MainLayoutState extends State<MainLayout> {
   Widget _getSelectedScreen() {
     switch (_selectedIndex) {
       case 0:
-        return const PosRegisterScreen();
+        return PosRegisterScreen(initialTable: _selectedTableForPos);
       case 1:
-        return const TableManagementScreen();
+        return TableManagementScreen(
+          onTakeOrder: (tableName) {
+            setState(() {
+              _selectedTableForPos = tableName;
+              _selectedIndex = 0;
+            });
+          },
+        );
       case 2:
         return const KdsScreen();
       case 3:
@@ -53,7 +61,7 @@ class _MainLayoutState extends State<MainLayout> {
       case 6:
         return const SettingsScreen();
       default:
-        return const PosRegisterScreen();
+        return PosRegisterScreen(initialTable: _selectedTableForPos);
     }
   }
 
@@ -75,73 +83,79 @@ class _MainLayoutState extends State<MainLayout> {
                 children: [
                   Row(
                     children: [
-                      // Glassmorphic Left Sidebar Navigation (Collapsible)
+                      // Glassmorphic Left Sidebar Navigation (Collapsible with Slide to Close)
                       if (_isSidebarOpen)
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          width: isSmallScreen ? 240 : 260,
-                          margin: const EdgeInsets.all(8),
-                          child: GlassContainer(
-                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                            borderRadius: 20,
-                            blurStrength: 24,
-                            child: Column(
-                              children: [
-                                // Brand Header
-                                Row(
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        gradient: GlassTheme.primaryButtonGradient,
-                                        shape: BoxShape.circle,
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: GlassTheme.primaryViolet.withOpacity(0.5),
-                                            blurRadius: 10,
-                                          ),
-                                        ],
-                                      ),
-                                      child: const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 20),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          const Text(
-                                            'Apna POS',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.w800,
-                                              letterSpacing: 0.5,
-                                            ),
-                                          ),
-                                          Text(
-                                            rest?.name ?? 'Restaurant POS',
-                                            style: const TextStyle(
-                                              color: GlassTheme.primaryCyan,
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const Divider(color: GlassTheme.glassBorder, height: 1),
-                                const SizedBox(height: 12),
-
-                                // Navigation Items
-                                Expanded(
-                                  child: ListView(
-                                    padding: EdgeInsets.zero,
+                        GestureDetector(
+                          onHorizontalDragEnd: (details) {
+                            if (details.primaryVelocity != null && details.primaryVelocity! < -100) {
+                              setState(() => _isSidebarOpen = false);
+                            }
+                          },
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            width: isSmallScreen ? 240 : 260,
+                            margin: const EdgeInsets.all(8),
+                            child: GlassContainer(
+                              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+                              borderRadius: 20,
+                              blurStrength: 24,
+                              child: Column(
+                                children: [
+                                  // Brand Header
+                                  Row(
                                     children: [
-                                      _buildNavItem(0, 'POS Terminal', Icons.point_of_sale, badge: '${db.menuItems.length}'),
+                                      Container(
+                                        padding: const EdgeInsets.all(8),
+                                        decoration: BoxDecoration(
+                                          gradient: GlassTheme.primaryButtonGradient,
+                                          shape: BoxShape.circle,
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: GlassTheme.primaryViolet.withOpacity(0.5),
+                                              blurRadius: 10,
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(Icons.point_of_sale_rounded, color: Colors.white, size: 20),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Apna POS',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w800,
+                                                letterSpacing: 0.5,
+                                              ),
+                                            ),
+                                            Text(
+                                              rest?.name ?? 'Restaurant POS',
+                                              style: const TextStyle(
+                                                color: GlassTheme.primaryCyan,
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  const Divider(color: GlassTheme.glassBorder, height: 1),
+                                  const SizedBox(height: 12),
+
+                                  // Navigation Items
+                                  Expanded(
+                                    child: ListView(
+                                      padding: EdgeInsets.zero,
+                                      children: [
+                                        _buildNavItem(0, 'POS Billing', Icons.point_of_sale, badge: '${db.menuItems.length}'),
                                       _buildNavItem(1, 'Tables & Floor', Icons.table_restaurant_outlined, badge: '${db.tables.where((t) => t.status != TableStatus.free).length}'),
                                       _buildNavItem(2, 'Kitchen (KDS)', Icons.soup_kitchen_outlined, badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}'),
                                       _buildNavItem(3, 'Menu & Categories', Icons.restaurant_menu_outlined),
@@ -202,6 +216,7 @@ class _MainLayoutState extends State<MainLayout> {
                             ),
                           ),
                         ),
+                      ),
 
                       // Right Main Content Region
                       Expanded(
@@ -211,17 +226,19 @@ class _MainLayoutState extends State<MainLayout> {
                             Container(
                               margin: const EdgeInsets.only(top: 8, right: 8, left: 8, bottom: 6),
                               child: GlassContainer(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 borderRadius: 16,
                                 blurStrength: 16,
                                 child: Row(
                                   children: [
                                     // HAMBURGER MENU BUTTON TO TOGGLE SIDEBAR
                                     IconButton(
+                                      constraints: const BoxConstraints(),
+                                      padding: const EdgeInsets.all(6),
                                       icon: Icon(
                                         _isSidebarOpen ? Icons.menu_open_rounded : Icons.menu_rounded,
                                         color: GlassTheme.primaryCyan,
-                                        size: 24,
+                                        size: 22,
                                       ),
                                       tooltip: _isSidebarOpen ? 'Hide Menu' : 'Open Menu',
                                       onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
@@ -232,14 +249,14 @@ class _MainLayoutState extends State<MainLayout> {
                                       child: Text(
                                         _titles[_selectedIndex],
                                         style: TextStyle(
-                                          fontSize: isSmallScreen ? 15 : 18,
+                                          fontSize: isSmallScreen ? 14 : 17,
                                           fontWeight: FontWeight.bold,
                                           color: Colors.white,
                                         ),
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const SizedBox(width: 6),
+                                    const SizedBox(width: 4),
 
                                     if (!isSmallScreen) ...[
                                       Container(
@@ -250,25 +267,23 @@ class _MainLayoutState extends State<MainLayout> {
                                           border: Border.all(color: GlassTheme.glassBorder),
                                         ),
                                         child: Row(
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
                                             const Icon(Icons.access_time_rounded, color: GlassTheme.primaryCyan, size: 13),
                                             const SizedBox(width: 4),
-                                            Text(
-                                              nowStr,
-                                              style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                                            Flexible(
+                                              child: Text(
+                                                nowStr,
+                                                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w500),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                           ],
                                         ),
                                       ),
                                       const SizedBox(width: 8),
                                     ],
-
-                                    GlassBadge(
-                                      label: 'DB PERSISTENT',
-                                      color: GlassTheme.accentNeonGreen,
-                                      icon: Icons.cloud_done_rounded,
-                                      fontSize: 9,
-                                    ),
                                   ],
                                 ),
                               ),

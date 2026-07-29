@@ -308,20 +308,23 @@ class _RestaurantOnboardingScreenState extends State<RestaurantOnboardingScreen>
           style: TextStyle(color: GlassTheme.textMedium, fontSize: 13, fontWeight: FontWeight.w500),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: ['₹', '\$', '€', '£', 'AED'].map((curr) {
-            final isSel = _currencySymbol == curr;
-            return Padding(
-              padding: const EdgeInsets.only(right: 12),
-              child: ChoiceChip(
-                label: Text(curr, style: TextStyle(color: isSel ? Colors.white : GlassTheme.textMedium, fontWeight: FontWeight.bold)),
-                selected: isSel,
-                selectedColor: GlassTheme.primaryViolet,
-                backgroundColor: GlassTheme.glassInput,
-                onSelected: (val) => setState(() => _currencySymbol = curr),
-              ),
-            );
-          }).toList(),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: ['₹', '\$', '€', '£', 'AED'].map((curr) {
+              final isSel = _currencySymbol == curr;
+              return Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: ChoiceChip(
+                  label: Text(curr, style: TextStyle(color: isSel ? Colors.white : GlassTheme.textMedium, fontWeight: FontWeight.bold)),
+                  selected: isSel,
+                  selectedColor: GlassTheme.primaryViolet,
+                  backgroundColor: GlassTheme.glassInput,
+                  onSelected: (val) => setState(() => _currencySymbol = curr),
+                ),
+              );
+            }).toList(),
+          ),
         ),
         const SizedBox(height: 20),
         Row(
