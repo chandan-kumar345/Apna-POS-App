@@ -192,8 +192,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       Expanded(child: Divider(color: Color(0xFF2B2D3A))),
                       Padding(
                         padding: EdgeInsets.symmetric(horizontal: 12),
-                        style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
-                        child: Text('Or'),
+                        child: Text('Or', style: TextStyle(color: Color(0xFF9CA3AF), fontSize: 12)),
                       ),
                       Expanded(child: Divider(color: Color(0xFF2B2D3A))),
                     ],
