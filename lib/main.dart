@@ -17,28 +17,11 @@ class ApnaPosApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final db = DatabaseService();
-
-    return ListenableBuilder(
-      listenable: db,
-      builder: (context, _) {
-        Widget initialScreen;
-
-        if (db.currentUser == null) {
-          initialScreen = const GetStartedScreen();
-        } else if (db.restaurant == null || !db.restaurant!.isOnboarded) {
-          initialScreen = const RestaurantOnboardingScreen();
-        } else {
-          initialScreen = const MainLayout();
-        }
-
-        return MaterialApp(
-          title: 'Apna POS - Smart Restaurant Billing',
-          debugShowCheckedModeBanner: false,
-          theme: GlassTheme.themeData,
-          home: initialScreen,
-        );
-      },
+    return MaterialApp(
+      title: 'Apna POS - Smart Restaurant Billing',
+      debugShowCheckedModeBanner: false,
+      theme: GlassTheme.themeData,
+      home: const GetStartedScreen(),
     );
   }
 }
