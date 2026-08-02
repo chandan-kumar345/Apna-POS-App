@@ -11,6 +11,15 @@ class RestaurantModel {
   final int tableCount;
   final bool isOnboarded;
 
+  // New Business Settings fields
+  final List<String> services; // e.g., ['Dine In', 'Takeaway', 'Delivery']
+  final String billingType; // 'GST' or 'Non-GST'
+  final String gstNumber; // e.g., '07AAAAA0000A1Z5'
+  final String restaurantType; // 'Veg', 'Non-Veg', 'Both'
+  final String openingTime; // '09:00 AM'
+  final String closingTime; // '11:00 PM'
+  final List<String> kitchenSections; // ['Main Kitchen', 'Beverages Bar']
+
   RestaurantModel({
     required this.id,
     required this.name,
@@ -23,6 +32,13 @@ class RestaurantModel {
     this.serviceCharge = 0.0,
     this.tableCount = 12,
     this.isOnboarded = false,
+    this.services = const ['Dine In'],
+    this.billingType = 'GST',
+    this.gstNumber = '',
+    this.restaurantType = 'Both',
+    this.openingTime = '09:00 AM',
+    this.closingTime = '11:00 PM',
+    this.kitchenSections = const ['Main Kitchen', 'Beverages Bar'],
   });
 
   Map<String, dynamic> toJson() => {
@@ -37,6 +53,13 @@ class RestaurantModel {
         'serviceCharge': serviceCharge,
         'tableCount': tableCount,
         'isOnboarded': isOnboarded,
+        'services': services,
+        'billingType': billingType,
+        'gstNumber': gstNumber,
+        'restaurantType': restaurantType,
+        'openingTime': openingTime,
+        'closingTime': closingTime,
+        'kitchenSections': kitchenSections,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -51,6 +74,14 @@ class RestaurantModel {
         serviceCharge: (json['serviceCharge'] as num?)?.toDouble() ?? 0.0,
         tableCount: json['tableCount'] ?? 12,
         isOnboarded: json['isOnboarded'] ?? false,
+        services: (json['services'] as List?)?.map((e) => e.toString()).toList() ?? const ['Dine In'],
+        billingType: json['billingType'] ?? 'GST',
+        gstNumber: json['gstNumber'] ?? '',
+        restaurantType: json['restaurantType'] ?? 'Both',
+        openingTime: json['openingTime'] ?? '09:00 AM',
+        closingTime: json['closingTime'] ?? '11:00 PM',
+        kitchenSections:
+            (json['kitchenSections'] as List?)?.map((e) => e.toString()).toList() ?? const ['Main Kitchen', 'Beverages Bar'],
       );
 
   RestaurantModel copyWith({
@@ -64,6 +95,13 @@ class RestaurantModel {
     double? serviceCharge,
     int? tableCount,
     bool? isOnboarded,
+    List<String>? services,
+    String? billingType,
+    String? gstNumber,
+    String? restaurantType,
+    String? openingTime,
+    String? closingTime,
+    List<String>? kitchenSections,
   }) {
     return RestaurantModel(
       id: id,
@@ -77,6 +115,13 @@ class RestaurantModel {
       serviceCharge: serviceCharge ?? this.serviceCharge,
       tableCount: tableCount ?? this.tableCount,
       isOnboarded: isOnboarded ?? this.isOnboarded,
+      services: services ?? this.services,
+      billingType: billingType ?? this.billingType,
+      gstNumber: gstNumber ?? this.gstNumber,
+      restaurantType: restaurantType ?? this.restaurantType,
+      openingTime: openingTime ?? this.openingTime,
+      closingTime: closingTime ?? this.closingTime,
+      kitchenSections: kitchenSections ?? this.kitchenSections,
     );
   }
 }

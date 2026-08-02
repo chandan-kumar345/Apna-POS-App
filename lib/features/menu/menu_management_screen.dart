@@ -465,35 +465,41 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             blurStrength: 12,
             child: Row(
               children: [
-                // Tab Selection Pills
-                Row(
-                  children: [
-                    ChoiceChip(
-                      label: Text('Products (${db.menuItems.length})'),
-                      selected: _selectedTab == 0,
-                      selectedColor: GlassTheme.primaryViolet,
-                      backgroundColor: GlassTheme.glassInput,
-                      labelStyle: TextStyle(
-                        color: _selectedTab == 0 ? Colors.white : GlassTheme.textMedium,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      onSelected: (_) => setState(() => _selectedTab = 0),
+                // Tab Selection Pills (Scrollable to prevent overflow)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      children: [
+                        ChoiceChip(
+                          label: Text('Products (${db.menuItems.length})'),
+                          selected: _selectedTab == 0,
+                          selectedColor: GlassTheme.primaryViolet,
+                          backgroundColor: GlassTheme.glassInput,
+                          labelStyle: TextStyle(
+                            color: _selectedTab == 0 ? Colors.white : GlassTheme.textMedium,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (_) => setState(() => _selectedTab = 0),
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: Text('Categories (${db.categories.length})'),
+                          selected: _selectedTab == 1,
+                          selectedColor: GlassTheme.primaryViolet,
+                          backgroundColor: GlassTheme.glassInput,
+                          labelStyle: TextStyle(
+                            color: _selectedTab == 1 ? Colors.white : GlassTheme.textMedium,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          onSelected: (_) => setState(() => _selectedTab = 1),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                    ChoiceChip(
-                      label: Text('Categories (${db.categories.length})'),
-                      selected: _selectedTab == 1,
-                      selectedColor: GlassTheme.primaryViolet,
-                      backgroundColor: GlassTheme.glassInput,
-                      labelStyle: TextStyle(
-                        color: _selectedTab == 1 ? Colors.white : GlassTheme.textMedium,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      onSelected: (_) => setState(() => _selectedTab = 1),
-                    ),
-                  ],
+                  ),
                 ),
-                const Spacer(),
+                const SizedBox(width: 8),
                 GlassButton(
                   label: _selectedTab == 0 ? '+ Add Product' : '+ Add Category',
                   icon: Icons.add_rounded,

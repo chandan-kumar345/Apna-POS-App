@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
+import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
 import 'add_business_address_screen.dart';
+import 'business_settings_screen.dart';
 
 class ConfirmBusinessAddressScreen extends StatefulWidget {
   final String? customAddress;
@@ -38,8 +40,7 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
     } else if (savedAddress != null && savedAddress.isNotEmpty) {
       _displayAddress = savedAddress;
     } else {
-      _displayAddress =
-          '4/1, Chanakya Place II, Block L, Sitapuri Par: 2, Chanakya Place, Delhi, 110059, India';
+      _displayAddress = '';
     }
   }
 
@@ -72,55 +73,28 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
       final updated = RestaurantModel(
         id: db.restaurant?.id ?? 'rest_001',
         name: businessName,
-        tagline: 'Authentic Flavors & Swift Service',
+        tagline: db.restaurant?.tagline ?? 'Authentic Flavors & Swift Service',
         phone: db.restaurant?.phone ?? db.currentUser?.phone ?? '+91 98765 43210',
         address: _displayAddress,
         cuisineType: db.restaurant?.cuisineType ?? 'Multi-Cuisine POS',
         currencySymbol: db.restaurant?.currencySymbol ?? '₹',
-        taxRate: 5.0,
-        tableCount: 12,
-        isOnboarded: true,
+        taxRate: db.restaurant?.taxRate ?? 5.0,
+        tableCount: db.restaurant?.tableCount ?? 12,
+        isOnboarded: false,
       );
 
-      // Save onboarding configuration to backend database & SharedPreferences
+      // Save address step
       await db.saveRestaurantOnboarding(updated);
 
       if (!mounted) return;
 
-      // High contrast crisp SnackBar
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF0F172A),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Welcome to Apna POS! Setup for "$businessName" completed.',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
-
-      // Launch Main POS Application
-      Navigator.pushAndRemoveUntil(
+      // Navigate to Business Settings Screen
+      Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const MainLayout()),
-        (route) => false,
+        MaterialPageRoute(builder: (_) => const BusinessSettingsScreen()),
       );
     } catch (e) {
-      setState(() => _errorMessage = 'Error completing setup: $e');
+      setState(() => _errorMessage = 'Error saving address: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -209,16 +183,9 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Text(
-                          businessTitle,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: GlassCompanyNameBadge(name: businessTitle),
                         ),
                       ),
                     ],

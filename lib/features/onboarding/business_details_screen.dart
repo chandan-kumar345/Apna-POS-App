@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
+import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
 import 'choose_business_category_screen.dart';
 import 'add_business_address_screen.dart';
@@ -525,16 +526,9 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                       ),
                       const SizedBox(width: 14),
                       Expanded(
-                        child: Text(
-                          businessTitle,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: GlassCompanyNameBadge(name: businessTitle),
                         ),
                       ),
                     ],

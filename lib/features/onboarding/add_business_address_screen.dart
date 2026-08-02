@@ -3,6 +3,8 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
+import '../../core/services/location_service.dart';
+import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
 import 'choose_business_category_screen.dart';
 import 'confirm_business_address_screen.dart';
@@ -108,11 +110,11 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
     _searchController = TextEditingController();
     _fullNameController = TextEditingController(text: initialName);
-    _phoneController = TextEditingController(text: cleanPhone.isNotEmpty ? cleanPhone : '9899636369');
-    _addressController = TextEditingController(text: rest?.address ?? '12-A Connaught Place, New Delhi');
-    _houseNoController = TextEditingController(text: 'Flat 12-A, Block B');
-    _landmarkController = TextEditingController(text: 'Near Outer Circle');
-    _pincodeController = TextEditingController(text: '110001');
+    _phoneController = TextEditingController(text: cleanPhone);
+    _addressController = TextEditingController(text: rest?.address ?? '');
+    _houseNoController = TextEditingController();
+    _landmarkController = TextEditingController();
+    _pincodeController = TextEditingController();
     _additionalController = TextEditingController();
 
     _searchController.addListener(_onSearchChanged);
@@ -131,21 +133,46 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
     super.dispose();
   }
 
-  void _onSearchChanged() {
-    final query = _searchController.text.trim().toLowerCase();
+  void _onSearchChanged() async {
+    final query = _searchController.text.trim();
     if (query.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _showSuggestions = false;
+          _filteredSuggestions = [];
+        });
+      }
+      return;
+    }
+
+    final liveResults = await LocationService.fetchAddressSuggestions(query);
+    if (!mounted) return;
+
+    if (liveResults.isNotEmpty) {
       setState(() {
-        _showSuggestions = false;
-        _filteredSuggestions = [];
+        _filteredSuggestions = liveResults.map((item) {
+          return AddressSuggestion(
+            mainText: item.mainText,
+            secondaryText: item.secondaryText,
+            fullAddress: item.fullAddress,
+            houseNo: item.houseNo,
+            landmark: item.landmark,
+            pincode: item.pincode,
+          );
+        }).toList();
+        _showSuggestions = true;
       });
     } else {
+      final localMatches = mockAddressSuggestions.where((s) {
+        final q = query.toLowerCase();
+        return s.mainText.toLowerCase().contains(q) ||
+            s.secondaryText.toLowerCase().contains(q) ||
+            s.fullAddress.toLowerCase().contains(q);
+      }).toList();
+
       setState(() {
-        _filteredSuggestions = mockAddressSuggestions.where((s) {
-          return s.mainText.toLowerCase().contains(query) ||
-              s.secondaryText.toLowerCase().contains(query) ||
-              s.fullAddress.toLowerCase().contains(query);
-        }).toList();
-        _showSuggestions = _filteredSuggestions.isNotEmpty;
+        _filteredSuggestions = localMatches;
+        _showSuggestions = localMatches.isNotEmpty;
       });
     }
   }
@@ -157,41 +184,32 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
     });
 
     try {
-      // Request native OS location runtime permission
-      var status = await Permission.location.status;
-      if (status.isDenied) {
-        status = await Permission.location.request();
-      }
+      final locationResult = await LocationService.getCurrentLocationAddress();
+      if (!mounted) return;
 
-      if (status.isGranted) {
-        // Pre-fill fetched location details
-        await Future.delayed(const Duration(milliseconds: 600)); // Smooth simulation
-        final fetched = mockAddressSuggestions[0];
+      setState(() {
+        _addressController.text = locationResult.fullAddress;
+        if (locationResult.houseNo.isNotEmpty) _houseNoController.text = locationResult.houseNo;
+        if (locationResult.landmark.isNotEmpty) _landmarkController.text = locationResult.landmark;
+        if (locationResult.pincode.isNotEmpty) _pincodeController.text = locationResult.pincode;
+        _searchController.text = locationResult.mainText;
+        _showSuggestions = false;
+      });
 
-        setState(() {
-          _addressController.text = fetched.fullAddress;
-          _houseNoController.text = fetched.houseNo;
-          _landmarkController.text = fetched.landmark;
-          _pincodeController.text = fetched.pincode;
-          _searchController.text = fetched.mainText;
-          _showSuggestions = false;
-        });
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('GPS Location fetched & pre-filled successfully!'),
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
-      } else if (status.isPermanentlyDenied) {
-        openAppSettings();
-      } else {
-        setState(() => _errorMessage = 'Location permission is required to fetch current address.');
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          backgroundColor: Color(0xFF0F172A),
+          content: Text(
+            'GPS Location permission granted & location loaded successfully!',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
     } catch (e) {
-      setState(() => _errorMessage = 'Error fetching GPS location: $e');
+      if (mounted) {
+        setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      }
     } finally {
       if (mounted) setState(() => _isFetchingLocation = false);
     }
@@ -200,9 +218,9 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
   void _applySuggestion(AddressSuggestion suggestion) {
     setState(() {
       _addressController.text = suggestion.fullAddress;
-      _houseNoController.text = suggestion.houseNo;
-      _landmarkController.text = suggestion.landmark;
-      _pincodeController.text = suggestion.pincode;
+      if (suggestion.houseNo.isNotEmpty) _houseNoController.text = suggestion.houseNo;
+      if (suggestion.landmark.isNotEmpty) _landmarkController.text = suggestion.landmark;
+      if (suggestion.pincode.isNotEmpty) _pincodeController.text = suggestion.pincode;
       _searchController.text = suggestion.mainText;
       _showSuggestions = false;
     });
@@ -366,17 +384,12 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                         ),
                       ),
                       const SizedBox(width: 14),
-                      const Expanded(
-                        child: Text(
-                          'Enter Complete Address',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: GlassCompanyNameBadge(
+                            name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
@@ -559,12 +572,15 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                       separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
                                       itemBuilder: (context, index) {
                                         final item = _filteredSuggestions[index];
-                                        return ListTile(
-                                          dense: true,
-                                          leading: const Icon(Icons.location_on_rounded, color: Color(0xFF00C2FF), size: 20),
-                                          title: Text(item.mainText, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF0F172A))),
-                                          subtitle: Text(item.secondaryText, style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-                                          onTap: () => _applySuggestion(item),
+                                        return Material(
+                                          color: Colors.transparent,
+                                          child: ListTile(
+                                            dense: true,
+                                            leading: const Icon(Icons.location_on_rounded, color: Color(0xFF00C2FF), size: 20),
+                                            title: Text(item.mainText, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF0F172A))),
+                                            subtitle: Text(item.secondaryText, style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+                                            onTap: () => _applySuggestion(item),
+                                          ),
                                         );
                                       },
                                     ),
@@ -606,12 +622,12 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
                                 const SizedBox(height: 10),
 
-                                Row(
+                                Wrap(
+                                  spacing: 10,
+                                  runSpacing: 8,
                                   children: [
                                     _buildAddressTypeChip('Home', Icons.home_rounded),
-                                    const SizedBox(width: 10),
                                     _buildAddressTypeChip('Work', Icons.business_center_rounded),
-                                    const SizedBox(width: 10),
                                     _buildAddressTypeChip('Other', Icons.location_on_rounded),
                                   ],
                                 ),

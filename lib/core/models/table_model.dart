@@ -1,4 +1,4 @@
-enum TableStatus { free, occupied, billed, reserved }
+enum TableStatus { free, occupied, runningKot, reserved }
 
 class TableModel {
   final String id;
@@ -40,7 +40,7 @@ class TableModel {
         capacity: json['capacity'] ?? 4,
         status: TableStatus.values.firstWhere(
           (e) => e.name == json['status'],
-          orElse: () => TableStatus.free,
+          orElse: () => (json['status'] == 'billed' ? TableStatus.runningKot : TableStatus.free),
         ),
         currentOrderId: json['currentOrderId'],
         occupiedSince: json['occupiedSince'],

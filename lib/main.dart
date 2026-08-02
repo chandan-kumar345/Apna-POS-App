@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
 import 'features/auth/get_started_screen.dart';
-import 'features/onboarding/restaurant_onboarding_screen.dart';
-import 'features/dashboard/main_layout.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

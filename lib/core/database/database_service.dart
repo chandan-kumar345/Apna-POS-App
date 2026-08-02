@@ -26,6 +26,18 @@ class DatabaseService extends ChangeNotifier {
   final List<OrderModel> _holdOrders = [];
   List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
 
+  // Live in-cart totals per table (before KOT is sent)
+  final Map<String, double> _liveCartTotals = {};
+  double getLiveCartTotal(String tableName) => _liveCartTotals[tableName] ?? 0.0;
+  void setLiveCartTotal(String tableName, double total) {
+    if (total <= 0) {
+      _liveCartTotals.remove(tableName);
+    } else {
+      _liveCartTotals[tableName] = total;
+    }
+    notifyListeners();
+  }
+
   void holdOrder(OrderModel order) {
     _holdOrders.add(order);
     notifyListeners();
@@ -77,7 +89,7 @@ class DatabaseService extends ChangeNotifier {
         name: 'Apna POS Diner',
         tagline: 'Authentic Flavors & Swift Service',
         phone: '+91 98765 43210',
-        address: '12-A Connaught Place, New Delhi',
+        address: '',
         cuisineType: 'Indian & Continental',
         currencySymbol: '₹',
         taxRate: 5.0,
@@ -225,7 +237,7 @@ class DatabaseService extends ChangeNotifier {
         name: cleanName,
         tagline: 'Authentic Flavors & Swift Service',
         phone: '+91 98765 43210',
-        address: '12-A Connaught Place, New Delhi',
+        address: '',
         cuisineType: 'Indian & Multi-Cuisine',
         currencySymbol: '₹',
         taxRate: 5.0,
@@ -444,6 +456,7 @@ class DatabaseService extends ChangeNotifier {
     required double discountAmount,
     required String paymentMethod,
     String? deliveryAddress,
+    OrderStatus? status,
   }) async {
     final subtotal = items.fold(0.0, (sum, i) => sum + i.totalPrice);
     final taxRate = restaurant?.taxRate ?? 5.0;
@@ -469,7 +482,7 @@ class DatabaseService extends ChangeNotifier {
       orderNumber: orderNum,
       tableNumber: tableNumber,
       orderType: orderType,
-      status: OrderStatus.pending,
+      status: status ?? OrderStatus.pending,
       items: items,
       subtotal: subtotal,
       taxAmount: taxAmount,
@@ -563,7 +576,7 @@ class DatabaseService extends ChangeNotifier {
       name: 'Apna POS Diner',
       tagline: 'Taste the Perfection',
       phone: '+91 98765 43210',
-      address: '12-A Connaught Place, New Delhi',
+      address: '',
       cuisineType: 'Indian & Multi-Cuisine',
       currencySymbol: '₹',
       taxRate: 5.0,
@@ -628,7 +641,7 @@ class DatabaseService extends ChangeNotifier {
         name: 'T-$num',
         floor: floor,
         capacity: cap,
-        status: (num == 2 || num == 5) ? TableStatus.occupied : (num == 7 ? TableStatus.billed : TableStatus.free),
+        status: (num == 2 || num == 5) ? TableStatus.occupied : (num == 7 ? TableStatus.runningKot : TableStatus.free),
         occupiedSince: (num == 2 || num == 5) ? '19:42' : null,
       );
     });

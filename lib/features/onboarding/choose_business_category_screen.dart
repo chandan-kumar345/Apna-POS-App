@@ -471,12 +471,23 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                                       color: item.bgColor,
                                                       borderRadius: BorderRadius.circular(14),
                                                     ),
-                                                    child: Center(
-                                                      child: Text(
-                                                        item.icon,
-                                                        style: const TextStyle(fontSize: 26),
-                                                      ),
-                                                    ),
+                                                     child: Center(
+                                                       child: item.title == 'Restaurant'
+                                                           ? Image.asset(
+                                                               'assets/images/restaurant_icon.png',
+                                                               width: 32,
+                                                               height: 32,
+                                                               fit: BoxFit.contain,
+                                                               errorBuilder: (_, __, ___) => Text(
+                                                                 item.icon,
+                                                                 style: const TextStyle(fontSize: 26),
+                                                               ),
+                                                             )
+                                                           : Text(
+                                                               item.icon,
+                                                               style: const TextStyle(fontSize: 26),
+                                                             ),
+                                                     ),
                                                   ),
 
                                                   const SizedBox(height: 8),
