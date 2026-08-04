@@ -624,6 +624,42 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     });
   }
 
+  void _checkAndCloseEmptyCart(BuildContext modalContext, [StateSetter? setStateModal]) {
+    if (_cartItems.isEmpty) {
+      if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+        final targetTable = _selectedTable!;
+
+        db.setLiveTableCart(targetTable, []);
+        db.setLiveCartTotal(targetTable, 0);
+
+        final tbl = db.tables.where((t) =>
+          t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
+          t.tableNumber.toString() == targetTable ||
+          'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
+        ).firstOrNull;
+
+        if (tbl != null) {
+          db.updateTableStatus(tbl.id, TableStatus.free);
+        }
+
+        db.orders.removeWhere((o) =>
+          ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
+           'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        );
+      }
+
+      if (setStateModal != null) {
+        setStateModal(() {});
+      }
+      setState(() {});
+
+      if (Navigator.canPop(modalContext)) {
+        Navigator.pop(modalContext);
+      }
+    }
+  }
+
   void _removeCartItem(MenuItemModel item) {
     setState(() {
       _cartItems.removeWhere((i) => i.item.id == item.id);
@@ -1420,7 +1456,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           InkWell(
                             onTap: () {
                               _clearCart();
-                              setStateModal(() {});
+                              _checkAndCloseEmptyCart(context, setStateModal);
                             },
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
@@ -1534,6 +1570,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                               _decrementCartItem(cItem.item);
                                               setStateModal(() {});
                                               setState(() {});
+                                              _checkAndCloseEmptyCart(context, setStateModal);
                                             },
                                           ),
                                           Padding(
@@ -1567,6 +1604,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       onTap: () {
                                         _removeCartItem(cItem.item);
                                         setStateModal(() {});
+                                        setState(() {});
+                                        _checkAndCloseEmptyCart(context, setStateModal);
                                       },
                                       borderRadius: BorderRadius.circular(8),
                                       child: Container(
