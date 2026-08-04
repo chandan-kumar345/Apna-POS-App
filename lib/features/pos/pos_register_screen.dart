@@ -1,8 +1,5 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
-import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
@@ -12,7 +9,6 @@ import '../tables/table_management_screen.dart';
 import 'payment_modal.dart';
 import 'receipt_dialog.dart';
 import 'kot_dialog.dart';
-import '../../core/widgets/glass_company_name_badge.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
@@ -47,19 +43,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   void initState() {
     super.initState();
     if (widget.initialTable != null) {
-      _loadCartForTable(widget.initialTable!);
+      _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
   }
 
   @override
   void didUpdateWidget(PosRegisterScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialTable != null && widget.initialTable != oldWidget.initialTable && widget.initialTable != _selectedTable) {
-      _loadCartForTable(widget.initialTable!);
+    if (widget.initialTable != null && (widget.initialTable != oldWidget.initialTable || widget.initialTable != _selectedTable)) {
+      _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
   }
 
-  void _loadCartForTable(String tableName) {
+  void _loadCartForTable(String tableName, {bool openCartModal = false}) {
     setState(() {
       _selectedTable = tableName;
       _selectedOrderType = OrderType.dineIn;
@@ -69,41 +65,115 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (activeOrder != null) {
         _cartItems.addAll(activeOrder.items);
         _discountAmount = activeOrder.discountAmount;
+      } else {
+        final savedCart = db.getLiveTableCart(tableName);
+        if (savedCart.isNotEmpty) {
+          _cartItems.addAll(savedCart);
+        }
       }
     });
+
+    if (openCartModal && _cartItems.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _openCartScreenModal();
+        }
+      });
+    }
   }
 
-  Future<void> _sendKotOrder() async {
-    if (_cartItems.isEmpty) return;
-
+  Future<void> _sendKotOrder([StateSetter? setStateModal]) async {
     final targetTable = _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway';
 
-    final newOrder = await db.createOrder(
+    // Check if table already has a Running KOT active order in DB
+    final activeOrder = db.orders.where((o) =>
+      ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
+       'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
+      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+    ).firstOrNull;
+
+    if (_cartItems.isEmpty && activeOrder == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add items to cart to view/generate KOT!')),
+      );
+      return;
+    }
+
+    // If order is already active Running KOT, show KotDialog directly
+    if (activeOrder != null && _cartItems.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (_) => KotDialog(
+          order: activeOrder,
+          onPrintKot: () {
+            final tbl = db.tables.where((t) =>
+              t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
+              t.tableNumber.toString() == targetTable ||
+              'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
+            ).firstOrNull;
+            if (tbl != null) {
+              db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+            }
+            if (setStateModal != null) setStateModal(() {});
+            setState(() {});
+          },
+        ),
+      );
+      return;
+    }
+
+    final subtotalVal = _cartItems.fold<double>(0.0, (s, i) => s + (i.item.price * i.quantity));
+    final taxVal = _cartItems.fold<double>(0.0, (s, i) => s + ((i.item.price * ((i.item.gstPercent ?? 0.0) / 100)) * i.quantity));
+
+    // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
+    final tempOrder = OrderModel(
+      id: 'KOT-${DateTime.now().millisecondsSinceEpoch}',
+      orderNumber: 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
       items: List.from(_cartItems),
+      subtotal: subtotalVal,
+      taxAmount: taxVal,
+      totalAmount: cartTotal,
       tableNumber: targetTable,
       orderType: _selectedOrderType,
       discountAmount: _discountAmount,
       paymentMethod: 'KOT Pending',
       status: OrderStatus.preparing,
+      createdAt: DateTime.now().toIso8601String(),
     );
 
-    final tbl = db.tables.where((t) => t.name == targetTable || t.tableNumber.toString() == targetTable).firstOrNull;
-    if (tbl != null) {
-      db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
-    }
-
-    if (!mounted) return;
-
+    // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT is clicked)
     showDialog(
       context: context,
-      builder: (_) => KotDialog(order: newOrder),
+      builder: (_) => KotDialog(
+        order: tempOrder,
+        onPrintKot: () async {
+          // WHEN USER CLICKS PRINT KOT IN POPUP:
+          // NOW save order to DB and update table status to Running KOT!
+          final newOrder = await db.createOrder(
+            items: List.from(_cartItems),
+            tableNumber: targetTable,
+            orderType: _selectedOrderType,
+            discountAmount: _discountAmount,
+            paymentMethod: 'KOT Pending',
+            status: OrderStatus.preparing,
+          );
+
+          final tbl = db.tables.where((t) =>
+            t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
+            t.tableNumber.toString() == targetTable ||
+            'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
+          ).firstOrNull;
+
+          if (tbl != null) {
+            db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
+          }
+
+          db.setLiveCartTotal(targetTable, newOrder.totalAmount);
+          if (setStateModal != null) setStateModal(() {});
+          setState(() {});
+        },
+      ),
     );
-
-    // Clear live cart total - order is now in DB
-    db.setLiveCartTotal(targetTable, 0);
-
-    // PRESERVE CART ITEMS SO PRODUCTS STAY IN CART UNTIL NEW TABLE IS SELECTED OR PAID
-    setState(() {});
   }
 
   void _syncTableStatusWithCart() {
@@ -124,7 +194,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           (sum, e) => sum + (e.item.price * e.quantity),
         );
 
-        // Publish live cart total to DB so table card shows it immediately
+        // Save live table cart items & total in DB so table card and view button can load it
+        db.setLiveTableCart(targetTable, _cartItems);
         db.setLiveCartTotal(targetTable, cartTotal - _discountAmount.clamp(0, cartTotal));
 
         final tbl = db.tables.where((t) => t.name == targetTable || t.tableNumber.toString() == targetTable).firstOrNull;
@@ -469,73 +540,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
-  void _showDiscountDialog(StateSetter setStateModal) {
-    final discCtrl = TextEditingController(text: _discountAmount > 0 ? _discountAmount.toStringAsFixed(0) : '');
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Apply Order Discount', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Select Quick Discount (%):', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              children: [5, 10, 15, 20, 25].map((pct) {
-                final calcAmt = (cartSubtotal * pct / 100).roundToDouble();
-                return ChoiceChip(
-                  label: Text('$pct%'),
-                  selected: false,
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  labelStyle: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold),
-                  onSelected: (_) {
-                    discCtrl.text = calcAmt.toStringAsFixed(0);
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: discCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Discount Amount (${db.restaurant?.currencySymbol ?? "₹"})',
-                prefixIcon: const Icon(Icons.discount_outlined, color: Color(0xFF051C48)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              setState(() => _discountAmount = 0.0);
-              setStateModal(() {});
-              Navigator.pop(ctx);
-            },
-            child: const Text('Clear', style: TextStyle(color: Color(0xFFEF4444))),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final val = double.tryParse(discCtrl.text.trim()) ?? 0.0;
-              setState(() => _discountAmount = val);
-              setStateModal(() {});
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF051C48)),
-            child: const Text('Apply Discount', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _showAddItemDialog() {
     Navigator.push(
       context,
@@ -545,6 +549,692 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         setState(() {});
       }
     });
+  }
+
+  String _getFullTableTitle([String? tableName]) {
+    final target = tableName ?? _selectedTable;
+    if (target == null || target.isEmpty) {
+      return 'Table 04';
+    }
+    if (target.toLowerCase().startsWith('table')) {
+      return target;
+    }
+    final numOnly = target.replaceAll(RegExp(r'[^0-9]'), '');
+    if (numOnly.isNotEmpty) {
+      return 'Table ${numOnly.padLeft(2, '0')}';
+    }
+    return target;
+  }
+
+  Color _getTableStatusColor(TableStatus status) {
+    switch (status) {
+      case TableStatus.free:
+        return const Color(0xFF10B981);
+      case TableStatus.occupied:
+        return const Color(0xFF051C48);
+      case TableStatus.runningKot:
+        return const Color(0xFFEF4444);
+      case TableStatus.reserved:
+        return const Color(0xFF8B5CF6);
+    }
+  }
+
+  String _getTableStatusLabel(TableStatus status) {
+    switch (status) {
+      case TableStatus.free:
+        return 'Free';
+      case TableStatus.occupied:
+        return 'Occupied';
+      case TableStatus.runningKot:
+        return 'Running KOT';
+      case TableStatus.reserved:
+        return 'Reserved';
+    }
+  }
+
+  void _clearCart() {
+    setState(() {
+      _cartItems.clear();
+      _discountAmount = 0.0;
+      if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+        final targetTable = _selectedTable!;
+
+        // 1. Delete active preparing/pending order from db.orders (removes it from 'Preparing' in My Orders)
+        db.orders.removeWhere((o) =>
+          ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
+           'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        );
+
+        // 2. Reset live cart items and total amount to 0
+        db.setLiveTableCart(targetTable, []);
+        db.setLiveCartTotal(targetTable, 0);
+
+        // 3. Free table status
+        final tbl = db.tables.where((t) =>
+          t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
+          t.tableNumber.toString() == targetTable ||
+          'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
+        ).firstOrNull;
+
+        if (tbl != null) {
+          db.updateTableStatus(tbl.id, TableStatus.free);
+        }
+      }
+    });
+  }
+
+  void _removeCartItem(MenuItemModel item) {
+    setState(() {
+      _cartItems.removeWhere((i) => i.item.id == item.id);
+      _syncTableStatusWithCart();
+    });
+  }
+
+  void _switchTable(String newTableName, StateSetter setStateModal) {
+    final oldTable = _selectedTable;
+
+    if (oldTable != null && oldTable.isNotEmpty && oldTable.trim().toLowerCase() != newTableName.trim().toLowerCase()) {
+      // Check if oldTable has a Running KOT active order
+      final oldActiveOrder = db.orders.where((o) =>
+        ((o.tableNumber?.trim().toLowerCase() ?? '') == oldTable.trim().toLowerCase() ||
+         'T-${o.tableNumber}'.toLowerCase() == oldTable.trim().toLowerCase()) &&
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+      ).firstOrNull;
+
+      final oldTbl = db.tables.where((t) =>
+        t.name.trim().toLowerCase() == oldTable.trim().toLowerCase() ||
+        t.tableNumber.toString() == oldTable ||
+        'T-${t.tableNumber}'.toLowerCase() == oldTable.trim().toLowerCase()
+      ).firstOrNull;
+
+      final newTbl = db.tables.where((t) =>
+        t.name.trim().toLowerCase() == newTableName.trim().toLowerCase() ||
+        t.tableNumber.toString() == newTableName ||
+        'T-${t.tableNumber}'.toLowerCase() == newTableName.trim().toLowerCase()
+      ).firstOrNull;
+
+      if (oldActiveOrder != null) {
+        // 1. Move Running KOT order & products from oldTable to newTableName
+        final orderIdx = db.orders.indexWhere((o) => o.id == oldActiveOrder.id);
+        if (orderIdx != -1) {
+          db.orders[orderIdx] = oldActiveOrder.copyWith(tableNumber: newTableName);
+        }
+
+        if (newTbl != null) {
+          db.updateTableStatus(newTbl.id, TableStatus.runningKot, orderId: oldActiveOrder.id);
+        }
+
+        // Free Table A
+        if (oldTbl != null) {
+          db.updateTableStatus(oldTbl.id, TableStatus.free);
+        }
+        db.setLiveTableCart(oldTable, []);
+        db.setLiveCartTotal(oldTable, 0);
+      } else {
+        // 2. Move draft cart products from oldTable to newTableName
+        if (_cartItems.isNotEmpty) {
+          db.setLiveTableCart(newTableName, List.from(_cartItems));
+          db.setLiveCartTotal(newTableName, cartTotal);
+
+          if (newTbl != null && newTbl.status == TableStatus.free) {
+            db.updateTableStatus(newTbl.id, TableStatus.occupied);
+          }
+        }
+
+        // Free Table A
+        if (oldTbl != null) {
+          db.updateTableStatus(oldTbl.id, TableStatus.free);
+        }
+        db.setLiveTableCart(oldTable, []);
+        db.setLiveCartTotal(oldTable, 0);
+      }
+    }
+
+    // Switch selected table
+    _selectedTable = newTableName;
+    _selectedOrderType = OrderType.dineIn;
+    _cartItems.clear();
+    _discountAmount = 0.0;
+
+    // Load active order or live table cart for newly selected table
+    final newActiveOrder = db.orders.where((o) =>
+      ((o.tableNumber?.trim().toLowerCase() ?? '') == newTableName.trim().toLowerCase() ||
+       'T-${o.tableNumber}'.toLowerCase() == newTableName.trim().toLowerCase()) &&
+      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+    ).firstOrNull;
+
+    if (newActiveOrder != null) {
+      _cartItems.addAll(newActiveOrder.items);
+      _discountAmount = newActiveOrder.discountAmount;
+    } else {
+      final savedCart = db.getLiveTableCart(newTableName);
+      if (savedCart.isNotEmpty) {
+        _cartItems.addAll(savedCart);
+      }
+    }
+
+    db.setLiveTableCart(newTableName, List.from(_cartItems));
+    db.setLiveCartTotal(newTableName, cartTotal);
+
+    setStateModal(() {});
+    setState(() {});
+  }
+
+  void _showChangeTableFloorWiseModal(StateSetter setStateModal) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        String activeFloorTab = 'All';
+
+        return StatefulBuilder(
+          builder: (context, setFloorState) {
+            final floors = ['All', ...db.tables.map((t) => t.floor).toSet()];
+            final filteredTables = activeFloorTab == 'All'
+                ? db.tables
+                : db.tables.where((t) => t.floor == activeFloorTab).toList();
+
+            final Map<String, List<TableModel>> tablesByFloor = {};
+            for (var t in filteredTables) {
+              tablesByFloor.putIfAbsent(t.floor, () => []).add(t);
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.75,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black26, blurRadius: 25, offset: Offset(0, -8)),
+                ],
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48)),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Select Table (Floor-Wise)',
+                          style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: Color(0xFFE2E8F0), height: 1),
+
+                  // Floor Filter Tabs
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Floor:',
+                          style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(width: 8),
+                        ...floors.map((flr) {
+                          final isSel = activeFloorTab == flr;
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: ChoiceChip(
+                              label: Text(flr),
+                              labelStyle: TextStyle(
+                                color: isSel ? Colors.white : const Color(0xFF475569),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                              selected: isSel,
+                              selectedColor: const Color(0xFF051C48),
+                              backgroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+                              onSelected: (_) => setFloorState(() => activeFloorTab = flr),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+
+                  // Floor-wise Table Grid View (Seat text removed, amount displayed as plain text without button)
+                  Expanded(
+                    child: ListView.builder(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                      itemCount: tablesByFloor.keys.length,
+                      itemBuilder: (context, floorIdx) {
+                        final floorName = tablesByFloor.keys.elementAt(floorIdx);
+                        final floorTables = tablesByFloor[floorName]!;
+
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4, bottom: 6, top: 4),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 4,
+                                    height: 15,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF051C48),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    floorName,
+                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '(${floorTables.length} Tables)',
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 3,
+                                childAspectRatio: 0.92,
+                                crossAxisSpacing: 8,
+                                mainAxisSpacing: 8,
+                              ),
+                              itemCount: floorTables.length,
+                              itemBuilder: (context, idx) {
+                                final table = floorTables[idx];
+                                final isCurrentSelected = _selectedTable == table.name;
+                                final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
+                                final statusColor = _getTableStatusColor(validStatus);
+
+                                final activeOrder = validStatus == TableStatus.free
+                                    ? null
+                                    : db.orders.where((o) => ((o.tableNumber?.trim().toLowerCase() ?? '') == table.name.trim().toLowerCase() || 'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
+                                final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
+                                final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
+                                final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
+                                final hasProducts = validStatus != TableStatus.free && activeAmount > 0;
+
+                                return InkWell(
+                                  onTap: () {
+                                    _switchTable(table.name, setStateModal);
+                                    Navigator.pop(context);
+                                  },
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: isCurrentSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: isCurrentSelected ? const Color(0xFF0284C7) : statusColor,
+                                        width: isCurrentSelected ? 2.5 : 2.0,
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: statusColor.withValues(alpha: 0.12),
+                                          blurRadius: 5,
+                                          offset: const Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    padding: const EdgeInsets.all(6),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Status Pill Badge (Top)
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Flexible(
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: statusColor.withValues(alpha: 0.12),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  _getTableStatusLabel(validStatus),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    color: statusColor,
+                                                    fontSize: 9.5,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            if (isCurrentSelected)
+                                              const Icon(Icons.check_circle_rounded, color: Color(0xFF0284C7), size: 14),
+                                          ],
+                                        ),
+
+                                        // Middle Table Icon & Title (Flexible / Expanded)
+                                        Expanded(
+                                          child: Center(
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.table_restaurant_rounded, color: statusColor, size: 22),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  _getFullTableTitle(table.name),
+                                                  textAlign: TextAlign.center,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12.5,
+                                                    color: Color(0xFF0F172A),
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+
+                                        // Bottom Amount Text
+                                        if (hasProducts)
+                                          Center(
+                                            child: Text(
+                                              '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w900,
+                                                color: Color(0xFF051C48),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 10),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddCustomerDialog(StateSetter setStateModal) {
+    final nameCtrl = TextEditingController(text: _customerName);
+    final phoneCtrl = TextEditingController(text: _customerPhone);
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.person_add_rounded, color: Color(0xFF051C48), size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Add Customer Info',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: phoneCtrl,
+                  keyboardType: TextInputType.phone,
+                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Customer Number',
+                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
+                    hintText: 'Enter phone number',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                    prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF051C48)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                TextField(
+                  controller: nameCtrl,
+                  keyboardType: TextInputType.name,
+                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Customer Name',
+                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
+                    hintText: 'Enter customer name',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF051C48)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          setState(() {
+                            _customerName = nameCtrl.text.trim();
+                            _customerPhone = phoneCtrl.text.trim();
+                          });
+                          setStateModal(() {});
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: const Color(0xFF051C48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showExtraBenefitDialog(StateSetter setStateModal) {
+    final discCtrl = TextEditingController(text: _discountAmount > 0 ? _discountAmount.toStringAsFixed(0) : '');
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          backgroundColor: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(Icons.sell_outlined, color: Color(0xFF051C48), size: 22),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Extra Benefits & Discounts',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                TextField(
+                  controller: discCtrl,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Extra Discount Amount (₹)',
+                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
+                    hintText: 'e.g. 50',
+                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                    prefixIcon: const Icon(Icons.discount_outlined, color: Color(0xFF051C48)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _discountAmount = 0.0;
+                          });
+                          setStateModal(() {});
+                          Navigator.pop(context);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          side: const BorderSide(color: Color(0xFFFEE2E2)),
+                        ),
+                        child: const Text('Reset', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final val = double.tryParse(discCtrl.text.trim()) ?? 0.0;
+                          setState(() {
+                            _discountAmount = val;
+                          });
+                          setStateModal(() {});
+                          Navigator.pop(context);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          backgroundColor: const Color(0xFF051C48),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        ),
+                        child: const Text('Apply Benefit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openCartScreenModal() {
@@ -558,9 +1248,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             final currency = db.restaurant?.currencySymbol ?? '₹';
 
             return Container(
-              height: MediaQuery.of(context).size.height * 0.85,
+              height: MediaQuery.of(context).size.height * 0.80, // Cart screen slid down slightly for comfortable top spacing
               decoration: const BoxDecoration(
-                color: Colors.white,
+                color: Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                 boxShadow: [
                   BoxShadow(color: Colors.black26, blurRadius: 30, offset: Offset(0, -10)),
@@ -568,206 +1258,585 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
               child: Column(
                 children: [
+                  // Handle Bar
                   Container(
                     width: 40,
                     height: 5,
-                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    margin: const EdgeInsets.only(top: 12, bottom: 6),
                     decoration: BoxDecoration(
                       color: const Color(0xFFCBD5E1),
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
 
+                  // Top Navigation Header
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     child: Row(
                       children: [
-                        const Icon(Icons.shopping_bag_outlined, color: Color(0xFF051C48)),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Your Order Cart',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        InkWell(
+                          onTap: () => Navigator.pop(context),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2))],
+                            ),
+                            child: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A), size: 18),
+                          ),
                         ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
-                          onPressed: () => Navigator.pop(context),
+                        const SizedBox(width: 8),
+
+                        // Table Icon Box
+                        Container(
+                          padding: const EdgeInsets.all(7),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE0F2FE),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0284C7), size: 20),
+                        ),
+                        const SizedBox(width: 8),
+
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _getFullTableTitle(),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 2),
+                              // CHANGE TABLE BUTTON WITH BORDER
+                              InkWell(
+                                onTap: () => _showChangeTableFloorWiseModal(setStateModal),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFF00A896), width: 1.5),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text(
+                                        'Change Table',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF00A896),
+                                        ),
+                                      ),
+                                      SizedBox(width: 2),
+                                      Icon(Icons.chevron_right_rounded, size: 14, color: Color(0xFF00A896)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+
+                        // Order Type Dropdown (Curved Corners Box & Curved Popup Menu)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFF051C48), width: 1.5),
+                            boxShadow: const [
+                              BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1)),
+                            ],
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<OrderType>(
+                              value: _selectedOrderType,
+                              dropdownColor: Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              isDense: true,
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF051C48), size: 20),
+                              items: OrderType.values.map((type) {
+                                final label = type == OrderType.dineIn
+                                    ? 'DineIn'
+                                    : type == OrderType.takeaway
+                                        ? 'Takeaway'
+                                        : 'Delivery';
+                                return DropdownMenuItem(
+                                  value: type,
+                                  child: Text(
+                                    label,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF051C48),
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (val) {
+                                if (val != null) {
+                                  setStateModal(() {
+                                    _selectedOrderType = val;
+                                  });
+                                  setState(() {
+                                    _selectedOrderType = val;
+                                  });
+                                }
+                              },
+                            ),
+                          ),
                         ),
                       ],
                     ),
                   ),
 
-                  const Divider(color: Color(0xFFE2E8F0), height: 1),
-
-                  Expanded(
-                    child: ListView.separated(
-                      padding: const EdgeInsets.all(20),
-                      itemCount: _cartItems.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemBuilder: (context, idx) {
-                        final cItem = _cartItems[idx];
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                  // Items Header with Clear Cart Button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Items (${_cartItems.fold<int>(0, (sum, i) => sum + i.quantity)})',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
                           ),
-                          child: Row(
-                            children: [
-                              Text(cItem.item.emoji, style: const TextStyle(fontSize: 24)),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(cItem.item.name, style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 14)),
-                                    Text('$currency ${cItem.item.price.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF051C48), fontSize: 12, fontWeight: FontWeight.bold)),
-                                  ],
+                        ),
+                        if (_cartItems.isNotEmpty)
+                          InkWell(
+                            onTap: () {
+                              _clearCart();
+                              setStateModal(() {});
+                            },
+                            borderRadius: BorderRadius.circular(20),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFEE2E2),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                'Clear Cart',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFEF4444),
                                 ),
                               ),
-                              Row(
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF051C48), size: 20),
-                                    onPressed: () {
-                                      _decrementCartItem(cItem.item);
-                                      setStateModal(() {});
-                                      setState(() {});
-                                    },
-                                  ),
-                                  Text('${cItem.quantity}', style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
-                                  IconButton(
-                                    icon: const Icon(Icons.add_circle_outline, color: Color(0xFF051C48), size: 20),
-                                    onPressed: () {
-                                      _addToCart(cItem.item);
-                                      setStateModal(() {});
-                                      setState(() {});
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ],
+                            ),
                           ),
-                        );
-                      },
+                      ],
                     ),
                   ),
 
-                  // Order Summary with Discount Flow
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      boxShadow: [BoxShadow(color: Color(0x0F000000), blurRadius: 10, offset: Offset(0, -4))],
-                    ),
-                    child: Column(
-                      children: [
-                        // Subtotal
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Subtotal:', style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B))),
-                            Text('$currency ${cartSubtotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-
-                        // Discount Row with Interactive Apply Discount
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                const Text('Discount: ', style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B))),
-                                InkWell(
-                                  onTap: () => _showDiscountDialog(setStateModal),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF051C48).withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(6),
-                                      border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                    ),
-                                    child: Text(
-                                      _discountAmount > 0 ? 'Edit Discount' : '+ Add Discount',
-                                      style: const TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
+                  // Cart Item Cards List (Compact Box: Description & QTY label removed)
+                  Expanded(
+                    child: _cartItems.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: const [
+                                Icon(Icons.shopping_cart_outlined, size: 56, color: Color(0xFFCBD5E1)),
+                                SizedBox(height: 10),
+                                Text(
+                                  'Your cart is empty',
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 15, fontWeight: FontWeight.w600),
                                 ),
                               ],
                             ),
-                            Text(
-                              '- $currency ${_discountAmount.toStringAsFixed(2)}',
-                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: _discountAmount > 0 ? const Color(0xFF10B981) : const Color(0xFF94A3B8)),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            itemCount: _cartItems.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (context, idx) {
+                              final cItem = _cartItems[idx];
+                              return Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.03),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Item Title & Price
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            cItem.item.name,
+                                            style: const TextStyle(
+                                              fontSize: 14.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '$currency${cItem.item.price.toStringAsFixed(1)}',
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                              color: Color(0xFF051C48),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    // Stepper (- QTY +)
+                                    Container(
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF051C48),
+                                        borderRadius: BorderRadius.circular(10),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF051C48).withValues(alpha: 0.2),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                            icon: const Icon(Icons.remove, color: Colors.white, size: 15),
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 34),
+                                            padding: EdgeInsets.zero,
+                                            onPressed: () {
+                                              _decrementCartItem(cItem.item);
+                                              setStateModal(() {});
+                                              setState(() {});
+                                            },
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                                            child: Text(
+                                              '${cItem.quantity}',
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.add, color: Colors.white, size: 15),
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 34),
+                                            padding: EdgeInsets.zero,
+                                            onPressed: () {
+                                              _addToCart(cItem.item);
+                                              setStateModal(() {});
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+
+                                    // Trash Delete Button
+                                    InkWell(
+                                      onTap: () {
+                                        _removeCartItem(cItem.item);
+                                        setStateModal(() {});
+                                      },
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(6),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFFEE2E2),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(
+                                          Icons.delete_outline_rounded,
+                                          color: Color(0xFFEF4444),
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                  ),
+
+                  // Add Customer & Extra's Buttons Row
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => _showAddCustomerDialog(setStateModal),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              height: 50,
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF051C48),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF051C48).withValues(alpha: 0.25),
+                                    blurRadius: 6,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.account_circle_outlined, color: Colors.white, size: 22),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          _customerName.isNotEmpty ? _customerName : 'Add Customer',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (_customerPhone.isNotEmpty)
+                                          Text(
+                                            _customerPhone,
+                                            style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 10.5,
+                                            ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+
+                        Expanded(
+                          child: InkWell(
+                            onTap: () => _showExtraBenefitDialog(setStateModal),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              height: 50,
+                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFF051C48), width: 1.5),
+                              ),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF051C48),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.sell_outlined, color: Colors.white, size: 12),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      _discountAmount > 0 ? 'Extra\'s (₹${_discountAmount.toStringAsFixed(0)})' : 'Extra\'s',
+                                      style: const TextStyle(
+                                        color: Color(0xFF051C48),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Price Summary Card with GST TAX Amount Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.03),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Price (${_cartItems.fold<int>(0, (sum, i) => sum + i.quantity)} Items)',
+                                style: const TextStyle(fontSize: 13.5, color: Color(0xFF475569)),
+                              ),
+                              Text(
+                                '$currency${cartSubtotal.toStringAsFixed(1)}',
+                                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                            ],
+                          ),
+                          if (_discountAmount > 0) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Discount:', style: TextStyle(fontSize: 13, color: Color(0xFF10B981))),
+                                Text('- $currency${_discountAmount.toStringAsFixed(1)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                              ],
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 6),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Tax (GST ${db.restaurant?.taxRate ?? 5.0}%):',
+                                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                              ),
+                              Text(
+                                '+ $currency${cartTax.toStringAsFixed(1)}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                            ],
+                          ),
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 6),
+                            child: Divider(color: Color(0xFFE2E8F0), height: 1),
+                          ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Total Pay',
+                                style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                              ),
+                              Text(
+                                '$currency${cartTotal.toStringAsFixed(1)}',
+                                style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFFEF4444)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
 
-                        // GST Tax Row
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Tax (${db.restaurant?.taxRate ?? 5.0}%):', style: const TextStyle(fontSize: 13.5, color: Color(0xFF64748B))),
-                            Text('+ $currency ${cartTax.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                          ],
+                  // Bottom Action Buttons (KOT & Pay — Hold Button Removed as requested)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 48,
+                            child: OutlinedButton(
+                              onPressed: () async {
+                                await _sendKotOrder(setStateModal);
+                              },
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                backgroundColor: Colors.white,
+                              ),
+                              child: const Text(
+                                'KOT',
+                                style: TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold, fontSize: 15),
+                              ),
+                            ),
+                          ),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Divider(color: Color(0xFFE2E8F0), height: 1),
-                        ),
+                        const SizedBox(width: 12),
 
-                        // Final Total
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text('Total Amount:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                            Text('$currency ${cartTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF051C48))),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            // Send KOT Button (Red Color for Running KOT)
-                            Expanded(
-                              child: SizedBox(
-                                height: 50,
-                                child: ElevatedButton.icon(
-                                  onPressed: () async {
-                                    await _sendKotOrder();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFEF4444),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    elevation: 2,
-                                  ),
-                                  //icon: const Icon(Icons.soup_kitchen_rounded, color: Colors.white, size: 18),
-                                  label: const Text('KOT', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                        Expanded(
+                          flex: 2,
+                          child: SizedBox(
+                            height: 48,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: _cartItems.isEmpty
+                                      ? [const Color(0xFF94A3B8), const Color(0xFF64748B)]
+                                      : [const Color(0xFF051C48), const Color(0xFF0A2E7A)],
+                                ),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: _cartItems.isEmpty
+                                    ? []
+                                    : [
+                                        BoxShadow(
+                                          color: const Color(0xFF051C48).withValues(alpha: 0.3),
+                                          blurRadius: 8,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ],
+                              ),
+                              child: ElevatedButton(
+                                onPressed: _cartItems.isEmpty
+                                    ? null
+                                    : () {
+                                        _checkoutOrder(cartContext: context);
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                ),
+                                child: const Text(
+                                  'Pay',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 10),
-                            // Proceed to Checkout
-                            Expanded(
-                              flex: 1,
-                              child: SizedBox(
-                                height: 50,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    Navigator.pop(context);
-                                    _checkoutOrder();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF051C48),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                                    elevation: 2,
-                                  ),
-                                  child: const Text('Checkout', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ],
                     ),
@@ -781,9 +1850,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
-
-
-  Future<void> _checkoutOrder() async {
+  Future<void> _checkoutOrder({BuildContext? cartContext}) async {
     if (_cartItems.isEmpty) return;
 
     final currency = db.restaurant?.currencySymbol ?? '₹';
@@ -797,7 +1864,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     if (!mounted) return;
 
-    final result = await showDialog<bool>(
+    final resultMethod = await showDialog<String>(
       context: context,
       builder: (_) => PaymentModal(
         order: newOrder,
@@ -805,24 +1872,40 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       ),
     );
 
-    if (result == true) {
+    if (resultMethod != null && resultMethod.isNotEmpty) {
+      final completedOrder = newOrder.copyWith(paymentMethod: resultMethod);
+
       // AUTOMATICALLY UPDATE ORDER STATUS TO COMPLETED WHEN PAID
-      db.updateOrderStatus(newOrder.id, OrderStatus.completed);
+      db.updateOrderStatus(completedOrder.id, OrderStatus.completed);
 
       final targetTable = _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway';
-      final tbl = db.tables.where((t) => t.name == targetTable).firstOrNull;
+      final tbl = db.tables.where((t) =>
+        t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
+        t.tableNumber.toString() == targetTable ||
+        'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
+      ).firstOrNull;
+
       if (tbl != null) {
         db.updateTableStatus(tbl.id, TableStatus.free);
       }
+      db.setLiveTableCart(targetTable, []);
+      db.setLiveCartTotal(targetTable, 0);
 
+      // Close the cart screen modal ONLY when payment is successfully done
+      if (cartContext != null && cartContext.mounted) {
+        Navigator.pop(cartContext);
+      }
+
+      if (!mounted) return;
       showDialog(
         context: context,
-        builder: (_) => ReceiptDialog(order: newOrder, currency: currency),
+        builder: (_) => ReceiptDialog(order: completedOrder, currency: currency),
       );
 
       setState(() {
         _cartItems.clear();
         _discountAmount = 0.0;
+        _selectedTable = null;
       });
     }
   }
@@ -830,7 +1913,27 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   Widget build(BuildContext context) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
-    final allCategories = ['All', ...db.categories];
+
+    // Only display categories that have products assigned to them
+    final categoriesWithProducts = db.categories.where((cat) {
+      return db.menuItems.any((item) => item.category.trim().toLowerCase() == cat.trim().toLowerCase());
+    }).toList();
+
+    // Include any categories directly present in menuItems
+    for (final item in db.menuItems) {
+      final catTrim = item.category.trim();
+      if (catTrim.isNotEmpty && !categoriesWithProducts.any((c) => c.toLowerCase() == catTrim.toLowerCase())) {
+        categoriesWithProducts.add(catTrim);
+      }
+    }
+
+    final allCategories = ['All', ...categoriesWithProducts];
+
+    // Ensure selected category is valid
+    if (_selectedCategory != 'All' && !allCategories.any((c) => c.toLowerCase() == _selectedCategory.toLowerCase())) {
+      _selectedCategory = 'All';
+    }
+
     final filteredItems = db.menuItems.where((item) {
       final matchesCat = _selectedCategory == 'All' || item.category.toLowerCase() == _selectedCategory.toLowerCase();
       final matchesSearch = _searchQuery.isEmpty || item.name.toLowerCase().contains(_searchQuery.toLowerCase()) || item.category.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -857,6 +1960,25 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         letterSpacing: 0.5,
                       ),
                     ),
+                    if (_selectedTable != null && _selectedTable!.isNotEmpty) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF051C48).withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                        ),
+                        child: Text(
+                          _selectedTable!,
+                          style: const TextStyle(
+                            color: Color(0xFF051C48),
+                            fontWeight: FontWeight.w900,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ],
                     const Spacer(),
                     // NEW "TABLES" BUTTON
                     SizedBox(

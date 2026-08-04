@@ -28,12 +28,24 @@ class DatabaseService extends ChangeNotifier {
 
   // Live in-cart totals per table (before KOT is sent)
   final Map<String, double> _liveCartTotals = {};
+  final Map<String, List<CartItemModel>> _liveTableCarts = {};
+
   double getLiveCartTotal(String tableName) => _liveCartTotals[tableName] ?? 0.0;
   void setLiveCartTotal(String tableName, double total) {
     if (total <= 0) {
       _liveCartTotals.remove(tableName);
     } else {
       _liveCartTotals[tableName] = total;
+    }
+    notifyListeners();
+  }
+
+  List<CartItemModel> getLiveTableCart(String tableName) => List.from(_liveTableCarts[tableName] ?? []);
+  void setLiveTableCart(String tableName, List<CartItemModel> items) {
+    if (items.isEmpty) {
+      _liveTableCarts.remove(tableName);
+    } else {
+      _liveTableCarts[tableName] = items.map((i) => CartItemModel(item: i.item, quantity: i.quantity, note: i.note)).toList();
     }
     notifyListeners();
   }
@@ -413,6 +425,13 @@ class DatabaseService extends ChangeNotifier {
     final index = tables.indexWhere((t) => t.id == tableId);
     if (index >= 0) {
       final isFree = status == TableStatus.free;
+      if (isFree) {
+        final tblName = tables[index].name;
+        _liveCartTotals.remove(tblName);
+        _liveTableCarts.remove(tblName);
+        _liveCartTotals.remove('T-${tables[index].tableNumber}');
+        _liveTableCarts.remove('T-${tables[index].tableNumber}');
+      }
       final nowStr = status == TableStatus.occupied ? DateTime.now().toString().substring(11, 16) : null;
       tables[index] = TableModel(
         id: tables[index].id,
@@ -524,11 +543,18 @@ class DatabaseService extends ChangeNotifier {
     if (index >= 0) {
       orders[index] = orders[index].copyWith(status: newStatus);
 
-      // If completed or cancelled, clear occupied table
+      // If completed or cancelled, clear occupied table and live cart data
       if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
         final tNum = orders[index].tableNumber;
-        if (tNum != null) {
-          final tIndex = tables.indexWhere((t) => t.name == tNum || t.tableNumber.toString() == tNum);
+        if (tNum != null && tNum.isNotEmpty) {
+          _liveCartTotals.remove(tNum);
+          _liveTableCarts.remove(tNum);
+
+          final tIndex = tables.indexWhere((t) =>
+            t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
+            t.tableNumber.toString() == tNum ||
+            'T-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase()
+          );
           if (tIndex >= 0) {
             updateTableStatus(tables[tIndex].id, TableStatus.free);
           }

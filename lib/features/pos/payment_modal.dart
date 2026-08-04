@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/models/order_model.dart';
-import 'receipt_dialog.dart';
 
 class PaymentModal extends StatefulWidget {
   final OrderModel order;
@@ -263,21 +262,14 @@ class _PaymentModalState extends State<PaymentModal> {
                   isLoading: _isProcessing,
                   onPressed: () async {
                     setState(() => _isProcessing = true);
+                    final nav = Navigator.of(context);
                     await Future.delayed(const Duration(milliseconds: 500));
                     if (!mounted) return;
-                    Navigator.pop(context);
-
                     final finalMethod = _selectedMethod == 'Split'
                         ? 'Split (Cash: ₹${splitCash.toStringAsFixed(0)}, Card: ₹${splitCard.toStringAsFixed(0)}, UPI: ₹${splitUpi.toStringAsFixed(0)})'
                         : _selectedMethod;
 
-                    showDialog(
-                      context: context,
-                      builder: (_) => ReceiptDialog(
-                        order: widget.order.copyWith(paymentMethod: finalMethod),
-                        currency: widget.currency,
-                      ),
-                    );
+                    nav.pop(finalMethod);
                   },
                 ),
               ],

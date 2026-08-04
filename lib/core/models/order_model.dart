@@ -102,6 +102,7 @@ class OrderModel {
       );
 
   OrderModel copyWith({
+    String? tableNumber,
     OrderStatus? status,
     String? paymentMethod,
     String? deliveryAddress,
@@ -109,7 +110,7 @@ class OrderModel {
     return OrderModel(
       id: id,
       orderNumber: orderNumber,
-      tableNumber: tableNumber,
+      tableNumber: tableNumber ?? this.tableNumber,
       orderType: orderType,
       status: status ?? this.status,
       items: items,

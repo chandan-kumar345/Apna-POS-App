@@ -1,22 +1,19 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
-import 'package:intl/intl.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../pos/pos_register_screen.dart';
 import '../tables/table_management_screen.dart';
 import '../orders/orders_screen.dart';
-import '../kds/kds_screen.dart';
 import '../menu/menu_management_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../reports/reports_screen.dart';
-import '../settings/settings_screen.dart';
 import '../onboarding/business_settings_screen.dart';
 import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
 import '../auth/login_screen.dart';
+import 'dashboard_screen.dart';
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -66,7 +63,9 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   Widget _getSelectedScreen() {
     switch (_selectedIndex) {
       case 0:
-        return const ReportsScreen();
+        return GlassDashboardScreen(
+          onNavigateTab: (index) => setState(() => _selectedIndex = index),
+        );
       case 1:
         return PosRegisterScreen(
           initialTable: _selectedTableForPos,

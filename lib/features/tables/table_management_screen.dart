@@ -312,12 +312,14 @@ class _TableManagementScreenState extends State<TableManagementScreen> {
                             final statusColor = _getStatusColor(validStatus);
                             final isRunningKot = validStatus == TableStatus.runningKot;
 
-                            // Active order cart total amount (confirmed) or live pre-KOT cart total
-                            final activeOrder = db.orders.where((o) => o.tableNumber == table.name && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
+                            // Active order cart total amount (confirmed) or live pre-KOT cart total (FREE tables NEVER show amount)
+                            final activeOrder = validStatus == TableStatus.free
+                                ? null
+                                : db.orders.where((o) => ((o.tableNumber?.trim().toLowerCase() ?? '') == table.name.trim().toLowerCase() || 'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
                             final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
-                            final liveAmount = db.getLiveCartTotal(table.name);
-                            final activeAmount = confirmedAmount > 0 ? confirmedAmount : liveAmount;
-                            final hasProductsInCart = activeAmount > 0 || activeOrder != null || isRunningKot || validStatus == TableStatus.occupied;
+                            final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
+                            final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
+                            final hasProductsInCart = validStatus != TableStatus.free && activeAmount > 0;
 
                             return InkWell(
                               onTap: () => _openPosForTable(table.name),
