@@ -476,6 +476,8 @@ class DatabaseService extends ChangeNotifier {
     required String paymentMethod,
     String? deliveryAddress,
     OrderStatus? status,
+    String? customerName,
+    String? customerPhone,
   }) async {
     final subtotal = items.fold(0.0, (sum, i) => sum + i.totalPrice);
     final taxRate = restaurant?.taxRate ?? 5.0;
@@ -510,6 +512,8 @@ class DatabaseService extends ChangeNotifier {
       paymentMethod: paymentMethod,
       deliveryAddress: deliveryAddress,
       createdAt: DateTime.now().toString().substring(11, 16),
+      customerName: customerName,
+      customerPhone: customerPhone,
     );
 
     orders.insert(0, newOrder);

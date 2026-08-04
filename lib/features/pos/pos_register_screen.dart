@@ -139,6 +139,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       paymentMethod: 'KOT Pending',
       status: OrderStatus.preparing,
       createdAt: DateTime.now().toIso8601String(),
+      customerName: _customerName,
+      customerPhone: _customerPhone,
     );
 
     // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT is clicked)
@@ -156,6 +158,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             discountAmount: _discountAmount,
             paymentMethod: 'KOT Pending',
             status: OrderStatus.preparing,
+            customerName: _customerName,
+            customerPhone: _customerPhone,
           );
 
           final tbl = db.tables.where((t) =>
@@ -1899,6 +1903,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       orderType: _selectedOrderType,
       discountAmount: _discountAmount,
       paymentMethod: 'Cash',
+      customerName: _customerName,
+      customerPhone: _customerPhone,
     );
 
     if (!mounted) return;
@@ -1912,12 +1918,21 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
 
     if (resultMethod != null && resultMethod.isNotEmpty) {
+      final targetTable = _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway';
+
+      // Remove any existing active order for this table to prevent zombie KOT orders
+      db.orders.removeWhere((o) =>
+        ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
+         'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing) &&
+        o.id != newOrder.id
+      );
+
       final completedOrder = newOrder.copyWith(paymentMethod: resultMethod);
 
       // AUTOMATICALLY UPDATE ORDER STATUS TO COMPLETED WHEN PAID
       db.updateOrderStatus(completedOrder.id, OrderStatus.completed);
 
-      final targetTable = _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway';
       final tbl = db.tables.where((t) =>
         t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
         t.tableNumber.toString() == targetTable ||
@@ -1946,6 +1961,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _discountAmount = 0.0;
         _selectedTable = null;
       });
+    } else {
+      // User cancelled the payment popup, delete the newly created pending order
+      db.orders.removeWhere((o) => o.id == newOrder.id);
     }
   }
 
@@ -2284,8 +2302,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                 borderRadius: BorderRadius.circular(5),
                                               ),
                                               child: Text(
-                                                '${item.variants.length}V',
-                                                style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                                                '${item.variants.length} Variants',
+                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                                               ),
                                             ),
                                           ),
@@ -2306,7 +2324,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                                   // Price
                                   Text(
-                                    '$currency ${item.price.toStringAsFixed(0)}',
+                                    '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
                                     style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                                     textAlign: TextAlign.center,
                                   ),

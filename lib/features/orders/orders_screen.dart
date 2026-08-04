@@ -81,7 +81,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
             if (s == OrderStatus.preparing) {
               final isRunningKotTable = o.tableNumber != null &&
                   db.tables.any((t) => (t.name == o.tableNumber || t.tableNumber.toString() == o.tableNumber) && t.status == TableStatus.runningKot);
-              return o.status == OrderStatus.preparing || isRunningKotTable;
+              return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
             }
             return o.status == s;
           }).length;
@@ -99,7 +99,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           if (_selectedStatusFilter == 'Preparing') {
             final isRunningKotTable = o.tableNumber != null &&
                 db.tables.any((t) => (t.name == o.tableNumber || t.tableNumber.toString() == o.tableNumber) && t.status == TableStatus.runningKot);
-            return o.status == OrderStatus.preparing || isRunningKotTable;
+            return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
           }
           if (_selectedStatusFilter == 'Ready') return o.status == OrderStatus.ready;
           if (_selectedStatusFilter == 'Completed') return o.status == OrderStatus.completed;
@@ -270,7 +270,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                           (t.name == order.tableNumber ||
                                               t.tableNumber.toString() == order.tableNumber) &&
                                           t.status == TableStatus.runningKot);
-                                  final effectiveStatus = isRunningKot ? OrderStatus.preparing : order.status;
+                                  final effectiveStatus = (isRunningKot && order.status == OrderStatus.pending) ? OrderStatus.preparing : order.status;
                                   final statusColor = _getStatusColor(effectiveStatus);
 
                                   return Container(

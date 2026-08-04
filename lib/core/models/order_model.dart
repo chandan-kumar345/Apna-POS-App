@@ -43,6 +43,8 @@ class OrderModel {
   final String paymentMethod; // Cash, Card, UPI
   final String? deliveryAddress;
   final String createdAt;
+  final String? customerName;
+  final String? customerPhone;
 
   OrderModel({
     required this.id,
@@ -58,6 +60,8 @@ class OrderModel {
     this.paymentMethod = 'UPI',
     this.deliveryAddress,
     required this.createdAt,
+    this.customerName,
+    this.customerPhone,
   });
 
   Map<String, dynamic> toJson() => {
@@ -74,6 +78,8 @@ class OrderModel {
         'paymentMethod': paymentMethod,
         'deliveryAddress': deliveryAddress,
         'createdAt': createdAt,
+        'customerName': customerName,
+        'customerPhone': customerPhone,
       };
 
   factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
@@ -99,6 +105,8 @@ class OrderModel {
         paymentMethod: json['paymentMethod'] ?? 'Cash',
         deliveryAddress: json['deliveryAddress'],
         createdAt: json['createdAt'] ?? '',
+        customerName: json['customerName'],
+        customerPhone: json['customerPhone'],
       );
 
   OrderModel copyWith({
@@ -106,6 +114,8 @@ class OrderModel {
     OrderStatus? status,
     String? paymentMethod,
     String? deliveryAddress,
+    String? customerName,
+    String? customerPhone,
   }) {
     return OrderModel(
       id: id,
@@ -121,6 +131,8 @@ class OrderModel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
     );
   }
 }

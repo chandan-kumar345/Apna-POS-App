@@ -41,6 +41,8 @@ dependencies:
   geolocator: ^13.0.2
   geocoding: ^3.0.0
   http: ^1.2.2
+  file_picker: ^8.1.4
+  csv: ^8.0.0
 
 dev_dependencies:
   flutter_test:
