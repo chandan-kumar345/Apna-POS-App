@@ -130,7 +130,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                         // Centered Logo Container
                         Center(
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(28),
@@ -145,33 +145,9 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                             ),
                             child: Image.asset(
                               'assets/images/logo.png',
-                              height: 85,
-                              width: 90,
+                              height: 120,
+                              width: 130,
                               fit: BoxFit.contain,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: const [
-                                    Text(
-                                      'Apna POS',
-                                      style: TextStyle(
-                                        fontSize: 28,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF0052FF),
-                                      ),
-                                    ),
-                                    Text(
-                                      'BILLING SOFTWARE',
-                                      style: TextStyle(
-                                        fontSize: 9,
-                                        fontWeight: FontWeight.w700,
-                                        letterSpacing: 2,
-                                        color: Color(0xFF0A1435),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
                             ),
                           ),
                         ),

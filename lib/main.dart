@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
-import 'features/auth/get_started_screen.dart';
+import 'features/auth/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +19,7 @@ class ApnaPosApp extends StatelessWidget {
       title: 'Apna POS - Smart Restaurant Billing',
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.themeData,
-      home: const GetStartedScreen(),
+      home: const SplashScreen(),
     );
   }
 }
