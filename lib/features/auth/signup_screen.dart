@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import 'login_screen.dart';
 import 'create_profile_screen.dart';
+import '../dashboard/main_layout.dart';
 
 // Standalone Register Form Widget (Embedded inline inside LoginScreen or used standalone)
 class RegisterFormWidget extends StatefulWidget {
@@ -21,6 +23,51 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
   bool _isLoading = false;
   String? _errorMessage;
   final db = DatabaseService();
+
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+
+  Future<void> _handleGoogleSignup() async {
+    setState(() => _isLoading = true);
+    try {
+      final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
+      if (googleAccount != null) {
+        final email = googleAccount.email;
+        final name = googleAccount.displayName ?? email.split('@').first;
+        final photoUrl = googleAccount.photoUrl;
+
+        final success = await db.loginWithGoogle(email, name, photoUrl);
+        if (!mounted) return;
+        if (success) {
+          final rest = db.restaurant;
+          if (rest != null && rest.isOnboarded) {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const MainLayout()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+            );
+          }
+          return;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to sign up with Google')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Google Sign In error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Google Sign In failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   void dispose() {
@@ -369,86 +416,6 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
     );
   }
 
-  void _showGoogleAccountPicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFCBD5E1),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  _buildGoogleColoredIcon(size: 24),
-                  const SizedBox(width: 10),
-                  const Text(
-                    'Sign up with Google',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Choose an account to continue to Apna POS',
-                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
-              ),
-              const SizedBox(height: 20),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFF3B82F6),
-                  child: Text('A', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-                title: const Text('Admin Owner', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: const Text('owner@apnapos.com', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                onTap: () {
-                  Navigator.pop(context);
-                  _emailController.text = 'owner@apnapos.com';
-                  _passwordController.text = '123456';
-                  _handleSignup();
-                },
-              ),
-              const Divider(),
-              ListTile(
-                leading: const CircleAvatar(
-                  backgroundColor: Color(0xFF10B981),
-                  child: Text('C', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
-                title: const Text('Chandan Yaduvanshi', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-                subtitle: const Text('chandan@apnapos.com', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-                onTap: () {
-                  Navigator.pop(context);
-                  _emailController.text = 'chandan@apnapos.com';
-                  _passwordController.text = '123456';
-                  _handleSignup();
-                },
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -580,14 +547,14 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           ],
         ),
 
-        const SizedBox(height: 14),
+        const SizedBox(height: 16),
 
-        // Google Signup Button with Official Google G Logo
+        // Google Signup Button styled like Login with Email
         OutlinedButton(
-          onPressed: _showGoogleAccountPicker,
+          onPressed: _isLoading ? null : _handleGoogleSignup,
           style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF0F172A),
-            side: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+            foregroundColor: const Color(0xFF00C2FF),
+            side: const BorderSide(color: Color(0xFF00C2FF), width: 1.5),
             padding: const EdgeInsets.symmetric(vertical: 12),
             minimumSize: const Size(double.infinity, 50),
             shape: RoundedRectangleBorder(
@@ -603,8 +570,8 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                 'Continue with Google',
                 style: TextStyle(
                   fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF0F172A),
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF00C2FF),
                 ),
               ),
             ],
@@ -698,10 +665,74 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
       width: size,
       height: size,
       child: CustomPaint(
-        painter: GoogleLogoPainter(),
+        painter: _GoogleLogoPainter(),
       ),
     );
   }
+}
+
+// Custom Painter for Authentic Multi-color Google "G" Logo
+class _GoogleLogoPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final double scale = size.width / 48.0;
+    canvas.save();
+    canvas.scale(scale, scale);
+
+    // Red Arc (Top)
+    final pathRed = Path()
+      ..moveTo(24.0, 9.5)
+      ..cubicTo(29.05, 9.5, 33.15, 11.25, 36.15, 13.9)
+      ..lineTo(42.9, 7.15)
+      ..cubicTo(38.8, 3.35, 32.2, 1.0, 24.0, 1.0)
+      ..cubicTo(14.7, 1.0, 6.7, 6.3, 2.7, 14.1)
+      ..lineTo(10.5, 20.15)
+      ..cubicTo(12.4, 13.9, 17.65, 9.5, 24.0, 9.5)
+      ..close();
+    canvas.drawPath(pathRed, Paint()..color = const Color(0xFFEA4335));
+
+    // Yellow Arc (Left)
+    final pathYellow = Path()
+      ..moveTo(2.7, 14.1)
+      ..cubicTo(1.0, 17.4, 0.0, 21.1, 0.0, 25.0)
+      ..cubicTo(0.0, 28.9, 1.0, 32.6, 2.7, 35.9)
+      ..lineTo(10.5, 29.85)
+      ..cubicTo(9.85, 28.3, 9.5, 26.7, 9.5, 25.0)
+      ..cubicTo(9.5, 23.3, 9.85, 21.7, 10.5, 20.15)
+      ..lineTo(2.7, 14.1)
+      ..close();
+    canvas.drawPath(pathYellow, Paint()..color = const Color(0xFFFBBC05));
+
+    // Green Arc (Bottom)
+    final pathGreen = Path()
+      ..moveTo(24.0, 40.5)
+      ..cubicTo(17.65, 40.5, 12.4, 36.1, 10.5, 29.85)
+      ..lineTo(2.7, 35.9)
+      ..cubicTo(6.7, 43.7, 14.7, 49.0, 24.0, 49.0)
+      ..cubicTo(32.8, 49.0, 39.8, 46.1, 44.8, 41.5)
+      ..lineTo(37.3, 35.7)
+      ..cubicTo(33.9, 38.9, 29.3, 40.5, 24.0, 40.5)
+      ..close();
+    canvas.drawPath(pathGreen, Paint()..color = const Color(0xFF34A853));
+
+    // Blue Arc & Bar (Right)
+    final pathBlue = Path()
+      ..moveTo(48.0, 25.0)
+      ..cubicTo(48.0, 23.3, 47.85, 21.7, 47.6, 20.1)
+      ..lineTo(24.0, 20.1)
+      ..lineTo(24.0, 29.8)
+      ..lineTo(37.5, 29.8)
+      ..cubicTo(36.9, 32.8, 35.1, 35.1, 32.4, 36.9)
+      ..lineTo(40.2, 42.9)
+      ..cubicTo(45.0, 38.5, 48.0, 32.2, 48.0, 25.0)
+      ..close();
+    canvas.drawPath(pathBlue, Paint()..color = const Color(0xFF4285F4));
+
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 // Backward compatibility alias for SignupScreen

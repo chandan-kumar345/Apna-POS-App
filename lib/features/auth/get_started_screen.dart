@@ -125,7 +125,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                     child: Column(
                       children: [
                         // Positioned downside with generous top spacing to avoid any overlapping
-                        const SizedBox(height: 110),
+                        const SizedBox(height: 150),
 
                         // Centered Logo Container
                         Center(

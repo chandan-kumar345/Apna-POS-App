@@ -198,6 +198,15 @@ class DatabaseService extends ChangeNotifier {
     }
 
     _isInitialized = true;
+    
+    // --- DEBUG: PRINT ALL REGISTERED USERS TO TERMINAL ---
+    debugPrint("\n================ DATABASE DUMP ================");
+    debugPrint("Total Registered Users: ${registeredUsers.length}");
+    for (var u in registeredUsers) {
+      debugPrint("- Name: ${u.name} | Email: ${u.email} | PIN: ${u.pin} | Role: ${u.role}");
+    }
+    debugPrint("===============================================\n");
+
     notifyListeners();
   }
 

@@ -247,6 +247,51 @@ class _LoginScreenState extends State<LoginScreen> {
 
   final db = DatabaseService();
 
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
+      if (googleAccount != null) {
+        final email = googleAccount.email;
+        final name = googleAccount.displayName ?? email.split('@').first;
+        final photoUrl = googleAccount.photoUrl;
+
+        final success = await db.loginWithGoogle(email, name, photoUrl);
+        if (!mounted) return;
+        if (success) {
+          final rest = db.restaurant;
+          if (rest != null && rest.isOnboarded) {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const MainLayout()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+            );
+          }
+          return;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to login with Google')),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Google Sign In error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Google Sign In failed: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _handleAuthAction() async {
     setState(() {
       _isLoading = true;
@@ -515,288 +560,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
-  Future<void> _handleGoogleSignIn() async {
-    setState(() => _isLoading = true);
-    try {
-      final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
-      if (googleAccount != null) {
-        final email = googleAccount.email;
-        final name = googleAccount.displayName ?? email.split('@').first;
-        final photoUrl = googleAccount.photoUrl;
-
-        final success = await db.loginWithGoogle(email, name, photoUrl);
-        if (!mounted) return;
-        if (success) {
-          final rest = db.restaurant;
-          if (rest != null && rest.isOnboarded) {
-            Navigator.pushReplacement(
-              context,
-              SlideUpPageRoute(page: const MainLayout()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
-            );
-          }
-          return;
-        }
-      }
-    } catch (e) {
-      debugPrint('Native Google Sign In fallback to chooser dialog: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-
-    // Fallback to custom Google Account Chooser Dialog matching user reference screenshot
-    _showGoogleAccountPicker();
-  }
-
-  // Google Account Chooser Dialog Box matching user reference screenshot
-  void _showGoogleAccountPicker() {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
-            decoration: BoxDecoration(
-              color: const Color(0xFF383838), // Dark Charcoal Slate matching reference screenshot
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: const [
-                BoxShadow(
-                  color: Colors.black54,
-                  blurRadius: 30,
-                  offset: Offset(0, 10),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // App Logo Icon Header (Top Centered)
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF00C2FF), Color(0xFF0052FF)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF0052FF).withOpacity(0.4),
-                        blurRadius: 12,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.point_of_sale_rounded,
-                      color: Colors.white,
-                      size: 30,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-
-                // Main Heading
-                const Text(
-                  'Choose an account',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w400,
-                    color: Colors.white,
-                    letterSpacing: -0.2,
-                  ),
-                ),
-                const SizedBox(height: 4),
-
-                // Subheading
-                const Text(
-                  'to continue to Apna POS',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w400,
-                    color: Color(0xFFD1D5DB),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                // Scrollable Google Accounts List
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 340),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildGoogleAccountTile(
-                          name: 'chandan yaduvanshi',
-                          email: 'chandanyaduvanshi190@gmail.com',
-                          avatarBg: const Color(0xFF6B7280),
-                        ),
-                        const Divider(color: Color(0xFF4B5563), height: 1),
-                        _buildGoogleAccountTile(
-                          name: 'Chandan Kumar',
-                          email: 'bachandan48@gmail.com',
-                          avatarBg: const Color(0xFF0052FF),
-                        ),
-                        const Divider(color: Color(0xFF4B5563), height: 1),
-                        _buildGoogleAccountTile(
-                          name: 'Chandan Kumar',
-                          email: 'chandan970959@gmail.com',
-                          avatarBg: const Color(0xFF00A896),
-                        ),
-                        const Divider(color: Color(0xFF4B5563), height: 1),
-                        _buildGoogleAccountTile(
-                          name: 'Kundan Kumar',
-                          email: 'kundan.apirl22@gmail.com',
-                          avatarBg: const Color(0xFF0284C7),
-                        ),
-                        const Divider(color: Color(0xFF4B5563), height: 1),
-                        _buildGoogleAccountTile(
-                          name: 'Sooft Code',
-                          email: 'sooftcode@gmail.com',
-                          avatarBg: const Color(0xFF8B5CF6),
-                        ),
-                        const Divider(color: Color(0xFF4B5563), height: 1),
-
-                        // Dynamically show registered users from DB
-                        ...db.registeredUsers
-                            .where((u) =>
-                                u.email != 'chandanyaduvanshi190@gmail.com' &&
-                                u.email != 'bachandan48@gmail.com' &&
-                                u.email != 'chandan970959@gmail.com' &&
-                                u.email != 'kundan.apirl22@gmail.com' &&
-                                u.email != 'sooftcode@gmail.com')
-                            .map((u) => Column(
-                                  children: [
-                                    _buildGoogleAccountTile(
-                                      name: u.name,
-                                      email: u.email,
-                                      avatarBg: const Color(0xFFF59E0B),
-                                    ),
-                                    const Divider(color: Color(0xFF4B5563), height: 1),
-                                  ],
-                                )),
-
-                        // Add Another Account option
-                        ListTile(
-                          contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
-                          leading: const CircleAvatar(
-                            backgroundColor: Colors.transparent,
-                            radius: 20,
-                            child: Icon(Icons.person_add_outlined,
-                                color: Colors.white, size: 22),
-                          ),
-                          title: const Text(
-                            'Add another account',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white,
-                            ),
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            setState(() => _isEmailLogin = true);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-                const Divider(color: Color(0xFF4B5563), height: 1),
-                const SizedBox(height: 14),
-
-                // Disclaimer Footer Text matching screenshot
-                const Text(
-                  'To continue, Google will share your name, email address and profile picture with Apna POS.',
-                  textAlign: TextAlign.left,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF9CA3AF),
-                    height: 1.4,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildGoogleAccountTile({
-    required String name,
-    required String email,
-    required Color avatarBg,
-  }) {
-    return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-      leading: CircleAvatar(
-        backgroundColor: avatarBg,
-        radius: 20,
-        child: Text(
-          name[0].toUpperCase(),
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
-          ),
-        ),
-      ),
-      title: Text(
-        name,
-        style: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w400,
-          color: Colors.white,
-        ),
-      ),
-      subtitle: Text(
-        email,
-        style: const TextStyle(
-          fontSize: 13,
-          color: Color(0xFF9CA3AF),
-        ),
-      ),
-      onTap: () async {
-        Navigator.pop(context);
-        setState(() => _isLoading = true);
-        final success = await db.loginWithGoogle(email, name, null);
-        if (!mounted) return;
-        if (success) {
-          final rest = db.restaurant;
-          if (rest != null && rest.isOnboarded) {
-            Navigator.pushReplacement(
-              context,
-              SlideUpPageRoute(page: const MainLayout()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
-            );
-          }
-        }
-      },
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1317,7 +1081,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             SizedBox(height: !_isEmailLogin ? 22 : 16),
 
-                            // "Or login with" Divider
+                            const SizedBox(height: 16),
+// "Or login with" Divider
                             Row(
                               children: const [
                                 Expanded(
@@ -1338,9 +1103,9 @@ class _LoginScreenState extends State<LoginScreen> {
                               ],
                             ),
 
-                            SizedBox(height: !_isEmailLogin ? 18 : 14),
+                            const SizedBox(height: 16),
 
-                            // Login as OTP / Login with Email option button placed above Continue with Google
+                            // Login as OTP / Login with Email option button
                             OutlinedButton(
                               onPressed: () {
                                 setState(() {
@@ -1381,15 +1146,16 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
 
-                            SizedBox(height: !_isEmailLogin ? 14 : 10),
-
-                            // Google Login Button
+                            const SizedBox(height: 16),
+                            
+                            
+                            // Google Login Button styled like Login with Email
                             OutlinedButton(
-                              onPressed: _handleGoogleSignIn,
+                              onPressed: _isLoading ? null : _handleGoogleSignIn,
                               style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF0F172A),
+                                foregroundColor: const Color(0xFF00C2FF),
                                 side: const BorderSide(
-                                    color: Color(0xFFE2E8F0), width: 1.5),
+                                    color: Color(0xFF00C2FF), width: 1.5),
                                 padding: const EdgeInsets.symmetric(vertical: 12),
                                 minimumSize: const Size(double.infinity, 50),
                                 shape: RoundedRectangleBorder(
@@ -1405,8 +1171,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     'Continue with Google',
                                     style: TextStyle(
                                       fontSize: 15,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF0F172A),
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF00C2FF),
                                     ),
                                   ),
                                 ],
