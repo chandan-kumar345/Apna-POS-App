@@ -235,6 +235,75 @@ class DatabaseService extends ChangeNotifier {
     return true;
   }
 
+  Future<bool> updateUserProfile({
+    required String name,
+    required String phone,
+    required String jobTitle,
+    required String companyName,
+    String? website,
+    String? referralCode,
+    String? profilePhotoPath,
+    Map<String, bool>? communicationPreferences,
+  }) async {
+    if (currentUser == null) {
+      currentUser = UserModel(
+        id: 'usr_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        email: 'owner@apnapos.com',
+        role: 'Owner',
+        pin: '1234',
+        restaurantId: restaurant?.id ?? 'rest_001',
+      );
+    }
+
+    currentUser = currentUser!.copyWith(
+      name: name,
+      phone: phone,
+      jobTitle: jobTitle,
+      companyName: companyName,
+      website: website,
+      referralCode: referralCode,
+      profilePhotoPath: profilePhotoPath,
+      communicationPreferences: communicationPreferences,
+    );
+
+    await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> updateBusinessName(String newCompanyName) async {
+    final cleanName = newCompanyName.trim();
+    if (cleanName.isEmpty) return false;
+
+    if (currentUser != null) {
+      currentUser = currentUser!.copyWith(companyName: cleanName);
+      await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    }
+
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(name: cleanName);
+      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    } else {
+      restaurant = RestaurantModel(
+        id: 'rest_001',
+        name: cleanName,
+        tagline: 'Authentic Flavors & Swift Service',
+        phone: '+91 98765 43210',
+        address: '',
+        cuisineType: 'Indian & Multi-Cuisine',
+        currencySymbol: '₹',
+        taxRate: 5.0,
+        tableCount: 12,
+        isOnboarded: true,
+      );
+      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    }
+
+    notifyListeners();
+    return true;
+  }
+
   Future<bool> loginUser(String identifier, String password) async {
     final cleanId = identifier.trim().toLowerCase();
     final cleanPw = password.trim();

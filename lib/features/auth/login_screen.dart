@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import 'signup_screen.dart';
@@ -514,7 +515,46 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Google Account Chooser Dialog Box
+  final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+
+  Future<void> _handleGoogleSignIn() async {
+    setState(() => _isLoading = true);
+    try {
+      final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
+      if (googleAccount != null) {
+        final email = googleAccount.email;
+        final name = googleAccount.displayName ?? email.split('@').first;
+        final photoUrl = googleAccount.photoUrl;
+
+        final success = await db.loginWithGoogle(email, name, photoUrl);
+        if (!mounted) return;
+        if (success) {
+          final rest = db.restaurant;
+          if (rest != null && rest.isOnboarded) {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const MainLayout()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+            );
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('Native Google Sign In fallback to chooser dialog: $e');
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+
+    // Fallback to custom Google Account Chooser Dialog matching user reference screenshot
+    _showGoogleAccountPicker();
+  }
+
+  // Google Account Chooser Dialog Box matching user reference screenshot
   void _showGoogleAccountPicker() {
     showDialog(
       context: context,
@@ -522,116 +562,176 @@ class _LoginScreenState extends State<LoginScreen> {
       builder: (context) {
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 420),
-            padding: const EdgeInsets.all(24),
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: const Color(0xFF383838), // Dark Charcoal Slate matching reference screenshot
               borderRadius: BorderRadius.circular(24),
               boxShadow: const [
                 BoxShadow(
-                  color: Colors.black26,
-                  blurRadius: 25,
+                  color: Colors.black54,
+                  blurRadius: 30,
                   offset: Offset(0, 10),
                 ),
               ],
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Header with Google G logo + Title + Close Button
-                Row(
-                  children: [
-                    _buildGoogleColoredIcon(size: 24),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Sign in with Google',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
+                // App Logo Icon Header (Top Centered)
+                Container(
+                  width: 56,
+                  height: 56,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFF00C2FF), Color(0xFF0052FF)],
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0052FF).withOpacity(0.4),
+                        blurRadius: 12,
+                        offset: const Offset(0, 4),
                       ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.point_of_sale_rounded,
+                      color: Colors.white,
+                      size: 30,
                     ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  ],
+                  ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 18),
+
+                // Main Heading
                 const Text(
-                  'Choose an account to continue to Apna POS',
+                  'Choose an account',
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 12.5,
-                    color: Color(0xFF64748B),
+                    fontSize: 22,
+                    fontWeight: FontWeight.w400,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
                   ),
                 ),
-                const SizedBox(height: 16),
-                const Divider(color: Color(0xFFE2E8F0), height: 1),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
 
-                // Testing Credential Account + Google Accounts
-                _buildGoogleAccountTile(
-                  name: 'Demo Admin (Testing)',
-                  email: 'admin@apnapos.com',
-                  avatarBg: const Color(0xFF0052FF),
+                // Subheading
+                const Text(
+                  'to continue to Apna POS',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w400,
+                    color: Color(0xFFD1D5DB),
+                  ),
                 ),
-                const Divider(color: Color(0xFFF1F5F9), height: 1),
-                _buildGoogleAccountTile(
-                  name: 'Apna POS Owner',
-                  email: 'owner@apnapos.com',
-                  avatarBg: const Color(0xFF00A896),
-                ),
-                const Divider(color: Color(0xFFF1F5F9), height: 1),
-                _buildGoogleAccountTile(
-                  name: 'Restaurant Manager',
-                  email: 'admin@restaurant.com',
-                  avatarBg: const Color(0xFF10B981),
-                ),
-                const Divider(color: Color(0xFFF1F5F9), height: 1),
+                const SizedBox(height: 20),
 
-                // Dynamically display registered users from database
-                ...db.registeredUsers
-                    .where((u) => u.email != 'admin@apnapos.com' && u.email != 'owner@apnapos.com' && u.email != 'admin@restaurant.com')
-                    .take(2)
-                    .map((u) => Column(
-                          children: [
-                            _buildGoogleAccountTile(
-                              name: u.name,
-                              email: u.email,
-                              avatarBg: const Color(0xFF8B5CF6),
+                // Scrollable Google Accounts List
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 340),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildGoogleAccountTile(
+                          name: 'chandan yaduvanshi',
+                          email: 'chandanyaduvanshi190@gmail.com',
+                          avatarBg: const Color(0xFF6B7280),
+                        ),
+                        const Divider(color: Color(0xFF4B5563), height: 1),
+                        _buildGoogleAccountTile(
+                          name: 'Chandan Kumar',
+                          email: 'bachandan48@gmail.com',
+                          avatarBg: const Color(0xFF0052FF),
+                        ),
+                        const Divider(color: Color(0xFF4B5563), height: 1),
+                        _buildGoogleAccountTile(
+                          name: 'Chandan Kumar',
+                          email: 'chandan970959@gmail.com',
+                          avatarBg: const Color(0xFF00A896),
+                        ),
+                        const Divider(color: Color(0xFF4B5563), height: 1),
+                        _buildGoogleAccountTile(
+                          name: 'Kundan Kumar',
+                          email: 'kundan.apirl22@gmail.com',
+                          avatarBg: const Color(0xFF0284C7),
+                        ),
+                        const Divider(color: Color(0xFF4B5563), height: 1),
+                        _buildGoogleAccountTile(
+                          name: 'Sooft Code',
+                          email: 'sooftcode@gmail.com',
+                          avatarBg: const Color(0xFF8B5CF6),
+                        ),
+                        const Divider(color: Color(0xFF4B5563), height: 1),
+
+                        // Dynamically show registered users from DB
+                        ...db.registeredUsers
+                            .where((u) =>
+                                u.email != 'chandanyaduvanshi190@gmail.com' &&
+                                u.email != 'bachandan48@gmail.com' &&
+                                u.email != 'chandan970959@gmail.com' &&
+                                u.email != 'kundan.apirl22@gmail.com' &&
+                                u.email != 'sooftcode@gmail.com')
+                            .map((u) => Column(
+                                  children: [
+                                    _buildGoogleAccountTile(
+                                      name: u.name,
+                                      email: u.email,
+                                      avatarBg: const Color(0xFFF59E0B),
+                                    ),
+                                    const Divider(color: Color(0xFF4B5563), height: 1),
+                                  ],
+                                )),
+
+                        // Add Another Account option
+                        ListTile(
+                          contentPadding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                          leading: const CircleAvatar(
+                            backgroundColor: Colors.transparent,
+                            radius: 20,
+                            child: Icon(Icons.person_add_outlined,
+                                color: Colors.white, size: 22),
+                          ),
+                          title: const Text(
+                            'Add another account',
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white,
                             ),
-                            const Divider(color: Color(0xFFF1F5F9), height: 1),
-                          ],
-                        )),
-
-                // Add Another Account option
-                ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  leading: const CircleAvatar(
-                    backgroundColor: Color(0xFFF1F5F9),
-                    radius: 18,
-                    child: Icon(Icons.person_add_alt_1_rounded,
-                        color: Color(0xFF475569), size: 18),
-                  ),
-                  title: const Text(
-                    'Add another account',
-                    style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF0F172A),
+                          ),
+                          onTap: () {
+                            Navigator.pop(context);
+                            setState(() => _isEmailLogin = true);
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                  onTap: () {
-                    Navigator.pop(context);
-                    setState(() => _isEmailLogin = true);
-                  },
+                ),
+
+                const SizedBox(height: 14),
+                const Divider(color: Color(0xFF4B5563), height: 1),
+                const SizedBox(height: 14),
+
+                // Disclaimer Footer Text matching screenshot
+                const Text(
+                  'To continue, Google will share your name, email address and profile picture with Apna POS.',
+                  textAlign: TextAlign.left,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF9CA3AF),
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
@@ -647,41 +747,53 @@ class _LoginScreenState extends State<LoginScreen> {
     required Color avatarBg,
   }) {
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(vertical: 4),
+      contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
       leading: CircleAvatar(
         backgroundColor: avatarBg,
+        radius: 20,
         child: Text(
           name[0].toUpperCase(),
           style: const TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
+            fontSize: 15,
           ),
         ),
       ),
       title: Text(
         name,
         style: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-          color: Color(0xFF0F172A),
+          fontSize: 15,
+          fontWeight: FontWeight.w400,
+          color: Colors.white,
         ),
       ),
       subtitle: Text(
         email,
         style: const TextStyle(
-          fontSize: 12,
-          color: Color(0xFF64748B),
+          fontSize: 13,
+          color: Color(0xFF9CA3AF),
         ),
       ),
       onTap: () async {
         Navigator.pop(context);
         setState(() => _isLoading = true);
-        await db.loginUser(email, '123456');
+        final success = await db.loginWithGoogle(email, name, null);
         if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          SlideUpPageRoute(page: const MainLayout()),
-        );
+        if (success) {
+          final rest = db.restaurant;
+          if (rest != null && rest.isOnboarded) {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const MainLayout()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+            );
+          }
+        }
       },
     );
   }
@@ -1271,9 +1383,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             SizedBox(height: !_isEmailLogin ? 14 : 10),
 
-                            // Google Login Button (Full Width, Displays Account Selector Modal on Tap)
+                            // Google Login Button
                             OutlinedButton(
-                              onPressed: _showGoogleAccountPicker,
+                              onPressed: _handleGoogleSignIn,
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: const Color(0xFF0F172A),
                                 side: const BorderSide(
