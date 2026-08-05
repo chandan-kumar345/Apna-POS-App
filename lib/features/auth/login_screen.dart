@@ -274,8 +274,9 @@ class _LoginScreenState extends State<LoginScreen> {
           });
           return;
         }
-        // Login user via phone
-        success = await db.loginUser('owner@apnapos.com', '123456');
+        // Login user via phone against database
+        final fullPhone = '${_selectedCountry.dialCode}$phone';
+        success = await db.loginUser(phone, 'admin123') || await db.loginUser(fullPhone, 'admin123');
       } else {
         // Email & Password Mode
         final email = _emailController.text.trim();
@@ -315,7 +316,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       } else {
         setState(() {
-          _errorMessage = 'Invalid credentials. Please check your details.';
+          _errorMessage = 'Invalid email/phone or password. Testing account: admin@apnapos.com / admin123';
         });
       }
     } catch (e) {
@@ -513,62 +514,78 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Google Account Chooser Modal
+  // Google Account Chooser Dialog Box
   void _showGoogleAccountPicker() {
-    showModalBottomSheet(
+    showDialog(
       context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
+      barrierDismissible: true,
       builder: (context) {
-        return Material(
-          color: Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           child: Container(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+            constraints: const BoxConstraints(maxWidth: 420),
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.black26,
+                  blurRadius: 25,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
+                // Header with Google G logo + Title + Close Button
                 Row(
                   children: [
                     _buildGoogleColoredIcon(size: 24),
                     const SizedBox(width: 10),
                     const Text(
-                      'Choose Google Account',
+                      'Sign in with Google',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                       ),
                     ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () => Navigator.pop(context),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  'Select an account to sign in to Apna POS',
+                  'Choose an account to continue to Apna POS',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 12.5,
                     color: Color(0xFF64748B),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                const Divider(color: Color(0xFFE2E8F0), height: 1),
+                const SizedBox(height: 8),
 
-                // Logged-in Google Accounts list
+                // Testing Credential Account + Google Accounts
+                _buildGoogleAccountTile(
+                  name: 'Demo Admin (Testing)',
+                  email: 'admin@apnapos.com',
+                  avatarBg: const Color(0xFF0052FF),
+                ),
+                const Divider(color: Color(0xFFF1F5F9), height: 1),
                 _buildGoogleAccountTile(
                   name: 'Apna POS Owner',
                   email: 'owner@apnapos.com',
-                  avatarBg: const Color(0xFF0052FF),
+                  avatarBg: const Color(0xFF00A896),
                 ),
                 const Divider(color: Color(0xFFF1F5F9), height: 1),
                 _buildGoogleAccountTile(
@@ -577,25 +594,36 @@ class _LoginScreenState extends State<LoginScreen> {
                   avatarBg: const Color(0xFF10B981),
                 ),
                 const Divider(color: Color(0xFFF1F5F9), height: 1),
-                _buildGoogleAccountTile(
-                  name: 'Staff Account',
-                  email: 'staff@apnapos.com',
-                  avatarBg: const Color(0xFF8B5CF6),
-                ),
-                const Divider(color: Color(0xFFF1F5F9), height: 1),
+
+                // Dynamically display registered users from database
+                ...db.registeredUsers
+                    .where((u) => u.email != 'admin@apnapos.com' && u.email != 'owner@apnapos.com' && u.email != 'admin@restaurant.com')
+                    .take(2)
+                    .map((u) => Column(
+                          children: [
+                            _buildGoogleAccountTile(
+                              name: u.name,
+                              email: u.email,
+                              avatarBg: const Color(0xFF8B5CF6),
+                            ),
+                            const Divider(color: Color(0xFFF1F5F9), height: 1),
+                          ],
+                        )),
 
                 // Add Another Account option
                 ListTile(
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 2, horizontal: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   leading: const CircleAvatar(
                     backgroundColor: Color(0xFFF1F5F9),
+                    radius: 18,
                     child: Icon(Icons.person_add_alt_1_rounded,
-                        color: Color(0xFF475569), size: 20),
+                        color: Color(0xFF475569), size: 18),
                   ),
                   title: const Text(
                     'Add another account',
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF0F172A),
                     ),

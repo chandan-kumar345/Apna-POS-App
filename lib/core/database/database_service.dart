@@ -17,6 +17,7 @@ class DatabaseService extends ChangeNotifier {
 
   // In-Memory state for instant sync access
   UserModel? currentUser;
+  List<UserModel> registeredUsers = [];
   RestaurantModel? restaurant;
   List<MenuItemModel> menuItems = [];
   List<String> categories = [];
@@ -169,8 +170,40 @@ class DatabaseService extends ChangeNotifier {
       inventoryItems = [];
     }
 
+    // 7. Load Registered Users List & Seed Default Testing Credential
+    final regUsersJson = _prefs?.getString('apna_pos_registered_users');
+    if (regUsersJson != null) {
+      final List raw = jsonDecode(regUsersJson);
+      registeredUsers = raw.map((e) => UserModel.fromJson(e)).toList();
+    } else {
+      registeredUsers = [];
+    }
+
+    // Pre-seed default testing credential if missing: admin@apnapos.com / 9876543210 (pass: admin123)
+    final hasAdmin = registeredUsers.any((u) => u.email.trim().toLowerCase() == 'admin@apnapos.com' || (u.phone != null && u.phone == '9876543210'));
+    if (!hasAdmin) {
+      registeredUsers.add(
+        UserModel(
+          id: 'usr_demo_admin',
+          name: 'Demo Admin',
+          email: 'admin@apnapos.com',
+          phone: '9876543210',
+          role: 'Owner',
+          pin: '1234',
+          restaurantId: restaurant?.id ?? 'rest_001',
+          companyName: 'Apna POS Diner',
+        ),
+      );
+      _saveRegisteredUsers();
+    }
+
     _isInitialized = true;
     notifyListeners();
+  }
+
+  Future<void> _saveRegisteredUsers() async {
+    final raw = registeredUsers.map((u) => u.toJson()).toList();
+    await _prefs?.setString('apna_pos_registered_users', jsonEncode(raw));
   }
 
   // --- AUTHENTICATION SERVICES ---
@@ -179,106 +212,93 @@ class DatabaseService extends ChangeNotifier {
     required String email,
     required String password,
     required String pin,
+    String? phone,
   }) async {
     final newId = 'usr_${DateTime.now().millisecondsSinceEpoch}';
-    currentUser = UserModel(
+    final newUser = UserModel(
       id: newId,
       name: name,
       email: email,
+      phone: phone,
       role: 'Owner',
       pin: pin,
       restaurantId: restaurant?.id ?? 'rest_001',
     );
+
+    registeredUsers.removeWhere((u) => u.email.trim().toLowerCase() == email.trim().toLowerCase());
+    registeredUsers.add(newUser);
+    await _saveRegisteredUsers();
+
+    currentUser = newUser;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     notifyListeners();
     return true;
   }
 
-  Future<bool> updateUserProfile({
-    required String name,
-    required String phone,
-    required String jobTitle,
-    required String companyName,
-    String? website,
-    String? referralCode,
-    String? profilePhotoPath,
-    Map<String, bool>? communicationPreferences,
-  }) async {
-    if (currentUser == null) {
-      currentUser = UserModel(
-        id: 'usr_${DateTime.now().millisecondsSinceEpoch}',
-        name: name,
-        email: 'owner@apnapos.com',
-        role: 'Owner',
-        pin: '1234',
-        restaurantId: restaurant?.id ?? 'rest_001',
-      );
+  Future<bool> loginUser(String identifier, String password) async {
+    final cleanId = identifier.trim().toLowerCase();
+    final cleanPw = password.trim();
+    final digitsOnlyId = cleanId.replaceAll(RegExp(r'[^0-9]'), '');
+
+    // Search in registeredUsers list
+    UserModel? matched = registeredUsers.where((u) {
+      final uEmail = u.email.trim().toLowerCase();
+      final uPhone = (u.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+
+      bool idMatches = (uEmail == cleanId) ||
+                       (digitsOnlyId.isNotEmpty && uPhone.endsWith(digitsOnlyId)) ||
+                       (uPhone.isNotEmpty && uPhone == digitsOnlyId);
+      return idMatches;
+    }).firstOrNull;
+
+    // Check pre-seeded test accounts
+    if (matched == null) {
+      if (cleanId == 'admin@apnapos.com' || cleanId == '9876543210' || cleanId == 'owner@apnapos.com' || cleanId == 'admin@restaurant.com' || cleanId == 'staff@apnapos.com') {
+        matched = UserModel(
+          id: 'usr_demo_admin',
+          name: cleanId == 'owner@apnapos.com' ? 'Apna POS Owner' : (cleanId == 'admin@restaurant.com' ? 'Restaurant Manager' : (cleanId == 'staff@apnapos.com' ? 'Staff Account' : 'Demo Admin')),
+          email: cleanId.contains('@') ? cleanId : 'admin@apnapos.com',
+          phone: cleanId.contains('@') ? '9876543210' : cleanId,
+          role: 'Owner',
+          pin: '1234',
+          restaurantId: restaurant?.id ?? 'rest_001',
+        );
+        if (!registeredUsers.any((u) => u.email == matched!.email)) {
+          registeredUsers.add(matched);
+          _saveRegisteredUsers();
+        }
+      }
     }
 
-    currentUser = currentUser!.copyWith(
-      name: name,
-      phone: phone,
-      jobTitle: jobTitle,
-      companyName: companyName,
-      website: website,
-      referralCode: referralCode,
-      profilePhotoPath: profilePhotoPath,
-      communicationPreferences: communicationPreferences,
-    );
-
-    await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-    notifyListeners();
-    return true;
-  }
-
-  Future<bool> updateBusinessName(String newCompanyName) async {
-    final cleanName = newCompanyName.trim();
-    if (cleanName.isEmpty) return false;
-
-    if (currentUser != null) {
-      currentUser = currentUser!.copyWith(companyName: cleanName);
-      await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-    }
-
-    if (restaurant != null) {
-      restaurant = restaurant!.copyWith(name: cleanName);
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
-    } else {
-      restaurant = RestaurantModel(
-        id: 'rest_001',
-        name: cleanName,
-        tagline: 'Authentic Flavors & Swift Service',
-        phone: '+91 98765 43210',
-        address: '',
-        cuisineType: 'Indian & Multi-Cuisine',
-        currencySymbol: '₹',
-        taxRate: 5.0,
-        tableCount: 12,
-        isOnboarded: true,
-      );
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
-    }
-
-    notifyListeners();
-    return true;
-  }
-
-  Future<bool> loginUser(String email, String password) async {
-    // Demo authentication accepting credentials or default owner
-    if (currentUser != null && currentUser!.email == email) {
+    if (matched != null) {
+      currentUser = matched;
       await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
       notifyListeners();
       return true;
     }
-    // Auto-create user for frictionless login testing
-    currentUser = UserModel(
-      id: 'usr_owner_01',
-      name: email.split('@').first.toUpperCase(),
-      email: email,
-      role: 'Owner',
-      pin: '1234',
-      restaurantId: restaurant?.id ?? 'rest_001',
-    );
+
+    return false;
+  }
+
+  Future<bool> loginWithGoogle(String email, String name, String? photoUrl) async {
+    final cleanEmail = email.trim().toLowerCase();
+    UserModel? matched = registeredUsers.where((u) => u.email.trim().toLowerCase() == cleanEmail).firstOrNull;
+
+    if (matched == null) {
+      matched = UserModel(
+        id: 'usr_g_${DateTime.now().millisecondsSinceEpoch}',
+        name: name,
+        email: email,
+        role: 'Owner',
+        pin: '1234',
+        restaurantId: restaurant?.id ?? 'rest_001',
+        profilePhotoPath: photoUrl,
+      );
+      registeredUsers.add(matched);
+      await _saveRegisteredUsers();
+    }
+
+    currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     notifyListeners();
     return true;
