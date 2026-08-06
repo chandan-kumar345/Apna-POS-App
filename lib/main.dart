@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
 import 'features/auth/splash_screen.dart';
@@ -7,7 +8,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final db = DatabaseService();
   await db.init();
-  runApp(const ApnaPosApp());
+  runApp(
+    const ProviderScope(
+      child: ApnaPosApp(),
+    ),
+  );
 }
 
 class ApnaPosApp extends StatelessWidget {

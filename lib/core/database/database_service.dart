@@ -7,6 +7,7 @@ import '../models/menu_item_model.dart';
 import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../models/inventory_model.dart';
+import 'user_database_helper.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -171,12 +172,19 @@ class DatabaseService extends ChangeNotifier {
     }
 
     // 7. Load Registered Users List & Seed Default Testing Credential
-    final regUsersJson = _prefs?.getString('apna_pos_registered_users');
-    if (regUsersJson != null) {
-      final List raw = jsonDecode(regUsersJson);
-      registeredUsers = raw.map((e) => UserModel.fromJson(e)).toList();
+    final dbHelper = UserDatabaseHelper();
+    final sqliteUsers = await dbHelper.getAllUsers();
+    
+    if (sqliteUsers.isNotEmpty) {
+      registeredUsers = sqliteUsers;
     } else {
-      registeredUsers = [];
+      final regUsersJson = _prefs?.getString('apna_pos_registered_users');
+      if (regUsersJson != null) {
+        final List raw = jsonDecode(regUsersJson);
+        registeredUsers = raw.map((e) => UserModel.fromJson(e)).toList();
+      } else {
+        registeredUsers = [];
+      }
     }
 
     // Pre-seed default testing credential if missing: admin@apnapos.com / 9876543210 (pass: admin123)
@@ -197,22 +205,18 @@ class DatabaseService extends ChangeNotifier {
       _saveRegisteredUsers();
     }
 
-    _isInitialized = true;
-    
-    // --- DEBUG: PRINT ALL REGISTERED USERS TO TERMINAL ---
-    debugPrint("\n================ DATABASE DUMP ================");
-    debugPrint("Total Registered Users: ${registeredUsers.length}");
-    for (var u in registeredUsers) {
-      debugPrint("- Name: ${u.name} | Email: ${u.email} | PIN: ${u.pin} | Role: ${u.role}");
-    }
-    debugPrint("===============================================\n");
-
     notifyListeners();
   }
 
   Future<void> _saveRegisteredUsers() async {
     final raw = registeredUsers.map((u) => u.toJson()).toList();
     await _prefs?.setString('apna_pos_registered_users', jsonEncode(raw));
+    
+    // Sync with SQLite Database
+    final dbHelper = UserDatabaseHelper();
+    for (var user in registeredUsers) {
+      await dbHelper.insertUser(user);
+    }
   }
 
   // --- AUTHENTICATION SERVICES ---
@@ -318,8 +322,11 @@ class DatabaseService extends ChangeNotifier {
     final cleanPw = password.trim();
     final digitsOnlyId = cleanId.replaceAll(RegExp(r'[^0-9]'), '');
 
-    // Search in registeredUsers list
-    UserModel? matched = registeredUsers.where((u) {
+    // 1. First search SQLite Database
+    final dbHelper = UserDatabaseHelper();
+    final sqliteUsers = await dbHelper.getAllUsers();
+    
+    UserModel? matched = sqliteUsers.where((u) {
       final uEmail = u.email.trim().toLowerCase();
       final uPhone = (u.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
 
@@ -329,7 +336,18 @@ class DatabaseService extends ChangeNotifier {
       return idMatches;
     }).firstOrNull;
 
-    // Check pre-seeded test accounts
+    // 2. Search registeredUsers in memory if not found in SQLite
+    matched ??= registeredUsers.where((u) {
+      final uEmail = u.email.trim().toLowerCase();
+      final uPhone = (u.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+
+      bool idMatches = (uEmail == cleanId) ||
+                       (digitsOnlyId.isNotEmpty && uPhone.endsWith(digitsOnlyId)) ||
+                       (uPhone.isNotEmpty && uPhone == digitsOnlyId);
+      return idMatches;
+    }).firstOrNull;
+
+    // 3. Check pre-seeded test accounts fallback
     if (matched == null) {
       if (cleanId == 'admin@apnapos.com' || cleanId == '9876543210' || cleanId == 'owner@apnapos.com' || cleanId == 'admin@restaurant.com' || cleanId == 'staff@apnapos.com') {
         matched = UserModel(

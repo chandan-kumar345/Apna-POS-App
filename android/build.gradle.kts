@@ -17,7 +17,12 @@ subprojects {
 
     afterEvaluate {
         val android = project.extensions.findByName("android") as? com.android.build.gradle.BaseExtension
-        android?.compileSdkVersion(36)
+        android?.apply {
+            compileSdkVersion(36)
+            if (namespace == null) {
+                namespace = "com.apnapos.${project.name.replace("-", "_")}"
+            }
+        }
     }
 }
 
