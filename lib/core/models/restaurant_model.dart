@@ -19,6 +19,7 @@ class RestaurantModel {
   final String openingTime; // '09:00 AM'
   final String closingTime; // '11:00 PM'
   final List<String> kitchenSections; // ['Main Kitchen', 'Beverages Bar']
+  final String upiId; // Merchant UPI VPA ID e.g., 'merchant@upi' or '9876543210@paytm'
 
   RestaurantModel({
     required this.id,
@@ -39,6 +40,7 @@ class RestaurantModel {
     this.openingTime = '09:00 AM',
     this.closingTime = '11:00 PM',
     this.kitchenSections = const ['Main Kitchen', 'Beverages Bar'],
+    this.upiId = 'apnapos@upi',
   });
 
   Map<String, dynamic> toJson() => {
@@ -60,6 +62,7 @@ class RestaurantModel {
         'openingTime': openingTime,
         'closingTime': closingTime,
         'kitchenSections': kitchenSections,
+        'upiId': upiId,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -82,6 +85,7 @@ class RestaurantModel {
         closingTime: json['closingTime'] ?? '11:00 PM',
         kitchenSections:
             (json['kitchenSections'] as List?)?.map((e) => e.toString()).toList() ?? const ['Main Kitchen', 'Beverages Bar'],
+        upiId: json['upiId'] ?? 'apnapos@upi',
       );
 
   RestaurantModel copyWith({
@@ -102,6 +106,7 @@ class RestaurantModel {
     String? openingTime,
     String? closingTime,
     List<String>? kitchenSections,
+    String? upiId,
   }) {
     return RestaurantModel(
       id: id,
@@ -122,6 +127,7 @@ class RestaurantModel {
       openingTime: openingTime ?? this.openingTime,
       closingTime: closingTime ?? this.closingTime,
       kitchenSections: kitchenSections ?? this.kitchenSections,
+      upiId: upiId ?? this.upiId,
     );
   }
 }

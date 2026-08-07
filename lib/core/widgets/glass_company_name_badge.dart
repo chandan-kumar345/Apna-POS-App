@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../services/sound_service.dart';
 
 class GlassCompanyNameBadge extends StatelessWidget {
   final String name;
@@ -16,7 +17,12 @@ class GlassCompanyNameBadge extends StatelessWidget {
     final displayName = name.trim().isNotEmpty ? name : 'My Business';
 
     return InkWell(
-      onTap: onTap,
+      onTap: onTap == null
+          ? null
+          : () {
+              SoundService.playButtonClick();
+              onTap!();
+            },
       borderRadius: BorderRadius.circular(22),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),

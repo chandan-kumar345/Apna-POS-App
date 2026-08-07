@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../theme/glass_theme.dart';
+import '../services/sound_service.dart';
 
 class GlassContainer extends StatelessWidget {
   final Widget child;
@@ -63,7 +64,10 @@ class GlassContainer extends StatelessWidget {
 
     if (onTap != null) {
       return InkWell(
-        onTap: onTap,
+        onTap: () {
+          SoundService.playButtonClick();
+          onTap!();
+        },
         borderRadius: BorderRadius.circular(borderRadius),
         child: content,
       );
@@ -160,7 +164,12 @@ class GlassButton extends StatelessWidget {
       width: width,
       height: height,
       child: ElevatedButton(
-        onPressed: isLoading ? null : onPressed,
+        onPressed: isLoading || onPressed == null
+            ? null
+            : () {
+                SoundService.playButtonClick();
+                onPressed!();
+              },
         style: ElevatedButton.styleFrom(
           padding: EdgeInsets.zero,
           elevation: isPrimary || isSecondary ? 4 : 0,
@@ -272,7 +281,13 @@ class GlassTextField extends StatelessWidget {
             controller: controller,
             obscureText: obscureText,
             keyboardType: keyboardType,
-            onChanged: onChanged,
+            onTap: () {
+              SoundService.playKeyPress();
+            },
+            onChanged: (val) {
+              SoundService.playKeyPress();
+              if (onChanged != null) onChanged!(val);
+            },
             validator: validator,
             maxLines: maxLines,
             style: const TextStyle(color: Colors.white, fontSize: 13.5),

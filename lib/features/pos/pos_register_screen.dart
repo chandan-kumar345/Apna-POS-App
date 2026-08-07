@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
+import '../../core/services/sound_service.dart';
+import '../../core/widgets/food_type_icon.dart';
 import '../menu/add_product_screen.dart';
 import '../tables/table_management_screen.dart';
 import 'payment_modal.dart';
@@ -36,6 +39,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   final List<CartItemModel> _cartItems = [];
   double _discountAmount = 0.0;
+  double _tipAmount = 0.0;
+  String _appliedCoupon = '';
+  String _discountMode = 'percent';
+  double _discountInputValue = 0.0;
+  String? _selectedDiscountProductType;
   String _customerPhone = '';
   String _customerName = '';
 
@@ -465,11 +473,64 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   int get totalCartItemCount => _cartItems.fold(0, (sum, i) => sum + i.quantity);
   double get cartSubtotal => _cartItems.fold(0.0, (sum, i) => sum + i.totalPrice);
+
+  double get computedDiscountAmount {
+    if (_discountAmount > 0) return _discountAmount;
+
+    final subtotal = cartSubtotal;
+    if (subtotal <= 0) return 0.0;
+
+    double calculated = 0.0;
+
+    // 1. Coupon Codes
+    final coupon = _appliedCoupon.trim().toUpperCase();
+    if (coupon == 'SAVE50') {
+      return (subtotal * 0.50).clamp(0.0, subtotal);
+    } else if (coupon == 'FLAT100') {
+      return 100.0.clamp(0.0, subtotal);
+    } else if (coupon == 'WELCOME10') {
+      return (subtotal * 0.10).clamp(0.0, subtotal);
+    } else if (coupon.isNotEmpty) {
+      return 50.0.clamp(0.0, subtotal);
+    }
+
+    // 2. Manual Discount Input
+    if (_discountInputValue > 0) {
+      if (_selectedDiscountProductType == null ||
+          _selectedDiscountProductType == 'Select Product Type' ||
+          _selectedDiscountProductType == 'All Products') {
+        if (_discountMode == 'percent') {
+          calculated = subtotal * (_discountInputValue / 100.0);
+        } else {
+          calculated = _discountInputValue;
+        }
+      } else {
+        double eligibleSubtotal = 0.0;
+        final target = _selectedDiscountProductType!.toLowerCase();
+        for (final cItem in _cartItems) {
+          final itemType = cItem.item.itemType.toLowerCase();
+          final category = cItem.item.category.toLowerCase();
+          if (itemType == target || category == target || (target == 'food' && itemType != 'beverage')) {
+            eligibleSubtotal += cItem.totalPrice;
+          }
+        }
+        if (_discountMode == 'percent') {
+          calculated = eligibleSubtotal * (_discountInputValue / 100.0);
+        } else {
+          calculated = math.min(_discountInputValue, eligibleSubtotal);
+        }
+      }
+    }
+
+    return calculated.clamp(0.0, subtotal);
+  }
+
   double get cartTax {
     final subtotal = cartSubtotal;
     if (subtotal <= 0) return 0.0;
 
-    final discountRatio = _discountAmount > 0 ? (1 - (_discountAmount / subtotal).clamp(0.0, 1.0)) : 1.0;
+    final disc = computedDiscountAmount;
+    final discountRatio = disc > 0 ? (1 - (disc / subtotal).clamp(0.0, 1.0)) : 1.0;
     double totalTax = 0.0;
 
     for (final cartItem in _cartItems) {
@@ -479,7 +540,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
     return totalTax;
   }
-  double get cartTotal => (cartSubtotal - _discountAmount).clamp(0, 99999) + cartTax;
+
+  double get cartTotal => (cartSubtotal - computedDiscountAmount).clamp(0, 99999) + cartTax + _tipAmount;
 
   Widget _buildFoodTypeIcon(String itemType) {
     if (itemType == 'Non-Veg') {
@@ -1168,110 +1230,382 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   void _showExtraBenefitDialog(StateSetter setStateModal) {
-    final discCtrl = TextEditingController(text: _discountAmount > 0 ? _discountAmount.toStringAsFixed(0) : '');
+    final couponCtrl = TextEditingController(text: _appliedCoupon);
+    final discCtrl = TextEditingController(text: _discountInputValue > 0 ? _discountInputValue.toStringAsFixed(0) : '');
+    final tipCtrl = TextEditingController(text: _tipAmount > 0 ? _tipAmount.toStringAsFixed(0) : '');
+
+    String tempDiscountMode = _discountMode;
+    String tempCoupon = _appliedCoupon;
+    double tempDiscountVal = _discountInputValue;
+    double tempTipVal = _tipAmount;
 
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 420),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x22000000), blurRadius: 20, offset: Offset(0, 8)),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF051C48).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
+                    // Header Title (Extra's) & Close Button (X)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 12, 10),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Extra\'s',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF0F172A),
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF0F172A), size: 22),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          ),
+                        ],
                       ),
-                      child: const Icon(Icons.sell_outlined, color: Color(0xFF051C48), size: 22),
                     ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Extra Benefits & Discounts',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+
+                    Flexible(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 1. Coupon Section
+                            const Text(
+                              'Coupon',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: couponCtrl,
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                      decoration: const InputDecoration(
+                                        hintText: 'SAVE50',
+                                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                        border: InputBorder.none,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    margin: const EdgeInsets.all(4),
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          tempCoupon = couponCtrl.text.trim();
+                                        });
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(tempCoupon.isNotEmpty ? 'Coupon "$tempCoupon" Applied!' : 'Coupon cleared.'),
+                                            duration: const Duration(seconds: 1),
+                                            backgroundColor: const Color(0xFF051C48),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF051C48),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                      ),
+                                      child: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 18),
+
+                            // 2. Add Discount Card Container
+                            Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF8FAFC),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Add Discount',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+
+                                      // Mode Toggle Pill (% vs ₹)
+                                      Container(
+                                        padding: const EdgeInsets.all(3),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE2E8F0),
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Row(
+                                          children: [
+                                            InkWell(
+                                              onTap: () => setDialogState(() => tempDiscountMode = 'percent'),
+                                              borderRadius: BorderRadius.circular(16),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: tempDiscountMode == 'percent' ? Colors.white : Colors.transparent,
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  boxShadow: tempDiscountMode == 'percent'
+                                                      ? [const BoxShadow(color: Colors.black12, blurRadius: 4)]
+                                                      : [],
+                                                ),
+                                                child: Text(
+                                                  '%',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: tempDiscountMode == 'percent' ? const Color(0xFF051C48) : const Color(0xFF64748B),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                            InkWell(
+                                              onTap: () => setDialogState(() => tempDiscountMode = 'flat'),
+                                              borderRadius: BorderRadius.circular(16),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                                                decoration: BoxDecoration(
+                                                  color: tempDiscountMode == 'flat' ? Colors.white : Colors.transparent,
+                                                  borderRadius: BorderRadius.circular(16),
+                                                  boxShadow: tempDiscountMode == 'flat'
+                                                      ? [const BoxShadow(color: Colors.black12, blurRadius: 4)]
+                                                      : [],
+                                                ),
+                                                child: Text(
+                                                  '₹',
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: tempDiscountMode == 'flat' ? const Color(0xFF051C48) : const Color(0xFF64748B),
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  // Input Box with Apply Button
+                                  Container(
+                                    height: 48,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: TextField(
+                                            controller: discCtrl,
+                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                            decoration: InputDecoration(
+                                              hintText: tempDiscountMode == 'percent' ? '10' : '50',
+                                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                              border: InputBorder.none,
+                                            ),
+                                          ),
+                                        ),
+                                        Container(
+                                          margin: const EdgeInsets.all(4),
+                                          child: ElevatedButton(
+                                            onPressed: () {
+                                              final val = double.tryParse(discCtrl.text.trim()) ?? 0.0;
+                                              setDialogState(() {
+                                                tempDiscountVal = val;
+                                              });
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(val > 0
+                                                      ? 'Discount of ${tempDiscountMode == "percent" ? "$val%" : "₹$val"} Applied!'
+                                                      : 'Discount reset.'),
+                                                  duration: const Duration(seconds: 1),
+                                                  backgroundColor: const Color(0xFF051C48),
+                                                  behavior: SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                            },
+                                            style: ElevatedButton.styleFrom(
+                                              backgroundColor: const Color(0xFF051C48),
+                                              elevation: 0,
+                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                            ),
+                                            child: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 18),
+
+                            // 3. Add Tip Section
+                            const Text(
+                              'Add Tip',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+
+                            Container(
+                              height: 48,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: tipCtrl,
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                      decoration: const InputDecoration(
+                                        hintText: '10',
+                                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 14),
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                        border: InputBorder.none,
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    margin: const EdgeInsets.all(4),
+                                    child: ElevatedButton(
+                                      onPressed: () {
+                                        final val = double.tryParse(tipCtrl.text.trim()) ?? 0.0;
+                                        setDialogState(() {
+                                          tempTipVal = val;
+                                        });
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(val > 0 ? 'Tip of ₹${val.toStringAsFixed(0)} Added!' : 'Tip cleared.'),
+                                            duration: const Duration(seconds: 1),
+                                            backgroundColor: const Color(0xFF051C48),
+                                            behavior: SnackBarBehavior.floating,
+                                          ),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF051C48),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                      ),
+                                      child: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // 4. Done Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: 48,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  final discountVal = double.tryParse(discCtrl.text.trim()) ?? tempDiscountVal;
+                                  final tipVal = double.tryParse(tipCtrl.text.trim()) ?? tempTipVal;
+
+                                  setState(() {
+                                    _appliedCoupon = tempCoupon;
+                                    _discountMode = tempDiscountMode;
+                                    _discountInputValue = discountVal;
+                                    _tipAmount = tipVal;
+                                    _discountAmount = 0.0; // reset manual override so getter calculates
+                                  });
+
+                                  setStateModal(() {});
+                                  Navigator.pop(context);
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF051C48),
+                                  elevation: 2,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                                ),
+                                child: const Text(
+                                  'Done',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                TextField(
-                  controller: discCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: 'Extra Discount Amount (₹)',
-                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
-                    hintText: 'e.g. 50',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    prefixIcon: const Icon(Icons.discount_outlined, color: Color(0xFF051C48)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          setState(() {
-                            _discountAmount = 0.0;
-                          });
-                          setStateModal(() {});
-                          Navigator.pop(context);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          side: const BorderSide(color: Color(0xFFFEE2E2)),
-                        ),
-                        child: const Text('Reset', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final val = double.tryParse(discCtrl.text.trim()) ?? 0.0;
-                          setState(() {
-                            _discountAmount = val;
-                          });
-                          setStateModal(() {});
-                          Navigator.pop(context);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: const Color(0xFF051C48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text('Apply Benefit', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
     );
@@ -1526,15 +1860,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(
-                                            cItem.item.name,
-                                            style: const TextStyle(
-                                              fontSize: 14.5,
-                                              fontWeight: FontWeight.bold,
-                                              color: Color(0xFF0F172A),
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                          Row(
+                                            children: [
+                                              FoodTypeIcon(itemType: cItem.item.itemType, size: 11),
+                                              const SizedBox(width: 5),
+                                              Expanded(
+                                                child: Text(
+                                                  cItem.item.name,
+                                                  style: const TextStyle(
+                                                    fontSize: 14.0,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF0F172A),
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
@@ -1719,7 +2061,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   const SizedBox(width: 6),
                                   Expanded(
                                     child: Text(
-                                      _discountAmount > 0 ? 'Extra\'s (₹${_discountAmount.toStringAsFixed(0)})' : 'Extra\'s',
+                                      (computedDiscountAmount > 0 || _tipAmount > 0)
+                                          ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount).toStringAsFixed(0)})'
+                                          : 'Extra\'s',
                                       style: const TextStyle(
                                         color: Color(0xFF051C48),
                                         fontWeight: FontWeight.bold,
@@ -1768,13 +2112,32 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               ),
                             ],
                           ),
-                          if (_discountAmount > 0) ...[
+                          if (computedDiscountAmount > 0) ...[
                             const SizedBox(height: 4),
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                const Text('Discount:', style: TextStyle(fontSize: 13, color: Color(0xFF10B981))),
-                                Text('- $currency${_discountAmount.toStringAsFixed(1)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF10B981))),
+                                Text(
+                                  _appliedCoupon.isNotEmpty ? 'Discount (${_appliedCoupon.toUpperCase()}):' : 'Discount:',
+                                  style: const TextStyle(fontSize: 13, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                ),
+                                Text(
+                                  '- $currency${computedDiscountAmount.toStringAsFixed(1)}',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (_tipAmount > 0) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text('Tip:', style: TextStyle(fontSize: 13, color: Color(0xFF00A896), fontWeight: FontWeight.bold)),
+                                Text(
+                                  '+ $currency${_tipAmount.toStringAsFixed(1)}',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF00A896)),
+                                ),
                               ],
                             ),
                           ],
@@ -1901,7 +2264,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       items: List.from(_cartItems),
       tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway',
       orderType: _selectedOrderType,
-      discountAmount: _discountAmount,
+      discountAmount: computedDiscountAmount,
       paymentMethod: 'Cash',
       customerName: _customerName,
       customerPhone: _customerPhone,
@@ -1959,6 +2322,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       setState(() {
         _cartItems.clear();
         _discountAmount = 0.0;
+        _tipAmount = 0.0;
+        _appliedCoupon = '';
+        _discountInputValue = 0.0;
+        _selectedDiscountProductType = null;
         _selectedTable = null;
       });
     } else {

@@ -3,6 +3,7 @@ import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
+import '../../core/services/sound_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,6 +20,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   late TextEditingController _phoneController;
   late TextEditingController _addressController;
   late TextEditingController _taxController;
+  late TextEditingController _upiIdController;
 
   @override
   void initState() {
@@ -29,6 +31,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _phoneController = TextEditingController(text: rest?.phone ?? '');
     _addressController = TextEditingController(text: rest?.address ?? '');
     _taxController = TextEditingController(text: rest?.taxRate.toString() ?? '5.0');
+    _upiIdController = TextEditingController(text: rest?.upiId ?? 'apnapos@upi');
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _taglineController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _taxController.dispose();
+    _upiIdController.dispose();
+    super.dispose();
   }
 
   Future<void> _saveSettings() async {
@@ -45,12 +59,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
       phone: _phoneController.text.trim(),
       address: _addressController.text.trim(),
       taxRate: double.tryParse(_taxController.text) ?? 5.0,
+      upiId: _upiIdController.text.trim().isEmpty ? 'apnapos@upi' : _upiIdController.text.trim(),
     );
 
     await db.updateRestaurantProfile(updated);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Restaurant profile settings updated successfully!')),
+      const SnackBar(content: Text('Restaurant profile & Payment settings updated successfully!')),
     );
   }
 
@@ -93,6 +108,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 const SizedBox(height: 12),
                 GlassTextField(controller: _addressController, labelText: 'Restaurant Address', hintText: 'Connaught Place, New Delhi', maxLines: 2),
+
+                const SizedBox(height: 16),
+                const Divider(color: GlassTheme.glassBorder),
+                const SizedBox(height: 12),
+                const Text(
+                  'Payment Methods Configuration',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Add your merchant UPI ID to receive payments directly to your bank account when customers scan QR code.',
+                  style: TextStyle(fontSize: 11.5, color: GlassTheme.textMedium),
+                ),
+                const SizedBox(height: 12),
+                GlassTextField(
+                  controller: _upiIdController,
+                  labelText: 'Merchant UPI VPA ID (to Receive Payments)',
+                  hintText: 'e.g. merchant@okicici, 9876543210@paytm',
+                  prefixIcon: Icons.qr_code_2_rounded,
+                ),
 
                 const SizedBox(height: 20),
                 GlassButton(
@@ -139,6 +174,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       const SnackBar(content: Text('Sample demo data loaded successfully!')),
                     );
                   },
+                ),
+                const SizedBox(height: 16),
+                const Divider(color: GlassTheme.glassBorder),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: GlassTheme.primaryCyan.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.volume_up_rounded, color: GlassTheme.primaryCyan, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('iOS Premium Click Sound', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                          Text('Click sound & haptic feel on buttons and text fields', style: TextStyle(color: GlassTheme.textMedium, fontSize: 11)),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: SoundService.soundEnabled,
+                      activeThumbColor: GlassTheme.primaryCyan,
+                      onChanged: (val) {
+                        setState(() {
+                          SoundService.setSoundEnabled(val);
+                        });
+                        if (val) {
+                          SoundService.playButtonClick();
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ],
             ),

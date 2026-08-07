@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/email_service.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
-import 'login_screen.dart';
 import 'create_profile_screen.dart';
 import '../dashboard/main_layout.dart';
 
@@ -86,59 +87,86 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
 
     setState(() {
       _errorMessage = null;
+      _isLoading = true;
     });
 
     final emailText = _emailController.text.trim();
-    _showOtpVerificationDialog(emailText);
+    
+    // Dispatch OTP Email from sooftcode@gmail.com
+    await EmailService().sendOtpEmail(emailText);
+
+    if (mounted) {
+      setState(() => _isLoading = false);
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          backgroundColor: GlassTheme.primaryNavy,
+          content: Text(
+            'OTP verification code has been sent to $emailText from ${EmailService.senderEmail}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
+
+      _showOtpVerificationDialog(emailText);
+    }
   }
 
   // OTP Verification Popup Dialog with Theme Colors, Resend OTP, and Verify Button
   void _showOtpVerificationDialog(String emailText) {
-    final otp1 = TextEditingController(text: '1');
-    final otp2 = TextEditingController(text: '2');
-    final otp3 = TextEditingController(text: '3');
-    final otp4 = TextEditingController(text: '4');
+    final otp1 = TextEditingController();
+    final otp2 = TextEditingController();
+    final otp3 = TextEditingController();
+    final otp4 = TextEditingController();
+
+    final focus1 = FocusNode();
+    final focus2 = FocusNode();
+    final focus3 = FocusNode();
+    final focus4 = FocusNode();
     String? otpError;
     bool isVerifying = false;
 
     showDialog(
       context: context,
-      barrierDismissible: false,
+      barrierDismissible: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-              child: Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black26,
-                      blurRadius: 25,
-                      offset: Offset(0, 10),
-                    ),
-                  ],
-                  border: Border.all(
-                    color: const Color(0xFF00C2FF), // Theme Cyan Highlight Border
-                    width: 1.5,
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Icon Header
-                    Container(
-                      width: 60,
-                      height: 60,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: const Color(0xFF0052FF).withOpacity(0.1),
-                        border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
+              child: Stack(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black26,
+                          blurRadius: 25,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
+                      border: Border.all(
+                        color: const Color(0xFF00C2FF), // Theme Cyan Highlight Border
+                        width: 1.5,
                       ),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Icon Header
+                        Container(
+                          width: 60,
+                          height: 60,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0xFF0052FF).withOpacity(0.1),
+                            border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
+                          ),
                       child: const Center(
                         child: Icon(
                           Icons.mark_email_read_rounded,
@@ -181,6 +209,21 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                               color: Color(0xFF0F172A),
                             ),
                           ),
+                          const TextSpan(
+                            text: '\nby ',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                          const TextSpan(
+                            text: EmailService.senderEmail,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0052FF),
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -221,10 +264,10 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
-                        _buildOtpPillBox(otp1, autoFocus: true),
-                        _buildOtpPillBox(otp2),
-                        _buildOtpPillBox(otp3),
-                        _buildOtpPillBox(otp4),
+                        _buildOtpPillBox(otp1, focus1, nextFocusNode: focus2, autoFocus: true),
+                        _buildOtpPillBox(otp2, focus2, nextFocusNode: focus3, prevFocusNode: focus1),
+                        _buildOtpPillBox(otp3, focus3, nextFocusNode: focus4, prevFocusNode: focus2),
+                        _buildOtpPillBox(otp4, focus4, prevFocusNode: focus3),
                       ],
                     ),
 
@@ -242,16 +285,23 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                           ),
                         ),
                         TextButton(
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                backgroundColor: GlassTheme.primaryNavy,
-                                content: Text(
-                                  'OTP verification code resent to $emailText',
-                                  style: const TextStyle(color: Colors.white),
+                          onPressed: () async {
+                            setDialogState(() {
+                              otpError = null;
+                            });
+                            await EmailService().sendOtpEmail(emailText);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  backgroundColor: GlassTheme.primaryNavy,
+                                  content: Text(
+                                    'OTP verification code resent to $emailText from ${EmailService.senderEmail}',
+                                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                  ),
+                                  duration: const Duration(seconds: 4),
                                 ),
-                              ),
-                            );
+                              );
+                            }
                           },
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
@@ -305,10 +355,21 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                   otpError = null;
                                 });
 
+                                // Verify OTP against EmailService
+                                final isValidOtp = EmailService().verifyOtp(emailText, enteredOtp);
+                                if (!isValidOtp) {
+                                  setDialogState(() {
+                                    isVerifying = false;
+                                    otpError = 'Invalid or expired OTP verification code';
+                                  });
+                                  return;
+                                }
+
                                 // Register user in database
                                 final nameFromEmail = emailText.contains('@')
                                     ? emailText.split('@').first
                                     : emailText;
+                                final nav = Navigator.of(context);
                                 final success = await db.registerUser(
                                   name: nameFromEmail.isNotEmpty
                                       ? nameFromEmail
@@ -321,9 +382,8 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                 if (!mounted) return;
 
                                 if (success) {
-                                  Navigator.pop(context); // Close OTP Dialog
-                                  Navigator.pushReplacement(
-                                    context,
+                                  nav.pop(); // Close OTP Dialog
+                                  nav.pushReplacement(
                                     SlideRightPageRoute(
                                       page: CreateProfileScreen(
                                         initialEmail: emailText,
@@ -365,8 +425,24 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                               ),
                       ),
                     ),
-                  ],
-                ),
+                      ],
+                    ),
+                  ),
+                  // Top-Right Close Button
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        color: Color(0xFF94A3B8),
+                        size: 22,
+                      ),
+                      tooltip: 'Close OTP Verification',
+                    ),
+                  ),
+                ],
               ),
             );
           },
@@ -376,7 +452,13 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
   }
 
   // Helper Widget for OTP Pill Box Input
-  Widget _buildOtpPillBox(TextEditingController controller, {bool autoFocus = false}) {
+  Widget _buildOtpPillBox(
+    TextEditingController controller,
+    FocusNode focusNode, {
+    FocusNode? nextFocusNode,
+    FocusNode? prevFocusNode,
+    bool autoFocus = false,
+  }) {
     return Container(
       width: 54,
       height: 54,
@@ -389,28 +471,45 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
         ),
       ),
       child: Center(
-        child: TextField(
-          controller: controller,
-          autofocus: autoFocus,
-          keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
-          maxLength: 1,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF0F172A),
-          ),
-          decoration: const InputDecoration(
-            counterText: '',
-            border: InputBorder.none,
-            isDense: true,
-            contentPadding: EdgeInsets.zero,
-          ),
-          onChanged: (value) {
-            if (value.isNotEmpty) {
-              FocusScope.of(context).nextFocus();
+        child: KeyboardListener(
+          focusNode: FocusNode(),
+          onKeyEvent: (event) {
+            if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.backspace) {
+              if (controller.text.isEmpty && prevFocusNode != null) {
+                prevFocusNode.requestFocus();
+              }
             }
           },
+          child: TextField(
+            controller: controller,
+            focusNode: focusNode,
+            autofocus: autoFocus,
+            keyboardType: TextInputType.number,
+            textAlign: TextAlign.center,
+            maxLength: 1,
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+            decoration: const InputDecoration(
+              counterText: '',
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (value) {
+              if (value.isNotEmpty) {
+                if (nextFocusNode != null) {
+                  nextFocusNode.requestFocus();
+                } else {
+                  focusNode.unfocus();
+                }
+              } else if (value.isEmpty && prevFocusNode != null) {
+                prevFocusNode.requestFocus();
+              }
+            },
+          ),
         ),
       ),
     );

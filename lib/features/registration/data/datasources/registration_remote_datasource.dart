@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import '../models/registration_request_model.dart';
 import '../../../../core/database/database_service.dart';
+import '../../../../core/services/email_service.dart';
 
 abstract class IRegistrationRemoteDataSource {
   Future<Map<String, dynamic>> registerFullUser(RegistrationRequestModel model);
@@ -11,11 +12,17 @@ abstract class IRegistrationRemoteDataSource {
 class RegistrationRemoteDataSource implements IRegistrationRemoteDataSource {
   final Dio _dio;
   final DatabaseService _dbService;
+  final EmailService _emailService;
 
-  RegistrationRemoteDataSource(this._dio) : _dbService = DatabaseService();
+  RegistrationRemoteDataSource(this._dio)
+      : _dbService = DatabaseService(),
+        _emailService = EmailService();
 
   @override
   Future<Map<String, dynamic>> registerFullUser(RegistrationRequestModel model) async {
+    // Send Email OTP from sooftcode@gmail.com to user's registered email
+    await _emailService.sendOtpEmail(model.entity.email);
+
     try {
       final formData = await model.toFormData();
       
@@ -51,7 +58,7 @@ class RegistrationRemoteDataSource implements IRegistrationRemoteDataSource {
 
     return {
       'status': 'success',
-      'message': 'Registration completed. Verification OTP sent.',
+      'message': 'Registration completed. Verification OTP sent from sooftcode@gmail.com.',
       'email': model.entity.email,
     };
   }
@@ -64,14 +71,16 @@ class RegistrationRemoteDataSource implements IRegistrationRemoteDataSource {
         'code': code,
         'purpose': purpose,
       });
-      return response.statusCode == 200;
-    } catch (_) {
-      return code == '1234' || code.length == 4 || code.length == 6;
-    }
+      if (response.statusCode == 200) return true;
+    } catch (_) {}
+    
+    // Verify against EmailService active OTPs or local demo fallback
+    return _emailService.verifyOtp(identifier, code);
   }
 
   @override
   Future<bool> resendOtp(String identifier, String channel) async {
+    await _emailService.sendOtpEmail(identifier);
     try {
       final response = await _dio.post('/api/v1/auth/resend-otp', data: {
         'identifier': identifier,

@@ -32,6 +32,9 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
   late TextEditingController _tableCountController;
   int _tableCount = 12;
 
+  // 5. Merchant UPI ID Controller
+  late TextEditingController _upiIdController;
+
   final List<double> _standardGstOptions = [5.0, 12.0, 18.0, 28.0];
 
   bool _isLoading = false;
@@ -54,8 +57,10 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       }
       _restaurantType = rest.restaurantType.isNotEmpty ? rest.restaurantType : 'Both';
       _tableCount = rest.tableCount > 0 ? rest.tableCount : 12;
+      _upiIdController = TextEditingController(text: rest.upiId.isNotEmpty ? rest.upiId : 'apnapos@upi');
     } else {
       _gstNumberController = TextEditingController();
+      _upiIdController = TextEditingController(text: 'apnapos@upi');
     }
 
     _tableCountController = TextEditingController(text: '$_tableCount');
@@ -65,6 +70,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
   void dispose() {
     _gstNumberController.dispose();
     _tableCountController.dispose();
+    _upiIdController.dispose();
     super.dispose();
   }
 
@@ -255,11 +261,13 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         billingType: _billingType,
         gstNumber: _billingType == 'GST' ? _gstNumberController.text.trim().toUpperCase() : '',
         restaurantType: _restaurantType,
+        upiId: _upiIdController.text.trim().isEmpty ? 'apnapos@upi' : _upiIdController.text.trim(),
       );
 
       // Save complete setup to database
       await db.saveRestaurantOnboarding(updated);
 
+      // Show success toast feedback
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -273,7 +281,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business settings for "$businessName" saved successfully!',
+                  'Business settings saved successfully!',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
@@ -287,12 +295,10 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         ),
       );
 
-      // Navigate to Main POS Dashboard
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const MainLayout()),
-        (route) => false,
-      );
+      // Only navigate to Main POS Dashboard if completing initial onboarding setup
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
     } catch (e) {
       setState(() => _errorMessage = 'Error saving settings: $e');
     } finally {
@@ -349,46 +355,47 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Header: Back Button & Highlighted Glass Company Name Badge
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
+                // Top Header: Back Button & Highlighted Glass Company Name Badge (Removed when logged in / in sidebar)
+                if (!(db.restaurant?.isOnboarded ?? false) && Navigator.canPop(context))
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                    child: Row(
+                      children: [
+                        InkWell(
+                          onTap: () => Navigator.pop(context),
+                          borderRadius: BorderRadius.circular(20),
+                          child: Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: Colors.white.withOpacity(0.12),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.2),
+                                width: 1,
+                              ),
                             ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 16,
+                            child: const Center(
+                              child: Icon(
+                                Icons.arrow_back_ios_new_rounded,
+                                color: Colors.white,
+                                size: 16,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassCompanyNameBadge(
-                            name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: GlassCompanyNameBadge(
+                              name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
 
                 // 4. Curved White Container Layout
                 Expanded(
@@ -797,6 +804,54 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                   ],
                                 ),
 
+                                // SECTION 3.5: Payment Methods Configuration (Merchant UPI VPA ID)
+                                const SizedBox(height: 18),
+                                const Divider(color: Color(0xFFE2E8F0), thickness: 1),
+                                const SizedBox(height: 16),
+
+                                const Text(
+                                  'Payment Methods Configuration',
+                                  style: TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Add your Merchant UPI VPA ID to receive exact-amount customer payments directly into your bank account.',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                ),
+                                const SizedBox(height: 10),
+
+                                TextField(
+                                  controller: _upiIdController,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                  decoration: InputDecoration(
+                                    labelText: 'Merchant UPI VPA ID (to Receive Money)',
+                                    labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13, fontWeight: FontWeight.bold),
+                                    hintText: 'e.g. merchant@okicici, 9876543210@paytm',
+                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                                    prefixIcon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF00C2FF)),
+                                    filled: true,
+                                    fillColor: const Color(0xFFF1F5F9),
+                                    isDense: true,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                      borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 1.5),
+                                    ),
+                                  ),
+                                ),
+
                                 // SECTION 4: Number of Tables (If Dine-In Selected)
                                 if (_selectedServices.contains('Dine In')) ...[
                                   const SizedBox(height: 18),
@@ -925,7 +980,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                       ),
                                     )
                                   : const Text(
-                                      'Save & Launch POS',
+                                      'Save Business Settings',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,
