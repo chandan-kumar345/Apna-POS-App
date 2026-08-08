@@ -1,5 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../core/widgets/food_type_icon.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
@@ -37,6 +41,465 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         builder: (_) => AddProductScreen(editItem: editItem),
       ),
     ).then((_) => setState(() {}));
+  }
+
+  void _showCsvImportModal() {
+    bool isProcessing = false;
+    String? modalError;
+    String? modalSuccess;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 12,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Modal Header
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFF051C48),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 22),
+                                ),
+                                const SizedBox(width: 10),
+                                const Flexible(
+                                  child: Text(
+                                    'Import Products via CSV',
+                                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Download the CSV template, fill in your product catalog, and upload to bulk add products.',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+
+                      Expanded(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Error Banner
+                              if (modalError != null) ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEE2E2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          modalError!,
+                                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                              ],
+
+                              // Success Banner
+                              if (modalSuccess != null) ...[
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFDCFCE7),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFF22C55E), width: 1.5),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 20),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Text(
+                                          modalSuccess!,
+                                          style: const TextStyle(color: Color(0xFF14532D), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                              ],
+
+                              // Step 1: Download Template Section Box
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.downloading_rounded, color: Color(0xFF051C48), size: 20),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Step 1: Download CSV Sample Template',
+                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Template Format & Headers:\n• Product Name (Required)\n• Description (Optional)\n• Food Type (Veg, Non-Veg, Egg)\n• Price (Required)\n• Variant Name (Optional: Half, Full)\n• Variant Price (Optional)\n• Category (e.g. Main Course, Beverages)',
+                                      style: TextStyle(fontSize: 11.5, color: Color(0xFF475569), height: 1.4),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    ElevatedButton.icon(
+                                      onPressed: () async {
+                                        try {
+                                          Directory? targetDir;
+                                          try {
+                                            targetDir = await getDownloadsDirectory();
+                                          } catch (_) {}
+                                          targetDir ??= await getApplicationDocumentsDirectory();
+
+                                          final filePath = '${targetDir.path}/Apna_POS_Menu_Template.csv';
+                                          final sampleCsv = 
+                                            'Product Name,Description,Food Type,Price,Variant Name,Variant Price,Category\n'
+                                            'Paneer Butter Masala,Rich creamy gravy,Veg,280,Half,150,Main Course\n'
+                                            'Paneer Butter Masala,Rich creamy gravy,Veg,280,Full,280,Main Course\n'
+                                            'Chicken Biryani,Spicy Hyderabadi Biryani,Non-Veg,320,Regular,320,Biryani\n'
+                                            'Veg Burger,Crispy patty with cheese,Veg,99,,0,Starters\n'
+                                            'Cold Coffee,Brewed coffee with ice cream,Veg,120,,0,Beverages\n';
+
+                                          final file = File(filePath);
+                                          await file.writeAsString(sampleCsv);
+
+                                          if (Platform.isWindows) {
+                                            try {
+                                              await Process.run('cmd', ['/c', 'start', '', filePath]);
+                                            } catch (_) {}
+                                          } else {
+                                            try {
+                                              final xFile = XFile(filePath, mimeType: 'text/csv');
+                                              await Share.shareXFiles([xFile], text: 'Apna POS Menu CSV Template');
+                                            } catch (_) {}
+                                          }
+
+                                          setModalState(() {
+                                            modalSuccess = 'Sample template saved to:\n$filePath';
+                                            modalError = null;
+                                          });
+                                        } catch (e) {
+                                          setModalState(() {
+                                            modalError = 'Failed to download template: ${e.toString()}';
+                                          });
+                                        }
+                                      },
+                                      icon: const Icon(Icons.download_rounded, size: 18, color: Colors.white),
+                                      label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF10B981),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Step 2: Upload CSV File Section Box
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.upload_file_rounded, color: Color(0xFF051C48), size: 20),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Step 2: Upload Filled CSV File',
+                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    const Text(
+                                      'Select your filled CSV file from your device to import all products automatically into your menu.',
+                                      style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    ElevatedButton.icon(
+                                      onPressed: isProcessing
+                                          ? null
+                                          : () async {
+                                              try {
+                                                setModalState(() {
+                                                  isProcessing = true;
+                                                  modalError = null;
+                                                  modalSuccess = null;
+                                                });
+
+                                                final result = await FilePicker.platform.pickFiles(
+                                                  type: FileType.custom,
+                                                  allowedExtensions: ['csv'],
+                                                );
+
+                                                if (result == null || result.files.isEmpty) {
+                                                  setModalState(() {
+                                                    isProcessing = false;
+                                                  });
+                                                  return;
+                                                }
+
+                                                final file = result.files.single;
+                                                String csvContent = '';
+
+                                                if (file.path != null) {
+                                                  final f = File(file.path!);
+                                                  csvContent = await f.readAsString();
+                                                } else if (file.bytes != null) {
+                                                  csvContent = utf8.decode(file.bytes!);
+                                                }
+
+                                                if (csvContent.trim().isEmpty) {
+                                                  setModalState(() {
+                                                    isProcessing = false;
+                                                    modalError = 'The selected CSV file is empty.';
+                                                  });
+                                                  return;
+                                                }
+
+                                                final lines = const LineSplitter().convert(csvContent);
+                                                if (lines.length <= 1) {
+                                                  setModalState(() {
+                                                    isProcessing = false;
+                                                    modalError = 'CSV file has no data rows besides header.';
+                                                  });
+                                                  return;
+                                                }
+
+                                                // Group items by product name
+                                                final Map<String, Map<String, dynamic>> productMap = {};
+
+                                                for (int i = 1; i < lines.length; i++) {
+                                                  final line = lines[i].trim();
+                                                  if (line.isEmpty) continue;
+
+                                                  final cols = _parseCsvLine(line);
+                                                  if (cols.isEmpty) continue;
+
+                                                  final name = cols.length > 0 ? cols[0].trim() : '';
+                                                  if (name.isEmpty) continue;
+
+                                                  final desc = cols.length > 1 ? cols[1].trim() : '';
+                                                  final foodType = cols.length > 2 ? cols[2].trim() : 'Veg';
+                                                  final price = cols.length > 3 ? (double.tryParse(cols[3].trim()) ?? 0.0) : 0.0;
+                                                  final varName = cols.length > 4 ? cols[4].trim() : '';
+                                                  final varPrice = cols.length > 5 ? (double.tryParse(cols[5].trim()) ?? price) : price;
+                                                  final category = cols.length > 6 ? cols[6].trim() : 'General';
+
+                                                  if (!productMap.containsKey(name)) {
+                                                    productMap[name] = {
+                                                      'name': name,
+                                                      'desc': desc,
+                                                      'foodType': foodType.isEmpty ? 'Veg' : foodType,
+                                                      'price': price,
+                                                      'category': category.isEmpty ? 'General' : category,
+                                                      'variants': <ProductVariant>[],
+                                                    };
+                                                  }
+
+                                                  if (varName.isNotEmpty) {
+                                                    (productMap[name]!['variants'] as List<ProductVariant>).add(
+                                                      ProductVariant(name: varName, price: varPrice),
+                                                    );
+                                                  }
+                                                }
+
+                                                if (productMap.isEmpty) {
+                                                  setModalState(() {
+                                                    isProcessing = false;
+                                                    modalError = 'No valid product rows could be parsed from the CSV.';
+                                                  });
+                                                  return;
+                                                }
+
+                                                int addedCount = 0;
+                                                for (final entry in productMap.values) {
+                                                  final pName = entry['name'] as String;
+                                                  final pCategory = entry['category'] as String;
+                                                  final pPrice = entry['price'] as double;
+                                                  final pDesc = entry['desc'] as String;
+                                                  final pFoodType = entry['foodType'] as String;
+                                                  final pVariants = entry['variants'] as List<ProductVariant>;
+
+                                                  if (!db.categories.contains(pCategory)) {
+                                                    await db.addCategory(pCategory);
+                                                  }
+
+                                                  final newItem = MenuItemModel(
+                                                    id: 'item_${DateTime.now().millisecondsSinceEpoch}_${addedCount++}',
+                                                    name: pName,
+                                                    category: pCategory,
+                                                    price: pPrice,
+                                                    description: pDesc,
+                                                    itemType: pFoodType,
+                                                    variants: pVariants,
+                                                    isAvailable: true,
+                                                  );
+
+                                                  await db.saveMenuItem(newItem);
+                                                }
+
+                                                if (!context.mounted) return;
+                                                Navigator.pop(context);
+                                                setState(() {});
+
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Row(
+                                                      children: [
+                                                        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                                                        const SizedBox(width: 10),
+                                                        Text(
+                                                          'Successfully imported $addedCount products from CSV!',
+                                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    backgroundColor: const Color(0xFF15803D),
+                                                    behavior: SnackBarBehavior.floating,
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                    duration: const Duration(seconds: 4),
+                                                  ),
+                                                );
+                                              } catch (e) {
+                                                setModalState(() {
+                                                  isProcessing = false;
+                                                  modalError = 'Error parsing CSV file: ${e.toString()}';
+                                                });
+                                              }
+                                            },
+                                      icon: isProcessing
+                                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                          : const Icon(Icons.file_upload_rounded, size: 16, color: Colors.white),
+                                      label: Text(
+                                        isProcessing ? 'Importing...' : 'Choose & Upload CSV File',
+                                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: const Color(0xFF051C48),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Close', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  List<String> _parseCsvLine(String line) {
+    final List<String> result = [];
+    final StringBuffer current = StringBuffer();
+    bool inQuotes = false;
+
+    for (int i = 0; i < line.length; i++) {
+      final char = line[i];
+      if (char == '"') {
+        inQuotes = !inQuotes;
+      } else if (char == ',' && !inQuotes) {
+        result.add(current.toString());
+        current.clear();
+      } else {
+        current.write(char);
+      }
+    }
+    result.add(current.toString());
+    return result;
   }
 
   void _showAddCategoryModal() {
@@ -747,6 +1210,29 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     ),
                   ),
                   const SizedBox(width: 6),
+                  // CSV Bulk Import Plus Icon Button
+                  Tooltip(
+                    message: 'Bulk Import Products via CSV',
+                    child: InkWell(
+                      onTap: _showCsvImportModal,
+                      borderRadius: BorderRadius.circular(8),
+                      child: Container(
+                        height: 32,
+                        width: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFCBD5E1)),
+                        ),
+                        child: const Icon(
+                          Icons.add_rounded,
+                          color: Color(0xFF051C48),
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
                   // Smaller Semi-Curved Button
                   SizedBox(
                     height: 32,
@@ -764,7 +1250,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 10),
                         elevation: 1,
                       ),
-                      //icon: const Icon(Icons.add_rounded, size: 15, color: Colors.white),
                       label: Text(
                         _selectedTab == 0 ? 'Add Product' : 'Add Category',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),

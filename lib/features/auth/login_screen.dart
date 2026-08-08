@@ -527,13 +527,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                   otpError = null;
                                 });
 
-                                bool success = (enteredOtp == '1234' || enteredOtp == '0000' || enteredOtp == '9999') &&
+                                bool success = (enteredOtp == generatedOtp || enteredOtp == '1234' || enteredOtp == '0000' || enteredOtp == '9999') &&
                                     (await db.loginUser(rawPhone, '1234') ||
                                      await db.loginUser(displayPhone, '1234') ||
                                      await db.registerUser(
                                        name: 'User (${rawPhone.length > 4 ? rawPhone.substring(rawPhone.length - 4) : rawPhone})',
                                        email: 'user_$rawPhone@apnapos.com',
-                                       password: 'pass_$rawPhone',
+                                       password: '1234',
                                        pin: '1234',
                                        phone: rawPhone,
                                      ));
@@ -1534,6 +1534,18 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                             ),
+                            const SizedBox(height: 20),
+                            const Center(
+                              child: Text(
+                                'Powered by Sooftcode',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF94A3B8),
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -1547,6 +1559,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+  
 
   // Helper Widget for Input Field Cards (Semi-Circle Pill Shape)
   Widget _buildInputCard({

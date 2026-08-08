@@ -690,6 +690,18 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
             ],
           ),
         ),
+        const SizedBox(height: 20),
+        const Center(
+          child: Text(
+            'Powered by Sooftcode',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF94A3B8),
+              letterSpacing: 0.3,
+            ),
+          ),
+        ),
       ],
     );
   }

@@ -433,34 +433,41 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Error Banner
-                                if (_errorMessage != null) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(12),
-                                      border: Border.all(color: const Color(0xFFFCA5A5)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 16),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            _errorMessage!,
-                                            style: const TextStyle(
-                                              color: Color(0xFFB91C1C),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
+                                 // Error Banner
+                                 if (_errorMessage != null) ...[
+                                   Container(
+                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                     decoration: BoxDecoration(
+                                       color: const Color(0xFFFEE2E2),
+                                       borderRadius: BorderRadius.circular(12),
+                                       border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                                       boxShadow: const [BoxShadow(color: Color(0x1AEF4444), blurRadius: 6, offset: Offset(0, 2))],
+                                     ),
+                                     child: Row(
+                                       children: [
+                                         const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                                         const SizedBox(width: 10),
+                                         Expanded(
+                                           child: Text(
+                                             _errorMessage!,
+                                             style: const TextStyle(
+                                               color: Color(0xFF991B1B),
+                                               fontSize: 13,
+                                               fontWeight: FontWeight.w800,
+                                             ),
+                                           ),
+                                         ),
+                                         IconButton(
+                                           icon: const Icon(Icons.close_rounded, color: Color(0xFF991B1B), size: 18),
+                                           onPressed: () => setState(() => _errorMessage = null),
+                                           constraints: const BoxConstraints(),
+                                           padding: EdgeInsets.zero,
+                                         ),
+                                       ],
+                                     ),
+                                   ),
+                                   const SizedBox(height: 14),
+                                 ],
 
                                  // Screen Header Title
                                  Row(
@@ -486,10 +493,10 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                              letterSpacing: -0.3,
                                            ),
                                          ),
-                                         Text(
-                                           'Configure services, GST rules, billing type & dining tables',
-                                           style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                         ),
+                                        //  Text(
+                                        //    'Configure services, GST rules, billing type & dining tables',
+                                        //    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                        //  ),
                                        ],
                                      ),
                                    ],
@@ -498,493 +505,523 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                  const Divider(color: Color(0xFFE2E8F0)),
                                  const SizedBox(height: 14),
 
-                                // SECTION 1: Select Your Services (Multi Select) - ONLY Dine In, Takeaway & Delivery
-                                const Text(
-                                  'Select Your Services (Multi Select)',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                    letterSpacing: -0.2,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Choose order channels available in your restaurant',
-                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                ),
-                                const SizedBox(height: 10),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildServiceChip(
-                                        title: 'Dine In',
-                                        icon: Icons.restaurant_rounded,
-                                        isSelected: _selectedServices.contains('Dine In'),
-                                        onTap: () {
-                                          setState(() {
-                                            if (_selectedServices.contains('Dine In')) {
-                                              if (_selectedServices.length > 1) {
-                                                _selectedServices.remove('Dine In');
-                                              }
-                                            } else {
-                                              _selectedServices.add('Dine In');
-                                            }
-                                          });
-                                        },
-                                      ),
+                                  // SECTION 1: Select Your Services (Multi Select)
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      boxShadow: const [
+                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _buildServiceChip(
-                                        title: 'Takeaway',
-                                        icon: Icons.takeout_dining_rounded,
-                                        isSelected: _selectedServices.contains('Takeaway'),
-                                        onTap: () {
-                                          setState(() {
-                                            if (_selectedServices.contains('Takeaway')) {
-                                              if (_selectedServices.length > 1) {
-                                                _selectedServices.remove('Takeaway');
-                                              }
-                                            } else {
-                                              _selectedServices.add('Takeaway');
-                                            }
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _buildServiceChip(
-                                        title: 'Delivery',
-                                        icon: Icons.two_wheeler_rounded,
-                                        isSelected: _selectedServices.contains('Delivery'),
-                                        onTap: () {
-                                          setState(() {
-                                            if (_selectedServices.contains('Delivery')) {
-                                              if (_selectedServices.length > 1) {
-                                                _selectedServices.remove('Delivery');
-                                              }
-                                            } else {
-                                              _selectedServices.add('Delivery');
-                                            }
-                                          });
-                                        },
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 18),
-                                const Divider(color: Color(0xFFE2E8F0), thickness: 1),
-                                const SizedBox(height: 16),
-
-                                // SECTION 2: Billing Type & GST Setup (Required ✅)
-                                const Text(
-                                  'Billing Type & GST Configuration',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                // Billing Type Toggle Chips (GST vs Non-GST)
-                                Container(
-                                  padding: const EdgeInsets.all(3),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(14),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: InkWell(
-                                          onTap: () => setState(() => _billingType = 'GST'),
-                                          borderRadius: BorderRadius.circular(11),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
-                                            decoration: BoxDecoration(
-                                              color: _billingType == 'GST' ? const Color(0xFF00C2FF) : Colors.transparent,
-                                              borderRadius: BorderRadius.circular(11),
-                                              boxShadow: _billingType == 'GST'
-                                                  ? [
-                                                      BoxShadow(
-                                                        color: const Color(0xFF00C2FF).withOpacity(0.3),
-                                                        blurRadius: 6,
-                                                        offset: const Offset(0, 2),
-                                                      )
-                                                    ]
-                                                  : [],
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  _billingType == 'GST' ? Icons.check_circle_rounded : Icons.receipt_long_rounded,
-                                                  size: 16,
-                                                  color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
-                                                ),
-                                                const SizedBox(width: 5),
-                                                Text(
-                                                  _billingType == 'GST' ? 'GST Billing ✅' : 'GST Billing',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      Expanded(
-                                        child: InkWell(
-                                          onTap: () => setState(() => _billingType = 'Non-GST'),
-                                          borderRadius: BorderRadius.circular(11),
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(vertical: 10),
-                                            decoration: BoxDecoration(
-                                              color: _billingType == 'Non-GST' ? const Color(0xFF0F172A) : Colors.transparent,
-                                              borderRadius: BorderRadius.circular(11),
-                                              boxShadow: _billingType == 'Non-GST'
-                                                  ? [
-                                                      BoxShadow(
-                                                        color: const Color(0xFF0F172A).withOpacity(0.3),
-                                                        blurRadius: 6,
-                                                        offset: const Offset(0, 2),
-                                                      )
-                                                    ]
-                                                  : [],
-                                            ),
-                                            child: Row(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              children: [
-                                                Icon(
-                                                  _billingType == 'Non-GST' ? Icons.check_circle_rounded : Icons.description_outlined,
-                                                  size: 16,
-                                                  color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
-                                                ),
-                                                const SizedBox(width: 5),
-                                                Text(
-                                                  _billingType == 'Non-GST' ? 'Non-GST Billing ✅' : 'Non-GST Billing',
-                                                  style: TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                if (_billingType == 'GST') ...[
-                                  const SizedBox(height: 14),
-                                  // GST Number Field (High Contrast Crisp Border)
-                                  const Text(
-                                    'GSTIN Number *',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  TextField(
-                                    controller: _gstNumberController,
-                                    textCapitalization: TextCapitalization.characters,
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 1),
-                                    decoration: InputDecoration(
-                                      hintText: 'e.g. 07AAAAA0000A1Z5',
-                                      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
-                                      prefixIcon: const Icon(Icons.verified_user_rounded, color: Color(0xFF00C2FF)),
-                                      filled: true,
-                                      fillColor: Colors.white,
-                                      border: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                        borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                        borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(14),
-                                        borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 2.0),
-                                      ),
-                                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 14),
-                                  // Horizontal Sliding GST Tax Percentage Options + Custom Option
-                                  const Text(
-                                    'GST Tax Percentage *',
-                                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
-                                  ),
-                                  const SizedBox(height: 8),
-
-                                  SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    physics: const BouncingScrollPhysics(),
-                                    child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        ..._standardGstOptions.map((rate) {
-                                          final isSelected = !_isCustomGstSelected && _gstPercentage == rate;
-                                          return Padding(
-                                            padding: const EdgeInsets.only(right: 8),
-                                            child: ChoiceChip(
-                                              avatar: isSelected
-                                                  ? const Icon(
-                                                      Icons.check_circle_rounded,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    )
-                                                  : null,
-                                              label: Text('${rate.toInt()}% GST'),
-                                              selected: isSelected,
-                                              selectedColor: const Color(0xFF10B981),
-                                              backgroundColor: const Color(0xFFF1F5F9),
-                                              side: BorderSide(
-                                                color: isSelected ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
-                                                width: 1.2,
-                                              ),
-                                              labelStyle: TextStyle(
-                                                color: isSelected ? Colors.white : const Color(0xFF334155),
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 12.5,
-                                              ),
-                                              onSelected: (_) {
-                                                setState(() {
-                                                  _gstPercentage = rate;
-                                                  _isCustomGstSelected = false;
-                                                });
-                                              },
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
+                                              child: const Icon(Icons.room_service_rounded, color: Colors.white, size: 16),
                                             ),
-                                          );
-                                        }),
-
-                                        // Custom GST Percentage Chip Option
-                                        ChoiceChip(
-                                          avatar: _isCustomGstSelected
-                                              ? const Icon(
-                                                  Icons.check_circle_rounded,
-                                                  color: Colors.white,
-                                                  size: 16,
-                                                )
-                                              : const Icon(Icons.edit_note_rounded, size: 16),
-                                          label: Text(
-                                            _isCustomGstSelected
-                                                ? 'Custom (${_gstPercentage.toStringAsFixed(_gstPercentage.truncateToDouble() == _gstPercentage ? 0 : 1)}%)'
-                                                : 'Custom',
-                                          ),
-                                          selected: _isCustomGstSelected,
-                                          selectedColor: const Color(0xFF00C2FF),
-                                          backgroundColor: const Color(0xFFF1F5F9),
-                                          side: BorderSide(
-                                            color: _isCustomGstSelected ? const Color(0xFF00C2FF) : const Color(0xFFCBD5E1),
-                                            width: 1.2,
-                                          ),
-                                          labelStyle: TextStyle(
-                                            color: _isCustomGstSelected ? Colors.white : const Color(0xFF334155),
-                                            fontWeight: FontWeight.w700,
-                                            fontSize: 12.5,
-                                          ),
-                                          onSelected: (_) => _showCustomGstDialog(),
+                                            const SizedBox(width: 8),
+                                            const Text(
+                                              'Select Your Services (Multi Select)',
+                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Choose order channels available in your restaurant',
+                                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _buildServiceChip(
+                                                title: 'Dine In',
+                                                icon: Icons.restaurant_rounded,
+                                                isSelected: _selectedServices.contains('Dine In'),
+                                                onTap: () {
+                                                  setState(() {
+                                                    if (_selectedServices.contains('Dine In')) {
+                                                      if (_selectedServices.length > 1) {
+                                                        _selectedServices.remove('Dine In');
+                                                      }
+                                                    } else {
+                                                      _selectedServices.add('Dine In');
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildServiceChip(
+                                                title: 'Takeaway',
+                                                icon: Icons.takeout_dining_rounded,
+                                                isSelected: _selectedServices.contains('Takeaway'),
+                                                onTap: () {
+                                                  setState(() {
+                                                    if (_selectedServices.contains('Takeaway')) {
+                                                      if (_selectedServices.length > 1) {
+                                                        _selectedServices.remove('Takeaway');
+                                                      }
+                                                    } else {
+                                                      _selectedServices.add('Takeaway');
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildServiceChip(
+                                                title: 'Delivery',
+                                                icon: Icons.two_wheeler_rounded,
+                                                isSelected: _selectedServices.contains('Delivery'),
+                                                onTap: () {
+                                                  setState(() {
+                                                    if (_selectedServices.contains('Delivery')) {
+                                                      if (_selectedServices.length > 1) {
+                                                        _selectedServices.remove('Delivery');
+                                                      }
+                                                    } else {
+                                                      _selectedServices.add('Delivery');
+                                                    }
+                                                  });
+                                                },
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ],
                                     ),
                                   ),
-                                ],
 
-                                const SizedBox(height: 18),
-                                const Divider(color: Color(0xFFE2E8F0), thickness: 1),
-                                const SizedBox(height: 16),
+                                  const SizedBox(height: 14),
 
-                                // SECTION 3: Restaurant Type (Veg / Non-Veg / Both) (Required ✅)
-                                const Text(
-                                  'Restaurant Type (Dietary)',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: _buildTypeOptionCard(
-                                        title: 'Pure Veg',
-                                        emoji: '🌱',
-                                        color: const Color(0xFF10B981),
-                                        isSelected: _restaurantType == 'Veg',
-                                        onTap: () => setState(() => _restaurantType = 'Veg'),
-                                      ),
+                                  // SECTION 2: Billing Type & GST Setup
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      boxShadow: const [
+                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+                                      ],
                                     ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _buildTypeOptionCard(
-                                        title: 'Non-Veg',
-                                        emoji: '🍗',
-                                        color: const Color(0xFFEF4444),
-                                        isSelected: _restaurantType == 'Non-Veg',
-                                        onTap: () => setState(() => _restaurantType = 'Non-Veg'),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Expanded(
-                                      child: _buildTypeOptionCard(
-                                        title: 'Both',
-                                        emoji: '🥗',
-                                        color: const Color(0xFF0052FF),
-                                        isSelected: _restaurantType == 'Both',
-                                        onTap: () => setState(() => _restaurantType = 'Both'),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-
-                                // SECTION 3.5: Payment Methods Configuration (Merchant UPI VPA ID)
-                                const SizedBox(height: 18),
-                                const Divider(color: Color(0xFFE2E8F0), thickness: 1),
-                                const SizedBox(height: 16),
-
-                                const Text(
-                                  'Payment Methods Configuration',
-                                  style: TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                const Text(
-                                  'Add your Merchant UPI VPA ID to receive exact-amount customer payments directly into your bank account.',
-                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                ),
-                                const SizedBox(height: 10),
-
-                                TextField(
-                                  controller: _upiIdController,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                                  decoration: InputDecoration(
-                                    labelText: 'Merchant UPI VPA ID (to Receive Money)',
-                                    labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13, fontWeight: FontWeight.bold),
-                                    hintText: 'e.g. merchant@okicici, 9876543210@paytm',
-                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                                    prefixIcon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF00C2FF)),
-                                    filled: true,
-                                    fillColor: const Color(0xFFF1F5F9),
-                                    isDense: true,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                      borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 1.5),
-                                    ),
-                                  ),
-                                ),
-
-                                // SECTION 4: Number of Tables (If Dine-In Selected)
-                                if (_selectedServices.contains('Dine In')) ...[
-                                  const SizedBox(height: 18),
-                                  const Divider(color: Color(0xFFE2E8F0), thickness: 1),
-                                  const SizedBox(height: 16),
-
-                                  const Text(
-                                    'Number of Tables (Dine-In Layout)',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w800,
-                                      color: Color(0xFF0F172A),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-
-                                  Row(
-                                    children: [
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFF1F5F9),
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(color: const Color(0xFFCBD5E1)),
-                                        ),
-                                        child: Row(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
                                           children: [
-                                            IconButton(
-                                              onPressed: () {
-                                                if (_tableCount > 1) {
-                                                  setState(() {
-                                                    _tableCount--;
-                                                    _tableCountController.text = '$_tableCount';
-                                                  });
-                                                }
-                                              },
-                                              icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF0F172A)),
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
+                                              child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 16),
                                             ),
-                                            SizedBox(
-                                              width: 50,
-                                              child: TextField(
-                                                controller: _tableCountController,
-                                                keyboardType: TextInputType.number,
-                                                textAlign: TextAlign.center,
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w800,
-                                                  color: Color(0xFF0F172A),
-                                                ),
-                                                decoration: const InputDecoration(
-                                                  border: InputBorder.none,
-                                                  isDense: true,
-                                                  contentPadding: EdgeInsets.zero,
-                                                ),
-                                                onChanged: (val) {
-                                                  final num = int.tryParse(val);
-                                                  if (num != null && num > 0) {
-                                                    setState(() => _tableCount = num);
-                                                  }
-                                                },
-                                              ),
-                                            ),
-                                            IconButton(
-                                              onPressed: () {
-                                                setState(() {
-                                                  _tableCount++;
-                                                  _tableCountController.text = '$_tableCount';
-                                                });
-                                              },
-                                              icon: const Icon(Icons.add_circle_outline, color: Color(0xFF00C2FF)),
+                                            const SizedBox(width: 8),
+                                            const Text(
+                                              'Billing Type & GST Configuration',
+                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                      const SizedBox(width: 14),
-                                      Expanded(
-                                        child: Text(
-                                          '$_tableCount Dining Tables Configured',
-                                          style: const TextStyle(
-                                            fontSize: 13.5,
-                                            fontWeight: FontWeight.w800,
-                                            color: Color(0xFF0F172A),
+                                        const SizedBox(height: 12),
+                                        Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(14),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: InkWell(
+                                                  onTap: () => setState(() => _billingType = 'GST'),
+                                                  borderRadius: BorderRadius.circular(11),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                                    decoration: BoxDecoration(
+                                                      color: _billingType == 'GST' ? const Color(0xFF00C2FF) : Colors.transparent,
+                                                      borderRadius: BorderRadius.circular(11),
+                                                      boxShadow: _billingType == 'GST'
+                                                          ? [
+                                                              BoxShadow(
+                                                                color: const Color(0xFF00C2FF).withOpacity(0.3),
+                                                                blurRadius: 6,
+                                                                offset: const Offset(0, 2),
+                                                              )
+                                                            ]
+                                                          : [],
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: [
+                                                        Icon(
+                                                          _billingType == 'GST' ? Icons.check_circle_rounded : Icons.receipt_long_rounded,
+                                                          size: 16,
+                                                          color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
+                                                        ),
+                                                        const SizedBox(width: 5),
+                                                        Text(
+                                                          _billingType == 'GST' ? 'GST Billing ✅' : 'GST Billing',
+                                                          style: TextStyle(
+                                                            fontSize: 13,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              Expanded(
+                                                child: InkWell(
+                                                  onTap: () => setState(() => _billingType = 'Non-GST'),
+                                                  borderRadius: BorderRadius.circular(11),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(vertical: 10),
+                                                    decoration: BoxDecoration(
+                                                      color: _billingType == 'Non-GST' ? const Color(0xFF0F172A) : Colors.transparent,
+                                                      borderRadius: BorderRadius.circular(11),
+                                                      boxShadow: _billingType == 'Non-GST'
+                                                          ? [
+                                                              BoxShadow(
+                                                                color: const Color(0xFF0F172A).withOpacity(0.3),
+                                                                blurRadius: 6,
+                                                                offset: const Offset(0, 2),
+                                                              )
+                                                            ]
+                                                          : [],
+                                                    ),
+                                                    child: Row(
+                                                      mainAxisAlignment: MainAxisAlignment.center,
+                                                      children: [
+                                                        Icon(
+                                                          _billingType == 'Non-GST' ? Icons.check_circle_rounded : Icons.description_outlined,
+                                                          size: 16,
+                                                          color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
+                                                        ),
+                                                        const SizedBox(width: 5),
+                                                        Text(
+                                                          _billingType == 'Non-GST' ? 'Non-GST Billing ✅' : 'Non-GST Billing',
+                                                          style: TextStyle(
+                                                            fontSize: 13,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        if (_billingType == 'GST') ...[
+                                          const SizedBox(height: 14),
+                                          const Text(
+                                            'GSTIN Number *',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          TextField(
+                                            controller: _gstNumberController,
+                                            textCapitalization: TextCapitalization.characters,
+                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 1),
+                                            decoration: InputDecoration(
+                                              hintText: 'e.g. 07AAAAA0000A1Z5',
+                                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                                              prefixIcon: const Icon(Icons.verified_user_rounded, color: Color(0xFF00C2FF)),
+                                              filled: true,
+                                              fillColor: Colors.white,
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(14),
+                                                borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(14),
+                                                borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(14),
+                                                borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 2.0),
+                                              ),
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          const Text(
+                                            'GST Tax Percentage *',
+                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            physics: const BouncingScrollPhysics(),
+                                            child: Row(
+                                              children: [
+                                                ..._standardGstOptions.map((rate) {
+                                                  final isSelected = !_isCustomGstSelected && _gstPercentage == rate;
+                                                  return Padding(
+                                                    padding: const EdgeInsets.only(right: 8),
+                                                    child: ChoiceChip(
+                                                      avatar: isSelected ? const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16) : null,
+                                                      label: Text('${rate.toInt()}% GST'),
+                                                      selected: isSelected,
+                                                      selectedColor: const Color(0xFF10B981),
+                                                      backgroundColor: const Color(0xFFF1F5F9),
+                                                      labelStyle: TextStyle(
+                                                        color: isSelected ? Colors.white : const Color(0xFF334155),
+                                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                                      ),
+                                                      onSelected: (selected) {
+                                                        if (selected) {
+                                                          setState(() {
+                                                            _isCustomGstSelected = false;
+                                                            _gstPercentage = rate;
+                                                          });
+                                                        }
+                                                      },
+                                                    ),
+                                                  );
+                                                }),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
                                   ),
-                                ],
+
+                                  const SizedBox(height: 14),
+
+                                  // SECTION 3: Dietary & Restaurant Type
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      boxShadow: const [
+                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
+                                              child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 16),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Text(
+                                              'Restaurant Type (Dietary)',
+                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: _buildTypeOptionCard(
+                                                title: 'Pure Veg',
+                                                emoji: '🌱',
+                                                color: const Color(0xFF10B981),
+                                                isSelected: _restaurantType == 'Veg',
+                                                onTap: () => setState(() => _restaurantType = 'Veg'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildTypeOptionCard(
+                                                title: 'Non-Veg',
+                                                emoji: '🍗',
+                                                color: const Color(0xFFEF4444),
+                                                isSelected: _restaurantType == 'Non-Veg',
+                                                onTap: () => setState(() => _restaurantType = 'Non-Veg'),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Expanded(
+                                              child: _buildTypeOptionCard(
+                                                title: 'Both',
+                                                emoji: '🥗',
+                                                color: const Color(0xFF0052FF),
+                                                isSelected: _restaurantType == 'Both',
+                                                onTap: () => setState(() => _restaurantType = 'Both'),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  const SizedBox(height: 14),
+
+                                  // SECTION 4: Payment Methods Configuration
+                                  Container(
+                                    padding: const EdgeInsets.all(16),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      boxShadow: const [
+                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+                                      ],
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
+                                              child: const Icon(Icons.payment_rounded, color: Colors.white, size: 16),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            const Text(
+                                              'Payment Methods Configuration',
+                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        const Text(
+                                          'Add your Merchant UPI VPA ID to receive instant customer payments',
+                                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        TextField(
+                                          controller: _upiIdController,
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                          decoration: InputDecoration(
+                                            labelText: 'Merchant UPI VPA ID',
+                                            labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.bold),
+                                            hintText: 'e.g. merchant@okicici, 9876543210@paytm',
+                                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                                            prefixIcon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF00C2FF)),
+                                            filled: true,
+                                            fillColor: const Color(0xFFF1F5F9),
+                                            isDense: true,
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 1.5)),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+
+                                  // SECTION 5: Tables Configuration (If Dine-In)
+                                  if (_selectedServices.contains('Dine In')) ...[
+                                    const SizedBox(height: 14),
+                                    Container(
+                                      padding: const EdgeInsets.all(16),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        boxShadow: const [
+                                          BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Row(
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(6),
+                                                decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
+                                                child: const Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 16),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              const Text(
+                                                'Number of Tables (Dine-In Layout)',
+                                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                              ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 12),
+                                          Row(
+                                            children: [
+                                              Container(
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFF1F5F9),
+                                                  borderRadius: BorderRadius.circular(14),
+                                                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                                                ),
+                                                child: Row(
+                                                  children: [
+                                                    IconButton(
+                                                      onPressed: () {
+                                                        if (_tableCount > 1) {
+                                                          setState(() {
+                                                            _tableCount--;
+                                                            _tableCountController.text = '$_tableCount';
+                                                          });
+                                                        }
+                                                      },
+                                                      icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF0F172A)),
+                                                    ),
+                                                    SizedBox(
+                                                      width: 50,
+                                                      child: TextField(
+                                                        controller: _tableCountController,
+                                                        keyboardType: TextInputType.number,
+                                                        textAlign: TextAlign.center,
+                                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                                        decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
+                                                        onChanged: (val) {
+                                                          final num = int.tryParse(val);
+                                                          if (num != null && num > 0) {
+                                                            setState(() => _tableCount = num);
+                                                          }
+                                                        },
+                                                      ),
+                                                    ),
+                                                    IconButton(
+                                                      onPressed: () {
+                                                        setState(() {
+                                                          _tableCount++;
+                                                          _tableCountController.text = '$_tableCount';
+                                                        });
+                                                      },
+                                                      icon: const Icon(Icons.add_circle_outline, color: Color(0xFF0F172A)),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                              const SizedBox(width: 14),
+                                              Expanded(
+                                                child: Text(
+                                                  '$_tableCount Dining Tables Configured',
+                                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
                               ],
                             ),
                           ),

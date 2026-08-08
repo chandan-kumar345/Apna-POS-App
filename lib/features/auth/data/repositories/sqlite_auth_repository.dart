@@ -22,30 +22,41 @@ class SqliteAuthRepository implements IAuthRepository {
       if (user.fullName.trim().isEmpty) {
         throw Exception('Full Name is required');
       }
-      if (user.email.trim().isEmpty || !user.email.contains('@')) {
-        throw Exception('A valid email address is required');
+      if (user.email.trim().isEmpty && user.phoneNumber.trim().isEmpty) {
+        throw Exception('Email address or Phone number is required');
       }
-      if (user.phoneNumber.trim().isEmpty) {
-        throw Exception('Phone number is required');
+      if (user.email.trim().isNotEmpty && !user.email.contains('@')) {
+        throw Exception('A valid email address is required');
       }
       if (user.password.trim().isEmpty) {
         throw Exception('Password is required');
       }
 
       // 2. Check duplicate email or phone number in SQLite
-      final isEmailTaken = await _dbHelper.emailExists(user.email);
-      if (isEmailTaken) {
-        throw Exception('This email address is already registered. Please login.');
+      if (user.email.trim().isNotEmpty) {
+        final isEmailTaken = await _dbHelper.emailExists(user.email);
+        if (isEmailTaken) {
+          throw Exception('This email address is already registered. Please login.');
+        }
       }
 
-      final isPhoneTaken = await _dbHelper.phoneExists(user.phoneNumber);
-      if (isPhoneTaken) {
-        throw Exception('This phone number is already registered. Please login.');
+      if (user.phoneNumber.trim().isNotEmpty) {
+        final isPhoneTaken = await _dbHelper.phoneExists(user.phoneNumber);
+        if (isPhoneTaken) {
+          throw Exception('This phone number is already registered. Please login.');
+        }
       }
 
-      // 3. Insert into SQLite Database
-      final insertedId = await _dbHelper.insertUserEntity(user);
-      final createdUser = user.copyWith(id: insertedId);
+      // 3. Ensure phoneNumber is unique in SQLite even for email-only registrations
+      final finalPhone = user.phoneNumber.trim().isNotEmpty
+          ? user.phoneNumber.trim()
+          : 'no_phone_${DateTime.now().millisecondsSinceEpoch}';
+
+      final userToInsert = user.copyWith(phoneNumber: finalPhone);
+
+      // 4. Insert into SQLite Database
+      final insertedId = await _dbHelper.insertUserEntity(userToInsert);
+      final createdUser = userToInsert.copyWith(id: insertedId);
 
       return createdUser;
     } catch (e) {

@@ -110,6 +110,7 @@ class DatabaseService extends ChangeNotifier {
             role: 'Owner',
             pin: '1234',
             restaurantId: restaurant?.id ?? 'rest_001',
+            profilePhotoPath: userEntity.profileImage,
           );
         }
       }
@@ -278,6 +279,9 @@ class DatabaseService extends ChangeNotifier {
       restaurantId: restaurant?.id ?? 'rest_001',
     );
 
+    // Clear old sample menu items, orders & data so the new user starts completely clean
+    await clearUserDataForNewAccount();
+
     notifyListeners();
     return true;
   }
@@ -314,7 +318,15 @@ class DatabaseService extends ChangeNotifier {
       communicationPreferences: communicationPreferences,
     );
 
+    // Persist to SharedPreferences session state
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+
+    // Persist profile image to SQLite users table
+    if (currentUser?.email != null) {
+      final dbHelper = UserDatabaseHelper();
+      await dbHelper.updateUserProfileImage(currentUser!.email, profilePhotoPath);
+    }
+
     notifyListeners();
     return true;
   }
@@ -380,6 +392,7 @@ class DatabaseService extends ChangeNotifier {
     final cleanEmail = email.trim().toLowerCase();
     UserModel? matched = registeredUsers.where((u) => u.email.trim().toLowerCase() == cleanEmail).firstOrNull;
 
+    final isNewAccount = (matched == null);
     if (matched == null) {
       matched = UserModel(
         id: 'usr_g_${DateTime.now().millisecondsSinceEpoch}',
@@ -396,8 +409,46 @@ class DatabaseService extends ChangeNotifier {
 
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    
+    if (isNewAccount) {
+      await clearUserDataForNewAccount();
+    }
+
     notifyListeners();
     return true;
+  }
+
+  /// Clears menu items, orders, tables, and inventory data when a brand new user account is created.
+  Future<void> clearUserDataForNewAccount() async {
+    menuItems.clear();
+    categories.clear();
+    orders.clear();
+    inventoryItems.clear();
+    _holdOrders.clear();
+    _liveCartTotals.clear();
+    _liveTableCarts.clear();
+
+    await _prefs?.remove('apna_pos_menu');
+    await _prefs?.remove('apna_pos_categories');
+    await _prefs?.remove('apna_pos_orders');
+    await _prefs?.remove('apna_pos_inventory');
+
+    restaurant = RestaurantModel(
+      id: 'rest_${DateTime.now().millisecondsSinceEpoch}',
+      name: currentUser?.companyName ?? currentUser?.name ?? 'My Restaurant',
+      tagline: 'Authentic Flavors & Swift Service',
+      phone: currentUser?.phone ?? '',
+      address: '',
+      cuisineType: 'General',
+      currencySymbol: '₹',
+      taxRate: 5.0,
+      tableCount: 12,
+      isOnboarded: false,
+    );
+    await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    _seedCleanTables(12);
+
+    notifyListeners();
   }
 
   Future<bool> loginWithPin(String pin) async {

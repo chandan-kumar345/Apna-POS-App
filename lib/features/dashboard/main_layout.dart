@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../core/widgets/glass_widgets.dart';
@@ -350,6 +351,36 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildProfileAvatarImage(double size) {
+    final user = db.currentUser;
+    final photoPath = user?.profilePhotoPath;
+
+    if (photoPath != null && photoPath.isNotEmpty) {
+      if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
+        return ClipOval(
+          child: Image.file(
+            File(photoPath),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+          ),
+        );
+      } else if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+        return ClipOval(
+          child: Image.network(
+            photoPath,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => Icon(Icons.storefront_rounded, color: const Color(0xFF051C48), size: size * 0.55),
+          ),
+        );
+      }
+    }
+
+    return Icon(Icons.storefront_rounded, color: const Color(0xFF051C48), size: size * 0.55);
+  }
+
   Widget _buildSidebarContent(bool isSmallScreen) {
     final rest = db.restaurant;
     final user = db.currentUser;
@@ -379,14 +410,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   shape: BoxShape.circle,
                   border: Border.all(color: const Color(0xFF00C2FF), width: 2),
                 ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: Image.asset(
-                    'assets/images/restaurant_icon.png',
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const Icon(Icons.storefront_rounded, color: Color(0xFF0052FF), size: 24),
-                  ),
-                ),
+                child: _buildProfileAvatarImage(40),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -544,17 +568,14 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                       BoxShadow(color: Colors.black38, blurRadius: 6),
                                     ],
                                   ),
-                                  child: CircleAvatar(
-                                    radius: 17,
-                                    backgroundColor: Colors.white,
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(17),
-                                      child: Image.asset(
-                                        'assets/images/restaurant_icon.png',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (_, __, ___) => const Icon(Icons.storefront_rounded, color: Color(0xFF051C48), size: 20),
-                                      ),
+                                  child: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
                                     ),
+                                    child: _buildProfileAvatarImage(34),
                                   ),
                                 ),
                                 const SizedBox(width: 10),

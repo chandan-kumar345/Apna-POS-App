@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
-import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/sound_service.dart';
@@ -48,179 +46,490 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   void _showPaymentSettingsModal() {
+    String? modalError;
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 10,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.payment_rounded, color: GlassTheme.primaryCyan, size: 24),
-                      SizedBox(width: 10),
-                      Text(
-                        'Payment Setting',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF051C48),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.payment_rounded, color: Colors.white, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Payment Setting',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Configure your Merchant UPI VPA ID to receive instant customer payments',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (modalError != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  modalError!,
+                                  style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+
+                      const Text('Merchant UPI VPA ID *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: _upiIdController,
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                        decoration: InputDecoration(
+                          hintText: 'e.g. merchant@okicici, 9876543210@paytm',
+                          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                          prefixIcon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF051C48)),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5)),
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () async {
+                              final text = _upiIdController.text.trim();
+                              if (text.isEmpty) {
+                                setModalState(() => modalError = 'Please enter a valid Merchant UPI VPA ID');
+                                return;
+                              }
+                              final updated = (db.restaurant ?? RestaurantModel(
+                                id: 'rest_001',
+                                name: '',
+                                tagline: '',
+                                phone: '',
+                                address: '',
+                                cuisineType: 'Indian',
+                              )).copyWith(
+                                upiId: text,
+                              );
+                              await db.updateRestaurantProfile(updated);
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Row(
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Payment setting updated successfully!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF15803D),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF051C48),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Save Payment Setting', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Configure your Merchant UPI ID to receive instant customer payments',
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textMedium),
-                  ),
-                  const SizedBox(height: 20),
-                  GlassTextField(
-                    controller: _upiIdController,
-                    labelText: 'Merchant UPI VPA ID',
-                    hintText: 'e.g. merchant@okicici, 9876543210@paytm',
-                    prefixIcon: Icons.qr_code_2_rounded,
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.white38),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Cancel', style: TextStyle(color: Colors.white)),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final updated = (db.restaurant ?? RestaurantModel(
-                            id: 'rest_001',
-                            name: '',
-                            tagline: '',
-                            phone: '',
-                            address: '',
-                            cuisineType: 'Indian',
-                          )).copyWith(
-                            upiId: _upiIdController.text.trim().isEmpty ? 'apnapos@upi' : _upiIdController.text.trim(),
-                          );
-                          await db.updateRestaurantProfile(updated);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Payment setting updated successfully!'), backgroundColor: Colors.green),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00C2FF),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Save Payment Setting', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
   }
 
   void _showOutletInfoModal() {
+    String? modalError;
     showDialog(
       context: context,
       builder: (context) {
-        return Dialog(
-          backgroundColor: const Color(0xFF0F172A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 480),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 10,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.storefront_rounded, color: GlassTheme.primaryCyan, size: 24),
-                      SizedBox(width: 10),
-                      Text(
-                        'Outlet Info',
-                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF051C48),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Outlet Info',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Update outlet name, tagline, contact phone and receipt header address',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (modalError != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  modalError!,
+                                  style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      
+                      _buildLightInputField(controller: _nameController, label: 'Outlet Name *', hint: 'Apna POS Diner'),
+                      const SizedBox(height: 10),
+                      _buildLightInputField(controller: _taglineController, label: 'Tagline / Slogan', hint: 'Taste the Perfection'),
+                      const SizedBox(height: 10),
+                      _buildLightInputField(controller: _phoneController, label: 'Contact Phone *', hint: '+91 98765 43210'),
+                      const SizedBox(height: 10),
+                      _buildLightInputField(controller: _addressController, label: 'Outlet Address *', hint: 'Connaught Place, New Delhi', maxLines: 2),
+
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () async {
+                              if (_nameController.text.trim().isEmpty) {
+                                setModalState(() => modalError = 'Please enter outlet name');
+                                return;
+                              }
+                              if (_phoneController.text.trim().isEmpty) {
+                                setModalState(() => modalError = 'Please enter contact phone number');
+                                return;
+                              }
+                              if (_addressController.text.trim().isEmpty) {
+                                setModalState(() => modalError = 'Please enter outlet address');
+                                return;
+                              }
+                              final updated = (db.restaurant ?? RestaurantModel(
+                                id: 'rest_001',
+                                name: '',
+                                tagline: '',
+                                phone: '',
+                                address: '',
+                                cuisineType: 'Indian',
+                              )).copyWith(
+                                name: _nameController.text.trim(),
+                                tagline: _taglineController.text.trim(),
+                                phone: _phoneController.text.trim(),
+                                address: _addressController.text.trim(),
+                              );
+                              await db.updateRestaurantProfile(updated);
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Row(
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Outlet info updated successfully!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF15803D),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF051C48),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Save Outlet Info', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6),
-                  const Text(
-                    'Update outlet name, phone number, and address displayed on receipt bills',
-                    style: TextStyle(fontSize: 12, color: GlassTheme.textMedium),
-                  ),
-                  const SizedBox(height: 18),
-                  GlassTextField(controller: _nameController, labelText: 'Outlet Name', hintText: 'Apna POS Diner'),
-                  const SizedBox(height: 12),
-                  GlassTextField(controller: _taglineController, labelText: 'Tagline / Slogan', hintText: 'Taste the Perfection'),
-                  const SizedBox(height: 12),
-                  GlassTextField(controller: _phoneController, labelText: 'Contact Phone', hintText: '+91 98765 43210'),
-                  const SizedBox(height: 12),
-                  GlassTextField(controller: _addressController, labelText: 'Outlet Address', hintText: 'Connaught Place, New Delhi', maxLines: 2),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          side: const BorderSide(color: Colors.white38),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Cancel', style: TextStyle(color: Colors.white)),
-                      ),
-                      const SizedBox(width: 10),
-                      ElevatedButton(
-                        onPressed: () async {
-                          final updated = (db.restaurant ?? RestaurantModel(
-                            id: 'rest_001',
-                            name: '',
-                            tagline: '',
-                            phone: '',
-                            address: '',
-                            cuisineType: 'Indian',
-                          )).copyWith(
-                            name: _nameController.text.trim(),
-                            tagline: _taglineController.text.trim(),
-                            phone: _phoneController.text.trim(),
-                            address: _addressController.text.trim(),
-                          );
-                          await db.updateRestaurantProfile(updated);
-                          if (!context.mounted) return;
-                          Navigator.pop(context);
-                          setState(() {});
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Outlet info updated successfully!'), backgroundColor: Colors.green),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF00C2FF),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                        child: const Text('Save Outlet Info', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                ],
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
+    );
+  }
+
+  void _showTaxSettingsModal() {
+    final rest = db.restaurant;
+    final gstController = TextEditingController(text: rest?.gstNumber ?? '');
+    final taxRateController = TextEditingController(text: rest?.taxRate.toString() ?? '5.0');
+    String? modalError;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              elevation: 10,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF051C48),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.percent_rounded, color: Colors.white, size: 20),
+                              ),
+                              const SizedBox(width: 10),
+                              const Text(
+                                'Tax Settings',
+                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                              ),
+                            ],
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(context),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Configure GSTIN and default tax percentage for billing',
+                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (modalError != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  modalError!,
+                                  style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      
+                      _buildLightInputField(controller: gstController, label: 'GSTIN Number', hint: 'e.g. 07AAAAA0000A1Z5'),
+                      const SizedBox(height: 12),
+                      _buildLightInputField(controller: taxRateController, label: 'GST Tax Percentage (%)', hint: 'e.g. 5.0, 12.0, 18.0', isNumeric: true),
+
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          ElevatedButton(
+                            onPressed: () async {
+                              final rateText = taxRateController.text.trim();
+                              final rate = double.tryParse(rateText);
+                              if (rate == null || rate < 0) {
+                                setModalState(() => modalError = 'Please enter a valid non-negative tax percentage');
+                                return;
+                              }
+                              final updated = (db.restaurant ?? RestaurantModel(
+                                id: 'rest_001',
+                                name: '',
+                                tagline: '',
+                                phone: '',
+                                address: '',
+                                cuisineType: 'Indian',
+                              )).copyWith(
+                                gstNumber: gstController.text.trim(),
+                                taxRate: rate,
+                              );
+                              await db.updateRestaurantProfile(updated);
+                              if (!context.mounted) return;
+                              Navigator.pop(context);
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Row(
+                                    children: [
+                                      Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                      SizedBox(width: 8),
+                                      Text('Tax settings updated successfully!', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                    ],
+                                  ),
+                                  backgroundColor: const Color(0xFF15803D),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF051C48),
+                              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                            ),
+                            child: const Text('Save Tax Settings', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildLightInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    int maxLines = 1,
+    bool isNumeric = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+        const SizedBox(height: 5),
+        TextField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+            filled: true,
+            fillColor: const Color(0xFFF8FAFC),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5)),
+          ),
+        ),
+      ],
     );
   }
 
@@ -370,12 +679,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         subtitle: 'GST Rate (${db.restaurant?.taxRate ?? 5.0}%) & Breakdown',
                         icon: Icons.percent_rounded,
                         accentColor: const Color(0xFF8B5CF6),
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const BusinessSettingsScreen()),
-                          );
-                        },
+                        onTap: _showTaxSettingsModal,
                       ),
                     ],
                   );

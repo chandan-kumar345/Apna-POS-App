@@ -27,9 +27,8 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
     final today = DateTime(now.year, now.month, now.day);
     
     return source.where((o) {
-      if (o.createdAt == null || o.createdAt!.isEmpty) return true;
-      if (o.createdAt == null || o.createdAt!.isEmpty) return true;
-      DateTime? dt = DateTime.tryParse(o.createdAt!);
+      if (o.createdAt.isEmpty) return true;
+      DateTime? dt = DateTime.tryParse(o.createdAt);
       if (dt == null) return period == 'Today';
       
       final orderDate = DateTime(dt.year, dt.month, dt.day);
@@ -53,7 +52,6 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
           return (orderDate.isAtSameMomentAs(start) || orderDate.isAfter(start)) &&
                  (orderDate.isAtSameMomentAs(end) || orderDate.isBefore(end));
         }
-        return true;
         return true;
       }
       return true;
@@ -403,7 +401,7 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
       mainAxisSpacing: 10,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: isMobile ? 1.25 : 1.4,
+      childAspectRatio: isMobile ? 1.35 : 1.5,
       children: cards,
     );
   }
@@ -418,69 +416,76 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
     required Color borderColor,
   }) {
     return _buildGlassCard(
-      color: bgColor.withOpacity(0.75),
-      borderColor: borderColor.withOpacity(0.8),
+      color: bgColor,
+      borderColor: borderColor,
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Glowing Icon Circle
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: accentColor.withOpacity(0.12),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: accentColor.withOpacity(0.3),
-                width: 1,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Glowing Icon Circle
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: accentColor.withOpacity(0.12),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: accentColor.withOpacity(0.3),
+                  width: 1,
+                ),
               ),
+              child: Icon(icon, color: accentColor, size: 18),
             ),
-            child: Icon(icon, color: accentColor, size: 16),
-          ),
-          const SizedBox(height: 4),
+            const SizedBox(height: 4),
 
-          // Amount Number (Main)
-          Text(
-            '₹${amount.toStringAsFixed(0)}',
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF0F172A),
-            ),
-          ),
-          
-          // Title Label
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // Count Pill Badge
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Colors.white,
-                width: 1,
-              ),
-            ),
-            child: Text(
-              '$count Orders',
+            // Amount Number (Main)
+            Text(
+              '₹${amount.toStringAsFixed(0)}',
               style: const TextStyle(
-                fontSize: 10,
+                fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF0F172A),
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-        ],
+            
+            // Title Label
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF64748B),
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 4),
+
+            // Count Pill Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: const Color(0xFFCBD5E1),
+                  width: 1,
+                ),
+              ),
+              child: Text(
+                '$count Orders',
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

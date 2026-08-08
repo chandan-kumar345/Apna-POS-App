@@ -93,14 +93,16 @@ class UserDatabaseHelper {
 
   /// Retrieves user record matching the given phone number.
   Future<UserEntity?> getUserByPhone(String phoneNumber) async {
-    final db = await database;
     final cleanPhone = phoneNumber.trim();
+    if (cleanPhone.isEmpty) return null;
     final digitsOnly = cleanPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    if (digitsOnly.isEmpty) return null;
 
+    final db = await database;
     final List<Map<String, dynamic>> maps = await db.query(
       'users',
-      where: 'phoneNumber = ? OR phoneNumber LIKE ?',
-      whereArgs: [cleanPhone, '%$digitsOnly'],
+      where: 'phoneNumber = ? OR (length(?) >= 4 AND phoneNumber LIKE ?)',
+      whereArgs: [cleanPhone, digitsOnly, '%$digitsOnly'],
       limit: 1,
     );
 
@@ -141,12 +143,14 @@ class UserDatabaseHelper {
 
   /// Checks if an email address already exists in the database.
   Future<bool> emailExists(String email) async {
+    if (email.trim().isEmpty) return false;
     final user = await getUserByEmail(email);
     return user != null;
   }
 
   /// Checks if a phone number already exists in the database.
   Future<bool> phoneExists(String phoneNumber) async {
+    if (phoneNumber.trim().isEmpty) return false;
     final user = await getUserByPhone(phoneNumber);
     return user != null;
   }
@@ -181,6 +185,18 @@ class UserDatabaseHelper {
     return await insertUserEntity(entity);
   }
 
+  /// Updates user profile image path in SQLite database table
+  Future<int> updateUserProfileImage(String email, String? profileImage) async {
+    if (email.trim().isEmpty) return 0;
+    final db = await database;
+    return await db.update(
+      'users',
+      {'profileImage': profileImage},
+      where: 'LOWER(email) = ?',
+      whereArgs: [email.trim().toLowerCase()],
+    );
+  }
+
   /// Compatibility helper method: retrieves all users as UserModel
   Future<List<UserModel>> getAllUsers() async {
     final entities = await getAllUserEntities();
@@ -192,6 +208,7 @@ class UserDatabaseHelper {
       role: 'Owner',
       pin: '1234',
       restaurantId: 'rest_001',
+      profilePhotoPath: e.profileImage,
     )).toList();
   }
 }
