@@ -8,6 +8,10 @@ import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../models/inventory_model.dart';
 import 'user_database_helper.dart';
+import '../../features/auth/domain/entities/user_entity.dart';
+import '../../features/auth/domain/repositories/i_auth_repository.dart';
+import '../../features/auth/data/repositories/sqlite_auth_repository.dart';
+import '../services/session_manager.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -15,6 +19,8 @@ class DatabaseService extends ChangeNotifier {
   DatabaseService._internal();
 
   SharedPreferences? _prefs;
+  final IAuthRepository authRepository = SqliteAuthRepository();
+  final SessionManager sessionManager = SessionManager();
 
   // In-Memory state for instant sync access
   UserModel? currentUser;
@@ -86,10 +92,27 @@ class DatabaseService extends ChangeNotifier {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
 
-    // 1. Load User Session
-    final userJson = _prefs?.getString('apna_pos_user');
-    if (userJson != null) {
-      currentUser = UserModel.fromJson(jsonDecode(userJson));
+    // Initialize SQLite Database automatically on app start
+    await UserDatabaseHelper().database;
+
+    // 1. Load User Session from SessionManager (SharedPreferences session state)
+    final isLoggedIn = await sessionManager.isLoggedIn();
+    if (isLoggedIn) {
+      final activeUserId = await sessionManager.getLoggedInUserId();
+      if (activeUserId != null) {
+        final userEntity = await authRepository.getUserById(activeUserId);
+        if (userEntity != null) {
+          currentUser = UserModel(
+            id: userEntity.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+            name: userEntity.fullName,
+            email: userEntity.email,
+            phone: userEntity.phoneNumber,
+            role: 'Owner',
+            pin: '1234',
+            restaurantId: restaurant?.id ?? 'rest_001',
+          );
+        }
+      }
     }
 
     // 2. Load Restaurant Profile
@@ -226,24 +249,35 @@ class DatabaseService extends ChangeNotifier {
     required String password,
     required String pin,
     String? phone,
+    String? profileImage,
+    String? onboardingDetails,
   }) async {
-    final newId = 'usr_${DateTime.now().millisecondsSinceEpoch}';
-    final newUser = UserModel(
-      id: newId,
-      name: name,
-      email: email,
-      phone: phone,
+    final nowStr = DateTime.now().toIso8601String();
+    final userEntity = UserEntity(
+      fullName: name.trim(),
+      email: email.trim(),
+      phoneNumber: phone?.trim() ?? '',
+      password: password.trim(),
+      profileImage: profileImage,
+      createdAt: nowStr,
+      onboardingDetails: onboardingDetails,
+    );
+
+    final createdUser = await authRepository.registerUser(userEntity);
+    if (createdUser.id != null) {
+      await sessionManager.saveSession(createdUser.id!);
+    }
+
+    currentUser = UserModel(
+      id: createdUser.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      name: createdUser.fullName,
+      email: createdUser.email,
+      phone: createdUser.phoneNumber,
       role: 'Owner',
       pin: pin,
       restaurantId: restaurant?.id ?? 'rest_001',
     );
 
-    registeredUsers.removeWhere((u) => u.email.trim().toLowerCase() == email.trim().toLowerCase());
-    registeredUsers.add(newUser);
-    await _saveRegisteredUsers();
-
-    currentUser = newUser;
-    await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     notifyListeners();
     return true;
   }
@@ -318,61 +352,27 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<bool> loginUser(String identifier, String password) async {
-    final cleanId = identifier.trim().toLowerCase();
-    final cleanPw = password.trim();
-    final digitsOnlyId = cleanId.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // 1. First search SQLite Database
-    final dbHelper = UserDatabaseHelper();
-    final sqliteUsers = await dbHelper.getAllUsers();
-    
-    UserModel? matched = sqliteUsers.where((u) {
-      final uEmail = u.email.trim().toLowerCase();
-      final uPhone = (u.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-
-      bool idMatches = (uEmail == cleanId) ||
-                       (digitsOnlyId.isNotEmpty && uPhone.endsWith(digitsOnlyId)) ||
-                       (uPhone.isNotEmpty && uPhone == digitsOnlyId);
-      return idMatches;
-    }).firstOrNull;
-
-    // 2. Search registeredUsers in memory if not found in SQLite
-    matched ??= registeredUsers.where((u) {
-      final uEmail = u.email.trim().toLowerCase();
-      final uPhone = (u.phone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
-
-      bool idMatches = (uEmail == cleanId) ||
-                       (digitsOnlyId.isNotEmpty && uPhone.endsWith(digitsOnlyId)) ||
-                       (uPhone.isNotEmpty && uPhone == digitsOnlyId);
-      return idMatches;
-    }).firstOrNull;
-
-    // 3. Check pre-seeded test accounts fallback
-    if (matched == null) {
-      if (cleanId == 'admin@apnapos.com' || cleanId == '9876543210' || cleanId == 'owner@apnapos.com' || cleanId == 'admin@restaurant.com' || cleanId == 'staff@apnapos.com') {
-        matched = UserModel(
-          id: 'usr_demo_admin',
-          name: cleanId == 'owner@apnapos.com' ? 'Apna POS Owner' : (cleanId == 'admin@restaurant.com' ? 'Restaurant Manager' : (cleanId == 'staff@apnapos.com' ? 'Staff Account' : 'Demo Admin')),
-          email: cleanId.contains('@') ? cleanId : 'admin@apnapos.com',
-          phone: cleanId.contains('@') ? '9876543210' : cleanId,
+    try {
+      final userEntity = await authRepository.login(identifier, password);
+      if (userEntity != null) {
+        if (userEntity.id != null) {
+          await sessionManager.saveSession(userEntity.id!);
+        }
+        currentUser = UserModel(
+          id: userEntity.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+          name: userEntity.fullName,
+          email: userEntity.email,
+          phone: userEntity.phoneNumber,
           role: 'Owner',
           pin: '1234',
           restaurantId: restaurant?.id ?? 'rest_001',
         );
-        if (!registeredUsers.any((u) => u.email == matched!.email)) {
-          registeredUsers.add(matched);
-          _saveRegisteredUsers();
-        }
+        notifyListeners();
+        return true;
       }
+    } catch (e) {
+      debugPrint('Login exception: $e');
     }
-
-    if (matched != null) {
-      currentUser = matched;
-      await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-      notifyListeners();
-      return true;
-    }
-
     return false;
   }
 
@@ -423,6 +423,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> logout() async {
     currentUser = null;
+    await sessionManager.clearSession();
     await _prefs?.remove('apna_pos_user');
     notifyListeners();
   }

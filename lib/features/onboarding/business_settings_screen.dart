@@ -275,14 +275,14 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
           backgroundColor: const Color(0xFF0F172A),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          content: Row(
+          content: const Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
-              const SizedBox(width: 10),
+              Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business settings saved successfully!',
-                  style: const TextStyle(
+                  'Business settings saved! Launching POS...',
+                  style: TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
                     fontSize: 13.5,
@@ -295,10 +295,12 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         ),
       );
 
-      // Only navigate to Main POS Dashboard if completing initial onboarding setup
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
+      // Launch Main POS Dashboard
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const MainLayout()),
+        (route) => false,
+      );
     } catch (e) {
       setState(() => _errorMessage = 'Error saving settings: $e');
     } finally {
@@ -355,47 +357,55 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Header: Back Button & Highlighted Glass Company Name Badge (Removed when logged in / in sidebar)
-                if (!(db.restaurant?.isOnboarded ?? false) && Navigator.canPop(context))
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                    child: Row(
-                      children: [
-                        InkWell(
-                          onTap: () => Navigator.pop(context),
-                          borderRadius: BorderRadius.circular(20),
-                          child: Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white.withOpacity(0.12),
-                              border: Border.all(
-                                color: Colors.white.withOpacity(0.2),
-                                width: 1,
-                              ),
+                // Top Header: Back Button & Highlighted Glass Company Name Badge
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: () {
+                          if (Navigator.canPop(context)) {
+                            Navigator.pop(context);
+                          } else {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(builder: (_) => const MainLayout()),
+                            );
+                          }
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.12),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.2),
+                              width: 1,
                             ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.arrow_back_ios_new_rounded,
-                                color: Colors.white,
-                                size: 16,
-                              ),
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 16,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: GlassCompanyNameBadge(
-                              name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
-                            ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: GlassCompanyNameBadge(
+                            name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                ),
 
                 // 4. Curved White Container Layout
                 Expanded(
@@ -451,6 +461,42 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                   ),
                                   const SizedBox(height: 12),
                                 ],
+
+                                 // Screen Header Title
+                                 Row(
+                                   children: [
+                                     Container(
+                                       padding: const EdgeInsets.all(8),
+                                       decoration: BoxDecoration(
+                                         color: const Color(0xFF00C2FF).withOpacity(0.15),
+                                         shape: BoxShape.circle,
+                                       ),
+                                       child: const Icon(Icons.shopping_cart_checkout_rounded, color: Color(0xFF00C2FF), size: 22),
+                                     ),
+                                     const SizedBox(width: 10),
+                                     const Column(
+                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                       children: [
+                                         Text(
+                                           'Order Setting',
+                                           style: TextStyle(
+                                             fontSize: 20,
+                                             fontWeight: FontWeight.w900,
+                                             color: Color(0xFF0F172A),
+                                             letterSpacing: -0.3,
+                                           ),
+                                         ),
+                                         Text(
+                                           'Configure services, GST rules, billing type & dining tables',
+                                           style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                         ),
+                                       ],
+                                     ),
+                                   ],
+                                 ),
+                                 const SizedBox(height: 16),
+                                 const Divider(color: Color(0xFFE2E8F0)),
+                                 const SizedBox(height: 14),
 
                                 // SECTION 1: Select Your Services (Multi Select) - ONLY Dine In, Takeaway & Delivery
                                 const Text(
@@ -980,7 +1026,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                       ),
                                     )
                                   : const Text(
-                                      'Save Business Settings',
+                                      'Save & Launch POS',
                                       style: TextStyle(
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700,

@@ -54,6 +54,8 @@ dependencies:
   sqflite_common_ffi: ^2.4.2
   mailer: ^6.1.0
   audioplayers: ^6.0.0
+  print_bluetooth_thermal: ^1.1.1
+  esc_pos_utils_plus: ^2.0.4
 dev_dependencies:
   flutter_test:
     sdk: flutter

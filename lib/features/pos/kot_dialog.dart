@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/models/order_model.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/bluetooth_printer_service.dart';
 
 class KotDialog extends StatelessWidget {
   final OrderModel order;
@@ -50,10 +51,11 @@ class KotDialog extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
             // Title Header: KOT
             const Text(
               'KOT',
@@ -191,13 +193,26 @@ class KotDialog extends StatelessWidget {
                   child: SizedBox(
                     height: 44,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (onPrintKot != null) {
                           onPrintKot!();
                         }
+                        
+                        final printerService = BluetoothPrinterService();
+                        final bool isConnected = await printerService.isConnected();
+                        if (isConnected) {
+                          await printerService.printKOT(order: order, restaurant: db.restaurant);
+                        } else {
+                          final bool reconnected = await printerService.autoConnectSavedPrinter();
+                          if (reconnected) {
+                            await printerService.printKOT(order: order, restaurant: db.restaurant);
+                          }
+                        }
+
+                        if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('KOT Printed & Table updated to Running KOT!'),
+                            content: Text('KOT Printed via Thermal Printer & Table updated!'),
                             backgroundColor: Color(0xFF051C48),
                           ),
                         );
@@ -237,6 +252,7 @@ class KotDialog extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

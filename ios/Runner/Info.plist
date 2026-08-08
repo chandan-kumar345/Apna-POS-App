@@ -70,5 +70,9 @@
 	<string>Apna POS requires location access to autofill your store's business address accurately.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Apna POS requires location access to autofill your store's business address accurately.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Apna POS uses Bluetooth to connect and print customer receipts and kitchen KOT tickets on thermal printers.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Apna POS uses Bluetooth to connect and print customer receipts and kitchen KOT tickets on thermal printers.</string>
 </dict>
 </plist>

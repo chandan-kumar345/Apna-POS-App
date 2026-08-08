@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
+import '../../core/services/bluetooth_printer_service.dart';
 
 class ReceiptDialog extends StatelessWidget {
   final OrderModel order;
@@ -330,14 +331,44 @@ class ReceiptDialog extends StatelessWidget {
                 children: [
                   Expanded(
                     child: ElevatedButton.icon(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Printing Thermal Bill Receipt...'),
-                            backgroundColor: Color(0xFF051C48),
-                            duration: Duration(seconds: 2),
-                          ),
+                      onPressed: () async {
+                        final printerService = BluetoothPrinterService();
+
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Printing Thermal Bill via Bluetooth...'),
+                              backgroundColor: Color(0xFF051C48),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+
+                        final rest = DatabaseService().restaurant;
+                        final success = await printerService.printBill(
+                          order: order,
+                          restaurant: rest,
+                          currency: currency,
                         );
+
+                        if (!context.mounted) return;
+
+                        if (success) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Bill printed successfully!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Could not print bill. Check Bluetooth printer power & connection.'),
+                              backgroundColor: Colors.redAccent,
+                              duration: Duration(seconds: 4),
+                            ),
+                          );
+                        }
                       },
                       icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
                       label: const Text('Print Bill', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),

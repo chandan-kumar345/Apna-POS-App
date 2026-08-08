@@ -365,37 +365,51 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                   return;
                                 }
 
-                                // Register user in database
-                                final nameFromEmail = emailText.contains('@')
-                                    ? emailText.split('@').first
-                                    : emailText;
-                                final nav = Navigator.of(context);
-                                final success = await db.registerUser(
-                                  name: nameFromEmail.isNotEmpty
-                                      ? nameFromEmail
-                                      : 'Restaurant Owner',
-                                  email: emailText,
-                                  password: _passwordController.text.trim(),
-                                  pin: '1234',
-                                );
-
-                                if (!mounted) return;
-
-                                if (success) {
-                                  nav.pop(); // Close OTP Dialog
-                                  nav.pushReplacement(
-                                    SlideRightPageRoute(
-                                      page: CreateProfileScreen(
-                                        initialEmail: emailText,
-                                        initialName: nameFromEmail,
-                                      ),
-                                    ),
+                                // Register user in SQLite database
+                                try {
+                                  final nameFromEmail = emailText.contains('@')
+                                      ? emailText.split('@').first
+                                      : emailText;
+                                  final nav = Navigator.of(context);
+                                  final success = await db.registerUser(
+                                    name: nameFromEmail.isNotEmpty
+                                        ? nameFromEmail
+                                        : 'Restaurant Owner',
+                                    email: emailText,
+                                    password: _passwordController.text.trim(),
+                                    pin: '1234',
                                   );
-                                } else {
+
+                                  if (!mounted) return;
+
+                                  if (success) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Registration successful! Saved to SQLite database.'),
+                                        backgroundColor: Colors.green,
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
+                                    nav.pop(); // Close OTP Dialog
+                                    nav.pushReplacement(
+                                      SlideRightPageRoute(
+                                        page: CreateProfileScreen(
+                                          initialEmail: emailText,
+                                          initialName: nameFromEmail,
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    setDialogState(() {
+                                      isVerifying = false;
+                                      otpError =
+                                          'Registration failed. Email or phone number may already be registered.';
+                                    });
+                                  }
+                                } catch (e) {
                                   setDialogState(() {
                                     isVerifying = false;
-                                    otpError =
-                                        'Registration failed. Email may already be registered.';
+                                    otpError = e.toString().replaceAll('Exception: ', '');
                                   });
                                 }
                               },

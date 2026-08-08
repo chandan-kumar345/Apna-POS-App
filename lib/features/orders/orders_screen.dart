@@ -3,6 +3,8 @@ import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
 import '../pos/receipt_dialog.dart';
+import '../../core/services/bluetooth_printer_service.dart';
+import '../../core/widgets/printer_selection_dialog.dart';
 
 class OrdersScreen extends StatefulWidget {
   const OrdersScreen({super.key});
@@ -379,6 +381,55 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                               ],
                                             ),
                                             const Spacer(),
+                                            // KOT Button
+                                            InkWell(
+                                              onTap: () async {
+                                                final printerService = BluetoothPrinterService();
+                                                final bool isConnected = await printerService.isConnected();
+                                                if (!context.mounted) return;
+
+                                                if (isConnected) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    const SnackBar(
+                                                      content: Text('Printing KOT Ticket...'),
+                                                      backgroundColor: Color(0xFFD97706),
+                                                      duration: Duration(seconds: 2),
+                                                    ),
+                                                  );
+                                                  final rest = DatabaseService().restaurant;
+                                                  final success = await printerService.printKOT(order: order, restaurant: rest);
+                                                  if (context.mounted && !success) {
+                                                    PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                  }
+                                                } else {
+                                                  final bool reconnected = await printerService.autoConnectSavedPrinter();
+                                                  if (reconnected) {
+                                                    final rest = DatabaseService().restaurant;
+                                                    await printerService.printKOT(order: order, restaurant: rest);
+                                                  } else if (context.mounted) {
+                                                    PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                  }
+                                                }
+                                              },
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFD97706).withOpacity(0.08),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  border: Border.all(color: const Color(0xFFD97706).withOpacity(0.4)),
+                                                ),
+                                                child: const Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    Icon(Icons.soup_kitchen_rounded, size: 12, color: Color(0xFFD97706)),
+                                                    SizedBox(width: 3),
+                                                    Text('KOT', style: TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 6),
                                             // Bill Button
                                             InkWell(
                                               onTap: () => showDialog(

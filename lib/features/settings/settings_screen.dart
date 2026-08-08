@@ -4,6 +4,7 @@ import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/sound_service.dart';
+import '../../core/widgets/printer_selection_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -216,10 +217,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
           );
 
+          Widget printerSection = GlassContainer(
+            padding: const EdgeInsets.all(20),
+            borderRadius: 20,
+            blurStrength: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.print_rounded, color: GlassTheme.primaryCyan, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Bluetooth Thermal Printer',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white),
+                        ),
+                      ],
+                    ),
+                    GlassButton(
+                      label: 'Setup Printer',
+                      icon: Icons.bluetooth_searching_rounded,
+                      height: 36,
+                      onPressed: () {
+                        PrinterSelectionDialog.show(context);
+                      },
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Pair and connect your mobile phone to a 58mm or 80mm ESC/POS Bluetooth thermal printer for auto-printing bills.',
+                  style: TextStyle(fontSize: 11.5, color: GlassTheme.textMedium),
+                ),
+              ],
+            ),
+          );
+
           if (isNarrow) {
             return Column(
               children: [
                 configSection,
+                const SizedBox(height: 14),
+                printerSection,
                 const SizedBox(height: 14),
                 dbHealthSection,
               ],
@@ -229,7 +271,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(flex: 3, child: configSection),
+              Expanded(
+                flex: 3,
+                child: Column(
+                  children: [
+                    configSection,
+                    const SizedBox(height: 14),
+                    printerSection,
+                  ],
+                ),
+              ),
               const SizedBox(width: 14),
               Expanded(flex: 2, child: dbHealthSection),
             ],

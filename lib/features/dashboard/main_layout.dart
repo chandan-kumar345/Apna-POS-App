@@ -10,6 +10,7 @@ import '../menu/menu_management_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../reports/reports_screen.dart';
 import '../onboarding/business_settings_screen.dart';
+import '../settings/business_settings_hub_screen.dart';
 import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
 import '../auth/login_screen.dart';
@@ -94,7 +95,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       case 8:
         return _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.');
       case 9:
-        return const BusinessSettingsScreen();
+        return const BusinessSettingsHubScreen();
       default:
         return PosRegisterScreen(
           initialTable: _selectedTableForPos,

@@ -5,6 +5,7 @@ import 'registration_state.dart';
 import '../../domain/entities/user_registration_entity.dart';
 import '../../data/models/registration_request_model.dart';
 import '../../data/datasources/registration_remote_datasource.dart';
+import '../../../../core/database/database_service.dart';
 
 final dioProvider = Provider<Dio>((ref) {
   return Dio(BaseOptions(baseUrl: 'https://api.apnapos.com'));
@@ -45,8 +46,16 @@ class RegistrationNotifier extends StateNotifier<RegistrationState> {
     state = state.copyWith(status: RegistrationStatus.submitting, errorMessage: null);
 
     try {
-      final model = RegistrationRequestModel(entity);
-      await _dataSource.registerFullUser(model);
+      final db = DatabaseService();
+      await db.registerUser(
+        name: entity.fullName,
+        email: entity.email,
+        password: entity.password,
+        pin: '1234',
+        phone: entity.phone,
+        profileImage: entity.profilePhotoPath,
+        onboardingDetails: '${entity.businessName} - ${entity.businessType}',
+      );
 
       state = state.copyWith(
         status: RegistrationStatus.otpVerificationPending,
@@ -55,7 +64,7 @@ class RegistrationNotifier extends StateNotifier<RegistrationState> {
     } catch (e) {
       state = state.copyWith(
         status: RegistrationStatus.error,
-        errorMessage: 'Registration failed: ${e.toString()}',
+        errorMessage: 'Registration failed: ${e.toString().replaceAll("Exception: ", "")}',
       );
     }
   }
