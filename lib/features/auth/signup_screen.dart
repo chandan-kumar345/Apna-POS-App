@@ -385,7 +385,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                   if (success) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text('Registration successful! Saved to SQLite database.'),
+                                        content: Text('Registration successful! Saved to MongoDB database.'),
                                         backgroundColor: Colors.green,
                                         duration: Duration(seconds: 3),
                                       ),

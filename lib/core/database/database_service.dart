@@ -10,7 +10,7 @@ import '../models/inventory_model.dart';
 import 'user_database_helper.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
-import '../../features/auth/data/repositories/sqlite_auth_repository.dart';
+import '../../features/auth/data/repositories/mongo_auth_repository.dart';
 import '../services/session_manager.dart';
 
 class DatabaseService extends ChangeNotifier {
@@ -19,7 +19,7 @@ class DatabaseService extends ChangeNotifier {
   DatabaseService._internal();
 
   SharedPreferences? _prefs;
-  final IAuthRepository authRepository = SqliteAuthRepository();
+  final IAuthRepository authRepository = MongoAuthRepository();
   final SessionManager sessionManager = SessionManager();
 
   // In-Memory state for instant sync access
