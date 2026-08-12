@@ -12,6 +12,7 @@ import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/mongo_auth_repository.dart';
 import '../services/session_manager.dart';
+import '../services/auth_api_service.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -264,22 +265,43 @@ class DatabaseService extends ChangeNotifier {
       onboardingDetails: onboardingDetails,
     );
 
+    // 1. Mandatory registration on central Node Express server / MongoDB Atlas
+    final apiRes = await AuthApiService().register(
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone?.trim(),
+      password: password.trim(),
+      businessName: restaurant?.name ?? 'Apna POS Diner',
+    );
+
+    if (apiRes['success'] == false) {
+      throw Exception(apiRes['message'] ?? 'Failed to register user in MongoDB cloud database.');
+    }
+
+    // 2. Sync to local SQLite database & session cache
     final createdUser = await authRepository.registerUser(userEntity);
     if (createdUser.id != null) {
       await sessionManager.saveSession(createdUser.id!);
     }
 
     currentUser = UserModel(
-      id: createdUser.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
-      name: createdUser.fullName,
-      email: createdUser.email,
-      phone: createdUser.phoneNumber,
+      id: apiRes['user']?['id']?.toString() ?? createdUser.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone?.trim(),
       role: 'Owner',
       pin: pin,
       restaurantId: restaurant?.id ?? 'rest_001',
     );
 
-    // Clear old sample menu items, orders & data so the new user starts completely clean
+    final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == email.trim().toLowerCase());
+    if (existingIdx >= 0) {
+      registeredUsers[existingIdx] = currentUser!;
+    } else {
+      registeredUsers.add(currentUser!);
+    }
+    await _saveRegisteredUsers();
+    await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     await clearUserDataForNewAccount();
 
     notifyListeners();
@@ -364,27 +386,69 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<bool> loginUser(String identifier, String password) async {
-    try {
-      final userEntity = await authRepository.login(identifier, password);
-      if (userEntity != null) {
-        if (userEntity.id != null) {
-          await sessionManager.saveSession(userEntity.id!);
-        }
-        currentUser = UserModel(
-          id: userEntity.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
-          name: userEntity.fullName,
-          email: userEntity.email,
-          phone: userEntity.phoneNumber,
-          role: 'Owner',
-          pin: '1234',
-          restaurantId: restaurant?.id ?? 'rest_001',
-        );
-        notifyListeners();
-        return true;
-      }
-    } catch (e) {
-      debugPrint('Login exception: $e');
+    final cleanId = identifier.trim();
+    final cleanPw = password.trim();
+
+    if (cleanId.isEmpty || cleanPw.isEmpty) {
+      return false;
     }
+
+    // Always authenticate against central Node Express Backend / MongoDB Atlas over Internet
+    final apiRes = await AuthApiService().login(
+      identifier: cleanId,
+      password: cleanPw,
+    );
+
+    if (apiRes['success'] == true && apiRes['user'] != null) {
+      final userData = apiRes['user'];
+      final userId = userData['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+      final userName = userData['name'] ?? 'Owner';
+      final userEmail = userData['email'] ?? cleanId;
+      final userPhone = userData['phone'] ?? cleanId;
+
+      // Cache remote MongoDB user into local SQLite database for offline resilience
+      final userEntity = UserEntity(
+        fullName: userName,
+        email: userEmail,
+        phoneNumber: userPhone,
+        password: cleanPw,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+
+      try {
+        final dbHelper = UserDatabaseHelper();
+        final existsInSqlite = await dbHelper.getUserByEmailOrPhone(cleanId);
+        if (existsInSqlite == null) {
+          await dbHelper.insertUserEntity(userEntity);
+        }
+      } catch (_) {}
+
+      currentUser = UserModel(
+        id: userId,
+        name: userName,
+        email: userEmail,
+        phone: userPhone,
+        role: userData['role'] ?? 'Owner',
+        pin: '1234',
+        restaurantId: restaurant?.id ?? 'rest_001',
+        companyName: userData['businessName'] ?? restaurant?.name ?? 'Apna POS Diner',
+      );
+
+      final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == userEmail.toLowerCase() || u.phone == userPhone);
+      if (existingIdx >= 0) {
+        registeredUsers[existingIdx] = currentUser!;
+      } else {
+        registeredUsers.add(currentUser!);
+      }
+      await _saveRegisteredUsers();
+      await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+
+      notifyListeners();
+      return true;
+    } else if (apiRes['message'] != null) {
+      throw Exception(apiRes['message']);
+    }
+
     return false;
   }
 

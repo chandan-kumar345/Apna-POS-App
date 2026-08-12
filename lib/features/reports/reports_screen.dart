@@ -314,11 +314,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   children: [
                     const Icon(Icons.filter_alt_rounded, color: Color(0xFF051C48), size: 18),
                     const SizedBox(width: 8),
-                    const Text(
-                      'Date Filter:',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                    ),
-                    const SizedBox(width: 10),
+                    // const Text(
+                    //   'Date Filter:',
+                    //   style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                    // ),
+                    //const SizedBox(width: 10),
                     Expanded(
                       child: SingleChildScrollView(
                         scrollDirection: Axis.horizontal,

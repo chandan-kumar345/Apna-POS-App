@@ -7,7 +7,12 @@ import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
 
 class BusinessSettingsScreen extends StatefulWidget {
-  const BusinessSettingsScreen({super.key});
+  final bool isFromOnboarding;
+
+  const BusinessSettingsScreen({
+    super.key,
+    this.isFromOnboarding = true,
+  });
 
   @override
   State<BusinessSettingsScreen> createState() => _BusinessSettingsScreenState();
@@ -267,40 +272,69 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       // Save complete setup to database
       await db.saveRestaurantOnboarding(updated);
 
-      // Show success toast feedback
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF0F172A),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          content: const Row(
-            children: [
-              Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Business settings saved! Launching POS...',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13.5,
+      if (widget.isFromOnboarding) {
+        // Onboarding Flow: Toast feedback & Launch Main POS Dashboard
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF0F172A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Business settings saved! Launching POS...',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
+            duration: const Duration(seconds: 2),
           ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
+        );
 
-      // Launch Main POS Dashboard
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (_) => const MainLayout()),
-        (route) => false,
-      );
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const MainLayout()),
+          (route) => false,
+        );
+      } else {
+        // Business Setting Hub Flow: Toast feedback & Navigate back to Hub
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: const Color(0xFF15803D),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Order settings updated successfully!',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        Navigator.pop(context);
+      }
     } catch (e) {
       setState(() => _errorMessage = 'Error saving settings: $e');
     } finally {
@@ -424,17 +458,21 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                         ),
                       ],
                     ),
-                    child: Column(
-                      children: [
-                        Expanded(
-                          child: SingleChildScrollView(
-                            physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                 // Error Banner
-                                 if (_errorMessage != null) ...[
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 800),
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                     // Error Banner
+                                     if (_errorMessage != null) ...[
                                    Container(
                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                      decoration: BoxDecoration(
@@ -527,9 +565,11 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                               child: const Icon(Icons.room_service_rounded, color: Colors.white, size: 16),
                                             ),
                                             const SizedBox(width: 8),
-                                            const Text(
-                                              'Select Your Services (Multi Select)',
-                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                            const Expanded(
+                                              child: Text(
+                                                'Select Your Services',
+                                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                              ),
                                             ),
                                           ],
                                         ),
@@ -628,7 +668,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                             ),
                                             const SizedBox(width: 8),
                                             const Text(
-                                              'Billing Type & GST Configuration',
+                                              'Billing Type & GST',
                                               style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                             ),
                                           ],
@@ -828,7 +868,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                             ),
                                             const SizedBox(width: 8),
                                             const Text(
-                                              'Restaurant Type (Dietary)',
+                                              'Restaurant Type',
                                               style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                             ),
                                           ],
@@ -896,7 +936,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                             ),
                                             const SizedBox(width: 8),
                                             const Text(
-                                              'Payment Methods Configuration',
+                                              'Payment Methods',
                                               style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                             ),
                                           ],
@@ -954,7 +994,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                               ),
                                               const SizedBox(width: 8),
                                               const Text(
-                                                'Number of Tables (Dine-In Layout)',
+                                                'Number of Tables',
                                                 style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                               ),
                                             ],
@@ -1012,7 +1052,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                               const SizedBox(width: 14),
                                               Expanded(
                                                 child: Text(
-                                                  '$_tableCount Dining Tables Configured',
+                                                  '$_tableCount Dining Tables',
                                                   style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                                 ),
                                               ),
@@ -1027,7 +1067,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                           ),
                         ),
 
-                        // 5. Primary Action Button ("Save & Launch POS")
+                        // 5. Primary Action Button (Save & Launch POS vs Save Settings)
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
                           child: Container(
@@ -1035,12 +1075,18 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                             height: 48,
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(24),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
+                              gradient: widget.isFromOnboarding
+                                  ? GlassTheme.primaryButtonGradient
+                                  : const LinearGradient(
+                                      colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                                      begin: Alignment.centerLeft,
+                                      end: Alignment.centerRight,
+                                    ),
+                              boxShadow: [
                                 BoxShadow(
-                                  color: Color(0x3300C2FF),
+                                  color: widget.isFromOnboarding ? const Color(0x3300C2FF) : const Color(0x33051C48),
                                   blurRadius: 12,
-                                  offset: Offset(0, 5),
+                                  offset: const Offset(0, 5),
                                 ),
                               ],
                             ),
@@ -1062,13 +1108,24 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                         strokeWidth: 2.2,
                                       ),
                                     )
-                                  : const Text(
-                                      'Save & Launch POS',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          widget.isFromOnboarding ? Icons.rocket_launch_rounded : Icons.save_rounded,
+                                          color: Colors.white,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          widget.isFromOnboarding ? 'Save & Launch POS' : 'Save Settings',
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                             ),
                           ),
@@ -1077,12 +1134,14 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+    ],
+  ),
+);
   }
 
   Widget _buildServiceChip({

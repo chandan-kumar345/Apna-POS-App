@@ -289,6 +289,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 // Option 1: Choose from Gallery
                 InkWell(
                   onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
                     try {
                       final status = await Permission.photos.request();
@@ -303,7 +304,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       setState(() => _selectedPhotoPath = 'gallery_selected');
                     }
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(
                           content: Text('Gallery photo attached successfully!'),
                           duration: Duration(seconds: 2),
@@ -365,6 +366,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 // Option 2: Take a Photo
                 InkWell(
                   onTap: () async {
+                    final messenger = ScaffoldMessenger.of(context);
                     Navigator.pop(context);
                     try {
                       final status = await Permission.camera.request();
@@ -379,7 +381,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       setState(() => _selectedPhotoPath = 'camera_selected');
                     }
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         const SnackBar(
                           content: Text('Camera photo captured successfully!'),
                           duration: Duration(seconds: 2),
