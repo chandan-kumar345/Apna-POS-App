@@ -9,10 +9,10 @@ import '../models/order_model.dart';
 import '../models/inventory_model.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
-import '../../features/auth/data/repositories/mongo_auth_repository.dart';
+import '../../features/auth/data/repositories/auth_repository_factory.dart';
 import '../services/session_manager.dart';
-import '../services/auth_api_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -20,7 +20,7 @@ class DatabaseService extends ChangeNotifier {
   DatabaseService._internal();
 
   SharedPreferences? _prefs;
-  final IAuthRepository authRepository = MongoAuthRepository();
+  IAuthRepository get authRepository => AuthRepositoryFactory.instance;
   final SessionManager sessionManager = SessionManager();
 
   // In-Memory state for instant sync access
@@ -92,9 +92,6 @@ class DatabaseService extends ChangeNotifier {
   Future<void> init() async {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
-
-    // Initialize SQLite Database automatically on app start
-    await UserDatabaseHelper().database;
 
     // 1. Load User Session from SessionManager (SharedPreferences session state)
     final isLoggedIn = await sessionManager.isLoggedIn();
@@ -197,19 +194,12 @@ class DatabaseService extends ChangeNotifier {
     }
 
     // 7. Load Registered Users List & Seed Default Testing Credential
-    final dbHelper = UserDatabaseHelper();
-    final sqliteUsers = await dbHelper.getAllUsers();
-    
-    if (sqliteUsers.isNotEmpty) {
-      registeredUsers = sqliteUsers;
+    final regUsersJson = _prefs?.getString('apna_pos_registered_users');
+    if (regUsersJson != null) {
+      final List raw = jsonDecode(regUsersJson);
+      registeredUsers = raw.map((e) => UserModel.fromJson(e)).toList();
     } else {
-      final regUsersJson = _prefs?.getString('apna_pos_registered_users');
-      if (regUsersJson != null) {
-        final List raw = jsonDecode(regUsersJson);
-        registeredUsers = raw.map((e) => UserModel.fromJson(e)).toList();
-      } else {
-        registeredUsers = [];
-      }
+      registeredUsers = [];
     }
 
     // Pre-seed default testing credential if missing: admin@apnapos.com / 9876543210 (pass: admin123)
@@ -236,12 +226,6 @@ class DatabaseService extends ChangeNotifier {
   Future<void> _saveRegisteredUsers() async {
     final raw = registeredUsers.map((u) => u.toJson()).toList();
     await _prefs?.setString('apna_pos_registered_users', jsonEncode(raw));
-    
-    // Sync with SQLite Database
-    final dbHelper = UserDatabaseHelper();
-    for (var user in registeredUsers) {
-      await dbHelper.insertUser(user);
-    }
   }
 
   // --- AUTHENTICATION SERVICES ---
@@ -265,27 +249,35 @@ class DatabaseService extends ChangeNotifier {
       onboardingDetails: onboardingDetails,
     );
 
-    // 1. Mandatory registration on central Node Express server / MongoDB Atlas
-    final apiRes = await AuthApiService().register(
-      name: name.trim(),
-      email: email.trim(),
-      phone: phone?.trim(),
-      password: password.trim(),
-      businessName: restaurant?.name ?? 'Apna POS Diner',
-    );
-
-    if (apiRes['success'] == false) {
-      throw Exception(apiRes['message'] ?? 'Failed to register user in MongoDB cloud database.');
-    }
-
-    // 2. Sync to local SQLite database & session cache
-    final createdUser = await authRepository.registerUser(userEntity);
-    if (createdUser.id != null) {
-      await sessionManager.saveSession(createdUser.id!);
+    // Register via FirebaseAuthRepository & session cache
+    UserEntity? createdUser;
+    try {
+      createdUser = await authRepository.registerUser(userEntity);
+      if (createdUser.id != null) {
+        await sessionManager.saveSession(createdUser.id!);
+      }
+    } on FirebaseAuthException catch (e) {
+      debugPrint('FirebaseAuthException during registration: ${e.code} - ${e.message}');
+      if (e.code == 'weak-password') {
+        throw Exception('Password is too weak. Firebase requires at least 6 characters.');
+      } else if (e.code == 'email-already-in-use') {
+        throw Exception('This email address is already registered in Firebase. Please log in.');
+      } else if (e.code == 'invalid-email') {
+        throw Exception('Invalid email address format.');
+      } else if (e.code == 'operation-not-allowed') {
+        throw Exception('Email/Password sign-in method is not enabled in your Firebase Console.');
+      } else if (e.code == 'network-request-failed') {
+        throw Exception('Network error. Please check your internet connection.');
+      } else {
+        throw Exception(e.message ?? 'Firebase registration failed (${e.code}).');
+      }
+    } catch (e) {
+      debugPrint('AuthRepository registerUser error: $e');
+      rethrow;
     }
 
     currentUser = UserModel(
-      id: apiRes['user']?['id']?.toString() ?? createdUser.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      id: createdUser?.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
       name: name.trim(),
       email: email.trim(),
       phone: phone?.trim(),
@@ -306,6 +298,19 @@ class DatabaseService extends ChangeNotifier {
 
     notifyListeners();
     return true;
+  }
+
+  Future<void> saveActiveUser(UserModel user) async {
+    currentUser = user;
+    final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == user.email.trim().toLowerCase());
+    if (existingIdx >= 0) {
+      registeredUsers[existingIdx] = user;
+    } else {
+      registeredUsers.add(user);
+    }
+    await _saveRegisteredUsers();
+    await _prefs?.setString('apna_pos_user', jsonEncode(user.toJson()));
+    notifyListeners();
   }
 
   Future<bool> updateUserProfile({
@@ -342,12 +347,6 @@ class DatabaseService extends ChangeNotifier {
 
     // Persist to SharedPreferences session state
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-
-    // Persist profile image to SQLite users table
-    if (currentUser?.email != null) {
-      final dbHelper = UserDatabaseHelper();
-      await dbHelper.updateUserProfileImage(currentUser!.email, profilePhotoPath);
-    }
 
     notifyListeners();
     return true;
@@ -390,102 +389,76 @@ class DatabaseService extends ChangeNotifier {
     final cleanPw = password.trim();
 
     if (cleanId.isEmpty || cleanPw.isEmpty) {
-      return false;
+      throw Exception('Please enter both email/phone and password.');
     }
 
     bool isFirebaseAuthSuccess = false;
-    // 1. Authenticate with Firebase Cloud Auth over the Internet
+    UserEntity? fbEntity;
+    String? firebaseErrorMessage;
+
+    // 1. Authenticate against Firebase Auth via FirebaseAuthRepository
     if (cleanId.contains('@')) {
       try {
-        final userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: cleanId,
-          password: cleanPw,
-        );
-        if (userCred.user != null) {
+        fbEntity = await authRepository.login(cleanId, cleanPw);
+        if (fbEntity != null) {
           isFirebaseAuthSuccess = true;
         }
       } on FirebaseAuthException catch (e) {
-        debugPrint('FirebaseAuth Exception in loginUser: ${e.code} - ${e.message}');
-        if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-          try {
-            final newCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-              email: cleanId,
-              password: cleanPw,
-            );
-            if (newCred.user != null) {
-              isFirebaseAuthSuccess = true;
-            }
-          } catch (_) {}
+        debugPrint('FirebaseAuthException during login: ${e.code} - ${e.message}');
+        if (e.code == 'user-not-found') {
+          firebaseErrorMessage = 'No account found with this email. Please check your email or sign up.';
+        } else if (e.code == 'wrong-password' || e.code == 'invalid-credential') {
+          firebaseErrorMessage = 'Incorrect email address or password. Please try again.';
+        } else if (e.code == 'invalid-email') {
+          firebaseErrorMessage = 'Invalid email address format.';
+        } else if (e.code == 'user-disabled') {
+          firebaseErrorMessage = 'This user account has been disabled. Please contact support.';
+        } else if (e.code == 'network-request-failed') {
+          firebaseErrorMessage = 'Network connection error. Please check your internet connection.';
+        } else {
+          firebaseErrorMessage = 'Invalid email address or password. Please try again.';
         }
       } catch (e) {
-        debugPrint('FirebaseAuth error in loginUser: $e');
-      }
-    }
-
-    // 2. Try Node Express Backend / MongoDB Atlas if server is available
-    try {
-      final apiRes = await AuthApiService().login(
-        identifier: cleanId,
-        password: cleanPw,
-      );
-
-      if (apiRes['success'] == true && apiRes['user'] != null) {
-        final userData = apiRes['user'];
-        final userId = userData['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
-        final userName = userData['name'] ?? 'Owner';
-        final userEmail = userData['email'] ?? cleanId;
-        final userPhone = userData['phone'] ?? cleanId;
-
-        // Cache remote user into local SQLite database
-        final userEntity = UserEntity(
-          fullName: userName,
-          email: userEmail,
-          phoneNumber: userPhone,
-          password: cleanPw,
-          createdAt: DateTime.now().toIso8601String(),
-        );
-
-        currentUser = UserModel(
-          id: userId,
-          name: userName,
-          email: userEmail,
-          phone: userPhone,
-          role: userData['role'] ?? 'Owner',
-          pin: '1234',
-          restaurantId: restaurant?.id ?? 'rest_001',
-          companyName: userData['businessName'] ?? restaurant?.name ?? 'Apna POS Diner',
-        );
-
-        final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == userEmail.toLowerCase() || u.phone == userPhone);
-        if (existingIdx >= 0) {
-          registeredUsers[existingIdx] = currentUser!;
+        final errStr = e.toString();
+        debugPrint('FirebaseAuth repository login error: $errStr');
+        if (errStr.contains('user-not-found')) {
+          firebaseErrorMessage = 'No account found with this email. Please check your email or sign up.';
+        } else if (errStr.contains('wrong-password') || errStr.contains('invalid-credential')) {
+          firebaseErrorMessage = 'Incorrect email address or password. Please try again.';
         } else {
-          registeredUsers.add(currentUser!);
+          firebaseErrorMessage = 'Invalid email address or password. Please try again.';
         }
-        await _saveRegisteredUsers();
-        await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-
-        notifyListeners();
-        return true;
       }
-    } catch (apiError) {
-      debugPrint('Backend HTTP login skipped / offline: $apiError');
     }
 
-    // 3. Fallback: Firebase Cloud Auth signed in OR local registered user matched
+    // 2. Strict Firebase Authentication check for Email login
+    if (cleanId.contains('@')) {
+      if (!isFirebaseAuthSuccess) {
+        if (firebaseErrorMessage != null) {
+          throw Exception(firebaseErrorMessage);
+        }
+        return false;
+      }
+    }
+
     final cleanEmail = cleanId.toLowerCase();
     UserModel? matched = registeredUsers.where((u) => u.email.trim().toLowerCase() == cleanEmail || (u.phone ?? '').trim() == cleanId).firstOrNull;
 
     final fbUser = FirebaseAuth.instance.currentUser;
     if (isFirebaseAuthSuccess || fbUser != null || matched != null) {
-      final finalEmail = fbUser?.email ?? matched?.email ?? cleanId;
-      final finalName = fbUser?.displayName ?? matched?.name ?? (finalEmail.contains('@') ? finalEmail.split('@').first : 'Owner');
+      final finalEmail = fbEntity?.email ?? fbUser?.email ?? matched?.email ?? cleanId;
+      final finalName = fbEntity?.fullName ?? fbUser?.displayName ?? matched?.name ?? (finalEmail.contains('@') ? finalEmail.split('@').first : 'Owner');
+      final finalId = fbEntity?.id?.toString() ?? fbUser?.uid ?? matched?.id ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
 
-      currentUser = matched ?? UserModel(
-        id: fbUser?.uid ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      currentUser = matched?.copyWith(
+        id: finalId,
         name: finalName,
         email: finalEmail,
-        phone: matched?.phone ?? cleanId,
+      ) ?? UserModel(
+        id: finalId,
+        name: finalName,
+        email: finalEmail,
+        phone: fbUser?.phoneNumber ?? matched?.phone ?? cleanId,
         role: 'Owner',
         pin: '1234',
         restaurantId: restaurant?.id ?? 'rest_001',
@@ -500,8 +473,15 @@ class DatabaseService extends ChangeNotifier {
       await _saveRegisteredUsers();
       await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
 
+      final numericId = int.tryParse(finalId) ?? finalId.hashCode;
+      await sessionManager.saveSession(numericId);
+
       notifyListeners();
       return true;
+    }
+
+    if (firebaseErrorMessage != null) {
+      throw Exception(firebaseErrorMessage);
     }
 
     return false;

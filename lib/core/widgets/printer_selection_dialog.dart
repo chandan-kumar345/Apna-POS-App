@@ -72,6 +72,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     final Map<String, String?> saved = await _printerService.getSavedPrinter();
     final List<BluetoothInfo> bondedDevices = await _printerService.getBondedDevices();
 
+    if (!mounted) return;
     setState(() {
       _isBluetoothOn = btOn;
       _isConnected = connected;

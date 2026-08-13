@@ -6,10 +6,17 @@ import 'core/services/sound_service.dart';
 import 'core/widgets/sound_feedback_wrapper.dart';
 import 'features/auth/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase.initializeApp warning/info: $e');
+  }
   final db = DatabaseService();
   await db.init();
   await SoundService().init();

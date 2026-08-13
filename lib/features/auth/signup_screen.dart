@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/email_service.dart';
+import '../../core/services/session_manager.dart';
+import '../../core/models/user_model.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import 'create_profile_screen.dart';
 import '../dashboard/main_layout.dart';
@@ -372,23 +375,33 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                               return;
                                             }
 
-                                            // Register user in database (or log in if already registered)
+                                            // Register user directly in Firebase Authentication
                                             final nameFromEmail = emailText.contains('@')
                                                 ? emailText.split('@').first
                                                 : emailText;
-                                            
-                                            bool success = await db.registerUser(
-                                              name: nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner',
+                                            final password = _passwordController.text.trim();
+
+                                            bool success = false;
+                                            final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
                                               email: emailText,
-                                              password: _passwordController.text.trim(),
-                                              pin: '1234',
+                                              password: password,
                                             );
 
-                                            if (!success) {
-                                              // If duplicate, try logging in with password
-                                              try {
-                                                success = await db.loginUser(emailText, _passwordController.text.trim());
-                                              } catch (_) {}
+                                            final fbUser = credential.user;
+                                            if (fbUser != null) {
+                                              await fbUser.updateDisplayName(nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner');
+                                              await SessionManager().saveSession(fbUser.uid.hashCode);
+
+                                              final userModel = UserModel(
+                                                id: fbUser.uid,
+                                                name: nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner',
+                                                email: emailText,
+                                                role: 'Owner',
+                                                pin: '1234',
+                                                restaurantId: db.restaurant?.id ?? 'rest_001',
+                                              );
+                                              await db.saveActiveUser(userModel);
+                                              success = true;
                                             }
 
                                             if (!context.mounted) return;
@@ -412,9 +425,21 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                               });
                                             }
                                           } catch (e) {
+                                            final errStr = e.toString();
+                                            debugPrint('Signup error detail: $errStr');
+                                            String userFriendlyMessage = 'Registration failed. Please check your details and try again.';
+                                            if (errStr.contains('email-already-in-use')) {
+                                              userFriendlyMessage = 'This email address is already registered. Please log in.';
+                                            } else if (errStr.contains('weak-password')) {
+                                              userFriendlyMessage = 'Password is too weak. Please use at least 6 characters.';
+                                            } else if (errStr.contains('invalid-email')) {
+                                              userFriendlyMessage = 'Please enter a valid email address.';
+                                            } else if (errStr.contains('network') || errStr.contains('connection')) {
+                                              userFriendlyMessage = 'Connection error. Please check your internet connection.';
+                                            }
                                             setDialogState(() {
                                               isVerifying = false;
-                                              otpError = e.toString().replaceAll('Exception: ', '');
+                                              otpError = userFriendlyMessage;
                                             });
                                           }
                                         },

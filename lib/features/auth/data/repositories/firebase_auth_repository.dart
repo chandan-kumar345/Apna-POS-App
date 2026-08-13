@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:firebase_core/firebase_core.dart' as fb_core;
 import 'package:flutter/foundation.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/i_auth_repository.dart';
@@ -7,21 +8,37 @@ import '../../../../core/services/session_manager.dart';
 /// Firebase implementation of [IAuthRepository] supporting Firebase Auth
 /// for Email/Password, Phone OTP, and Session persistence.
 class FirebaseAuthRepository implements IAuthRepository {
-  final fb.FirebaseAuth _firebaseAuth;
+  final fb.FirebaseAuth? _customFirebaseAuth;
   final SessionManager _sessionManager;
   String? _verificationId;
 
   FirebaseAuthRepository({
     fb.FirebaseAuth? firebaseAuth,
     SessionManager? sessionManager,
-  })  : _firebaseAuth = firebaseAuth ?? fb.FirebaseAuth.instance,
+  })  : _customFirebaseAuth = firebaseAuth,
         _sessionManager = sessionManager ?? SessionManager();
+
+  fb.FirebaseAuth? get _auth {
+    if (_customFirebaseAuth != null) return _customFirebaseAuth;
+    try {
+      if (fb_core.Firebase.apps.isNotEmpty) {
+        return fb.FirebaseAuth.instance;
+      }
+    } catch (e) {
+      debugPrint('FirebaseAuth instance resolution warning: $e');
+    }
+    return null;
+  }
 
   @override
   Future<UserEntity> registerUser(UserEntity user) async {
     try {
+      final auth = _auth;
+      if (auth == null) {
+        throw Exception('Firebase is not initialized on this platform.');
+      }
       if (user.email.trim().isNotEmpty && user.password.trim().isNotEmpty) {
-        final credential = await _firebaseAuth.createUserWithEmailAndPassword(
+        final credential = await auth.createUserWithEmailAndPassword(
           email: user.email.trim(),
           password: user.password.trim(),
         );
@@ -50,6 +67,11 @@ class FirebaseAuthRepository implements IAuthRepository {
   @override
   Future<UserEntity?> login(String identifier, String password) async {
     try {
+      final auth = _auth;
+      if (auth == null) {
+        throw Exception('Firebase Auth is not initialized on this device/platform.');
+      }
+
       final cleanId = identifier.trim();
       final cleanPw = password.trim();
 
@@ -57,7 +79,7 @@ class FirebaseAuthRepository implements IAuthRepository {
         throw Exception('Phone login via password not supported in Firebase. Use verifyOtp.');
       }
 
-      final credential = await _firebaseAuth.signInWithEmailAndPassword(
+      final credential = await auth.signInWithEmailAndPassword(
         email: cleanId,
         password: cleanPw,
       );
@@ -95,7 +117,8 @@ class FirebaseAuthRepository implements IAuthRepository {
 
   @override
   Future<UserEntity?> getUserById(int id) async {
-    final fbUser = _firebaseAuth.currentUser;
+    final auth = _auth;
+    final fbUser = auth?.currentUser;
     if (fbUser != null && fbUser.uid.hashCode == id) {
       return UserEntity(
         id: id,
@@ -111,7 +134,8 @@ class FirebaseAuthRepository implements IAuthRepository {
 
   @override
   Future<UserEntity?> getUserByEmailOrPhone(String identifier) async {
-    final fbUser = _firebaseAuth.currentUser;
+    final auth = _auth;
+    final fbUser = auth?.currentUser;
     if (fbUser != null && (fbUser.email == identifier || fbUser.phoneNumber == identifier)) {
       return UserEntity(
         id: fbUser.uid.hashCode,
@@ -127,14 +151,16 @@ class FirebaseAuthRepository implements IAuthRepository {
 
   @override
   Future<bool> isSessionLoggedIn() async {
-    final hasFbUser = _firebaseAuth.currentUser != null;
+    final auth = _auth;
+    final hasFbUser = auth?.currentUser != null;
     final hasSession = await _sessionManager.isLoggedIn();
     return hasFbUser || hasSession;
   }
 
   @override
   Future<int?> getLoggedInUserId() async {
-    final fbUser = _firebaseAuth.currentUser;
+    final auth = _auth;
+    final fbUser = auth?.currentUser;
     if (fbUser != null) {
       return fbUser.uid.hashCode;
     }
@@ -148,22 +174,31 @@ class FirebaseAuthRepository implements IAuthRepository {
 
   @override
   Future<void> clearSession() async {
-    await _firebaseAuth.signOut();
+    final auth = _auth;
+    if (auth != null) {
+      await auth.signOut();
+    }
     await _sessionManager.clearSession();
   }
 
   @override
   Future<bool> sendOtp(String recipient, {String purpose = 'login'}) async {
     try {
+      final auth = _auth;
+      if (auth == null) {
+        debugPrint('FirebaseAuth sendOtp skipped: Firebase not initialized.');
+        return false;
+      }
+
       if (!recipient.startsWith('+')) {
         // Default to India country code +91 if missing prefix
         recipient = '+91$recipient';
       }
 
-      await _firebaseAuth.verifyPhoneNumber(
+      await auth.verifyPhoneNumber(
         phoneNumber: recipient,
         verificationCompleted: (fb.PhoneAuthCredential credential) async {
-          await _firebaseAuth.signInWithCredential(credential);
+          await auth.signInWithCredential(credential);
         },
         verificationFailed: (fb.FirebaseAuthException e) {
           debugPrint('Firebase verifyPhoneNumber failed: ${e.message}');
@@ -185,6 +220,10 @@ class FirebaseAuthRepository implements IAuthRepository {
   @override
   Future<UserEntity?> verifyOtp(String recipient, String code, {String? fullName}) async {
     try {
+      final auth = _auth;
+      if (auth == null) {
+        throw Exception('Firebase is not initialized on this platform.');
+      }
       if (_verificationId == null) {
         throw Exception('Verification session expired. Please request a new OTP code.');
       }
@@ -194,7 +233,7 @@ class FirebaseAuthRepository implements IAuthRepository {
         smsCode: code,
       );
 
-      final userCredential = await _firebaseAuth.signInWithCredential(credential);
+      final userCredential = await auth.signInWithCredential(credential);
       final fbUser = userCredential.user;
 
       if (fbUser != null) {

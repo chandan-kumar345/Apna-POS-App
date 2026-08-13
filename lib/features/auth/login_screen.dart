@@ -5,7 +5,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/utils/form_validators.dart';
+import '../../core/services/session_manager.dart';
 import '../../core/services/sms_service.dart';
+import '../../core/models/user_model.dart';
 import 'signup_screen.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import '../dashboard/main_layout.dart';
@@ -714,27 +716,28 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // Authenticate with Firebase Auth instance
-        try {
-          await FirebaseAuth.instance.signInWithEmailAndPassword(
-            email: email,
-            password: password,
-          );
-        } on FirebaseAuthException catch (e) {
-          debugPrint('FirebaseAuth Exception during email login: ${e.code} - ${e.message}');
-          if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
-            try {
-              await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                email: email,
-                password: password,
-              );
-            } catch (_) {}
-          }
-        } catch (e) {
-          debugPrint('FirebaseAuth error: $e');
-        }
+        // Authenticate directly with Firebase Authentication
+        final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: email,
+          password: password,
+        );
 
-        success = await db.loginUser(email, password);
+        final fbUser = credential.user;
+        if (fbUser != null) {
+          await SessionManager().saveSession(fbUser.uid.hashCode);
+
+          final userModel = UserModel(
+            id: fbUser.uid,
+            name: fbUser.displayName ?? (email.contains('@') ? email.split('@').first : 'Owner'),
+            email: fbUser.email ?? email,
+            phone: fbUser.phoneNumber ?? '',
+            role: 'Owner',
+            pin: '1234',
+            restaurantId: db.restaurant?.id ?? 'rest_001',
+          );
+          await db.saveActiveUser(userModel);
+          success = true;
+        }
       }
 
       if (!mounted) return;
@@ -760,17 +763,15 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       final errStr = e.toString();
       debugPrint('Login exception detail: $errStr');
-      String userFriendlyMessage = 'Invalid email/phone or password. Please try again.';
-      if (errStr.startsWith('Exception: ')) {
-        final cleanMsg = errStr.replaceFirst('Exception: ', '').trim();
-        if (!cleanMsg.contains('DatabaseException') &&
-            !cleanMsg.contains('SQLITE') &&
-            !cleanMsg.contains('SocketException') &&
-            !cleanMsg.contains('ClientException') &&
-            !cleanMsg.contains('INSERT') &&
-            !cleanMsg.contains('UPDATE')) {
-          userFriendlyMessage = cleanMsg;
-        }
+      String userFriendlyMessage = 'Invalid email address or password. Please try again.';
+      if (errStr.contains('user-not-found') || errStr.contains('No account found')) {
+        userFriendlyMessage = 'No account found for this email. Please check your email or sign up.';
+      } else if (errStr.contains('wrong-password') || errStr.contains('invalid-credential') || errStr.contains('Incorrect')) {
+        userFriendlyMessage = 'Incorrect email address or password. Please try again.';
+      } else if (errStr.contains('network') || errStr.contains('connection')) {
+        userFriendlyMessage = 'Connection error. Please check your internet connection and try again.';
+      } else if (errStr.contains('invalid-email')) {
+        userFriendlyMessage = 'Please enter a valid email address.';
       }
       setState(() {
         _errorMessage = userFriendlyMessage;
