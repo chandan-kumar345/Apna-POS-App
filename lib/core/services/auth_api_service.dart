@@ -112,18 +112,23 @@ class AuthApiService {
     String? deviceId,
     String? deviceName,
   }) async {
-    final response = await _postWithFallback('/login', {
-      'identifier': identifier,
-      'password': password,
-      'deviceId': deviceId ?? 'flutter_device',
-      'deviceName': deviceName ?? 'Flutter App',
-    });
+    try {
+      final response = await _postWithFallback('/login', {
+        'identifier': identifier,
+        'password': password,
+        'deviceId': deviceId ?? 'flutter_device',
+        'deviceName': deviceName ?? 'Flutter App',
+      });
 
-    final data = jsonDecode(response.body);
-    if (response.statusCode == 200 && data['success'] == true) {
-      await _saveTokens(data['accessToken'], data['refreshToken']);
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        await _saveTokens(data['accessToken'], data['refreshToken']);
+      }
+      return data;
+    } catch (e) {
+      debugPrint('AuthApiService login network failure: $e');
+      return {'success': false, 'message': 'Backend server offline'};
     }
-    return data;
   }
 
   /// Send OTP to phone

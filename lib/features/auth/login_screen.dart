@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/utils/form_validators.dart';
@@ -531,16 +532,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                         otpError = null;
                                       });
 
-                                      bool success = (enteredOtp == generatedOtp || enteredOtp == '1234' || enteredOtp == '0000' || enteredOtp == '9999') &&
-                                          (await db.loginUser(rawPhone, '1234') ||
-                                           await db.loginUser(displayPhone, '1234') ||
-                                           await db.registerUser(
-                                             name: 'User (${rawPhone.length > 4 ? rawPhone.substring(rawPhone.length - 4) : rawPhone})',
-                                             email: 'user_$rawPhone@apnapos.com',
-                                             password: '1234',
-                                             pin: '1234',
-                                             phone: rawPhone,
-                                           ));
+                                      bool isOtpCorrect = (enteredOtp == generatedOtp || enteredOtp == '1234' || enteredOtp == '0000' || enteredOtp == '9999');
+
+                                      if (!isOtpCorrect) {
+                                        failedOtpAttempts++;
+                                        setDialogState(() {
+                                          isVerifying = false;
+                                          otpError = failedOtpAttempts >= 5
+                                              ? 'Too many incorrect attempts. Please try again later.'
+                                              : 'The OTP you entered is incorrect.';
+                                        });
+                                        return;
+                                      }
+
+                                      // OTP is correct - Log in or create user account
+                                      bool success = await db.loginWithOtpPhone(rawPhone);
+                                      if (!success) {
+                                        success = await db.loginWithOtpPhone(displayPhone);
+                                      }
 
                                       if (!mounted) return;
 
@@ -559,12 +568,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                           );
                                         }
                                       } else {
-                                        failedOtpAttempts++;
                                         setDialogState(() {
                                           isVerifying = false;
-                                          otpError = failedOtpAttempts >= 5
-                                              ? 'Too many incorrect attempts. Please try again later.'
-                                              : 'The OTP you entered is incorrect.';
+                                          otpError = 'Failed to create or verify user session. Please try again.';
                                         });
                                       }
                                     },
@@ -707,6 +713,27 @@ class _LoginScreenState extends State<LoginScreen> {
           });
           return;
         }
+
+        // Authenticate with Firebase Auth instance
+        try {
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
+            email: email,
+            password: password,
+          );
+        } on FirebaseAuthException catch (e) {
+          debugPrint('FirebaseAuth Exception during email login: ${e.code} - ${e.message}');
+          if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+            try {
+              await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                email: email,
+                password: password,
+              );
+            } catch (_) {}
+          }
+        } catch (e) {
+          debugPrint('FirebaseAuth error: $e');
+        }
+
         success = await db.loginUser(email, password);
       }
 
@@ -731,8 +758,22 @@ class _LoginScreenState extends State<LoginScreen> {
         });
       }
     } catch (e) {
+      final errStr = e.toString();
+      debugPrint('Login exception detail: $errStr');
+      String userFriendlyMessage = 'Invalid email/phone or password. Please try again.';
+      if (errStr.startsWith('Exception: ')) {
+        final cleanMsg = errStr.replaceFirst('Exception: ', '').trim();
+        if (!cleanMsg.contains('DatabaseException') &&
+            !cleanMsg.contains('SQLITE') &&
+            !cleanMsg.contains('SocketException') &&
+            !cleanMsg.contains('ClientException') &&
+            !cleanMsg.contains('INSERT') &&
+            !cleanMsg.contains('UPDATE')) {
+          userFriendlyMessage = cleanMsg;
+        }
+      }
       setState(() {
-        _errorMessage = 'Login failed: ${e.toString()}';
+        _errorMessage = userFriendlyMessage;
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);

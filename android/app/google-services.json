@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "370857291670",
+    "project_id": "apna-pos-55b95",
+    "storage_bucket": "apna-pos-55b95.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:370857291670:android:c07e72aa06fae7832637b7",
+        "android_client_info": {
+          "package_name": "com.example.apna_pos"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCAxoctCJKW63TaINdzpcBzDCiVTvJ0TKQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

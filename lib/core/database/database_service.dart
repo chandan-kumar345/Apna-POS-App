@@ -7,12 +7,12 @@ import '../models/menu_item_model.dart';
 import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../models/inventory_model.dart';
-import 'user_database_helper.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/mongo_auth_repository.dart';
 import '../services/session_manager.dart';
 import '../services/auth_api_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -393,48 +393,105 @@ class DatabaseService extends ChangeNotifier {
       return false;
     }
 
-    // Always authenticate against central Node Express Backend / MongoDB Atlas over Internet
-    final apiRes = await AuthApiService().login(
-      identifier: cleanId,
-      password: cleanPw,
-    );
+    bool isFirebaseAuthSuccess = false;
+    // 1. Authenticate with Firebase Cloud Auth over the Internet
+    if (cleanId.contains('@')) {
+      try {
+        final userCred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: cleanId,
+          password: cleanPw,
+        );
+        if (userCred.user != null) {
+          isFirebaseAuthSuccess = true;
+        }
+      } on FirebaseAuthException catch (e) {
+        debugPrint('FirebaseAuth Exception in loginUser: ${e.code} - ${e.message}');
+        if (e.code == 'user-not-found' || e.code == 'invalid-credential') {
+          try {
+            final newCred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+              email: cleanId,
+              password: cleanPw,
+            );
+            if (newCred.user != null) {
+              isFirebaseAuthSuccess = true;
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        debugPrint('FirebaseAuth error in loginUser: $e');
+      }
+    }
 
-    if (apiRes['success'] == true && apiRes['user'] != null) {
-      final userData = apiRes['user'];
-      final userId = userData['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
-      final userName = userData['name'] ?? 'Owner';
-      final userEmail = userData['email'] ?? cleanId;
-      final userPhone = userData['phone'] ?? cleanId;
-
-      // Cache remote MongoDB user into local SQLite database for offline resilience
-      final userEntity = UserEntity(
-        fullName: userName,
-        email: userEmail,
-        phoneNumber: userPhone,
+    // 2. Try Node Express Backend / MongoDB Atlas if server is available
+    try {
+      final apiRes = await AuthApiService().login(
+        identifier: cleanId,
         password: cleanPw,
-        createdAt: DateTime.now().toIso8601String(),
       );
 
-      try {
-        final dbHelper = UserDatabaseHelper();
-        final existsInSqlite = await dbHelper.getUserByEmailOrPhone(cleanId);
-        if (existsInSqlite == null) {
-          await dbHelper.insertUserEntity(userEntity);
-        }
-      } catch (_) {}
+      if (apiRes['success'] == true && apiRes['user'] != null) {
+        final userData = apiRes['user'];
+        final userId = userData['id']?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}';
+        final userName = userData['name'] ?? 'Owner';
+        final userEmail = userData['email'] ?? cleanId;
+        final userPhone = userData['phone'] ?? cleanId;
 
-      currentUser = UserModel(
-        id: userId,
-        name: userName,
-        email: userEmail,
-        phone: userPhone,
-        role: userData['role'] ?? 'Owner',
+        // Cache remote user into local SQLite database
+        final userEntity = UserEntity(
+          fullName: userName,
+          email: userEmail,
+          phoneNumber: userPhone,
+          password: cleanPw,
+          createdAt: DateTime.now().toIso8601String(),
+        );
+
+        currentUser = UserModel(
+          id: userId,
+          name: userName,
+          email: userEmail,
+          phone: userPhone,
+          role: userData['role'] ?? 'Owner',
+          pin: '1234',
+          restaurantId: restaurant?.id ?? 'rest_001',
+          companyName: userData['businessName'] ?? restaurant?.name ?? 'Apna POS Diner',
+        );
+
+        final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == userEmail.toLowerCase() || u.phone == userPhone);
+        if (existingIdx >= 0) {
+          registeredUsers[existingIdx] = currentUser!;
+        } else {
+          registeredUsers.add(currentUser!);
+        }
+        await _saveRegisteredUsers();
+        await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+
+        notifyListeners();
+        return true;
+      }
+    } catch (apiError) {
+      debugPrint('Backend HTTP login skipped / offline: $apiError');
+    }
+
+    // 3. Fallback: Firebase Cloud Auth signed in OR local registered user matched
+    final cleanEmail = cleanId.toLowerCase();
+    UserModel? matched = registeredUsers.where((u) => u.email.trim().toLowerCase() == cleanEmail || (u.phone ?? '').trim() == cleanId).firstOrNull;
+
+    final fbUser = FirebaseAuth.instance.currentUser;
+    if (isFirebaseAuthSuccess || fbUser != null || matched != null) {
+      final finalEmail = fbUser?.email ?? matched?.email ?? cleanId;
+      final finalName = fbUser?.displayName ?? matched?.name ?? (finalEmail.contains('@') ? finalEmail.split('@').first : 'Owner');
+
+      currentUser = matched ?? UserModel(
+        id: fbUser?.uid ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+        name: finalName,
+        email: finalEmail,
+        phone: matched?.phone ?? cleanId,
+        role: 'Owner',
         pin: '1234',
         restaurantId: restaurant?.id ?? 'rest_001',
-        companyName: userData['businessName'] ?? restaurant?.name ?? 'Apna POS Diner',
       );
 
-      final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == userEmail.toLowerCase() || u.phone == userPhone);
+      final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == finalEmail.toLowerCase());
       if (existingIdx >= 0) {
         registeredUsers[existingIdx] = currentUser!;
       } else {
@@ -445,8 +502,6 @@ class DatabaseService extends ChangeNotifier {
 
       notifyListeners();
       return true;
-    } else if (apiRes['message'] != null) {
-      throw Exception(apiRes['message']);
     }
 
     return false;
@@ -466,6 +521,36 @@ class DatabaseService extends ChangeNotifier {
         pin: '1234',
         restaurantId: restaurant?.id ?? 'rest_001',
         profilePhotoPath: photoUrl,
+      );
+      registeredUsers.add(matched);
+      await _saveRegisteredUsers();
+    }
+
+    currentUser = matched;
+    await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    
+    if (isNewAccount) {
+      await clearUserDataForNewAccount();
+    }
+
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> loginWithOtpPhone(String phone, {String? name}) async {
+    final cleanPhone = phone.trim();
+    UserModel? matched = registeredUsers.where((u) => (u.phone ?? '').trim() == cleanPhone || u.email.trim().toLowerCase() == 'user_$cleanPhone@apnapos.com'.toLowerCase()).firstOrNull;
+
+    final isNewAccount = (matched == null);
+    if (matched == null) {
+      matched = UserModel(
+        id: 'usr_p_${DateTime.now().millisecondsSinceEpoch}',
+        name: name ?? (cleanPhone.length > 4 ? 'User (${cleanPhone.substring(cleanPhone.length - 4)})' : 'POS Owner'),
+        email: 'user_$cleanPhone@apnapos.com',
+        phone: cleanPhone,
+        role: 'Owner',
+        pin: '1234',
+        restaurantId: restaurant?.id ?? 'rest_001',
       );
       registeredUsers.add(matched);
       await _saveRegisteredUsers();

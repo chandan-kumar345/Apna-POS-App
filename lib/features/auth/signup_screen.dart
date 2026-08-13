@@ -372,18 +372,24 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                               return;
                                             }
 
-                                            // Register user in SQLite database
+                                            // Register user in database (or log in if already registered)
                                             final nameFromEmail = emailText.contains('@')
                                                 ? emailText.split('@').first
                                                 : emailText;
-                                            final success = await db.registerUser(
-                                              name: nameFromEmail.isNotEmpty
-                                                  ? nameFromEmail
-                                                  : 'Restaurant Owner',
+                                            
+                                            bool success = await db.registerUser(
+                                              name: nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner',
                                               email: emailText,
                                               password: _passwordController.text.trim(),
                                               pin: '1234',
                                             );
+
+                                            if (!success) {
+                                              // If duplicate, try logging in with password
+                                              try {
+                                                success = await db.loginUser(emailText, _passwordController.text.trim());
+                                              } catch (_) {}
+                                            }
 
                                             if (!context.mounted) return;
 
@@ -402,7 +408,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                               setDialogState(() {
                                                 isVerifying = false;
                                                 otpError =
-                                                    'Registration failed. Email or phone number may already be registered.';
+                                                    'Email address is already registered with a different password. Please log in.';
                                               });
                                             }
                                           } catch (e) {

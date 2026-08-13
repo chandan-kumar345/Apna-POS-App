@@ -73,6 +73,16 @@ const startServer = async () => {
     console.log(`🔐 Auth Endpoints: http://localhost:${PORT}/api/auth`);
     console.log(`====================================================`);
   });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n❌ Error: Port ${PORT} is already in use by another process.`);
+      console.error(`💡 Solution: Stop the process running on port ${PORT} or change PORT in server/.env\n`);
+      process.exit(1);
+    } else {
+      console.error('Server error:', err);
+    }
+  });
 };
 
 if (require.main === module) {

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/models/user_model.dart';
 import '../../core/database/database_service.dart';
-import '../../core/database/user_database_helper.dart';
 
 class UsersListScreen extends StatefulWidget {
   const UsersListScreen({super.key});
@@ -14,7 +13,7 @@ class UsersListScreen extends StatefulWidget {
 class _UsersListScreenState extends State<UsersListScreen> {
   bool _isLoading = true;
   List<UserModel> _users = [];
-  final _dbHelper = UserDatabaseHelper();
+  final _dbService = DatabaseService();
 
   @override
   void initState() {
@@ -25,7 +24,7 @@ class _UsersListScreenState extends State<UsersListScreen> {
   Future<void> _loadUsers() async {
     setState(() => _isLoading = true);
     try {
-      final users = await _dbHelper.getAllUsers();
+      final users = _dbService.registeredUsers;
       setState(() {
         _users = users;
         _isLoading = false;

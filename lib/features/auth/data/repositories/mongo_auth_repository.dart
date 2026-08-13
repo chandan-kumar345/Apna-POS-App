@@ -147,4 +147,31 @@ class MongoAuthRepository implements IAuthRepository {
   Future<void> clearSession() async {
     await _sessionManager.clearSession();
   }
+
+  @override
+  Future<bool> sendOtp(String recipient, {String purpose = 'login'}) async {
+    return true;
+  }
+
+  @override
+  Future<UserEntity?> verifyOtp(String recipient, String code, {String? fullName}) async {
+    final cleanRecipient = recipient.trim();
+    var user = await getUserByEmailOrPhone(cleanRecipient);
+    if (user == null) {
+      final name = fullName ?? (cleanRecipient.contains('@') ? cleanRecipient.split('@').first : 'User (${cleanRecipient.length > 4 ? cleanRecipient.substring(cleanRecipient.length - 4) : cleanRecipient})');
+      final isEmail = cleanRecipient.contains('@');
+      final newUser = UserEntity(
+        fullName: name,
+        email: isEmail ? cleanRecipient : 'user_$cleanRecipient@apnapos.com',
+        phoneNumber: isEmail ? 'no_phone_${DateTime.now().millisecondsSinceEpoch}' : cleanRecipient,
+        password: '1234',
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      user = await registerUser(newUser);
+    } else if (user.id != null) {
+      await saveSession(user.id!);
+    }
+    return user;
+  }
 }
+

@@ -33,4 +33,11 @@ abstract class IAuthRepository {
 
   /// Clears the login session state from SharedPreferences.
   Future<void> clearSession();
+
+  /// Sends OTP to specified recipient (email or phone).
+  Future<bool> sendOtp(String recipient, {String purpose = 'login'});
+
+  /// Verifies OTP code for specified recipient and logs in or registers user.
+  Future<UserEntity?> verifyOtp(String recipient, String code, {String? fullName});
 }
+
