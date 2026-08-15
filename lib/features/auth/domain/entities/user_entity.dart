@@ -1,7 +1,7 @@
 /// Domain entity representing a user in the system.
 /// Contains pure business logic fields independent of database or API drivers.
 class UserEntity {
-  final int? id;
+  final String? id;
   final String fullName;
   final String email;
   final String phoneNumber;
@@ -23,7 +23,7 @@ class UserEntity {
 
   /// Create a copy of [UserEntity] with modified fields
   UserEntity copyWith({
-    int? id,
+    String? id,
     String? fullName,
     String? email,
     String? phoneNumber,
@@ -47,7 +47,7 @@ class UserEntity {
   /// Converts Map from SQLite row into domain [UserEntity]
   factory UserEntity.fromMap(Map<String, dynamic> map) {
     return UserEntity(
-      id: map['id'] is int ? map['id'] as int : int.tryParse(map['id']?.toString() ?? ''),
+      id: map['id']?.toString(),
       fullName: map['fullName'] ?? '',
       email: map['email'] ?? '',
       phoneNumber: map['phoneNumber'] ?? '',

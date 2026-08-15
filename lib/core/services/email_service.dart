@@ -8,6 +8,7 @@ import 'package:mailer/smtp_server.dart';
 abstract class IEmailService {
   Future<String?> sendOtpEmail(String recipientEmail);
   bool verifyOtp(String recipientEmail, String code);
+  void clearOtp(String recipientEmail);
   String? getStoredOtp(String recipientEmail);
 }
 
@@ -211,11 +212,13 @@ class EmailService implements IEmailService {
       try {
         debugPrint('Attempting Gmail SMTP (Port 465 SSL)...');
         final smtpServer465 = gmail(senderEmail, smtpAppPassword);
-        final sendReport = await send(message, smtpServer465);
+        final sendReport = await send(message, smtpServer465).timeout(
+          const Duration(seconds: 4),
+        );
         debugPrint('Gmail SMTP (Port 465) Dispatch Success: ${sendReport.toString()}');
         sent = true;
       } catch (e) {
-        debugPrint('Gmail SMTP (Port 465) Error: $e');
+        debugPrint('Gmail SMTP (Port 465) Warning (falling back): $e');
       }
 
       // Attempt 2: Fallback to Port 587 (TLS) if Port 465 SSL was blocked by ISP/Firewall
@@ -230,16 +233,19 @@ class EmailService implements IEmailService {
             username: senderEmail,
             password: smtpAppPassword,
           );
-          final sendReport = await send(message, smtpServer587);
+          final sendReport = await send(message, smtpServer587).timeout(
+            const Duration(seconds: 4),
+          );
           debugPrint('Gmail SMTP (Port 587) Dispatch Success: ${sendReport.toString()}');
           sent = true;
         } catch (e) {
-          debugPrint('Gmail SMTP (Port 587) Error: $e');
+          debugPrint('Gmail SMTP (Port 587) Warning: $e');
         }
       }
     } else {
       debugPrint('SMTP App Password not set.');
     }
+
 
     return generatedOtp;
   }
@@ -248,31 +254,43 @@ class EmailService implements IEmailService {
   @override
   bool verifyOtp(String recipientEmail, String code) {
     final cleanEmail = recipientEmail.trim().toLowerCase();
-    final cleanCode = code.trim();
+    final cleanCode = code.trim().replaceAll(RegExp(r'[^0-9]'), '');
 
     final storedOtp = _activeOtps[cleanEmail];
     final timestamp = _otpTimestamps[cleanEmail];
 
+    debugPrint('EmailService.verifyOtp: input="$cleanCode", stored="$storedOtp", cleanEmail="$cleanEmail"');
+
     if (storedOtp == null || timestamp == null) {
       // Demo fallback: default pin 1234, 0000, 9999 or matching stored OTP
-      return cleanCode == '1234' || cleanCode == '0000' || cleanCode == '9999';
+      final isDemoValid = cleanCode == '1234' || cleanCode == '0000' || cleanCode == '9999';
+      debugPrint('EmailService: No stored OTP found. Demo pin check: $isDemoValid');
+      return isDemoValid;
     }
 
     // OTP expires after 5 minutes (300 seconds)
-    final isExpired = DateTime.now().difference(timestamp).inSeconds > 300;
-    if (isExpired) {
+    final elapsedSeconds = DateTime.now().difference(timestamp).inSeconds;
+    if (elapsedSeconds > 300) {
+      debugPrint('EmailService: OTP expired ($elapsedSeconds seconds old).');
       _activeOtps.remove(cleanEmail);
       _otpTimestamps.remove(cleanEmail);
       return cleanCode == '1234' || cleanCode == '0000' || cleanCode == '9999';
     }
 
     final isMatched = storedOtp == cleanCode || cleanCode == '1234' || cleanCode == '0000' || cleanCode == '9999';
-    if (isMatched) {
-      // Clear OTP after successful verification
-      _activeOtps.remove(cleanEmail);
-      _otpTimestamps.remove(cleanEmail);
-    }
+    debugPrint('EmailService: OTP match result: $isMatched');
+    // Note: We do NOT remove OTP here so subsequent retries during network issues/form fixes don't get falsely rejected.
+    // OTP will be cleared when [clearOtp] is called after full registration succeeds.
     return isMatched;
+  }
+
+  /// Clears stored OTP for [recipientEmail] after successful registration/login
+  @override
+  void clearOtp(String recipientEmail) {
+    final cleanEmail = recipientEmail.trim().toLowerCase();
+    _activeOtps.remove(cleanEmail);
+    _otpTimestamps.remove(cleanEmail);
+    debugPrint('EmailService: Cleared active OTP for $cleanEmail');
   }
 
   @override

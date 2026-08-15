@@ -1,7 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/network_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/network/api_endpoints.dart';
+
+
+import '../../core/widgets/no_internet_screen.dart';
 import '../dashboard/main_layout.dart';
 import 'get_started_screen.dart';
+import 'create_profile_screen.dart';
+import '../onboarding/restaurant_onboarding_screen.dart';
+import '../onboarding/add_business_address_screen.dart';
+import '../onboarding/business_settings_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -50,38 +60,108 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _animController.forward();
 
-    // On animation complete -> Navigate to target screen with smooth Zoom Transition
-    _animController.addStatusListener((status) {
+    // On animation complete -> Check internet connectivity before navigating
+    _animController.addStatusListener((status) async {
       if (status == AnimationStatus.completed) {
         if (!mounted) return;
-        final db = DatabaseService();
-        final targetScreen = db.currentUser != null ? const MainLayout() : const GetStartedScreen();
-
-        Navigator.of(context).pushReplacement(
-          PageRouteBuilder(
-            transitionDuration: const Duration(milliseconds: 650),
-            pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
-            transitionsBuilder: (context, animation, secondaryAnimation, child) {
-              final zoomOutRouteAnim = Tween<double>(begin: 1.25, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-              );
-              final fadeRouteAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-                CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-              );
-
-              return ScaleTransition(
-                scale: zoomOutRouteAnim,
-                child: FadeTransition(
-                  opacity: fadeRouteAnim,
-                  child: child,
-                ),
-              );
-            },
-          ),
-        );
+        
+        await _proceedNextScreen();
       }
     });
   }
+
+  Future<void> _proceedNextScreen() async {
+    await ApiEndpoints.initialize();
+    final hasInternet = await NetworkService().hasInternet();
+    if (!mounted) return;
+
+
+    if (!hasInternet) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (context) => NoInternetScreen(
+            onRetrySuccess: () {
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(builder: (context) => const SplashScreen()),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
+    Widget targetScreen = const GetStartedScreen();
+
+    try {
+      final isAuth = await AuthService().isAuthenticated();
+      if (isAuth) {
+        final meData = await AuthService().getMe();
+        final user = meData['user'] as Map<String, dynamic>?;
+        final bool onboardingCompleted = user?['onboardingCompleted'] == true;
+        final int currentStep = (user?['onboardingStep'] as num?)?.toInt() ?? 0;
+
+        if (onboardingCompleted) {
+          targetScreen = const MainLayout();
+        } else {
+          // Route to exact incomplete step
+          switch (currentStep) {
+            case 0:
+              targetScreen = const CreateProfileScreen();
+              break;
+            case 1:
+              targetScreen = const RestaurantOnboardingScreen();
+              break;
+            case 2:
+              targetScreen = const AddBusinessAddressScreen();
+              break;
+            case 3:
+            case 4:
+              targetScreen = const BusinessSettingsScreen();
+              break;
+            default:
+              targetScreen = const CreateProfileScreen();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('SplashScreen auth verification error: $e');
+      final db = DatabaseService();
+      if (db.currentUser != null) {
+        targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
+            ? const MainLayout()
+            : const RestaurantOnboardingScreen();
+      } else {
+        targetScreen = const GetStartedScreen();
+      }
+    }
+
+    if (!mounted) return;
+
+    Navigator.of(context).pushReplacement(
+      PageRouteBuilder(
+        transitionDuration: const Duration(milliseconds: 650),
+        pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          final zoomOutRouteAnim = Tween<double>(begin: 1.25, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
+          );
+          final fadeRouteAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+          );
+
+          return ScaleTransition(
+            scale: zoomOutRouteAnim,
+            child: FadeTransition(
+              opacity: fadeRouteAnim,
+              child: child,
+            ),
+          );
+        },
+      ),
+    );
+  }
+
 
   @override
   void dispose() {

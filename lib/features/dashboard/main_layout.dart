@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../pos/pos_register_screen.dart';
 import '../tables/table_management_screen.dart';
@@ -10,12 +12,13 @@ import '../orders/orders_screen.dart';
 import '../menu/menu_management_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../reports/reports_screen.dart';
-import '../onboarding/business_settings_screen.dart';
 import '../settings/business_settings_hub_screen.dart';
+
 import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
 import '../auth/login_screen.dart';
 import 'dashboard_screen.dart';
+
 
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
@@ -372,13 +375,44 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Icon(Icons.storefront_rounded, color: const Color(0xFF051C48), size: size * 0.55),
+            errorBuilder: (_, __, ___) => _buildFallbackInitial(size),
           ),
         );
+      } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
+        try {
+          final cleanBase64 = photoPath.contains(',') ? photoPath.split(',').last : photoPath;
+          final bytes = base64Decode(cleanBase64);
+          return ClipOval(
+            child: Image.memory(
+              bytes,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildFallbackInitial(size),
+            ),
+          );
+        } catch (_) {}
       }
     }
 
-    return Icon(Icons.storefront_rounded, color: const Color(0xFF051C48), size: size * 0.55);
+    return _buildFallbackInitial(size);
+  }
+
+  Widget _buildFallbackInitial(double size) {
+    final user = db.currentUser;
+    final displayName = (user?.name.isNotEmpty == true)
+        ? user!.name
+        : (db.restaurant?.name.isNotEmpty == true ? db.restaurant!.name : 'A');
+    return Center(
+      child: Text(
+        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A',
+        style: TextStyle(
+          color: const Color(0xFF051C48),
+          fontWeight: FontWeight.bold,
+          fontSize: size * 0.45,
+        ),
+      ),
+    );
   }
 
   Widget _buildSidebarContent(bool isSmallScreen) {
@@ -473,13 +507,18 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
           // User Profile & Logout
           Row(
             children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: const Color(0xFF0052FF).withOpacity(0.3),
-                child: Text(
-                  (user?.name.isNotEmpty == true) ? user!.name[0].toUpperCase() : 'A',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(color: Colors.black26, blurRadius: 4),
+                  ],
                 ),
+                child: _buildProfileAvatarImage(36),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -487,7 +526,11 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      user?.name ?? 'Admin Staff',
+                      (user?.name.isNotEmpty == true)
+                          ? user!.name
+                          : (rest?.name.isNotEmpty == true
+                              ? rest!.name
+                              : 'Owner'),
                       style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -502,7 +545,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 icon: const Icon(Icons.logout_rounded, color: Color(0xFFEF4444), size: 20),
                 tooltip: 'Sign Out',
                 onPressed: () async {
-                  await db.logout();
+                  await AuthService().logout();
                   if (mounted) {
                     Navigator.pushReplacement(
                       context,
@@ -517,6 +560,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       ),
     );
   }
+
 
   @override
   Widget build(BuildContext context) {

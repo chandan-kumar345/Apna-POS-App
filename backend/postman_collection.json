@@ -1,0 +1,317 @@
+{
+  "info": {
+    "_postman_id": "apna-pos-collection-v1",
+    "name": "Apna POS API - v1",
+    "description": "Production-Ready REST APIs for Apna POS Authentication and 4-Step Onboarding Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refreshToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "1. Register",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', jsonData.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "register"]
+            }
+          }
+        },
+        {
+          "name": "2. Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', jsonData.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"password\": \"SecurePass@123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            }
+          }
+        },
+        {
+          "name": "3. Get Current User (/auth/me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "me"]
+            }
+          }
+        },
+        {
+          "name": "4. Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.collectionVariables.set('accessToken', jsonData.data.accessToken);",
+                  "    pm.collectionVariables.set('refreshToken', jsonData.data.refreshToken);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/refresh",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "refresh"]
+            }
+          }
+        },
+        {
+          "name": "5. Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/logout",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "logout"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Onboarding",
+      "item": [
+        {
+          "name": "Step 1: Save Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Chandan Kumar\",\n  \"phone\": \"+91 9876543210\",\n  \"companyName\": \"Apna POS Grand Diner\",\n  \"website\": \"https://apnapos.com\",\n  \"referralCode\": \"REF123\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/profile",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "profile"]
+            }
+          }
+        },
+        {
+          "name": "Step 2: Save Business Details",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"country\": \"IN\",\n  \"currency\": \"INR\",\n  \"timezone\": \"Asia/Kolkata\",\n  \"businessType\": \"Restaurant\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/business",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "business"]
+            }
+          }
+        },
+        {
+          "name": "Step 3: Save Address",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"addressLine\": \"12-A Connaught Place\",\n  \"building\": \"Tower A\",\n  \"landmark\": \"Near Rajiv Chowk Metro\",\n  \"placeType\": \"work\",\n  \"city\": \"New Delhi\",\n  \"state\": \"Delhi\",\n  \"country\": \"IN\",\n  \"postalCode\": \"110001\",\n  \"latitude\": 28.6315,\n  \"longitude\": 77.2167\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/address",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "address"]
+            }
+          }
+        },
+        {
+          "name": "Step 4: Save Order Settings",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"services\": {\n    \"dineIn\": true,\n    \"takeaway\": true,\n    \"delivery\": false\n  },\n  \"tax\": {\n    \"type\": \"gst\",\n    \"gstNumber\": \"07AAAAA0000A1Z5\",\n    \"percentage\": 5\n  },\n  \"restaurantType\": \"both\",\n  \"paymentMethods\": {\n    \"cash\": true,\n    \"upi\": true,\n    \"card\": true\n  },\n  \"upiId\": \"apnapos@upi\",\n  \"tableCount\": 12\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/order-settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "order-settings"]
+            }
+          }
+        },
+        {
+          "name": "Get Onboarding Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/status",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "status"]
+            }
+          }
+        },
+        {
+          "name": "Complete Onboarding",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/onboarding/complete",
+              "host": ["{{baseUrl}}"],
+              "path": ["onboarding", "complete"]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

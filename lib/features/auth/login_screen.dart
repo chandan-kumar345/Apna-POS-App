@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/utils/form_validators.dart';
-import '../../core/services/session_manager.dart';
-import '../../core/services/sms_service.dart';
-import '../../core/models/user_model.dart';
+import '../../core/widgets/otp_pin_input.dart';
+
+import '../../features/auth/data/repositories/auth_repository_factory.dart';
 import 'signup_screen.dart';
+import 'forgot_password_screen.dart';
+import 'create_profile_screen.dart';
+
 import '../onboarding/restaurant_onboarding_screen.dart';
+import '../onboarding/add_business_address_screen.dart';
+import '../onboarding/business_settings_screen.dart';
 import '../dashboard/main_layout.dart';
+import '../../core/services/auth_service.dart';
 
 // Country Code Item Model
 class CountryCodeItem {
@@ -264,6 +268,15 @@ class _LoginScreenState extends State<LoginScreen> {
         final name = googleAccount.displayName ?? email.split('@').first;
         final photoUrl = googleAccount.photoUrl;
 
+        // Authenticate with backend API
+        try {
+          await AuthService().login(email, 'GoogleAuth@123').catchError((_) {
+            return AuthService().register(email, 'GoogleAuth@123');
+          });
+        } catch (e) {
+          debugPrint('Backend Google auth note: $e');
+        }
+
         final success = await db.loginWithGoogle(email, name, photoUrl);
         if (!mounted) return;
         if (success) {
@@ -280,7 +293,8 @@ class _LoginScreenState extends State<LoginScreen> {
             );
           }
           return;
-        } else {
+        }
+ else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to login with Google')),
           );
@@ -300,28 +314,21 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // OTP Verification Popup Dialog for Phone Login
   void _showPhoneOtpVerificationDialog(String displayPhone, String rawPhone) async {
-    final smsService = SmsService();
-    String? generatedOtp = await smsService.sendOtpSms(rawPhone);
+    final authRepo = AuthRepositoryFactory.instance;
+    
+    // Ensure we use international format for Firebase if possible
+    String firebaseRecipient = rawPhone;
+    if (!firebaseRecipient.startsWith('+')) {
+      firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
+    }
 
-    final otp1 = TextEditingController(text: '');
-    final otp2 = TextEditingController(text: '');
-    final otp3 = TextEditingController(text: '');
-    final otp4 = TextEditingController(text: '');
+    await authRepo.sendOtp(firebaseRecipient);
+
+    final otpController = TextEditingController();
+    final otpFocusNode = FocusNode();
     String? otpError;
     bool isVerifying = false;
     int failedOtpAttempts = 0;
-
-    void fillPastedOtp(String text, StateSetter setDialogState) {
-      final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
-      if (digits.length >= 4) {
-        setDialogState(() {
-          otp1.text = digits[0];
-          otp2.text = digits[1];
-          otp3.text = digits[2];
-          otp4.text = digits[3];
-        });
-      }
-    }
 
     showDialog(
       context: context,
@@ -362,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             height: 60,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: const Color(0xFF0052FF).withOpacity(0.1),
+                              color: const Color(0xFF0052FF).withValues(alpha: 0.1),
                               border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
                             ),
                             child: const Center(
@@ -440,14 +447,15 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ],
 
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildOtpPillBox(otp1, autoFocus: true),
-                              _buildOtpPillBox(otp2),
-                              _buildOtpPillBox(otp3),
-                              _buildOtpPillBox(otp4),
-                            ],
+                          OtpPinInput(
+                            controller: otpController,
+                            focusNode: otpFocusNode,
+                            length: 4,
+                            onChanged: (_) {
+                              if (otpError != null) {
+                                setDialogState(() => otpError = null);
+                              }
+                            },
                           ),
 
                           const SizedBox(height: 20),
@@ -464,7 +472,13 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                               TextButton(
                                 onPressed: () async {
-                                  generatedOtp = await smsService.sendOtpSms(rawPhone);
+                                  // Re-send OTP via Firebase
+                                  String firebaseRecipient = rawPhone;
+                                  if (!firebaseRecipient.startsWith('+')) {
+                                    firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
+                                  }
+                                  await authRepo.sendOtp(firebaseRecipient);
+                                  
                                   if (!mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
@@ -503,7 +517,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               gradient: GlassTheme.primaryButtonGradient,
                               boxShadow: [
                                 BoxShadow(
-                                  color: GlassTheme.primaryBlue.withOpacity(0.35),
+                                  color: GlassTheme.primaryBlue.withValues(alpha: 0.35),
                                   blurRadius: 14,
                                   offset: const Offset(0, 6),
                                 ),
@@ -520,11 +534,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                         return;
                                       }
 
-                                      final enteredOtp =
-                                          '${otp1.text}${otp2.text}${otp3.text}${otp4.text}'.trim();
+                                      final enteredOtp = otpController.text
+                                          .trim()
+                                          .replaceAll(RegExp(r'[^0-9]'), '');
                                       if (enteredOtp.length < 4) {
                                         setDialogState(() {
-                                          otpError = 'Please enter the OTP.';
+                                          otpError = 'Please enter the complete 4-digit OTP.';
                                         });
                                         return;
                                       }
@@ -534,45 +549,65 @@ class _LoginScreenState extends State<LoginScreen> {
                                         otpError = null;
                                       });
 
-                                      bool isOtpCorrect = (enteredOtp == generatedOtp || enteredOtp == '1234' || enteredOtp == '0000' || enteredOtp == '9999');
+                                      try {
+                                        String firebaseRecipient = rawPhone;
+                                        if (!firebaseRecipient.startsWith('+')) {
+                                          firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
+                                        }
 
-                                      if (!isOtpCorrect) {
+                                        final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
+
+                                        if (userEntity != null) {
+                                          // Authenticate with backend API
+                                          try {
+                                            final phoneEmail = '${rawPhone.replaceAll(RegExp(r'[^0-9]'), '')}@apnapos.com';
+                                            await AuthService().login(firebaseRecipient, 'PhoneAuth@123').catchError((_) {
+                                              return AuthService().register(phoneEmail, 'PhoneAuth@123', phone: firebaseRecipient);
+                                            });
+                                          } catch (e) {
+                                            debugPrint('Backend phone auth note: $e');
+                                          }
+
+                                          // OTP is correct - Log in or create user account
+                                          bool success = await db.loginWithOtpPhone(firebaseRecipient);
+                                          
+                                          if (!mounted) return;
+
+
+                                          if (success) {
+                                            Navigator.pop(context);
+                                            final rest = db.restaurant;
+                                            if (rest != null && rest.isOnboarded) {
+                                              Navigator.pushReplacement(
+                                                context,
+                                                SlideUpPageRoute(page: const MainLayout()),
+                                              );
+                                            } else {
+                                              Navigator.pushReplacement(
+                                                context,
+                                                SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+                                              );
+                                            }
+                                          } else {
+                                            setDialogState(() {
+                                              isVerifying = false;
+                                              otpError = 'Failed to create or verify user session. Please try again.';
+                                            });
+                                          }
+                                        } else {
+                                          failedOtpAttempts++;
+                                          setDialogState(() {
+                                            isVerifying = false;
+                                            otpError = 'The OTP you entered is incorrect.';
+                                          });
+                                        }
+                                      } catch (e) {
                                         failedOtpAttempts++;
                                         setDialogState(() {
                                           isVerifying = false;
-                                          otpError = failedOtpAttempts >= 5
-                                              ? 'Too many incorrect attempts. Please try again later.'
-                                              : 'The OTP you entered is incorrect.';
-                                        });
-                                        return;
-                                      }
-
-                                      // OTP is correct - Log in or create user account
-                                      bool success = await db.loginWithOtpPhone(rawPhone);
-                                      if (!success) {
-                                        success = await db.loginWithOtpPhone(displayPhone);
-                                      }
-
-                                      if (!mounted) return;
-
-                                      if (success) {
-                                        Navigator.pop(context);
-                                        final rest = db.restaurant;
-                                        if (rest != null && rest.isOnboarded) {
-                                          Navigator.pushReplacement(
-                                            context,
-                                            SlideUpPageRoute(page: const MainLayout()),
-                                          );
-                                        } else {
-                                          Navigator.pushReplacement(
-                                            context,
-                                            SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
-                                          );
-                                        }
-                                      } else {
-                                        setDialogState(() {
-                                          isVerifying = false;
-                                          otpError = 'Failed to create or verify user session. Please try again.';
+                                          otpError = e.toString().contains('incorrect') 
+                                              ? 'The OTP you entered is incorrect.' 
+                                              : 'Verification failed: $e';
                                         });
                                       }
                                     },
@@ -615,49 +650,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Helper Widget for OTP Pill Box Input
-  Widget _buildOtpPillBox(TextEditingController controller, {bool autoFocus = false}) {
-    return Flexible(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 54, maxHeight: 54),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF00C2FF),
-            width: 1.5,
-          ),
-        ),
-        child: Center(
-          child: TextField(
-            controller: controller,
-            autofocus: autoFocus,
-            keyboardType: TextInputType.number,
-            textAlign: TextAlign.center,
-            maxLength: 1,
-            style: const TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
-            ),
-            decoration: const InputDecoration(
-              counterText: '',
-              border: InputBorder.none,
-              isDense: true,
-              contentPadding: EdgeInsets.zero,
-            ),
-            onChanged: (value) {
-              if (value.isNotEmpty) {
-                FocusScope.of(context).nextFocus();
-              }
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
   Future<void> _handleAuthAction() async {
     setState(() {
       _isLoading = true;
@@ -665,6 +657,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
+
       if (_selectedTab == 1) {
         if (mounted) {
           Navigator.push(
@@ -675,9 +668,9 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      bool success = false;
       if (!_isEmailLogin) {
         // Phone Number Mode
+
         final phone = _phoneController.text.trim();
         final phoneErr = FormValidators.validatePhone(phone, requiredDigits: 10);
         if (phoneErr != null) {
@@ -716,70 +709,56 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // Authenticate directly with Firebase Authentication
-        final credential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: email,
-          password: password,
-        );
+        // Authenticate with backend API
+        final result = await AuthService().login(email, password);
+        final userJson = result['user'] as Map<String, dynamic>?;
+        final bool onboardingCompleted = userJson?['onboardingCompleted'] == true;
+        final int currentStep = (userJson?['onboardingStep'] as num?)?.toInt() ?? 0;
 
-        final fbUser = credential.user;
-        if (fbUser != null) {
-          await SessionManager().saveSession(fbUser.uid.hashCode);
+        if (!mounted) return;
 
-          final userModel = UserModel(
-            id: fbUser.uid,
-            name: fbUser.displayName ?? (email.contains('@') ? email.split('@').first : 'Owner'),
-            email: fbUser.email ?? email,
-            phone: fbUser.phoneNumber ?? '',
-            role: 'Owner',
-            pin: '1234',
-            restaurantId: db.restaurant?.id ?? 'rest_001',
-          );
-          await db.saveActiveUser(userModel);
-          success = true;
-        }
-      }
-
-      if (!mounted) return;
-
-      if (success) {
-        final rest = db.restaurant;
-        if (rest != null && rest.isOnboarded) {
+        if (onboardingCompleted) {
           Navigator.pushReplacement(
             context,
             SlideUpPageRoute(page: const MainLayout()),
           );
         } else {
+          Widget targetStepScreen = const CreateProfileScreen();
+          switch (currentStep) {
+            case 0:
+              targetStepScreen = const CreateProfileScreen();
+              break;
+            case 1:
+              targetStepScreen = const RestaurantOnboardingScreen();
+              break;
+            case 2:
+              targetStepScreen = const AddBusinessAddressScreen();
+              break;
+            case 3:
+            case 4:
+              targetStepScreen = const BusinessSettingsScreen();
+              break;
+            default:
+              targetStepScreen = const CreateProfileScreen();
+          }
           Navigator.pushReplacement(
             context,
-            SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+            SlideUpPageRoute(page: targetStepScreen),
           );
         }
-      } else {
-        setState(() {
-          _errorMessage = 'Invalid email/phone or password. Please try again.';
-        });
+        return;
       }
     } catch (e) {
       final errStr = e.toString();
       debugPrint('Login exception detail: $errStr');
-      String userFriendlyMessage = 'Invalid email address or password. Please try again.';
-      if (errStr.contains('user-not-found') || errStr.contains('No account found')) {
-        userFriendlyMessage = 'No account found for this email. Please check your email or sign up.';
-      } else if (errStr.contains('wrong-password') || errStr.contains('invalid-credential') || errStr.contains('Incorrect')) {
-        userFriendlyMessage = 'Incorrect email address or password. Please try again.';
-      } else if (errStr.contains('network') || errStr.contains('connection')) {
-        userFriendlyMessage = 'Connection error. Please check your internet connection and try again.';
-      } else if (errStr.contains('invalid-email')) {
-        userFriendlyMessage = 'Please enter a valid email address.';
-      }
       setState(() {
-        _errorMessage = userFriendlyMessage;
+        _errorMessage = errStr.replaceAll('Exception:', '').trim();
       });
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   // Modal to Pick Country Code with Flag & Search Field
   void _showCountryCodePicker() {
@@ -1416,13 +1395,17 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   TextButton(
                                     onPressed: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                          content: Text('Password reset link sent to your email'),
+                                      Navigator.push(
+                                        context,
+                                        SlideUpPageRoute(
+                                          page: ForgotPasswordScreen(
+                                            initialEmail: _emailController.text.trim(),
+                                          ),
                                         ),
                                       );
                                     },
                                     style: TextButton.styleFrom(
+
                                       padding: EdgeInsets.zero,
                                       minimumSize: Size.zero,
                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,

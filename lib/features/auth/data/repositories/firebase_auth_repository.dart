@@ -4,12 +4,15 @@ import 'package:flutter/foundation.dart';
 import '../../domain/entities/user_entity.dart';
 import '../../domain/repositories/i_auth_repository.dart';
 import '../../../../core/services/session_manager.dart';
+import '../../../../core/services/firestore_service.dart';
+import '../../../../core/models/user_model.dart';
 
 /// Firebase implementation of [IAuthRepository] supporting Firebase Auth
 /// for Email/Password, Phone OTP, and Session persistence.
 class FirebaseAuthRepository implements IAuthRepository {
   final fb.FirebaseAuth? _customFirebaseAuth;
   final SessionManager _sessionManager;
+  final FirestoreService _firestoreService = FirestoreService();
   String? _verificationId;
 
   FirebaseAuthRepository({
@@ -47,9 +50,20 @@ class FirebaseAuthRepository implements IAuthRepository {
           await credential.user!.updateDisplayName(user.fullName);
         }
 
-        final registeredUser = user.copyWith(
-          id: credential.user?.uid.hashCode ?? DateTime.now().millisecondsSinceEpoch,
+        final uid = credential.user?.uid ?? DateTime.now().millisecondsSinceEpoch.toString();
+        final registeredUser = user.copyWith(id: uid);
+
+        // Sync User Data to Cloud Firestore
+        final userModel = UserModel(
+          id: uid,
+          name: registeredUser.fullName,
+          email: registeredUser.email,
+          role: 'Owner',
+          pin: '1234',
+          restaurantId: 'rest_001',
+          phone: registeredUser.phoneNumber,
         );
+        await _firestoreService.saveUser(userModel);
 
         if (registeredUser.id != null) {
           await saveSession(registeredUser.id!);
@@ -86,11 +100,14 @@ class FirebaseAuthRepository implements IAuthRepository {
 
       final fbUser = credential.user;
       if (fbUser != null) {
+        // Fetch User profile from Cloud Firestore if available
+        final firestoreUser = await _firestoreService.getUser(fbUser.uid);
+
         final userEntity = UserEntity(
-          id: fbUser.uid.hashCode,
-          fullName: fbUser.displayName ?? fbUser.email?.split('@').first ?? 'Firebase User',
-          email: fbUser.email ?? cleanId,
-          phoneNumber: fbUser.phoneNumber ?? '',
+          id: fbUser.uid,
+          fullName: firestoreUser?.name ?? fbUser.displayName ?? fbUser.email?.split('@').first ?? 'Firebase User',
+          email: firestoreUser?.email ?? fbUser.email ?? cleanId,
+          phoneNumber: firestoreUser?.phone ?? fbUser.phoneNumber ?? '',
           password: cleanPw,
           createdAt: DateTime.now().toIso8601String(),
         );
@@ -116,10 +133,10 @@ class FirebaseAuthRepository implements IAuthRepository {
   }
 
   @override
-  Future<UserEntity?> getUserById(int id) async {
+  Future<UserEntity?> getUserById(String id) async {
     final auth = _auth;
     final fbUser = auth?.currentUser;
-    if (fbUser != null && fbUser.uid.hashCode == id) {
+    if (fbUser != null && fbUser.uid == id) {
       return UserEntity(
         id: id,
         fullName: fbUser.displayName ?? 'Firebase User',
@@ -138,7 +155,7 @@ class FirebaseAuthRepository implements IAuthRepository {
     final fbUser = auth?.currentUser;
     if (fbUser != null && (fbUser.email == identifier || fbUser.phoneNumber == identifier)) {
       return UserEntity(
-        id: fbUser.uid.hashCode,
+        id: fbUser.uid,
         fullName: fbUser.displayName ?? 'Firebase User',
         email: fbUser.email ?? '',
         phoneNumber: fbUser.phoneNumber ?? '',
@@ -158,17 +175,17 @@ class FirebaseAuthRepository implements IAuthRepository {
   }
 
   @override
-  Future<int?> getLoggedInUserId() async {
+  Future<String?> getLoggedInUserId() async {
     final auth = _auth;
     final fbUser = auth?.currentUser;
     if (fbUser != null) {
-      return fbUser.uid.hashCode;
+      return fbUser.uid;
     }
     return await _sessionManager.getLoggedInUserId();
   }
 
   @override
-  Future<void> saveSession(int userId) async {
+  Future<void> saveSession(String userId) async {
     await _sessionManager.saveSession(userId);
   }
 
@@ -238,7 +255,7 @@ class FirebaseAuthRepository implements IAuthRepository {
 
       if (fbUser != null) {
         final userEntity = UserEntity(
-          id: fbUser.uid.hashCode,
+          id: fbUser.uid,
           fullName: fullName ?? fbUser.displayName ?? 'Firebase Phone User',
           email: fbUser.email ?? 'user_$recipient@apnapos.com',
           phoneNumber: recipient,

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../../core/models/restaurant_model.dart';
-import '../dashboard/main_layout.dart';
 import 'confirm_business_name_screen.dart';
+
 
 class RestaurantOnboardingScreen extends StatefulWidget {
   const RestaurantOnboardingScreen({super.key});
@@ -17,39 +16,12 @@ class _RestaurantOnboardingScreenState extends State<RestaurantOnboardingScreen>
   final db = DatabaseService();
 
   Future<void> _completeOnboarding() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final updated = RestaurantModel(
-        id: db.restaurant?.id ?? 'rest_001',
-        name: db.restaurant?.name ?? 'Apna POS Diner',
-        tagline: 'Delicious Food, Unmatched Speed',
-        phone: '+91 98765 43210',
-        address: '12-A Connaught Place, New Delhi',
-        cuisineType: 'Indian & Multi-Cuisine',
-        currencySymbol: '₹',
-        taxRate: 5.0,
-        tableCount: 12,
-        isOnboarded: true,
-      );
-
-      await db.saveRestaurantOnboarding(updated);
-
-      if (!mounted) return;
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ConfirmBusinessNameScreen()),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Onboarding save failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ConfirmBusinessNameScreen()),
+    );
   }
+
 
   @override
   Widget build(BuildContext context) {

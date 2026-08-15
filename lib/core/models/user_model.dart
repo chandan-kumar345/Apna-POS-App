@@ -12,6 +12,8 @@ class UserModel {
   final String? referralCode;
   final String? profilePhotoPath;
   final Map<String, bool>? communicationPreferences;
+  final bool onboardingCompleted;
+  final int onboardingStep;
 
   UserModel({
     required this.id,
@@ -27,6 +29,8 @@ class UserModel {
     this.referralCode,
     this.profilePhotoPath,
     this.communicationPreferences,
+    this.onboardingCompleted = false,
+    this.onboardingStep = 0,
   });
 
   UserModel copyWith({
@@ -43,6 +47,8 @@ class UserModel {
     String? referralCode,
     String? profilePhotoPath,
     Map<String, bool>? communicationPreferences,
+    bool? onboardingCompleted,
+    int? onboardingStep,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -59,6 +65,8 @@ class UserModel {
       profilePhotoPath: profilePhotoPath ?? this.profilePhotoPath,
       communicationPreferences:
           communicationPreferences ?? this.communicationPreferences,
+      onboardingCompleted: onboardingCompleted ?? this.onboardingCompleted,
+      onboardingStep: onboardingStep ?? this.onboardingStep,
     );
   }
 
@@ -76,10 +84,12 @@ class UserModel {
         'referralCode': referralCode,
         'profilePhotoPath': profilePhotoPath,
         'communicationPreferences': communicationPreferences,
+        'onboardingCompleted': onboardingCompleted,
+        'onboardingStep': onboardingStep,
       };
 
   factory UserModel.fromJson(Map<String, dynamic> json) => UserModel(
-        id: json['id'] ?? '',
+        id: json['id'] ?? json['_id'] ?? '',
         name: json['name'] ?? '',
         email: json['email'] ?? '',
         role: json['role'] ?? 'Owner',
@@ -94,5 +104,7 @@ class UserModel {
         communicationPreferences: json['communicationPreferences'] != null
             ? Map<String, bool>.from(json['communicationPreferences'])
             : null,
+        onboardingCompleted: json['onboardingCompleted'] == true,
+        onboardingStep: (json['onboardingStep'] as num?)?.toInt() ?? 0,
       );
 }

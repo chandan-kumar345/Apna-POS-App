@@ -11,6 +11,8 @@ import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/auth_repository_factory.dart';
 import '../services/session_manager.dart';
+import '../services/firestore_service.dart';
+import '../services/network_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -22,6 +24,7 @@ class DatabaseService extends ChangeNotifier {
   SharedPreferences? _prefs;
   IAuthRepository get authRepository => AuthRepositoryFactory.instance;
   final SessionManager sessionManager = SessionManager();
+  final FirestoreService _firestoreService = FirestoreService();
 
   // In-Memory state for instant sync access
   UserModel? currentUser;
@@ -94,24 +97,28 @@ class DatabaseService extends ChangeNotifier {
     _prefs = await SharedPreferences.getInstance();
 
     // 1. Load User Session from SessionManager (SharedPreferences session state)
-    final isLoggedIn = await sessionManager.isLoggedIn();
-    if (isLoggedIn) {
-      final activeUserId = await sessionManager.getLoggedInUserId();
-      if (activeUserId != null) {
-        final userEntity = await authRepository.getUserById(activeUserId);
-        if (userEntity != null) {
-          currentUser = UserModel(
-            id: userEntity.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
-            name: userEntity.fullName,
-            email: userEntity.email,
-            phone: userEntity.phoneNumber,
-            role: 'Owner',
-            pin: '1234',
-            restaurantId: restaurant?.id ?? 'rest_001',
-            profilePhotoPath: userEntity.profileImage,
-          );
+    try {
+      final isLoggedIn = await sessionManager.isLoggedIn();
+      if (isLoggedIn) {
+        final activeUserId = await sessionManager.getLoggedInUserId();
+        if (activeUserId != null) {
+          final userEntity = await authRepository.getUserById(activeUserId);
+          if (userEntity != null) {
+            currentUser = UserModel(
+              id: userEntity.id ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+              name: userEntity.fullName,
+              email: userEntity.email,
+              phone: userEntity.phoneNumber,
+              role: 'Owner',
+              pin: '1234',
+              restaurantId: restaurant?.id ?? 'rest_001',
+              profilePhotoPath: userEntity.profileImage,
+            );
+          }
         }
       }
+    } catch (e) {
+      debugPrint('Error restoring user session in DatabaseService.init: $e');
     }
 
     // 2. Load Restaurant Profile
@@ -220,6 +227,7 @@ class DatabaseService extends ChangeNotifier {
       _saveRegisteredUsers();
     }
 
+    _isInitialized = true;
     notifyListeners();
   }
 
@@ -239,6 +247,7 @@ class DatabaseService extends ChangeNotifier {
     String? onboardingDetails,
   }) async {
     final nowStr = DateTime.now().toIso8601String();
+
     final userEntity = UserEntity(
       fullName: name.trim(),
       email: email.trim(),
@@ -310,6 +319,10 @@ class DatabaseService extends ChangeNotifier {
     }
     await _saveRegisteredUsers();
     await _prefs?.setString('apna_pos_user', jsonEncode(user.toJson()));
+    
+    // Sync with Firestore
+    await _firestoreService.saveUser(user);
+    
     notifyListeners();
   }
 
@@ -348,6 +361,9 @@ class DatabaseService extends ChangeNotifier {
     // Persist to SharedPreferences session state
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
 
+    // Sync with Firestore
+    await _firestoreService.saveUser(currentUser!);
+
     notifyListeners();
     return true;
   }
@@ -359,11 +375,13 @@ class DatabaseService extends ChangeNotifier {
     if (currentUser != null) {
       currentUser = currentUser!.copyWith(companyName: cleanName);
       await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+      await _firestoreService.saveUser(currentUser!);
     }
 
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(name: cleanName);
       await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      await _firestoreService.saveRestaurant(restaurant!);
     } else {
       restaurant = RestaurantModel(
         id: 'rest_001',
@@ -386,6 +404,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<bool> loginUser(String identifier, String password) async {
     final cleanId = identifier.trim();
+
     final cleanPw = password.trim();
 
     if (cleanId.isEmpty || cleanPw.isEmpty) {
@@ -472,9 +491,13 @@ class DatabaseService extends ChangeNotifier {
       }
       await _saveRegisteredUsers();
       await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+      
+      // Sync with Firestore
+      if (currentUser != null) {
+        await _firestoreService.saveUser(currentUser!);
+      }
 
-      final numericId = int.tryParse(finalId) ?? finalId.hashCode;
-      await sessionManager.saveSession(numericId);
+      await sessionManager.saveSession(finalId);
 
       notifyListeners();
       return true;
@@ -509,6 +532,11 @@ class DatabaseService extends ChangeNotifier {
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     
+    // Sync with Firestore
+    if (currentUser != null) {
+      await _firestoreService.saveUser(currentUser!);
+    }
+    
     if (isNewAccount) {
       await clearUserDataForNewAccount();
     }
@@ -538,6 +566,11 @@ class DatabaseService extends ChangeNotifier {
 
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    
+    // Sync with Firestore
+    if (currentUser != null) {
+      await _firestoreService.saveUser(currentUser!);
+    }
     
     if (isNewAccount) {
       await clearUserDataForNewAccount();
@@ -613,6 +646,9 @@ class DatabaseService extends ChangeNotifier {
     restaurant = updated.copyWith(isOnboarded: true);
     await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
     
+    // Sync with Firestore
+    await _firestoreService.saveRestaurant(restaurant!);
+
     // Clear demo data for clean production launch if not manually set
     if (_prefs?.getString('apna_pos_menu') == null) {
       menuItems = [];
@@ -634,6 +670,7 @@ class DatabaseService extends ChangeNotifier {
   Future<void> updateRestaurantProfile(RestaurantModel updated) async {
     restaurant = updated;
     await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    await _firestoreService.saveRestaurant(restaurant!);
     notifyListeners();
   }
 

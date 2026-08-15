@@ -71,24 +71,27 @@ class AuthInterceptor extends Interceptor {
 
   Future<String?> _performTokenRefresh() async {
     final refreshToken = await _storageService.getRefreshToken();
-    final deviceId = await _storageService.getDeviceId();
+    if (refreshToken == null) return null;
 
-    if (refreshToken == null || deviceId == null) return null;
-
-    final response = await _dio.post('/api/v1/auth/refresh-token', data: {
+    final response = await _dio.post('/auth/refresh', data: {
       'refreshToken': refreshToken,
-      'deviceId': deviceId,
     });
 
     if (response.statusCode == 200 && response.data != null) {
-      final newAccessToken = response.data['accessToken'] as String;
-      final newRefreshToken = response.data['refreshToken'] as String;
+      final data = response.data['data'] ?? response.data;
+      final newAccessToken = data['accessToken'] as String?;
+      final newRefreshToken = data['refreshToken'] as String?;
 
-      await _storageService.saveAccessToken(newAccessToken);
-      await _storageService.saveRefreshToken(newRefreshToken);
+      if (newAccessToken != null) {
+        await _storageService.saveAccessToken(newAccessToken);
+      }
+      if (newRefreshToken != null) {
+        await _storageService.saveRefreshToken(newRefreshToken);
+      }
 
       return newAccessToken;
     }
     return null;
   }
 }
+

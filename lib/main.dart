@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
 import 'core/services/sound_service.dart';
+import 'core/network/api_endpoints.dart';
 import 'core/widgets/sound_feedback_wrapper.dart';
 import 'features/auth/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -17,9 +18,27 @@ void main() async {
   } catch (e) {
     debugPrint('Firebase.initializeApp warning/info: $e');
   }
-  final db = DatabaseService();
-  await db.init();
-  await SoundService().init();
+
+  try {
+    await ApiEndpoints.initialize();
+  } catch (e) {
+    debugPrint('ApiEndpoints init error: $e');
+  }
+
+
+  try {
+    final db = DatabaseService();
+    await db.init();
+  } catch (e) {
+    debugPrint('DatabaseService init error: $e');
+  }
+
+  try {
+    await SoundService().init();
+  } catch (e) {
+    debugPrint('SoundService init error: $e');
+  }
+
   runApp(
     const ProviderScope(
       child: ApnaPosApp(),

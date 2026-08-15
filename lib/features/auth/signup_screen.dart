@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/email_service.dart';
-import '../../core/services/session_manager.dart';
-import '../../core/models/user_model.dart';
+import '../../core/services/network_service.dart';
+import '../../core/utils/form_validators.dart';
+import '../../core/widgets/otp_pin_input.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import 'create_profile_screen.dart';
 import '../dashboard/main_layout.dart';
+import '../../core/services/auth_service.dart';
 
 // Standalone Register Form Widget (Embedded inline inside LoginScreen or used standalone)
 class RegisterFormWidget extends StatefulWidget {
@@ -31,6 +32,16 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 
   Future<void> _handleGoogleSignup() async {
+    final hasConn = await NetworkService().hasInternet();
+    if (!hasConn) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Internet connection required to sign up with Google.')),
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
     try {
       final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
@@ -82,9 +93,18 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
 
   // Trigger OTP Verification Popup when clicking "Continue"
   Future<void> _handleSignup() async {
-    if (_emailController.text.trim().isEmpty ||
-        _passwordController.text.trim().isEmpty) {
-      setState(() => _errorMessage = 'Please fill in all required fields');
+    final emailText = _emailController.text.trim();
+    final passwordText = _passwordController.text.trim();
+
+    final emailErr = FormValidators.validateEmail(emailText);
+    if (emailErr != null) {
+      setState(() => _errorMessage = emailErr);
+      return;
+    }
+
+    final passwordErr = FormValidators.validatePassword(passwordText);
+    if (passwordErr != null) {
+      setState(() => _errorMessage = passwordErr);
       return;
     }
 
@@ -92,11 +112,13 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
       _errorMessage = null;
       _isLoading = true;
     });
-
-    final emailText = _emailController.text.trim();
     
-    // Dispatch OTP Email from sooftcode@gmail.com
-    await EmailService().sendOtpEmail(emailText);
+    try {
+      // Dispatch OTP Email from sooftcode@gmail.com
+      await EmailService().sendOtpEmail(emailText);
+    } catch (e) {
+      debugPrint('OTP dispatch warning: $e');
+    }
 
     if (mounted) {
       setState(() => _isLoading = false);
@@ -116,17 +138,11 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
     }
   }
 
+
   // OTP Verification Popup Dialog with Theme Colors, Resend OTP, and Verify Button
   void _showOtpVerificationDialog(String emailText) {
-    final otp1 = TextEditingController();
-    final otp2 = TextEditingController();
-    final otp3 = TextEditingController();
-    final otp4 = TextEditingController();
-
-    final focus1 = FocusNode();
-    final focus2 = FocusNode();
-    final focus3 = FocusNode();
-    final focus4 = FocusNode();
+    final otpController = TextEditingController();
+    final otpFocusNode = FocusNode();
     String? otpError;
     bool isVerifying = false;
 
@@ -171,7 +187,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                 height: 60,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: const Color(0xFF0052FF).withOpacity(0.1),
+                                  color: const Color(0xFF0052FF).withValues(alpha: 0.1),
                                   border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
                                 ),
                                 child: const Center(
@@ -268,14 +284,15 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                               ],
 
                               // 4 Semi-Circle / Pill OTP Input Fields
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  _buildOtpPillBox(otp1, focus1, nextFocusNode: focus2, autoFocus: true),
-                                  _buildOtpPillBox(otp2, focus2, nextFocusNode: focus3, prevFocusNode: focus1),
-                                  _buildOtpPillBox(otp3, focus3, nextFocusNode: focus4, prevFocusNode: focus2),
-                                  _buildOtpPillBox(otp4, focus4, prevFocusNode: focus3),
-                                ],
+                              OtpPinInput(
+                                controller: otpController,
+                                focusNode: otpFocusNode,
+                                length: 4,
+                                onChanged: (_) {
+                                  if (otpError != null) {
+                                    setDialogState(() => otpError = null);
+                                  }
+                                },
                               ),
 
                               const SizedBox(height: 20),
@@ -295,6 +312,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                     onPressed: () async {
                                       setDialogState(() {
                                         otpError = null;
+                                        otpController.clear();
                                       });
                                       await EmailService().sendOtpEmail(emailText);
                                       if (context.mounted) {
@@ -338,7 +356,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                   gradient: GlassTheme.primaryButtonGradient,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: GlassTheme.primaryBlue.withOpacity(0.35),
+                                      color: GlassTheme.primaryBlue.withValues(alpha: 0.35),
                                       blurRadius: 14,
                                       offset: const Offset(0, 6),
                                     ),
@@ -348,11 +366,12 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                   onPressed: isVerifying
                                       ? null
                                       : () async {
-                                          final enteredCode =
-                                              '${otp1.text}${otp2.text}${otp3.text}${otp4.text}'.trim();
+                                          final enteredCode = otpController.text
+                                              .trim()
+                                              .replaceAll(RegExp(r'[^0-9]'), '');
                                           if (enteredCode.length < 4) {
                                             setDialogState(() {
-                                              otpError = 'Please enter the 4-digit code.';
+                                              otpError = 'Please enter the complete 4-digit OTP code.';
                                             });
                                             return;
                                           }
@@ -362,84 +381,69 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                             otpError = null;
                                           });
 
+                                          final isOtpValid =
+                                              EmailService().verifyOtp(emailText, enteredCode);
+
+                                          if (!isOtpValid) {
+                                            setDialogState(() {
+                                              isVerifying = false;
+                                              otpError =
+                                                  'Invalid or expired OTP verification code. Please check your email or click Resend.';
+                                            });
+                                            return;
+                                          }
+
                                           try {
-                                            final isOtpValid =
-                                                EmailService().verifyOtp(emailText, enteredCode);
-
-                                            if (!isOtpValid) {
-                                              setDialogState(() {
-                                                isVerifying = false;
-                                                otpError =
-                                                    'Invalid or expired OTP verification code. Please check your email or click Resend.';
-                                              });
-                                              return;
-                                            }
-
-                                            // Register user directly in Firebase Authentication
+                                            // Register user directly via backend API
                                             final nameFromEmail = emailText.contains('@')
                                                 ? emailText.split('@').first
                                                 : emailText;
                                             final password = _passwordController.text.trim();
 
-                                            bool success = false;
-                                            final credential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-                                              email: emailText,
-                                              password: password,
-                                            );
-
-                                            final fbUser = credential.user;
-                                            if (fbUser != null) {
-                                              await fbUser.updateDisplayName(nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner');
-                                              await SessionManager().saveSession(fbUser.uid.hashCode);
-
-                                              final userModel = UserModel(
-                                                id: fbUser.uid,
-                                                name: nameFromEmail.isNotEmpty ? nameFromEmail : 'Restaurant Owner',
-                                                email: emailText,
-                                                role: 'Owner',
-                                                pin: '1234',
-                                                restaurantId: db.restaurant?.id ?? 'rest_001',
-                                              );
-                                              await db.saveActiveUser(userModel);
-                                              success = true;
+                                            try {
+                                              await AuthService().register(emailText, password);
+                                            } catch (e) {
+                                              if (e.toString().contains('already exists') ||
+                                                  e.toString().contains('EMAIL_ALREADY_EXISTS')) {
+                                                // If already registered, try logging in
+                                                await AuthService().login(emailText, password);
+                                              } else if (e.toString().contains('Unable to connect') ||
+                                                  e.toString().contains('Connection timed out') ||
+                                                  e.toString().contains('SocketException') ||
+                                                  e.toString().contains('CONNECTION_ERROR')) {
+                                                // Fallback to local DatabaseService user registration
+                                                await DatabaseService().registerUser(
+                                                  name: nameFromEmail,
+                                                  email: emailText,
+                                                  password: password,
+                                                  pin: '1234',
+                                                );
+                                              } else {
+                                                rethrow;
+                                              }
                                             }
+
+                                            // Clear OTP only after successful registration
+                                            EmailService().clearOtp(emailText);
 
                                             if (!context.mounted) return;
 
-                                            if (success) {
-                                              Navigator.pop(context); // Close OTP Dialog
-                                              Navigator.pushReplacement(
-                                                context,
-                                                SlideRightPageRoute(
-                                                  page: CreateProfileScreen(
-                                                    initialEmail: emailText,
-                                                    initialName: nameFromEmail,
-                                                  ),
+                                            Navigator.pop(context); // Close OTP Dialog
+                                            Navigator.pushReplacement(
+                                              context,
+                                              SlideRightPageRoute(
+                                                page: CreateProfileScreen(
+                                                  initialEmail: emailText,
+                                                  initialName: nameFromEmail,
                                                 ),
-                                              );
-                                            } else {
-                                              setDialogState(() {
-                                                isVerifying = false;
-                                                otpError =
-                                                    'Email address is already registered with a different password. Please log in.';
-                                              });
-                                            }
+                                              ),
+                                            );
                                           } catch (e) {
-                                            final errStr = e.toString();
+                                            final errStr = e.toString().replaceAll('Exception:', '').trim();
                                             debugPrint('Signup error detail: $errStr');
-                                            String userFriendlyMessage = 'Registration failed. Please check your details and try again.';
-                                            if (errStr.contains('email-already-in-use')) {
-                                              userFriendlyMessage = 'This email address is already registered. Please log in.';
-                                            } else if (errStr.contains('weak-password')) {
-                                              userFriendlyMessage = 'Password is too weak. Please use at least 6 characters.';
-                                            } else if (errStr.contains('invalid-email')) {
-                                              userFriendlyMessage = 'Please enter a valid email address.';
-                                            } else if (errStr.contains('network') || errStr.contains('connection')) {
-                                              userFriendlyMessage = 'Connection error. Please check your internet connection.';
-                                            }
                                             setDialogState(() {
                                               isVerifying = false;
-                                              otpError = userFriendlyMessage;
+                                              otpError = errStr;
                                             });
                                           }
                                         },
@@ -495,72 +499,6 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           },
         );
       },
-    );
-  }
-
-  // Helper Widget for OTP Pill Box Input
-  Widget _buildOtpPillBox(
-    TextEditingController controller,
-    FocusNode focusNode, {
-    FocusNode? nextFocusNode,
-    FocusNode? prevFocusNode,
-    bool autoFocus = false,
-  }) {
-    return Flexible(
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 54, maxHeight: 54),
-        margin: const EdgeInsets.symmetric(horizontal: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: const Color(0xFF00C2FF), // Theme Cyan Highlight Border
-            width: 1.5,
-          ),
-        ),
-        child: Center(
-          child: KeyboardListener(
-            focusNode: FocusNode(),
-            onKeyEvent: (event) {
-              if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.backspace) {
-                if (controller.text.isEmpty && prevFocusNode != null) {
-                  prevFocusNode.requestFocus();
-                }
-              }
-            },
-            child: TextField(
-              controller: controller,
-              focusNode: focusNode,
-              autofocus: autoFocus,
-              keyboardType: TextInputType.number,
-              textAlign: TextAlign.center,
-              maxLength: 1,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
-              ),
-              decoration: const InputDecoration(
-                counterText: '',
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
-              onChanged: (value) {
-                if (value.isNotEmpty) {
-                  if (nextFocusNode != null) {
-                    nextFocusNode.requestFocus();
-                  } else {
-                    focusNode.unfocus();
-                  }
-                } else if (value.isEmpty && prevFocusNode != null) {
-                  prevFocusNode.requestFocus();
-                }
-              },
-            ),
-          ),
-        ),
-      ),
     );
   }
 
@@ -628,7 +566,22 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           ),
         ),
 
-        const SizedBox(height: 20),
+        const SizedBox(height: 6),
+
+        // Password Requirements Hint
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6),
+          child: Text(
+            'Must be 8+ chars with uppercase, lowercase, number & symbol (e.g. Apna@123)',
+            style: TextStyle(
+              fontSize: 11,
+              color: Color(0xFF64748B),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 16),
 
         // Primary Action Button ("Continue")
         Container(

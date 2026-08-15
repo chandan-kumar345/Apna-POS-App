@@ -27,15 +27,18 @@ class SoundService {
       await _buttonPlayer.setPlayerMode(PlayerMode.lowLatency);
       await _keyPlayer.setPlayerMode(PlayerMode.lowLatency);
 
+      await _buttonPlayer.setReleaseMode(ReleaseMode.stop);
+      await _keyPlayer.setReleaseMode(ReleaseMode.stop);
+
       await _buttonPlayer.setSource(AssetSource('sounds/ios_click.wav'));
       await _keyPlayer.setSource(AssetSource('sounds/ios_keypress.wav'));
 
-      // Ultra-light, soft volume for a gentle premium feel
-      await _buttonPlayer.setVolume(0.35);
-      await _keyPlayer.setVolume(0.25);
+      // Clean, crisp acoustic volume
+      await _buttonPlayer.setVolume(0.40);
+      await _keyPlayer.setVolume(0.30);
 
       _isInitialized = true;
-    } catch (e) {
+    } catch (_) {
       _isInitialized = false;
     }
   }
@@ -47,47 +50,58 @@ class SoundService {
     await prefs.setBool(_prefKeySoundEnabled, enabled);
   }
 
-  /// Play light iOS button click sound on button/interactive tap (debounced to prevent double sound)
-  static Future<void> playButtonClick() async {
+  /// Play light button click sound on button/interactive tap immediately with 0 delay
+  static void playButtonClick() {
     if (!soundEnabled) return;
 
-    // Debounce within 100ms to guarantee exactly 1 sound per user click
+    // Debounce within 60ms to avoid double sound
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastButtonClickTime < 100) {
+    if (now - _instance._lastButtonClickTime < 60) {
       return;
     }
     _instance._lastButtonClickTime = now;
 
-    // Ultra-soft selection haptic
+    // 1. Instant zero-latency native hardware sound & haptic feedback
+    SystemSound.play(SystemSoundType.click);
     HapticFeedback.selectionClick();
 
+    // 2. Fast low-latency asset playback non-blockingly
+    if (_instance._isInitialized) {
+      _instance._playButtonAsset();
+    }
+  }
+
+  void _playButtonAsset() async {
     try {
-      if (_instance._isInitialized) {
-        await _instance._buttonPlayer.stop();
-        await _instance._buttonPlayer.play(AssetSource('sounds/ios_click.wav'));
-      }
+      await _buttonPlayer.stop();
+      await _buttonPlayer.play(AssetSource('sounds/ios_click.wav'));
     } catch (_) {}
   }
 
-  /// Play light iOS keypress sound on text field tap or typing (debounced)
-  static Future<void> playKeyPress() async {
+  /// Play light keypress sound on text field tap or typing with zero latency
+  static void playKeyPress() {
     if (!soundEnabled) return;
 
-    // Rate-limiting for ultra-fast typing (debounce within 40ms)
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastKeyPressTime < 40) {
+    if (now - _instance._lastKeyPressTime < 30) {
       return;
     }
     _instance._lastKeyPressTime = now;
 
-    // Subtle tactile feel
+    // Instant native hardware click
+    SystemSound.play(SystemSoundType.click);
     HapticFeedback.selectionClick();
 
+    if (_instance._isInitialized) {
+      _instance._playKeyAsset();
+    }
+  }
+
+  void _playKeyAsset() async {
     try {
-      if (_instance._isInitialized) {
-        await _instance._keyPlayer.stop();
-        await _instance._keyPlayer.play(AssetSource('sounds/ios_keypress.wav'));
-      }
+      await _keyPlayer.stop();
+      await _keyPlayer.play(AssetSource('sounds/ios_keypress.wav'));
     } catch (_) {}
   }
 }
+

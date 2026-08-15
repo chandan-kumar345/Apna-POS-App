@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../../core/models/restaurant_model.dart';
 import 'add_business_address_screen.dart';
+import '../../core/services/onboarding_service.dart';
+
+
 
 class BusinessGridCategory {
   final String title;
@@ -91,53 +93,15 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
     });
 
     try {
-      final businessName = db.restaurant?.name ??
-          db.currentUser?.companyName ??
-          'Apna POS Diner';
-
-      final updated = RestaurantModel(
-        id: db.restaurant?.id ?? 'rest_001',
-        name: businessName,
-        tagline: 'Authentic Flavors & Swift Service',
-        phone: db.restaurant?.phone ?? db.currentUser?.phone ?? '+91 98765 43210',
-        address: db.restaurant?.address ?? '12-A Connaught Place, New Delhi',
-        cuisineType: _selectedCategory!,
-        currencySymbol: db.restaurant?.currencySymbol ?? '₹',
-        taxRate: 5.0,
-        tableCount: 12,
-        isOnboarded: true,
+      await OnboardingService().saveBusinessDetails(
+        country: 'IN',
+        currency: 'INR',
+        timezone: 'Asia/Kolkata',
+        businessType: _selectedCategory!,
+        phone: db.currentUser?.phone,
       );
-
-      // Save onboarding category to backend database & SharedPreferences
-      await db.saveRestaurantOnboarding(updated);
 
       if (!mounted) return;
-
-      // High contrast crisp SnackBar message
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: const Color(0xFF0F172A),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          content: Row(
-            children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Category "$_selectedCategory" saved successfully!',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13.5,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          duration: const Duration(seconds: 2),
-        ),
-      );
 
       // Open Add Business Address Screen
       Navigator.push(
@@ -145,11 +109,12 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
         MaterialPageRoute(builder: (_) => const AddBusinessAddressScreen()),
       );
     } catch (e) {
-      setState(() => _errorMessage = 'Error saving onboarding category: $e');
+      setState(() => _errorMessage = e.toString().replaceAll('Exception:', '').trim());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

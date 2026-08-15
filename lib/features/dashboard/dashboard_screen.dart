@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'dart:ui';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
+
 
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
 class GlassDashboardScreen extends StatefulWidget {
@@ -215,16 +217,14 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
   /// Order Summary Section
   Widget _buildSummaryCards(bool isMobile) {
-    // Calculate live database metrics if available, fallback to design metrics
-    double totalRevenue = 1125.65;
-    int totalOrdersCount = 7;
-
-    final paidOrders = _filterOrders(_db.orders.where((o) => o.status == OrderStatus.completed).toList(), _dashboardFilter);
-    if (paidOrders.isNotEmpty) {
-      totalOrdersCount = paidOrders.length;
-      totalRevenue = paidOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
-      if (totalRevenue == 0) totalRevenue = 1125.65;
-    }
+    // Calculate live database metrics for completed orders
+    final paidOrders = _filterOrders(
+      _db.orders.where((o) => o.status == OrderStatus.completed).toList(),
+      _dashboardFilter,
+    );
+    final int totalOrdersCount = paidOrders.length;
+    final double totalRevenue = paidOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+    final String currentDateStr = DateFormat('d MMM').format(DateTime.now());
 
     return _buildGlassCard(
       child: Column(
@@ -312,12 +312,12 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
           // Footer Date
           Row(
-            children: const [
-              Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF94A3B8)),
-              SizedBox(width: 6),
+            children: [
+              const Icon(Icons.calendar_today_rounded, size: 12, color: Color(0xFF94A3B8)),
+              const SizedBox(width: 6),
               Text(
-                '4 Aug - 4 Aug',
-                style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                '$currentDateStr - $currentDateStr',
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
               ),
             ],
           ),
@@ -325,6 +325,7 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
       ),
     );
   }
+
 
   /// Order Type Liquid Glass Cards Grid (Delivery, Take Away, Dine In, Total Orders)
   Widget _buildOrderTypeGrid(bool isMobile) {

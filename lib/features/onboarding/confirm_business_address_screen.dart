@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../../core/models/restaurant_model.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
-import '../dashboard/main_layout.dart';
 import 'add_business_address_screen.dart';
 import 'business_settings_screen.dart';
+import '../../core/services/onboarding_service.dart';
+
+
 
 class ConfirmBusinessAddressScreen extends StatefulWidget {
   final String? customAddress;
@@ -66,25 +67,22 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
     });
 
     try {
-      final businessName = db.restaurant?.name ??
-          db.currentUser?.companyName ??
-          'Tea Coffee';
+      final city = _displayAddress.split(',').first.trim().isNotEmpty
+          ? _displayAddress.split(',').first.trim()
+          : 'New Delhi';
 
-      final updated = RestaurantModel(
-        id: db.restaurant?.id ?? 'rest_001',
-        name: businessName,
-        tagline: db.restaurant?.tagline ?? 'Authentic Flavors & Swift Service',
-        phone: db.restaurant?.phone ?? db.currentUser?.phone ?? '+91 98765 43210',
-        address: _displayAddress,
-        cuisineType: db.restaurant?.cuisineType ?? 'Multi-Cuisine POS',
-        currencySymbol: db.restaurant?.currencySymbol ?? '₹',
-        taxRate: db.restaurant?.taxRate ?? 5.0,
-        tableCount: db.restaurant?.tableCount ?? 12,
-        isOnboarded: false,
+      await OnboardingService().saveAddress(
+        addressLine: _displayAddress,
+        placeType: _displayAddressType.toLowerCase() == 'home'
+            ? 'home'
+            : _displayAddressType.toLowerCase() == 'work'
+                ? 'work'
+                : 'other',
+        city: city,
+        country: 'IN',
+        latitude: 28.6139,
+        longitude: 77.2090,
       );
-
-      // Save address step
-      await db.saveRestaurantOnboarding(updated);
 
       if (!mounted) return;
 
@@ -94,11 +92,12 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
         MaterialPageRoute(builder: (_) => const BusinessSettingsScreen()),
       );
     } catch (e) {
-      setState(() => _errorMessage = 'Error saving address: $e');
+      setState(() => _errorMessage = e.toString().replaceAll('Exception:', '').trim());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

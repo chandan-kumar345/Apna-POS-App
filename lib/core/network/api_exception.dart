@@ -1,0 +1,80 @@
+import 'package:dio/dio.dart';
+import 'api_endpoints.dart';
+
+class ApiException implements Exception {
+  final String message;
+  final String code;
+  final int? statusCode;
+  final Map<String, dynamic>? fields;
+
+  ApiException({
+    required this.message,
+    this.code = 'API_ERROR',
+    this.statusCode,
+    this.fields,
+  });
+
+  factory ApiException.fromDioException(DioException error) {
+    if (error.response?.data != null && error.response!.data is Map) {
+      final data = error.response!.data as Map<String, dynamic>;
+      final errObj = data['error'] as Map<String, dynamic>?;
+      if (errObj != null) {
+        String msg = errObj['message']?.toString() ?? 'An error occurred';
+        final fields = errObj['fields'] as Map<String, dynamic>?;
+        if (fields != null && fields.isNotEmpty) {
+          final fieldMessages = fields.values
+              .where((v) => v != null && v.toString().trim().isNotEmpty)
+              .map((v) => v.toString().trim())
+              .join('\n');
+          if (fieldMessages.isNotEmpty) {
+            msg = fieldMessages;
+          }
+        }
+        return ApiException(
+          message: msg,
+          code: errObj['code']?.toString() ?? 'API_ERROR',
+          statusCode: error.response?.statusCode,
+          fields: fields,
+        );
+      }
+      if (data['message'] != null) {
+        return ApiException(
+          message: data['message'].toString(),
+          code: 'API_ERROR',
+          statusCode: error.response?.statusCode,
+        );
+      }
+    }
+
+    final targetUrl = ApiEndpoints.baseUrl;
+
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.receiveTimeout:
+        return ApiException(
+          message: 'Connection timed out connecting to backend ($targetUrl). Please make sure your Node.js backend server is running.',
+          code: 'TIMEOUT',
+        );
+      case DioExceptionType.connectionError:
+        return ApiException(
+          message: 'Unable to connect to backend server ($targetUrl). Please make sure your Node.js backend server is running (npm run dev).',
+          code: 'CONNECTION_ERROR',
+        );
+      case DioExceptionType.cancel:
+        return ApiException(
+          message: 'Request was cancelled',
+          code: 'REQUEST_CANCELLED',
+        );
+      default:
+        return ApiException(
+          message: error.message ?? 'An unexpected network error occurred',
+          code: 'UNKNOWN_NETWORK_ERROR',
+          statusCode: error.response?.statusCode,
+        );
+    }
+  }
+
+  @override
+  String toString() => message;
+}

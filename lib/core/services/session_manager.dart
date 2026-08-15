@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Manages local user login session state using SharedPreferences.
@@ -11,28 +12,48 @@ class SessionManager {
   SessionManager._internal();
 
   /// Saves session state in SharedPreferences
-  Future<void> saveSession(int userId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_keyIsLoggedIn, true);
-    await prefs.setInt(_keyUserId, userId);
+  Future<void> saveSession(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_keyIsLoggedIn, true);
+      await prefs.setString(_keyUserId, userId);
+    } catch (e) {
+      debugPrint('SessionManager saveSession error: $e');
+    }
   }
 
   /// Checks if a user is currently logged in
   Future<bool> isLoggedIn() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_keyIsLoggedIn) ?? false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_keyIsLoggedIn) ?? false;
+    } catch (e) {
+      debugPrint('SessionManager isLoggedIn error: $e');
+      return false;
+    }
   }
 
-  /// Retrieves the active logged-in user ID
-  Future<int?> getLoggedInUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_keyUserId);
+  /// Retrieves the active logged-in user ID safely without throwing type cast errors
+  Future<String?> getLoggedInUserId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final val = prefs.get(_keyUserId);
+      if (val == null) return null;
+      return val.toString();
+    } catch (e) {
+      debugPrint('SessionManager getLoggedInUserId error: $e');
+      return null;
+    }
   }
 
   /// Clears active session state on logout
   Future<void> clearSession() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_keyIsLoggedIn);
-    await prefs.remove(_keyUserId);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_keyIsLoggedIn);
+      await prefs.remove(_keyUserId);
+    } catch (e) {
+      debugPrint('SessionManager clearSession error: $e');
+    }
   }
 }

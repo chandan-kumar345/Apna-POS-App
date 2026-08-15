@@ -5,6 +5,8 @@ import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
+import '../../core/services/onboarding_service.dart';
+
 
 class BusinessSettingsScreen extends StatefulWidget {
   final bool isFromOnboarding;
@@ -248,34 +250,37 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
     });
 
     try {
-      final businessName = db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee';
+      final String restType = _restaurantType.toLowerCase() == 'veg'
+          ? 'pure_veg'
+          : (_restaurantType.toLowerCase() == 'non-veg' ? 'non_veg' : 'both');
 
-      final updated = RestaurantModel(
-        id: db.restaurant?.id ?? 'rest_001',
-        name: businessName,
-        tagline: db.restaurant?.tagline ?? 'Authentic Flavors & Swift Service',
-        phone: db.restaurant?.phone ?? db.currentUser?.phone ?? '+91 98765 43210',
-        address: db.restaurant?.address ?? 'Connaught Place, New Delhi',
-        cuisineType: db.restaurant?.cuisineType ?? 'Multi-Cuisine POS',
-        currencySymbol: db.restaurant?.currencySymbol ?? '₹',
-        taxRate: _billingType == 'GST' ? _gstPercentage : 0.0,
-        serviceCharge: db.restaurant?.serviceCharge ?? 0.0,
-        tableCount: _selectedServices.contains('Dine In') ? _tableCount : 0,
-        isOnboarded: true,
-        services: _selectedServices.toList(),
-        billingType: _billingType,
+      await OnboardingService().saveOrderSettings(
+        services: {
+          'dineIn': _selectedServices.contains('Dine In'),
+          'takeaway': _selectedServices.contains('Takeaway'),
+          'delivery': _selectedServices.contains('Delivery'),
+        },
+        taxType: _billingType == 'GST' ? 'gst' : 'no_gst',
         gstNumber: _billingType == 'GST' ? _gstNumberController.text.trim().toUpperCase() : '',
-        restaurantType: _restaurantType,
+        taxPercentage: _billingType == 'GST' ? _gstPercentage : null,
+        restaurantType: restType,
+        paymentMethods: {
+          'cash': true,
+          'upi': _upiIdController.text.trim().isNotEmpty,
+          'card': false,
+        },
         upiId: _upiIdController.text.trim().isEmpty ? 'apnapos@upi' : _upiIdController.text.trim(),
+        tableCount: _selectedServices.contains('Dine In') ? _tableCount : 0,
       );
 
-      // Save complete setup to database
-      await db.saveRestaurantOnboarding(updated);
+      if (widget.isFromOnboarding) {
+        // Trigger backend onboarding verification
+        await OnboardingService().completeOnboarding();
+      }
 
       if (!mounted) return;
 
       if (widget.isFromOnboarding) {
-        // Onboarding Flow: Toast feedback & Launch Main POS Dashboard
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: const Color(0xFF0F172A),
@@ -287,7 +292,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Business settings saved! Launching POS...',
+                    'Business setup completed! Welcome to Apna POS!',
                     style: TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -307,7 +312,6 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
           (route) => false,
         );
       } else {
-        // Business Setting Hub Flow: Toast feedback & Navigate back to Hub
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: const Color(0xFF15803D),
@@ -336,11 +340,12 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         Navigator.pop(context);
       }
     } catch (e) {
-      setState(() => _errorMessage = 'Error saving settings: $e');
+      setState(() => _errorMessage = e.toString().replaceAll('Exception:', '').trim());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
 
   @override
   Widget build(BuildContext context) {

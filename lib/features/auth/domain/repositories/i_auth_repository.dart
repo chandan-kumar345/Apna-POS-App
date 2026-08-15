@@ -17,7 +17,7 @@ abstract class IAuthRepository {
   Future<bool> checkPhoneExists(String phoneNumber);
 
   /// Gets user record by unique identifier ID.
-  Future<UserEntity?> getUserById(int id);
+  Future<UserEntity?> getUserById(String id);
 
   /// Gets user record by email or phone number.
   Future<UserEntity?> getUserByEmailOrPhone(String identifier);
@@ -26,10 +26,10 @@ abstract class IAuthRepository {
   Future<bool> isSessionLoggedIn();
 
   /// Gets currently logged-in user ID from session.
-  Future<int?> getLoggedInUserId();
+  Future<String?> getLoggedInUserId();
 
   /// Saves user login session state to SharedPreferences (only stores session state, not user credentials).
-  Future<void> saveSession(int userId);
+  Future<void> saveSession(String userId);
 
   /// Clears the login session state from SharedPreferences.
   Future<void> clearSession();
