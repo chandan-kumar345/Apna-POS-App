@@ -17,6 +17,23 @@ class _TableManagementScreenState extends State<TableManagementScreen> {
   final db = DatabaseService();
   String _selectedFloor = 'All Floors';
 
+  @override
+  void initState() {
+    super.initState();
+    db.addListener(_onDbChange);
+    db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   List<String> get floors {
     final list = ['All Floors'];
     for (var t in db.tables) {
@@ -53,8 +70,6 @@ class _TableManagementScreenState extends State<TableManagementScreen> {
         return const Color(0xFFEF4444); // Red Color for Running KOT!
       case TableStatus.reserved:
         return const Color(0xFF8B5CF6); // Purple
-      default:
-        return const Color(0xFF10B981);
     }
   }
 
@@ -69,8 +84,6 @@ class _TableManagementScreenState extends State<TableManagementScreen> {
         return 'KOT Running';
       case TableStatus.reserved:
         return 'Reserved';
-      default:
-        return 'Free';
     }
   }
 

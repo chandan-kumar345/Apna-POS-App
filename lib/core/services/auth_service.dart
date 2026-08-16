@@ -17,7 +17,7 @@ class AuthService {
   final ApiClient _apiClient = ApiClient();
   final SecureStorageService _storage = SecureStorageService();
   final SessionManager _sessionManager = SessionManager();
-  final DatabaseService _db = DatabaseService();
+  DatabaseService get _db => DatabaseService();
 
   // Register
   Future<Map<String, dynamic>> register(String email, String password, {String? phone}) async {

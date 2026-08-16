@@ -21,6 +21,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String _selectedStatusFilter = 'Preparing'; // 'Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'
   String _searchQuery = '';
 
+  @override
+  void initState() {
+    super.initState();
+    db.addListener(_onDbChange);
+    db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   Color _getStatusColor(OrderStatus status) {
     switch (status) {
       case OrderStatus.pending:

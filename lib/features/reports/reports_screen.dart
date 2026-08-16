@@ -22,6 +22,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
   SalesDateFilter _selectedDateFilter = SalesDateFilter.allTime;
   DateTimeRange? _customDateRange;
 
+  @override
+  void initState() {
+    super.initState();
+    db.addListener(_onDbChange);
+    db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   List<OrderModel> get _filteredOrders {
     final allOrders = db.orders;
     final now = DateTime.now();

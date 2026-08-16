@@ -50,9 +50,20 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void initState() {
     super.initState();
+    db.addListener(_onDbChange);
     if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -2293,8 +2304,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
       final completedOrder = newOrder.copyWith(paymentMethod: resultMethod);
 
-      // AUTOMATICALLY UPDATE ORDER STATUS TO COMPLETED WHEN PAID
-      db.updateOrderStatus(completedOrder.id, OrderStatus.completed);
+      // AUTOMATICALLY UPDATE ORDER STATUS TO COMPLETED & SETTLE PAYMENT WHEN PAID
+      await db.completeOrderPayment(completedOrder.id, resultMethod);
 
       final tbl = db.tables.where((t) =>
         t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
@@ -2577,17 +2588,21 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           ],
                         ),
                       )
-                    : GridView.builder(
-                        physics: const BouncingScrollPhysics(),
-                        padding: const EdgeInsets.fromLTRB(10, 6, 10, 90),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          mainAxisSpacing: 8,
-                          crossAxisSpacing: 8,
-                          childAspectRatio: 0.60,
-                        ),
-                        itemCount: filteredItems.length,
-                        itemBuilder: (context, index) {
+                    : Builder(
+                        builder: (context) {
+                          final bool showImages = db.restaurant?.showItemImages ?? true;
+
+                          return GridView.builder(
+                            physics: const BouncingScrollPhysics(),
+                            padding: const EdgeInsets.fromLTRB(10, 6, 10, 90),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              mainAxisSpacing: 8,
+                              crossAxisSpacing: 8,
+                              childAspectRatio: showImages ? 0.60 : 0.88,
+                            ),
+                            itemCount: filteredItems.length,
+                            itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final qty = _getItemCartQuantity(item);
                           final isSelected = qty > 0;
@@ -2614,89 +2629,138 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 mainAxisAlignment: MainAxisAlignment.start,
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  // Image fills remaining space (Expanded = no overflow)
-                                  Expanded(
-                                    child: Stack(
-                                      children: [
-                                        Container(
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(10),
-                                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(10),
-                                            child: item.imageUrl.isNotEmpty
-                                                ? Image.file(
-                                                    File(item.imageUrl),
-                                                    fit: BoxFit.cover,
-                                                    width: double.infinity,
-                                                    height: double.infinity,
-                                                    errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
-                                                  )
-                                                : Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
-                                          ),
-                                        ),
-                                        // FoodType Badge (Top Right)
-                                        Positioned(
-                                          top: 3,
-                                          right: 3,
-                                          child: Container(
-                                            padding: const EdgeInsets.all(2),
+                                  if (showImages) ...[
+                                    // Image fills remaining space (Expanded = no overflow)
+                                    Expanded(
+                                      child: Stack(
+                                        children: [
+                                          Container(
+                                            width: double.infinity,
                                             decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(5),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black.withOpacity(0.15),
-                                                  blurRadius: 3,
-                                                ),
-                                              ],
+                                              color: const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(10),
+                                              border: Border.all(color: const Color(0xFFE2E8F0)),
                                             ),
-                                            child: _buildFoodTypeIcon(item.itemType),
+                                            child: ClipRRect(
+                                              borderRadius: BorderRadius.circular(10),
+                                              child: item.imageUrl.isNotEmpty
+                                                  ? Image.file(
+                                                      File(item.imageUrl),
+                                                      fit: BoxFit.cover,
+                                                      width: double.infinity,
+                                                      height: double.infinity,
+                                                      errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
+                                                    )
+                                                  : Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
+                                            ),
                                           ),
-                                        ),
-                                        // Variants Badge (Top Left)
-                                        if (item.variants.isNotEmpty)
+                                          // FoodType Badge (Top Right)
                                           Positioned(
                                             top: 3,
-                                            left: 3,
+                                            right: 3,
                                             child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                              padding: const EdgeInsets.all(2),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFF051C48),
+                                                color: Colors.white,
                                                 borderRadius: BorderRadius.circular(5),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withOpacity(0.15),
+                                                    blurRadius: 3,
+                                                  ),
+                                                ],
                                               ),
-                                              child: Text(
-                                                '${item.variants.length} Variants',
-                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                              child: _buildFoodTypeIcon(item.itemType),
+                                            ),
+                                          ),
+                                          // Variants Badge (Top Left)
+                                          if (item.variants.isNotEmpty)
+                                            Positioned(
+                                              top: 3,
+                                              left: 3,
+                                              child: Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF051C48),
+                                                  borderRadius: BorderRadius.circular(5),
+                                                ),
+                                                child: Text(
+                                                  '${item.variants.length} Variants',
+                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                                ),
                                               ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(height: 4),
+
+                                    // Product Name
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                    ),
+
+                                    // Price
+                                    Text(
+                                      '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                      textAlign: TextAlign.center,
+                                    ),
+
+                                    const SizedBox(height: 4),
+                                  ] else ...[
+                                    // Compact Text-Only View (Without Image)
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        _buildFoodTypeIcon(item.itemType),
+                                        if (item.variants.isNotEmpty)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF051C48),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              '${item.variants.length} Var',
+                                              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                            ),
+                                          )
+                                        else
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              item.category,
+                                              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                       ],
                                     ),
-                                  ),
-
-                                  const SizedBox(height: 4),
-
-                                  // Product Name
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.center,
-                                  ),
-
-                                  // Price
-                                  Text(
-                                    '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
-                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
-                                    textAlign: TextAlign.center,
-                                  ),
-
-                                  const SizedBox(height: 4),
+                                    const Spacer(),
+                                    Text(
+                                      item.name,
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), height: 1.15),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                    ),
+                                    const Spacer(),
+                                  ],
 
                                   // Add Button or Quantity Stepper
                                   if (item.variants.isNotEmpty)
@@ -2796,7 +2860,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             ),
                           );
                         },
-                      ),
+                      );
+                    },
+                  ),
               ),
             ],
           ),

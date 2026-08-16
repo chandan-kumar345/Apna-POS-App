@@ -23,6 +23,23 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
   DateTime? _customStartDate;
   DateTime? _customEndDate;
 
+  @override
+  void initState() {
+    super.initState();
+    _db.addListener(_onDbChange);
+    _db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    _db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   List<OrderModel> _filterOrders(List<OrderModel> source, String period) {
     if (period == 'All Time') return source;
     final now = DateTime.now();

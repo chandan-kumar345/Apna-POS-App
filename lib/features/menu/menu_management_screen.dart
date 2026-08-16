@@ -22,6 +22,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   String _searchQuery = '';
   String _selectedCategoryFilter = 'All';
 
+  @override
+  void initState() {
+    super.initState();
+    db.addListener(_onDbChange);
+    db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   List<MenuItemModel> get filteredProducts {
     return db.menuItems.where((item) {
       final matchesCat =

@@ -22,11 +22,29 @@ class CartItemModel {
         'note': note,
       };
 
-  factory CartItemModel.fromJson(Map<String, dynamic> json) => CartItemModel(
+  factory CartItemModel.fromJson(Map<String, dynamic> json) {
+    if (json['item'] != null && json['item'] is Map) {
+      return CartItemModel(
         item: MenuItemModel.fromJson(json['item']),
-        quantity: json['quantity'] ?? 1,
-        note: json['note'],
+        quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+        note: json['note']?.toString(),
       );
+    }
+    // Flat item structure returned from backend Order / Sale
+    final menuItem = MenuItemModel(
+      id: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Item',
+      category: json['category']?.toString() ?? 'General',
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      description: '',
+      itemType: json['foodType'] == 'non_veg' ? 'Non-Veg' : json['foodType'] == 'egg' ? 'Egg' : 'Veg',
+    );
+    return CartItemModel(
+      item: menuItem,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+      note: json['note']?.toString(),
+    );
+  }
 }
 
 class OrderModel {

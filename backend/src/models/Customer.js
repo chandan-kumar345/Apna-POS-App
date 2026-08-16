@@ -1,0 +1,63 @@
+const mongoose = require('mongoose');
+
+const customerSchema = new mongoose.Schema(
+  {
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Business',
+      required: true,
+      index: true,
+    },
+    name: {
+      type: String,
+      required: [true, 'Customer name is required'],
+      trim: true,
+    },
+    phone: {
+      type: String,
+      required: [true, 'Customer phone number is required'],
+      trim: true,
+      index: true,
+    },
+    email: {
+      type: String,
+      default: '',
+      trim: true,
+      lowercase: true,
+    },
+    address: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    totalOrders: {
+      type: Number,
+      default: 0,
+    },
+    totalSpent: {
+      type: Number,
+      default: 0,
+    },
+    lastVisit: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    timestamps: true,
+    toJSON: {
+      transform(doc, ret) {
+        ret.id = ret._id;
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+  }
+);
+
+customerSchema.index({ businessId: 1, phone: 1 }, { unique: true });
+
+const Customer = mongoose.model('Customer', customerSchema);
+
+module.exports = Customer;

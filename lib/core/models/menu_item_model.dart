@@ -79,26 +79,46 @@ class MenuItemModel {
         'trackInventory': trackInventory,
       };
 
-  factory MenuItemModel.fromJson(Map<String, dynamic> json) => MenuItemModel(
-        id: json['id'] ?? '',
-        name: json['name'] ?? '',
-        category: json['category'] ?? 'General',
-        price: (json['price'] as num?)?.toDouble() ?? 0.0,
-        description: json['description'] ?? '',
-        isAvailable: json['isAvailable'] ?? true,
-        emoji: json['emoji'] ?? '🍲',
-        imageUrl: json['imageUrl'] ?? '',
-        stockQuantity: json['stockQuantity'] ?? 50,
-        itemType: json['itemType'] ?? 'Veg',
-        hasDiscount: json['hasDiscount'] ?? false,
-        discountPercent: (json['discountPercent'] as num?)?.toDouble() ?? 0.0,
-        gstPercent: (json['gstPercent'] as num?)?.toDouble(),
-        variants: (json['variants'] as List<dynamic>?)
-                ?.map((v) => ProductVariant.fromJson(v))
-                .toList() ??
-            const [],
-        trackInventory: json['trackInventory'] ?? true,
-      );
+  factory MenuItemModel.fromJson(Map<String, dynamic> json) {
+    String foodTypeStr = 'Veg';
+    if (json['itemType'] != null) {
+      foodTypeStr = json['itemType'].toString();
+    } else if (json['foodType'] != null) {
+      final ft = json['foodType'].toString().toLowerCase();
+      if (ft == 'non_veg' || ft == 'non-veg') {
+        foodTypeStr = 'Non-Veg';
+      } else if (ft == 'egg') {
+        foodTypeStr = 'Egg';
+      } else {
+        foodTypeStr = 'Veg';
+      }
+    }
+
+    final double rawPrice = (json['price'] as num?)?.toDouble() ?? 0.0;
+    final double rawSalePrice = (json['salePrice'] as num?)?.toDouble() ?? 0.0;
+    final bool hasDisc = json['hasDiscount'] == true || (rawSalePrice > 0 && rawSalePrice < rawPrice);
+
+    return MenuItemModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'General',
+      price: rawPrice,
+      description: json['description']?.toString() ?? '',
+      isAvailable: json['isAvailable'] ?? true,
+      emoji: json['emoji']?.toString() ?? '🍲',
+      imageUrl: json['imageUrl']?.toString() ?? json['image']?.toString() ?? '',
+      stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? 50,
+      itemType: foodTypeStr,
+      hasDiscount: hasDisc,
+      discountPercent: (json['discountPercent'] as num?)?.toDouble() ?? 0.0,
+      gstPercent: (json['gstPercent'] as num?)?.toDouble() ?? (json['taxPercentage'] as num?)?.toDouble(),
+      variants: (json['variants'] as List<dynamic>?)
+              ?.map((v) => ProductVariant.fromJson(v as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      trackInventory: json['trackInventory'] ?? true,
+    );
+  }
 
   MenuItemModel copyWith({
     String? name,

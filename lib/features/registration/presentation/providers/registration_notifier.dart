@@ -3,12 +3,13 @@ import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'registration_state.dart';
 import '../../domain/entities/user_registration_entity.dart';
-import '../../data/models/registration_request_model.dart';
 import '../../data/datasources/registration_remote_datasource.dart';
 import '../../../../core/database/database_service.dart';
 
+import '../../../../core/network/api_client.dart';
+
 final dioProvider = Provider<Dio>((ref) {
-  return Dio(BaseOptions(baseUrl: 'https://api.apnapos.com'));
+  return ApiClient().dio;
 });
 
 final registrationDataSourceProvider = Provider<IRegistrationRemoteDataSource>((ref) {

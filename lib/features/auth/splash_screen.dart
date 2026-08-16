@@ -25,6 +25,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late Animation<double> _scaleInAnim;
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleOutAnim;
+  bool _navigated = false;
 
   @override
   void initState() {
@@ -58,74 +59,103 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
 
+    _animController.addStatusListener((status) {
+      if (status == AnimationStatus.completed) {
+        _proceedNextScreen();
+      }
+    });
+
     _animController.forward();
 
-    // On animation complete -> Check internet connectivity before navigating
-    _animController.addStatusListener((status) async {
-      if (status == AnimationStatus.completed) {
-        if (!mounted) return;
-        
-        await _proceedNextScreen();
+    // Guaranteed fallback timer (proceeds after 2.5s even if animation drops frames)
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted && !_navigated) {
+        _proceedNextScreen();
       }
     });
   }
 
   Future<void> _proceedNextScreen() async {
-    await ApiEndpoints.initialize();
-    final hasInternet = await NetworkService().hasInternet();
-    if (!mounted) return;
-
-
-    if (!hasInternet) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (context) => NoInternetScreen(
-            onRetrySuccess: () {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (context) => const SplashScreen()),
-              );
-            },
-          ),
-        ),
-      );
-      return;
-    }
+    if (_navigated || !mounted) return;
+    _navigated = true;
 
     Widget targetScreen = const GetStartedScreen();
 
     try {
-      final isAuth = await AuthService().isAuthenticated();
-      if (isAuth) {
-        final meData = await AuthService().getMe();
-        final user = meData['user'] as Map<String, dynamic>?;
-        final bool onboardingCompleted = user?['onboardingCompleted'] == true;
-        final int currentStep = (user?['onboardingStep'] as num?)?.toInt() ?? 0;
+      // 1. Fast background check of ApiEndpoints & Connectivity without blocking indefinitely
+      try {
+        await ApiEndpoints.initialize().timeout(const Duration(milliseconds: 1200));
+      } catch (_) {}
 
-        if (onboardingCompleted) {
-          targetScreen = const MainLayout();
+      final hasInternet = await NetworkService().hasInternet().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => true,
+      );
+
+      if (!mounted) return;
+
+      if (!hasInternet) {
+        // Fallback check: if user is logged in locally, allow offline POS access
+        final db = DatabaseService();
+        if (db.currentUser != null) {
+          targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
+              ? const MainLayout()
+              : const RestaurantOnboardingScreen();
         } else {
-          // Route to exact incomplete step
-          switch (currentStep) {
-            case 0:
-              targetScreen = const CreateProfileScreen();
-              break;
-            case 1:
-              targetScreen = const RestaurantOnboardingScreen();
-              break;
-            case 2:
-              targetScreen = const AddBusinessAddressScreen();
-              break;
-            case 3:
-            case 4:
-              targetScreen = const BusinessSettingsScreen();
-              break;
-            default:
-              targetScreen = const CreateProfileScreen();
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(
+              builder: (context) => NoInternetScreen(
+                onRetrySuccess: () {
+                  Navigator.of(context).pushReplacement(
+                    MaterialPageRoute(builder: (context) => const SplashScreen()),
+                  );
+                },
+              ),
+            ),
+          );
+          return;
+        }
+      } else {
+        // 2. Online / LAN Check: Verify Active Authentication
+        final isAuth = await AuthService().isAuthenticated().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => false,
+        );
+
+        if (isAuth) {
+          final meData = await AuthService().getMe().timeout(
+            const Duration(seconds: 3),
+          );
+          final user = meData['user'] as Map<String, dynamic>?;
+          final bool onboardingCompleted = user?['onboardingCompleted'] == true;
+          final int currentStep = (user?['onboardingStep'] as num?)?.toInt() ?? 0;
+
+          if (onboardingCompleted) {
+            targetScreen = const MainLayout();
+          } else {
+            // Route to exact incomplete step
+            switch (currentStep) {
+              case 0:
+                targetScreen = const CreateProfileScreen();
+                break;
+              case 1:
+                targetScreen = const RestaurantOnboardingScreen();
+                break;
+              case 2:
+                targetScreen = const AddBusinessAddressScreen();
+                break;
+              case 3:
+              case 4:
+                targetScreen = const BusinessSettingsScreen();
+                break;
+              default:
+                targetScreen = const CreateProfileScreen();
+            }
           }
         }
       }
     } catch (e) {
-      debugPrint('SplashScreen auth verification error: $e');
+      debugPrint('SplashScreen auth verification error/fallback: $e');
       final db = DatabaseService();
       if (db.currentUser != null) {
         targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
@@ -161,7 +191,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       ),
     );
   }
-
 
   @override
   void dispose() {

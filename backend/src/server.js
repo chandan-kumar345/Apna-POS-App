@@ -16,6 +16,14 @@ const startServer = async () => {
       console.log(`================================================`);
     });
 
+    server.on('error', (err) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(`[Server Error] Port ${env.PORT} is already in use.`);
+        console.error(`Please terminate any other node instances or terminals using port ${env.PORT}.`);
+      } else {
+        console.error(`[Server Error] ${err.message}`);
+      }
+    });
 
     // Graceful Shutdown
     const exitHandler = () => {

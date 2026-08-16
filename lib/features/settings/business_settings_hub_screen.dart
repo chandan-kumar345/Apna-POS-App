@@ -45,6 +45,276 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     super.dispose();
   }
 
+  void _showPosViewModal() {
+    String selectedMode = db.restaurant?.posViewMode ?? 'with_image';
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 12,
+              child: SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                                    ),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.view_compact_alt_rounded, color: Color(0xFF00C2FF), size: 20),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text(
+                                  'POS View Setting',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        const Text(
+                          'Choose whether product food images appear on the POS billing screen',
+                          style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // OPTION 1: WITH IMAGE
+                        InkWell(
+                          onTap: () {
+                            setModalState(() => selectedMode = 'with_image');
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: selectedMode == 'with_image' ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                                width: selectedMode == 'with_image' ? 2 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.photo_library_rounded,
+                                    color: selectedMode == 'with_image' ? Colors.white : const Color(0xFF64748B),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'With Image',
+                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFDBEAFE),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text('Visual Mode', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Show appetizing dish photos and visual icons on item cards in the POS terminal.',
+                                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.3),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Radio<String>(
+                                  value: 'with_image',
+                                  groupValue: selectedMode,
+                                  activeColor: const Color(0xFF2563EB),
+                                  onChanged: (val) {
+                                    if (val != null) setModalState(() => selectedMode = val);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 12),
+
+                        // OPTION 2: WITHOUT IMAGE
+                        InkWell(
+                          onTap: () {
+                            setModalState(() => selectedMode = 'without_image');
+                          },
+                          borderRadius: BorderRadius.circular(16),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: selectedMode == 'without_image' ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
+                                width: selectedMode == 'without_image' ? 2 : 1,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 44,
+                                  height: 44,
+                                  decoration: BoxDecoration(
+                                    color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Icon(
+                                    Icons.format_list_bulleted_rounded,
+                                    color: selectedMode == 'without_image' ? Colors.white : const Color(0xFF64748B),
+                                    size: 22,
+                                  ),
+                                ),
+                                const SizedBox(width: 14),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          const Text(
+                                            'Without Image',
+                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFDCFCE7),
+                                              borderRadius: BorderRadius.circular(6),
+                                            ),
+                                            child: const Text('Compact & Fast', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Hide all food pictures for clean text-only item cards and rapid order punching.',
+                                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.3),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Radio<String>(
+                                  value: 'without_image',
+                                  groupValue: selectedMode,
+                                  activeColor: const Color(0xFF16A34A),
+                                  onChanged: (val) {
+                                    if (val != null) setModalState(() => selectedMode = val);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 12),
+                            ElevatedButton(
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      setModalState(() => isSaving = true);
+                                      await db.updatePosViewMode(selectedMode);
+                                      if (!context.mounted) return;
+                                      Navigator.pop(context);
+                                      setState(() {});
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Row(
+                                            children: [
+                                              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                'POS View set to ${selectedMode == 'without_image' ? 'Without Image' : 'With Image'}',
+                                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                              ),
+                                            ],
+                                          ),
+                                          backgroundColor: const Color(0xFF15803D),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                elevation: 0,
+                              ),
+                              child: isSaving
+                                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                  : const Text('Save POS View Setting', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showPaymentSettingsModal() {
     String? modalError;
     showDialog(
@@ -823,7 +1093,17 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             },
                           ),
 
-                          // 2. OUTLET INFO
+                          // 2. POS VIEW (WITH / WITHOUT IMAGE)
+                          _buildSettingGridCard(
+                            title: 'POS View',
+                            subtitle: db.restaurant?.posViewMode == 'without_image' ? 'Without Image' : 'With Image',
+                            icon: Icons.view_compact_alt_rounded,
+                            accentColor: const Color(0xFF0284C7),
+                            badgeText: db.restaurant?.posViewMode == 'without_image' ? 'No Image' : 'With Image',
+                            onTap: _showPosViewModal,
+                          ),
+
+                          // 3. OUTLET INFO
                           _buildSettingGridCard(
                             title: 'Outlet Info',
                             subtitle: 'Name, Address & Contact Info',

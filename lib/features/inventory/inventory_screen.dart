@@ -13,6 +13,23 @@ class InventoryScreen extends StatefulWidget {
 class _InventoryScreenState extends State<InventoryScreen> {
   final db = DatabaseService();
 
+  @override
+  void initState() {
+    super.initState();
+    db.addListener(_onDbChange);
+    db.syncWithBackend();
+  }
+
+  @override
+  void dispose() {
+    db.removeListener(_onDbChange);
+    super.dispose();
+  }
+
+  void _onDbChange() {
+    if (mounted) setState(() {});
+  }
+
   void _showReorderDialog(String itemId, String itemName) {
     final qtyCtrl = TextEditingController(text: '10');
 

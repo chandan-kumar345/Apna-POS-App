@@ -83,6 +83,11 @@ const businessSchema = new mongoose.Schema(
       },
       upiId: { type: String, default: '', trim: true },
       tableCount: { type: Number, default: 0, min: 0 },
+      posViewMode: {
+        type: String,
+        enum: ['with_image', 'without_image'],
+        default: 'with_image',
+      },
     },
   },
   {

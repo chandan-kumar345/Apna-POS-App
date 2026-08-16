@@ -53,12 +53,12 @@ class ApiException implements Exception {
       case DioExceptionType.sendTimeout:
       case DioExceptionType.receiveTimeout:
         return ApiException(
-          message: 'Connection timed out connecting to backend ($targetUrl). Please make sure your Node.js backend server is running.',
+          message: 'Unable to connect to server. Please check your internet connection and try again.',
           code: 'TIMEOUT',
         );
       case DioExceptionType.connectionError:
         return ApiException(
-          message: 'Unable to connect to backend server ($targetUrl). Please make sure your Node.js backend server is running (npm run dev).',
+          message: 'Cannot reach the server. Please verify your network connection and try again.',
           code: 'CONNECTION_ERROR',
         );
       case DioExceptionType.cancel:
@@ -68,7 +68,7 @@ class ApiException implements Exception {
         );
       default:
         return ApiException(
-          message: error.message ?? 'An unexpected network error occurred',
+          message: error.message ?? 'An unexpected network error occurred. Please try again.',
           code: 'UNKNOWN_NETWORK_ERROR',
           statusCode: error.response?.statusCode,
         );

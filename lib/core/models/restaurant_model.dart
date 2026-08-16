@@ -20,6 +20,9 @@ class RestaurantModel {
   final String closingTime; // '11:00 PM'
   final List<String> kitchenSections; // ['Main Kitchen', 'Beverages Bar']
   final String upiId; // Merchant UPI VPA ID e.g., 'merchant@upi' or '9876543210@paytm'
+  final String posViewMode; // 'with_image' or 'without_image'
+
+  bool get showItemImages => posViewMode != 'without_image';
 
   RestaurantModel({
     required this.id,
@@ -41,6 +44,7 @@ class RestaurantModel {
     this.closingTime = '11:00 PM',
     this.kitchenSections = const ['Main Kitchen', 'Beverages Bar'],
     this.upiId = 'apnapos@upi',
+    this.posViewMode = 'with_image',
   });
 
   Map<String, dynamic> toJson() => {
@@ -63,6 +67,7 @@ class RestaurantModel {
         'closingTime': closingTime,
         'kitchenSections': kitchenSections,
         'upiId': upiId,
+        'posViewMode': posViewMode,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -86,6 +91,7 @@ class RestaurantModel {
         kitchenSections:
             (json['kitchenSections'] as List?)?.map((e) => e.toString()).toList() ?? const ['Main Kitchen', 'Beverages Bar'],
         upiId: json['upiId'] ?? 'apnapos@upi',
+        posViewMode: json['posViewMode'] ?? (json['orderSettings'] is Map ? json['orderSettings']['posViewMode'] : null) ?? 'with_image',
       );
 
   RestaurantModel copyWith({
@@ -107,6 +113,7 @@ class RestaurantModel {
     String? closingTime,
     List<String>? kitchenSections,
     String? upiId,
+    String? posViewMode,
   }) {
     return RestaurantModel(
       id: id,
@@ -128,6 +135,7 @@ class RestaurantModel {
       closingTime: closingTime ?? this.closingTime,
       kitchenSections: kitchenSections ?? this.kitchenSections,
       upiId: upiId ?? this.upiId,
+      posViewMode: posViewMode ?? this.posViewMode,
     );
   }
 }

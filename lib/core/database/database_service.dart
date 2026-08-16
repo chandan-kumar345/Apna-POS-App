@@ -12,9 +12,17 @@ import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/auth_repository_factory.dart';
 import '../services/session_manager.dart';
 import '../services/firestore_service.dart';
-import '../services/network_service.dart';
+import '../services/auth_service.dart';
+import '../services/product_service.dart';
+import '../services/order_service.dart';
+import '../services/table_service.dart';
+import '../services/inventory_service.dart';
+import '../services/customer_service.dart';
+import '../services/report_service.dart';
+import '../services/dashboard_service.dart';
+import '../network/api_client.dart';
+import '../network/api_endpoints.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -25,6 +33,25 @@ class DatabaseService extends ChangeNotifier {
   IAuthRepository get authRepository => AuthRepositoryFactory.instance;
   final SessionManager sessionManager = SessionManager();
   final FirestoreService _firestoreService = FirestoreService();
+  AuthService get _authService => AuthService();
+  ProductService get productService => ProductService();
+  OrderService get orderService => OrderService();
+  TableService get tableService => TableService();
+  InventoryService get inventoryService => InventoryService();
+  CustomerService get customerService => CustomerService();
+  ReportService get reportService => ReportService();
+  DashboardService get dashboardService => DashboardService();
+  
+  ProductService get _productService => productService;
+  OrderService get _orderService => orderService;
+  TableService get _tableService => tableService;
+  InventoryService get _inventoryService => inventoryService;
+  CustomerService get _customerService => customerService;
+  ReportService get _reportService => reportService;
+  DashboardService get _dashboardService => dashboardService;
+
+  bool _isSyncing = false;
+  bool get isSyncing => _isSyncing;
 
   // In-Memory state for instant sync access
   UserModel? currentUser;
@@ -229,6 +256,114 @@ class DatabaseService extends ChangeNotifier {
 
     _isInitialized = true;
     notifyListeners();
+
+    // Background sync with live backend if logged in
+    syncWithBackend();
+  }
+
+  /// Syncs all in-memory data with the live production backend MongoDB APIs
+  Future<void> syncWithBackend() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      _isSyncing = true;
+      notifyListeners();
+
+      // 1. Sync User Profile & Business Details
+      try {
+        final meData = await _authService.getMe();
+        if (meData['user'] != null) {
+          final u = meData['user'] as Map<String, dynamic>;
+          final b = meData['business'] as Map<String, dynamic>?;
+          final prof = b?['profile'] as Map<String, dynamic>?;
+          final ordSet = b?['orderSettings'] as Map<String, dynamic>?;
+
+          currentUser = UserModel(
+            id: u['id']?.toString() ?? '',
+            name: prof?['name']?.toString() ?? u['name']?.toString() ?? 'User',
+            email: u['email']?.toString() ?? '',
+            phone: u['phone']?.toString(),
+            role: u['role']?.toString() ?? 'Owner',
+            pin: '1234',
+            restaurantId: b?['id']?.toString() ?? u['restaurantId']?.toString() ?? restaurant?.id ?? 'rest_001',
+            companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
+            profilePhotoPath: prof?['profileImage']?.toString() ?? u['profilePhotoPath']?.toString(),
+          );
+
+          if (b != null) {
+            restaurant = RestaurantModel(
+              id: b['id']?.toString() ?? 'rest_001',
+              name: prof?['companyName']?.toString() ?? 'Apna POS Store',
+              tagline: prof?['tagline']?.toString() ?? 'Authentic Flavors & Swift Service',
+              phone: prof?['phone']?.toString() ?? '',
+              address: b['address']?['addressLine']?.toString() ?? '',
+              cuisineType: prof?['cuisineType']?.toString() ?? 'Indian & Continental',
+              taxRate: (ordSet?['tax']?['percentage'] as num?)?.toDouble() ?? 5.0,
+              tableCount: (ordSet?['tableCount'] as num?)?.toInt() ?? 12,
+              isOnboarded: u['onboardingCompleted'] == true,
+              upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
+              posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
+            );
+            await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService] sync user error: $e');
+      }
+
+      // 2. Fetch Live Products & Categories from Backend
+      try {
+        final remoteProducts = await _productService.fetchProducts();
+        if (remoteProducts.isNotEmpty) {
+          menuItems = remoteProducts;
+          await _saveMenuToPrefs();
+        }
+        final remoteCategories = await _productService.fetchCategories();
+        if (remoteCategories.isNotEmpty) {
+          categories = remoteCategories;
+          await _saveCategoriesToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService] sync products error: $e');
+      }
+
+      // 3. Fetch Live Tables from Backend
+      try {
+        final remoteTables = await _tableService.fetchTables();
+        if (remoteTables.isNotEmpty) {
+          tables = remoteTables;
+          await _saveTablesToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService] sync tables error: $e');
+      }
+
+      // 4. Fetch Live Orders from Backend
+      try {
+        final remoteOrders = await _orderService.fetchOrders();
+        if (remoteOrders.isNotEmpty) {
+          orders = remoteOrders;
+          await _saveOrdersToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService] sync orders error: $e');
+      }
+
+      // 5. Fetch Live Inventory from Backend
+      try {
+        final remoteInventory = await _inventoryService.fetchInventory();
+        if (remoteInventory.isNotEmpty) {
+          inventoryItems = remoteInventory;
+          await _saveInventoryToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService] sync inventory error: $e');
+      }
+    } finally {
+      _isSyncing = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _saveRegisteredUsers() async {
@@ -672,6 +807,43 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
     await _firestoreService.saveRestaurant(restaurant!);
     notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final ApiClient client = ApiClient();
+        await client.patch(ApiEndpoints.profileSettings, data: {
+          'name': updated.name,
+          'tagline': updated.tagline,
+          'phone': updated.phone,
+          'address': updated.address,
+          'taxRate': updated.taxRate,
+          'upiId': updated.upiId,
+          'posViewMode': updated.posViewMode,
+        });
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.updateRestaurantProfile] API error: $e');
+    }
+  }
+
+  Future<void> updatePosViewMode(String mode) async {
+    if (mode != 'with_image' && mode != 'without_image') return;
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(posViewMode: mode);
+      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          final ApiClient client = ApiClient();
+          await client.patch(ApiEndpoints.posSettings, data: {'posViewMode': mode});
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.updatePosViewMode] API error: $e');
+      }
+    }
   }
 
   // --- MENU MANAGEMENT SERVICES ---
@@ -684,20 +856,58 @@ class DatabaseService extends ChangeNotifier {
     }
     await _saveMenuToPrefs();
     notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        if (item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.length != 24) {
+          final created = await _productService.createProduct(item);
+          final newIdx = menuItems.indexWhere((element) => element.id == item.id);
+          if (newIdx >= 0) {
+            menuItems[newIdx] = created;
+            await _saveMenuToPrefs();
+            notifyListeners();
+          }
+        } else {
+          await _productService.updateProduct(item);
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.saveMenuItem] API error: $e');
+    }
   }
 
   Future<void> deleteMenuItem(String id) async {
     menuItems.removeWhere((item) => item.id == id);
     await _saveMenuToPrefs();
     notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth && id.length == 24) {
+        await _productService.deleteProduct(id);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.deleteMenuItem] API error: $e');
+    }
   }
 
   Future<void> toggleMenuItemAvailability(String id) async {
     final index = menuItems.indexWhere((item) => item.id == id);
     if (index >= 0) {
-      menuItems[index] = menuItems[index].copyWith(isAvailable: !menuItems[index].isAvailable);
+      final updated = menuItems[index].copyWith(isAvailable: !menuItems[index].isAvailable);
+      menuItems[index] = updated;
       await _saveMenuToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && id.length == 24) {
+          await _productService.updateProduct(updated);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.toggleMenuItemAvailability] API error: $e');
+      }
     }
   }
 
@@ -713,6 +923,15 @@ class DatabaseService extends ChangeNotifier {
       categories.add(name);
       await _saveCategoriesToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          await _productService.createCategory(name);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.addCategory] API error: $e');
+      }
     }
   }
 
@@ -739,6 +958,15 @@ class DatabaseService extends ChangeNotifier {
     categories.remove(categoryName);
     await _saveCategoriesToPrefs();
     notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        await _productService.deleteCategory(categoryName);
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.deleteCategory] API error: $e');
+    }
   }
 
   void _syncCategoriesFromMenu() {
@@ -779,6 +1007,15 @@ class DatabaseService extends ChangeNotifier {
       );
       await _saveTablesToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && tableId.length == 24) {
+          await _tableService.updateTableStatus(tableId, status, orderId: orderId);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.updateTableStatus] API error: $e');
+      }
     }
   }
 
@@ -795,6 +1032,21 @@ class DatabaseService extends ChangeNotifier {
     tables.add(newT);
     await _saveTablesToPrefs();
     notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final created = await _tableService.createTable(newT);
+        final idx = tables.indexWhere((t) => t.id == newT.id);
+        if (idx >= 0) {
+          tables[idx] = created;
+          await _saveTablesToPrefs();
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.addTable] API error: $e');
+    }
   }
 
   Future<void> _saveTablesToPrefs() async {
@@ -832,7 +1084,7 @@ class DatabaseService extends ChangeNotifier {
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     final orderNum = '$year$month$day-$hour$min-$tSuffix';
 
-    final newOrder = OrderModel(
+    var newOrder = OrderModel(
       id: orderId,
       orderNumber: orderNum,
       tableNumber: tableNumber,
@@ -871,8 +1123,24 @@ class DatabaseService extends ChangeNotifier {
       }
     }
     _saveMenuToPrefs();
-
     notifyListeners();
+
+    // Persist to backend API asynchronously
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final remoteOrder = await _orderService.createOrder(newOrder);
+        final idx = orders.indexWhere((o) => o.id == orderId);
+        if (idx >= 0) {
+          orders[idx] = remoteOrder;
+          await _saveOrdersToPrefs();
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.createOrder] API error: $e');
+    }
+
     return newOrder;
   }
 
@@ -900,6 +1168,52 @@ class DatabaseService extends ChangeNotifier {
       }
       await _saveOrdersToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && orderId.length == 24) {
+          await _orderService.updateOrderStatus(orderId, newStatus);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.updateOrderStatus] API error: $e');
+      }
+    }
+  }
+
+  Future<void> completeOrderPayment(String orderId, String paymentMethod) async {
+    final index = orders.indexWhere((o) => o.id == orderId);
+    if (index >= 0) {
+      orders[index] = orders[index].copyWith(
+        status: OrderStatus.completed,
+        paymentMethod: paymentMethod,
+      );
+
+      final tNum = orders[index].tableNumber;
+      if (tNum != null && tNum.isNotEmpty) {
+        _liveCartTotals.remove(tNum);
+        _liveTableCarts.remove(tNum);
+
+        final tIndex = tables.indexWhere((t) =>
+          t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
+          t.tableNumber.toString() == tNum ||
+          'T-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase()
+        );
+        if (tIndex >= 0) {
+          updateTableStatus(tables[tIndex].id, TableStatus.free);
+        }
+      }
+
+      await _saveOrdersToPrefs();
+      notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && orderId.length == 24) {
+          await _orderService.payOrder(orderId, paymentMethod: paymentMethod);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.completeOrderPayment] API error: $e');
+      }
     }
   }
 
@@ -912,9 +1226,19 @@ class DatabaseService extends ChangeNotifier {
     final index = inventoryItems.indexWhere((inv) => inv.id == id);
     if (index >= 0) {
       final newQty = inventoryItems[index].quantity + addedQty;
-      inventoryItems[index] = inventoryItems[index].copyWith(quantity: newQty);
+      final updated = inventoryItems[index].copyWith(quantity: newQty);
+      inventoryItems[index] = updated;
       await _saveInventoryToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && id.length == 24) {
+          await _inventoryService.updateItem(updated);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.addInventoryStock] API error: $e');
+      }
     }
   }
 

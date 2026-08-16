@@ -9,6 +9,9 @@ const { notFoundHandler, errorHandler } = require('./middleware/errorMiddleware'
 
 const app = express();
 
+// Trust proxy for tunnels / cloud load balancers
+app.set('trust proxy', 1);
+
 // 1. Security Headers
 app.use(helmet());
 
@@ -17,7 +20,7 @@ app.use(
   cors({
     origin: env.CLIENT_URL === '*' ? '*' : env.CLIENT_URL.split(','),
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-ID', 'X-Request-Timestamp'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-ID', 'X-Request-Timestamp', 'Bypass-Tunnel-Reminder'],
     credentials: true,
   })
 );
@@ -28,6 +31,7 @@ const limiter = rateLimit({
   max: 1000, // Limit each IP to 1000 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
   message: {
     success: false,
     error: {
@@ -44,11 +48,16 @@ if (env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
+const path = require('path');
+
 // 5. Body Parsers
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 6. Mount Versioned APIs under /api/v1
+// 6. Serve static uploads (local fallback)
+app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+
+// 7. Mount Versioned APIs under /api/v1
 app.use('/api/v1', routes);
 
 // 7. Root ping

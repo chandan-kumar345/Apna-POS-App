@@ -9,7 +9,7 @@ class OnboardingService {
   OnboardingService._internal();
 
   final ApiClient _apiClient = ApiClient();
-  final DatabaseService _db = DatabaseService();
+  DatabaseService get _db => DatabaseService();
 
   // Step 1: Save / Update Profile
   Future<Map<String, dynamic>> saveProfile({

@@ -34,7 +34,13 @@ class AuthInterceptor extends Interceptor {
     DioException err,
     ErrorInterceptorHandler handler,
   ) async {
-    if (err.response?.statusCode == 401 && !err.requestOptions.path.contains('/auth/')) {
+    final path = err.requestOptions.path;
+    final isAuthNonRefreshable = path.endsWith('/auth/login') ||
+        path.endsWith('/auth/register') ||
+        path.endsWith('/auth/refresh') ||
+        path.endsWith('/auth/reset-password');
+
+    if (err.response?.statusCode == 401 && !isAuthNonRefreshable) {
       if (!_isRefreshing) {
         _isRefreshing = true;
         try {

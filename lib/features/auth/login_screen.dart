@@ -15,6 +15,7 @@ import '../onboarding/add_business_address_screen.dart';
 import '../onboarding/business_settings_screen.dart';
 import '../dashboard/main_layout.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/network/api_endpoints.dart';
 
 // Country Code Item Model
 class CountryCodeItem {
@@ -1005,39 +1006,50 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 const SizedBox(height: 24),
 
-                // Top Header Text (Centered)
+                // Top Header Text (Centered) - Long press to open Server Connection Settings
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Center(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text(
-                          _selectedTab == 0
-                              ? "Go ahead and set up\nyour account"
-                              : "Create your new\nPOS account",
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            height: 1.2,
-                            letterSpacing: -0.4,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onLongPress: () => ApiEndpoints.showServerConfigSheet(
+                        context,
+                        onUrlChanged: () {
+                          setState(() {
+                            _errorMessage = null;
+                          });
+                        },
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            _selectedTab == 0
+                                ? "Go ahead and set up\nyour account"
+                                : "Create your new\nPOS account",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                              height: 1.2,
+                              letterSpacing: -0.4,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _selectedTab == 0
-                              ? "Sign in-up to enjoy the best managing experience"
-                              : "Join Apna POS to manage your restaurant effortlessly",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                            color: Colors.white.withOpacity(0.75),
+                          const SizedBox(height: 6),
+                          Text(
+                            _selectedTab == 0
+                                ? "Sign in-up to enjoy the best managing experience"
+                                : "Join Apna POS to manage your restaurant effortlessly",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                              color: Colors.white.withOpacity(0.75),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
