@@ -13,15 +13,18 @@ class ApiEndpoints {
   /// Compile-time environment variable support e.g. flutter run --dart-define=API_URL=https://api.apnapos.com/api/v1
   static const String envApiUrl = String.fromEnvironment('API_URL', defaultValue: '');
 
-  /// Default production cloud URL (when deployed to cloud hosting e.g. Render, Railway, AWS)
-  static const String productionApiUrl = 'https://api.apnapos.com/api/v1';
+  /// Default production cloud URL (deployed to Render 24/7)
+  static const String productionApiUrl = 'https://apna-pos-app.onrender.com/api/v1';
+
+  /// Cloudflare Tunnel URL (connects local server to Cloudflare edge)
+  static const String cloudflareTunnelUrl = 'https://apna-pos-tunnel.trycloudflare.com/api/v1';
 
   /// Public Tunnel URL (bypasses Windows Firewall and works on Public/Private Wi-Fi & 4G/5G)
   static const String publicTunnelUrl = 'https://apna-pos-backend.loca.lt/api/v1';
 
   static String? _resolvedBaseUrl;
 
-  /// Explicitly set custom backend base URL (e.g. http://172.16.2.3:5000/api/v1 or https://apna-pos-backend.loca.lt/api/v1)
+  /// Explicitly set custom backend base URL (e.g. https://apna-pos-app.onrender.com/api/v1 or http://172.16.2.3:5000/api/v1)
   static Future<void> setCustomBaseUrl(String url) async {
     if (url.trim().isNotEmpty) {
       var clean = url.trim();
@@ -78,13 +81,18 @@ class ApiEndpoints {
 
     // 3. Web platform
     if (kIsWeb) {
-      _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
+      _resolvedBaseUrl = productionApiUrl;
       return;
     }
 
-    // 4. Primary candidate base URLs in priority order (Local LAN first, then Public Tunnel)
+    // 4. Primary candidate base URLs in priority order:
+    // (1) Local LAN (fastest on Wi-Fi)
+    // (2) Production Cloud Render (24/7 online)
+    // (3) Cloudflare Tunnel / Public Tunnel
     final primaryCandidates = [
       'http://$defaultLanIp:$defaultPort/api/v1',
+      productionApiUrl,
+      cloudflareTunnelUrl,
       publicTunnelUrl,
       if (Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
       'http://127.0.0.1:$defaultPort/api/v1',
@@ -92,14 +100,14 @@ class ApiEndpoints {
     ];
 
     for (final candidate in primaryCandidates) {
-      if (await _pingHealth(candidate, timeoutMs: 500)) {
+      if (await _pingHealth(candidate, timeoutMs: 1500)) {
         _resolvedBaseUrl = candidate;
         debugPrint('[ApiEndpoints] Connected to active backend at: $candidate');
         return;
       }
     }
 
-    // 5. Dynamic Subnet Auto-Discovery (if local LAN candidates failed)
+    // 5. Dynamic Subnet Auto-Discovery (if primary candidates failed)
     if (!kIsWeb) {
       final subnetCandidates = _generateSubnetCandidates();
       final dynamicResolved = await _scanCandidatesParallel(subnetCandidates, timeoutMs: 400);
@@ -110,12 +118,8 @@ class ApiEndpoints {
       }
     }
 
-    // 6. Default fallback: Default LAN IP
-    if (Platform.isAndroid) {
-      _resolvedBaseUrl = 'http://$defaultLanIp:$defaultPort/api/v1';
-    } else {
-      _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
-    }
+    // 6. Default fallback: Production Cloud Render URL
+    _resolvedBaseUrl = productionApiUrl;
   }
 
   /// Fast parallel ping across candidate endpoints
