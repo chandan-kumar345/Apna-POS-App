@@ -6,6 +6,7 @@ const {
   createProductSchema,
   updateProductSchema,
   categorySchema,
+  updateCategorySchema,
 } = require('../validators/productValidator');
 
 const router = express.Router();
@@ -17,6 +18,9 @@ router.use(authMiddleware);
 router.get('/categories', (req, res, next) => productController.getCategories(req, res, next));
 router.post('/categories', validate(categorySchema), (req, res, next) =>
   productController.createCategory(req, res, next)
+);
+router.put('/categories/:name', validate(updateCategorySchema), (req, res, next) =>
+  productController.updateCategory(req, res, next)
 );
 router.delete('/categories/:name', (req, res, next) =>
   productController.deleteCategory(req, res, next)

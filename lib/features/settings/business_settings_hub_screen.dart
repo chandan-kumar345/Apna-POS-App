@@ -51,226 +51,279 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
 
     showDialog(
       context: context,
-      builder: (context) {
+      barrierDismissible: true,
+      builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+
             return Dialog(
               backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
               elevation: 12,
-              child: SingleChildScrollView(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 580 : screenWidth * 0.94,
+                  minWidth: 320,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header Row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.view_compact_alt_rounded, color: Color(0xFF00C2FF), size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: const BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                                    ),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.view_compact_alt_rounded, color: Color(0xFF00C2FF), size: 20),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text(
+                                Text(
                                   'POS View Setting',
                                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                 ),
-                              ],
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.pop(context),
-                              icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Choose whether product food images appear on the POS billing screen',
-                          style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                        ),
-                        const SizedBox(height: 20),
-
-                        // OPTION 1: WITH IMAGE
-                        InkWell(
-                          onTap: () {
-                            setModalState(() => selectedMode = 'with_image');
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: selectedMode == 'with_image' ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
-                                width: selectedMode == 'with_image' ? 2 : 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
-                                  decoration: BoxDecoration(
-                                    color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Icon(
-                                    Icons.photo_library_rounded,
-                                    color: selectedMode == 'with_image' ? Colors.white : const Color(0xFF64748B),
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          const Text(
-                                            'With Image',
-                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFDBEAFE),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text('Visual Mode', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'Show appetizing dish photos and visual icons on item cards in the POS terminal.',
-                                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.3),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Radio<String>(
-                                  value: 'with_image',
-                                  groupValue: selectedMode,
-                                  activeColor: const Color(0xFF2563EB),
-                                  onChanged: (val) {
-                                    if (val != null) setModalState(() => selectedMode = val);
-                                  },
+                                Text(
+                                  'Configure item card visual presentation for POS terminal',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                                 ),
                               ],
                             ),
                           ),
-                        ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            tooltip: 'Close',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
 
-                        const SizedBox(height: 12),
-
-                        // OPTION 2: WITHOUT IMAGE
-                        InkWell(
-                          onTap: () {
-                            setModalState(() => selectedMode = 'without_image');
-                          },
-                          borderRadius: BorderRadius.circular(16),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: selectedMode == 'without_image' ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
-                                width: selectedMode == 'without_image' ? 2 : 1,
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 44,
-                                  height: 44,
+                      // Scrollable Wrapped Content
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // OPTION 1: WITH IMAGE
+                              InkWell(
+                                onTap: () => setModalState(() => selectedMode = 'with_image'),
+                                borderRadius: BorderRadius.circular(18),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
-                                    borderRadius: BorderRadius.circular(12),
+                                    color: selectedMode == 'with_image' ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                      width: selectedMode == 'with_image' ? 2 : 1,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    Icons.format_list_bulleted_rounded,
-                                    color: selectedMode == 'without_image' ? Colors.white : const Color(0xFF64748B),
-                                    size: 22,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
+                                  child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Row(
-                                        children: [
-                                          const Text(
-                                            'Without Image',
-                                            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFDCFCE7),
-                                              borderRadius: BorderRadius.circular(6),
-                                            ),
-                                            child: const Text('Compact & Fast', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
-                                          ),
-                                        ],
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.photo_library_rounded,
+                                          color: selectedMode == 'with_image' ? Colors.white : const Color(0xFF64748B),
+                                          size: 22,
+                                        ),
                                       ),
-                                      const SizedBox(height: 4),
-                                      const Text(
-                                        'Hide all food pictures for clean text-only item cards and rapid order punching.',
-                                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), height: 1.3),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              children: [
+                                                const Text(
+                                                  'With Image',
+                                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFDBEAFE),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Text('Visual Mode', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            const Text(
+                                              'Display appetizing dish photos, discount ribbons, and visual icons on item cards in the POS terminal.',
+                                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                                            width: 2,
+                                          ),
+                                          color: selectedMode == 'with_image' ? const Color(0xFF2563EB) : Colors.transparent,
+                                        ),
+                                        child: selectedMode == 'with_image'
+                                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                            : null,
                                       ),
                                     ],
                                   ),
                                 ),
-                                Radio<String>(
-                                  value: 'without_image',
-                                  groupValue: selectedMode,
-                                  activeColor: const Color(0xFF16A34A),
-                                  onChanged: (val) {
-                                    if (val != null) setModalState(() => selectedMode = val);
-                                  },
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // OPTION 2: WITHOUT IMAGE
+                              InkWell(
+                                onTap: () => setModalState(() => selectedMode = 'without_image'),
+                                borderRadius: BorderRadius.circular(18),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: selectedMode == 'without_image' ? const Color(0xFFF0FDF4) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFCBD5E1),
+                                      width: selectedMode == 'without_image' ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.format_list_bulleted_rounded,
+                                          color: selectedMode == 'without_image' ? Colors.white : const Color(0xFF64748B),
+                                          size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              children: [
+                                                const Text(
+                                                  'Without Image',
+                                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFDCFCE7),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Text('Compact & Fast', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D))),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            const Text(
+                                              'Clean text-only item cards with center-struck prices and discount badges for high-speed counter order punch-in.',
+                                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                                            width: 2,
+                                          ),
+                                          color: selectedMode == 'without_image' ? const Color(0xFF16A34A) : Colors.transparent,
+                                        ),
+                                        child: selectedMode == 'without_image'
+                                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         ),
+                      ),
 
-                        const SizedBox(height: 24),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              ),
                               child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                             ),
-                            const SizedBox(width: 12),
-                            ElevatedButton(
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
                               onPressed: isSaving
                                   ? null
                                   : () async {
                                       setModalState(() => isSaving = true);
                                       await db.updatePosViewMode(selectedMode);
-                                      if (!context.mounted) return;
-                                      Navigator.pop(context);
+                                      if (!dialogCtx.mounted) return;
+                                      Navigator.pop(dialogCtx);
                                       setState(() {});
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
@@ -293,18 +346,19 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                     },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF051C48),
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 2,
                               ),
-                              child: isSaving
+                              icon: isSaving
                                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                  : const Text('Save POS View Setting', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  : const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                              label: const Text('Save POS View', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
                             ),
-                          ],
-                        ),
-                      ],
-                    ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),

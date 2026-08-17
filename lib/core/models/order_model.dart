@@ -14,7 +14,14 @@ class CartItemModel {
     this.note,
   });
 
-  double get totalPrice => item.price * quantity;
+  /// Total price calculated using the effective sale price of the item/variant
+  double get totalPrice => item.effectivePrice * quantity;
+
+  /// Original total price before discount
+  double get originalTotalPrice => item.price * quantity;
+
+  /// Total discount saved for this line item
+  double get discountTotal => (item.price - item.effectivePrice).clamp(0.0, double.infinity) * quantity;
 
   Map<String, dynamic> toJson() => {
         'item': item.toJson(),
@@ -31,11 +38,20 @@ class CartItemModel {
       );
     }
     // Flat item structure returned from backend Order / Sale
+    final double rawPrice = (json['price'] as num?)?.toDouble() ?? 0.0;
+    final double rawSale = (json['salePrice'] as num?)?.toDouble() ?? (json['effectivePrice'] as num?)?.toDouble() ?? 0.0;
+    final double rawDisc = (json['discountPercent'] as num?)?.toDouble() ?? (json['discount'] as num?)?.toDouble() ?? 0.0;
+    final bool hasDisc = json['hasDiscount'] == true || rawDisc > 0 || (rawSale > 0 && rawSale < rawPrice);
+
     final menuItem = MenuItemModel(
       id: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
+      productId: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Item',
       category: json['category']?.toString() ?? 'General',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      price: rawPrice,
+      salePrice: rawSale > 0 ? rawSale : null,
+      hasDiscount: hasDisc,
+      discountPercent: rawDisc,
       description: '',
       itemType: json['foodType'] == 'non_veg' ? 'Non-Veg' : json['foodType'] == 'egg' ? 'Egg' : 'Veg',
     );

@@ -65,6 +65,15 @@ class ProductController {
     }
   }
 
+  async updateCategory(req, res, next) {
+    try {
+      const category = await productService.updateCategory(req.businessId, req.params.name, req.body);
+      return ApiResponse.success(res, { category }, 'Category updated successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async deleteCategory(req, res, next) {
     try {
       const result = await productService.deleteCategory(req.businessId, req.params.name);

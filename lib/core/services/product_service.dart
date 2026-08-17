@@ -48,26 +48,15 @@ class ProductService {
   /// Create a new product in backend MongoDB
   Future<MenuItemModel> createProduct(MenuItemModel item) async {
     try {
-      final payload = {
-        'name': item.name,
-        'description': item.description,
-        'category': item.category,
-        'price': item.price,
-        'salePrice': item.hasDiscount ? item.price * (1 - item.discountPercent / 100) : 0,
-        'image': item.imageUrl,
-        'foodType': item.itemType.toLowerCase().replaceAll('-', '_'),
-        'isAvailable': item.isAvailable,
-        'stock': item.stockQuantity,
-        'taxPercentage': item.gstPercent ?? 5,
-      };
+      final payload = item.toJson();
 
       final response = await _apiClient.post(
         ApiEndpoints.products,
         data: payload,
       );
 
-      if (response != null && response['data'] != null && response['data']['product'] != null) {
-        return MenuItemModel.fromJson(response['data']['product'] as Map<String, dynamic>);
+      if (response != null && response is Map && response['data'] != null && response['data']['product'] != null) {
+        return MenuItemModel.fromJson(response['data']['product'] as Map);
       }
       return item;
     } catch (e) {
@@ -79,26 +68,16 @@ class ProductService {
   /// Update an existing product
   Future<MenuItemModel> updateProduct(MenuItemModel item) async {
     try {
-      final payload = {
-        'name': item.name,
-        'description': item.description,
-        'category': item.category,
-        'price': item.price,
-        'salePrice': item.hasDiscount ? item.price * (1 - item.discountPercent / 100) : 0,
-        'image': item.imageUrl,
-        'foodType': item.itemType.toLowerCase().replaceAll('-', '_'),
-        'isAvailable': item.isAvailable,
-        'stock': item.stockQuantity,
-        'taxPercentage': item.gstPercent ?? 5,
-      };
+      final payload = item.toJson();
+      final targetId = item.productId.isNotEmpty ? item.productId : item.id;
 
       final response = await _apiClient.put(
-        '${ApiEndpoints.products}/${item.id}',
+        '${ApiEndpoints.products}/$targetId',
         data: payload,
       );
 
-      if (response != null && response['data'] != null && response['data']['product'] != null) {
-        return MenuItemModel.fromJson(response['data']['product'] as Map<String, dynamic>);
+      if (response != null && response is Map && response['data'] != null && response['data']['product'] != null) {
+        return MenuItemModel.fromJson(response['data']['product'] as Map);
       }
       return item;
     } catch (e) {
@@ -147,10 +126,24 @@ class ProductService {
     }
   }
 
+  /// Edit / rename category (cascades on backend to all products)
+  Future<bool> updateCategory(String oldName, String newName) async {
+    try {
+      await _apiClient.put(
+        '${ApiEndpoints.categories}/${Uri.encodeComponent(oldName.trim())}',
+        data: {'name': newName.trim()},
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[ProductService.updateCategory] error: $e');
+      rethrow;
+    }
+  }
+
   /// Delete category
   Future<bool> deleteCategory(String name) async {
     try {
-      await _apiClient.delete('${ApiEndpoints.categories}/$name');
+      await _apiClient.delete('${ApiEndpoints.categories}/${Uri.encodeComponent(name.trim())}');
       return true;
     } catch (e) {
       debugPrint('[ProductService.deleteCategory] error: $e');
@@ -162,17 +155,7 @@ class ProductService {
   Future<int> bulkImport(List<MenuItemModel> items) async {
     try {
       final payload = {
-        'items': items.map((item) => {
-              'name': item.name,
-              'description': item.description,
-              'category': item.category,
-              'price': item.price,
-              'salePrice': item.hasDiscount ? item.price * (1 - item.discountPercent / 100) : 0,
-              'foodType': item.itemType.toLowerCase().replaceAll('-', '_'),
-              'isAvailable': item.isAvailable,
-              'stock': item.stockQuantity,
-              'taxPercentage': item.gstPercent ?? 5,
-            }).toList(),
+        'items': items.map((item) => item.toJson()).toList(),
       };
 
       final response = await _apiClient.post(
@@ -187,3 +170,4 @@ class ProductService {
     }
   }
 }
+

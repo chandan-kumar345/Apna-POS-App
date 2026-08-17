@@ -1,5 +1,6 @@
 const Business = require('../models/Business');
 const User = require('../models/User');
+const tableService = require('../services/tableService');
 const ApiError = require('../utils/ApiError');
 const ApiResponse = require('../utils/ApiResponse');
 
@@ -185,6 +186,11 @@ class OnboardingController {
       };
 
       await business.save();
+
+      // Automatically sync and generate exact number of dining tables in database
+      if (business.orderSettings.tableCount > 0) {
+        await tableService.syncBusinessTableCount(business._id, business.orderSettings.tableCount);
+      }
 
       const user = await User.findById(userId);
       if (user.onboardingStep < 4) {

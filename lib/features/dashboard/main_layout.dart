@@ -33,8 +33,11 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   String? _selectedTableForPos;
   final db = DatabaseService();
 
-  // Animation controllers for premium items
+  // Animation controllers
   late final AnimationController _shimmerController;
+  late final AnimationController _sidebarController;
+  late final Animation<double> _sidebarAnimation;
+  late final Animation<Offset> _sidebarSlideAnimation;
 
   @override
   void initState() {
@@ -44,12 +47,56 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(milliseconds: 2000),
     )..repeat();
+
+    // Smooth sidebar frame transition
+    _sidebarController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 250),
+    );
+
+    _sidebarAnimation = CurvedAnimation(
+      parent: _sidebarController,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+
+    _sidebarSlideAnimation = Tween<Offset>(
+      begin: const Offset(-1.0, 0.0),
+      end: Offset.zero,
+    ).animate(_sidebarAnimation);
   }
 
   @override
   void dispose() {
     _shimmerController.dispose();
+    _sidebarController.dispose();
     super.dispose();
+  }
+
+  void _toggleSidebar() {
+    setState(() {
+      _isSidebarOpen = !_isSidebarOpen;
+      if (_isSidebarOpen) {
+        _sidebarController.forward();
+      } else {
+        _sidebarController.reverse();
+      }
+    });
+  }
+
+  void _openSidebar() {
+    if (!_isSidebarOpen) {
+      setState(() => _isSidebarOpen = true);
+      _sidebarController.forward();
+    }
+  }
+
+  void _closeSidebar() {
+    if (_isSidebarOpen) {
+      setState(() => _isSidebarOpen = false);
+      _sidebarController.reverse();
+    }
   }
 
   final List<String> _titles = [
@@ -65,48 +112,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     'Business Setting',
   ];
 
-  Widget _getSelectedScreen() {
-    switch (_selectedIndex) {
-      case 0:
-        return GlassDashboardScreen(
-          onNavigateTab: (index) => setState(() => _selectedIndex = index),
-        );
-      case 1:
-        return PosRegisterScreen(
-          initialTable: _selectedTableForPos,
-          onOpenDrawer: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
-          onOpenTablesTab: () => setState(() => _selectedIndex = 2),
-        );
-      case 2:
-        return TableManagementScreen(
-          onTakeOrder: (tableName) {
-            setState(() {
-              _selectedTableForPos = tableName;
-              _selectedIndex = 1;
-            });
-          },
-        );
-      case 3:
-        return const OrdersScreen();
-      case 4:
-        return const MenuManagementScreen();
-      case 5:
-        return const InventoryScreen();
-      case 6:
-        return const ReportsScreen();
-      case 7:
-        return _buildFeatureModalScreen('Loyalty & Rewards', Icons.card_giftcard_rounded, 'Manage customer loyalty points, rewards program, and VIP memberships.');
-      case 8:
-        return _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.');
-      case 9:
-        return const BusinessSettingsHubScreen();
-      default:
-        return PosRegisterScreen(
-          initialTable: _selectedTableForPos,
-          onOpenDrawer: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
-        );
-    }
-  }
+
 
   Widget _buildFeatureModalScreen(String title, IconData icon, String description) {
     return Center(
@@ -474,7 +480,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
               ),
               IconButton(
                 icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 22),
-                onPressed: () => setState(() => _isSidebarOpen = false),
+                onPressed: _closeSidebar,
               ),
             ],
           ),
@@ -487,16 +493,16 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                _buildNavItem(0, 'Dashboard', Icons.dashboard_rounded),
-                _buildNavItem(1, 'POS', Icons.point_of_sale_rounded, badge: '${db.menuItems.length}'),
-                _buildNavItem(2, 'Tables', Icons.table_restaurant_rounded, badge: '${db.tables.where((t) => t.status != TableStatus.free).length}'),
-                _buildNavItem(3, 'My Orders', Icons.receipt_long_rounded, badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}'),
-                _buildNavItem(4, 'Menu & Categories', Icons.restaurant_menu_rounded),
-                _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true),
-                _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded),
-                _buildNavItem(7, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true),
-                _buildNavItem(8, 'Campaign', Icons.campaign_rounded, isPremium: true),
-                _buildNavItem(9, 'Business Setting', Icons.settings_rounded),
+                _buildNavItem(0, 'Dashboard', Icons.dashboard_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(1, 'POS', Icons.point_of_sale_rounded, badge: '${db.menuItems.length}', isSmallScreen: isSmallScreen),
+                _buildNavItem(2, 'Tables', Icons.table_restaurant_rounded, badge: '${db.tables.where((t) => t.status != TableStatus.free).length}', isSmallScreen: isSmallScreen),
+                _buildNavItem(3, 'My Orders', Icons.receipt_long_rounded, badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}', isSmallScreen: isSmallScreen),
+                _buildNavItem(4, 'Menu & Categories', Icons.restaurant_menu_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(7, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(8, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(9, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
               ],
             ),
           ),
@@ -598,7 +604,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         children: [
                           // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
                           InkWell(
-                            onTap: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                            onTap: _toggleSidebar,
                             borderRadius: BorderRadius.circular(24),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -649,15 +655,63 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                           ),
                           child: Row(
                             children: [
-                              if (_isSidebarOpen && !isSmallScreen)
-                                AnimatedContainer(
-                                  duration: const Duration(milliseconds: 250),
-                                  width: 270,
-                                  child: _buildSidebarContent(false),
+                              // DESKTOP ANIMATED SLIDING & SCALING SIDEBAR
+                              if (!isSmallScreen)
+                                AnimatedBuilder(
+                                  animation: _sidebarAnimation,
+                                  builder: (context, child) {
+                                    final width = 270.0 * _sidebarAnimation.value;
+                                    if (_sidebarAnimation.value <= 0.001) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return SizedBox(
+                                      width: width,
+                                      child: ClipRect(
+                                        child: OverflowBox(
+                                          alignment: Alignment.topLeft,
+                                          minWidth: 270,
+                                          maxWidth: 270,
+                                          minHeight: 0,
+                                          maxHeight: double.infinity,
+                                          child: Opacity(
+                                            opacity: _sidebarAnimation.value.clamp(0.0, 1.0),
+                                            child: _buildSidebarContent(false),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
 
                               Expanded(
-                                child: _getSelectedScreen(),
+                                child: SmoothAnimatedIndexedStack(
+                                  index: _selectedIndex.clamp(0, 9),
+                                  children: [
+                                    GlassDashboardScreen(
+                                      onNavigateTab: (index) => setState(() => _selectedIndex = index),
+                                    ),
+                                    PosRegisterScreen(
+                                      initialTable: _selectedTableForPos,
+                                      onOpenDrawer: _toggleSidebar,
+                                      onOpenTablesTab: () => setState(() => _selectedIndex = 2),
+                                    ),
+                                    TableManagementScreen(
+                                      onTakeOrder: (tableName) {
+                                        setState(() {
+                                          _selectedTableForPos = tableName;
+                                          _selectedIndex = 1;
+                                        });
+                                      },
+                                    ),
+                                    const OrdersScreen(),
+                                    const MenuManagementScreen(),
+                                    const InventoryScreen(),
+                                    const ReportsScreen(),
+                                    _buildFeatureModalScreen('Loyalty & Rewards', Icons.card_giftcard_rounded, 'Manage customer loyalty points, rewards program, and VIP memberships.'),
+                                    _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.'),
+                                    const BusinessSettingsHubScreen(),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
@@ -667,29 +721,57 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   ],
                 ),
 
-                // FULL HEIGHT SIDEBAR OVERLAY ON MOBILE / SMALL SCREENS
-                if (_isSidebarOpen && isSmallScreen) ...[
-                  GestureDetector(
-                    onTap: () => setState(() => _isSidebarOpen = false),
-                    child: Container(
-                      color: Colors.black.withOpacity(0.55),
-                    ),
+                // FULL HEIGHT SIDEBAR OVERLAY ON MOBILE / SMALL SCREENS WITH SMOOTH SLIDE & FADE
+                if (isSmallScreen)
+                  AnimatedBuilder(
+                    animation: _sidebarAnimation,
+                    builder: (context, child) {
+                      if (_sidebarAnimation.value <= 0.001 && !_isSidebarOpen) {
+                        return const SizedBox.shrink();
+                      }
+                      return Stack(
+                        children: [
+                          // Smooth Backdrop Fade Overlay
+                          Positioned.fill(
+                            child: GestureDetector(
+                              onTap: _closeSidebar,
+                              child: Opacity(
+                                opacity: (_sidebarAnimation.value * 0.55).clamp(0.0, 0.55),
+                                child: Container(color: Colors.black),
+                              ),
+                            ),
+                          ),
+                          // Smooth Sliding Sidebar
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            bottom: 0,
+                            width: 280,
+                            child: SlideTransition(
+                              position: _sidebarSlideAnimation,
+                              child: GestureDetector(
+                                onHorizontalDragUpdate: (details) {
+                                  if (details.primaryDelta != null && details.primaryDelta! < 0) {
+                                    _sidebarController.value += details.primaryDelta! / 280;
+                                  }
+                                },
+                                onHorizontalDragEnd: (details) {
+                                  if (details.primaryVelocity != null && details.primaryVelocity! < -200) {
+                                    _closeSidebar();
+                                  } else if (_sidebarController.value < 0.5) {
+                                    _closeSidebar();
+                                  } else {
+                                    _openSidebar();
+                                  }
+                                },
+                                child: _buildSidebarContent(true),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
-                  Positioned(
-                    left: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: 280,
-                    child: GestureDetector(
-                      onHorizontalDragEnd: (details) {
-                        if (details.primaryVelocity != null && details.primaryVelocity! < -100) {
-                          setState(() => _isSidebarOpen = false);
-                        }
-                      },
-                      child: _buildSidebarContent(true),
-                    ),
-                  ),
-                ],
               ],
             );
           },
@@ -699,7 +781,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   }
 
   Widget _buildNavItem(int index, String title, IconData icon,
-      {String? badge, Color? badgeColor, bool isPremium = false}) {
+      {String? badge, Color? badgeColor, bool isPremium = false, bool isSmallScreen = false}) {
     final isSelected = _selectedIndex == index;
 
     // ── PREMIUM NAV ITEM: animated shimmer border + 3D orbit crown ──
@@ -707,7 +789,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       return Padding(
         padding: const EdgeInsets.only(bottom: 4),
         child: GestureDetector(
-          onTap: () => _showSubscriptionDialog(title),
+          onTap: () {
+            if (isSmallScreen) _closeSidebar();
+            _showSubscriptionDialog(title);
+          },
           child: AnimatedBuilder(
             animation: _shimmerController,
             builder: (context, child) {
@@ -778,24 +863,46 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
         onTap: () {
           setState(() {
             _selectedIndex = index;
-            _isSidebarOpen = false;
           });
+          if (isSmallScreen) {
+            _closeSidebar();
+          }
         },
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: isSelected
-                ? const Color(0xFF0052FF).withOpacity(0.4)
+                ? const Color(0xFF0052FF).withOpacity(0.35)
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
             border: isSelected
-                ? Border.all(color: const Color(0xFF00C2FF))
+                ? Border.all(color: const Color(0xFF00C2FF), width: 1.2)
                 : Border.all(color: Colors.transparent),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF00C2FF).withOpacity(0.18),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : null,
           ),
           child: Row(
             children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: isSelected ? 3 : 0,
+                height: 16,
+                margin: EdgeInsets.only(right: isSelected ? 8 : 0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00C2FF),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
               Icon(
                 icon,
                 color: isSelected
@@ -827,6 +934,97 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 ),
               ],
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A state-preserving IndexedStack with silky-smooth frame transitions (fade + subtle slide & scale)
+class SmoothAnimatedIndexedStack extends StatefulWidget {
+  final int index;
+  final List<Widget> children;
+  final Duration duration;
+
+  const SmoothAnimatedIndexedStack({
+    super.key,
+    required this.index,
+    required this.children,
+    this.duration = const Duration(milliseconds: 260),
+  });
+
+  @override
+  State<SmoothAnimatedIndexedStack> createState() => _SmoothAnimatedIndexedStackState();
+}
+
+class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fadeAnimation;
+  late final Animation<Offset> _slideAnimation;
+  late final Animation<double> _scaleAnimation;
+  late int _currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.index;
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    )..value = 1.0;
+
+    _fadeAnimation = CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0.012, 0.0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _scaleAnimation = Tween<double>(
+      begin: 0.995,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _controller,
+      curve: Curves.easeOutCubic,
+    ));
+  }
+
+  @override
+  void didUpdateWidget(SmoothAnimatedIndexedStack oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.index != _currentIndex) {
+      setState(() {
+        _currentIndex = widget.index;
+      });
+      _controller.forward(from: 0.0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: ScaleTransition(
+          scale: _scaleAnimation,
+          child: IndexedStack(
+            index: _currentIndex.clamp(0, widget.children.length - 1),
+            children: widget.children,
           ),
         ),
       ),

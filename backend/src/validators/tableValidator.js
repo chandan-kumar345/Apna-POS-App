@@ -1,10 +1,11 @@
 const Joi = require('joi');
 
 const createTableSchema = Joi.object({
-  tableNumber: Joi.number().integer().min(1).required(),
-  name: Joi.string().trim().min(1).max(50).required(),
-  floor: Joi.string().trim().default('Ground Floor'),
+  tableNumber: Joi.number().integer().min(1).optional(),
+  name: Joi.string().trim().min(1).max(50).optional().allow(''),
+  floor: Joi.string().trim().default('Ground Floor').allow(''),
   capacity: Joi.number().integer().min(1).default(4),
+  count: Joi.number().integer().min(1).max(100).default(1),
 });
 
 const updateTableSchema = Joi.object({

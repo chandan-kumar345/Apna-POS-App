@@ -5,6 +5,7 @@ import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
+import '../../core/services/cart_api_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/food_type_icon.dart';
 import '../menu/add_product_screen.dart';
@@ -31,6 +32,7 @@ class PosRegisterScreen extends StatefulWidget {
 
 class _PosRegisterScreenState extends State<PosRegisterScreen> {
   final db = DatabaseService();
+  final _cartApiService = CartApiService();
 
   String _selectedCategory = 'All';
   String _searchQuery = '';
@@ -141,8 +143,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       return;
     }
 
-    final subtotalVal = _cartItems.fold<double>(0.0, (s, i) => s + (i.item.price * i.quantity));
-    final taxVal = _cartItems.fold<double>(0.0, (s, i) => s + ((i.item.price * ((i.item.gstPercent ?? 0.0) / 100)) * i.quantity));
+    final subtotalVal = _cartItems.fold<double>(0.0, (s, i) => s + (i.item.effectivePrice * i.quantity));
+    final taxVal = _cartItems.fold<double>(0.0, (s, i) => s + ((i.item.effectivePrice * ((i.item.gstPercent ?? 0.0) / 100)) * i.quantity));
 
     // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
     final tempOrder = OrderModel(
@@ -211,10 +213,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (_selectedTable != null && _selectedTable!.isNotEmpty) {
         final targetTable = _selectedTable!;
 
-        // Compute current cart total (subtotal)
+        // Compute current cart total (subtotal) using effective sale price
         final cartTotal = _cartItems.fold<double>(
           0.0,
-          (sum, e) => sum + (e.item.price * e.quantity),
+          (sum, e) => sum + (e.item.effectivePrice * e.quantity),
         );
 
         // Save live table cart items & total in DB so table card and view button can load it
@@ -233,7 +235,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
-  void _addToCart(MenuItemModel item) {
+  void _addToCart(MenuItemModel item, {String? variantName}) {
     setState(() {
       final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
       if (existingIndex >= 0) {
@@ -243,9 +245,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
       _syncTableStatusWithCart();
     });
+
+    // Fire-and-sync server-side Cart API in background for seamless real-time syncing
+    _cartApiService.addToCart(
+      item: item,
+      tableNumber: _selectedTable,
+      orderType: _selectedOrderType.name,
+      quantity: 1,
+      variantName: variantName,
+    );
   }
 
-  void _decrementCartItem(MenuItemModel item) {
+  void _decrementCartItem(MenuItemModel item, {String? variantName}) {
     setState(() {
       final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
       if (existingIndex >= 0) {
@@ -256,6 +267,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
       _syncTableStatusWithCart();
     });
+
+    // Fire-and-sync server-side Cart reduction in background
+    _cartApiService.reduceProductFromCart(
+      productId: item.productId.isNotEmpty ? item.productId : item.id,
+      variantName: variantName,
+      tableNumber: _selectedTable,
+      orderType: _selectedOrderType.name,
+      quantity: 1,
+    );
   }
 
   int _getItemCartQuantity(MenuItemModel item) {
@@ -264,16 +284,116 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         .fold(0, (sum, e) => sum + e.quantity);
   }
 
+  /// Reusable Pill-shaped Quantity Stepper matching user design (Light container + Dark circular buttons)
+  Widget _buildPillQuantityStepper({
+    required int quantity,
+    required VoidCallback onDecrement,
+    required VoidCallback onIncrement,
+    double height = 28,
+    double? width,
+    double buttonSize = 24,
+    double fontSize = 14,
+    double iconSize = 14,
+    BorderRadius? borderRadius,
+  }) {
+    return Container(
+      width: width,
+      height: height,
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8EEF5), // Light blue-grey container as shown in user reference
+        borderRadius: borderRadius ?? BorderRadius.circular(height / 2), // Full capsule pill shape
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.0),
+      ),
+      child: Row(
+        mainAxisSize: width != null ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Circular Solid Dark Blue Minus Button
+          GestureDetector(
+            onTap: onDecrement,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: buttonSize,
+              height: buttonSize,
+              decoration: const BoxDecoration(
+                color: Color(0xFF051C48), // Dark Navy Blue
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Icon(Icons.remove, size: iconSize, color: Colors.white),
+              ),
+            ),
+          ),
+
+          // Bold Quantity Value
+          if (width != null)
+            Expanded(
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '$quantity',
+                    style: TextStyle(
+                      color: const Color(0xFF0F172A),
+                      fontWeight: FontWeight.w900,
+                      fontSize: fontSize,
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  '$quantity',
+                  style: TextStyle(
+                    color: const Color(0xFF0F172A),
+                    fontWeight: FontWeight.w900,
+                    fontSize: fontSize,
+                  ),
+                ),
+              ),
+            ),
+
+          // Circular Solid Dark Blue Plus Button
+          GestureDetector(
+            onTap: onIncrement,
+            behavior: HitTestBehavior.opaque,
+            child: Container(
+              width: buttonSize,
+              height: buttonSize,
+              decoration: const BoxDecoration(
+                color: Color(0xFF051C48), // Dark Navy Blue
+                shape: BoxShape.circle,
+              ),
+              child: Center(
+                child: Icon(Icons.add, size: iconSize, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showVariantsSelectionDialog(MenuItemModel item) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
 
     showDialog(
       context: context,
       builder: (context) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final dialogWidth = screenWidth > 600 ? 460.0 : (screenWidth * 0.92).clamp(320.0, 460.0);
+
         return StatefulBuilder(
           builder: (context, setModalState) {
             return AlertDialog(
               backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               titlePadding: const EdgeInsets.fromLTRB(20, 16, 16, 8),
               contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
@@ -286,6 +406,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         Text(
                           item.name,
                           style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
                         ),
                         const SizedBox(height: 2),
                         const Text(
@@ -304,21 +425,28 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ],
               ),
               content: SizedBox(
-                width: 360,
+                width: dialogWidth,
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: item.variants.map((v) {
-                      final effectivePrice = v.hasDiscount && v.discountPercent > 0
-                          ? v.price * (1 - v.discountPercent / 100)
-                          : v.price;
+                      final effectivePrice = v.effectivePrice;
+                      final bool variantHasDisc = v.hasDiscount || v.discountPercent > 0 || (v.salePrice != null && v.salePrice! > 0 && v.salePrice! < v.price);
+                      final double vDiscPercent = v.discountPercent > 0
+                          ? v.discountPercent
+                          : (v.price > 0 && v.salePrice != null && v.salePrice! < v.price ? ((v.price - v.salePrice!) / v.price * 100) : 0.0);
 
                       final variantId = '${item.id}_var_${v.name}';
                       final variantItem = MenuItemModel(
                         id: variantId,
+                        productId: item.productId.isNotEmpty ? item.productId : item.id,
                         name: '${item.name} (${v.name})',
                         category: item.category,
-                        price: effectivePrice,
+                        price: v.price,
+                        salePrice: variantHasDisc ? effectivePrice : null,
+                        hasDiscount: variantHasDisc,
+                        discountPercent: vDiscPercent,
                         description: item.description,
                         imageUrl: item.imageUrl,
                         emoji: item.emoji,
@@ -348,110 +476,87 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     v.name,
                                     style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 14),
                                   ),
-                                  const SizedBox(height: 2),
-                                  Row(
-                                    children: [
-                                      Text(
-                                        '$currency ${effectivePrice.toStringAsFixed(0)}',
-                                        style: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.w900, fontSize: 13),
-                                      ),
-                                      if (v.hasDiscount && v.discountPercent > 0) ...[
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          '$currency ${v.price.toStringAsFixed(0)}',
-                                          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11, decoration: TextDecoration.lineThrough),
+                                  if (variantHasDisc && vDiscPercent > 0)
+                                    Row(
+                                      children: [
+                                        // First: Strike out main price from center
+                                        _buildStruckPrice('$currency ${v.price.toStringAsFixed(0)}', fontSize: 11.5, fontWeight: FontWeight.w700),
+                                        const SizedBox(width: 5),
+                                        // Second: How much discount applied
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(3),
+                                          ),
+                                          child: Text(
+                                            '${vDiscPercent.toStringAsFixed(0)}% OFF',
+                                            style: const TextStyle(
+                                              color: Color(0xFF10B981),
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
                                         ),
                                         const SizedBox(width: 6),
+                                        // Last: Sale Price
                                         Text(
-                                          '(${v.discountPercent.toStringAsFixed(0)}% OFF)',
-                                          style: const TextStyle(color: Color(0xFF10B981), fontSize: 10, fontWeight: FontWeight.bold),
+                                          '$currency ${effectivePrice.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            color: Color(0xFF051C48),
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 13.5,
+                                          ),
                                         ),
                                       ],
-                                    ],
-                                  ),
+                                    )
+                                  else
+                                    Text(
+                                      '$currency ${effectivePrice.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        color: Color(0xFF051C48),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13.5,
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
-
-                            // Quantity Stepper for Variant (Matching Glassy Circular Buttons UI)
+                            // Quantity Stepper for Variant matching reference image
                             if (vQty > 0)
-                              Container(
+                              _buildPillQuantityStepper(
+                                quantity: vQty,
+                                onDecrement: () {
+                                  _decrementCartItem(variantItem, variantName: v.name);
+                                  setModalState(() {});
+                                  setState(() {});
+                                },
+                                onIncrement: () {
+                                  _addToCart(variantItem, variantName: v.name);
+                                  setModalState(() {});
+                                  setState(() {});
+                                },
                                 height: 30,
-                                padding: const EdgeInsets.symmetric(horizontal: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF051C48).withOpacity(0.08),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    InkWell(
-                                      onTap: () {
-                                        _decrementCartItem(variantItem);
-                                        setModalState(() {});
-                                        setState(() {});
-                                      },
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        width: 22,
-                                        height: 22,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: const LinearGradient(
-                                            colors: [Color(0xFF051C48), Color(0xFF0A2B66)],
-                                          ),
-                                          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-                                        ),
-                                        child: const Icon(Icons.remove, size: 12, color: Colors.white),
-                                      ),
-                                    ),
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                                      child: Text(
-                                        '$vQty',
-                                        style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w900, fontSize: 14),
-                                      ),
-                                    ),
-                                    InkWell(
-                                      onTap: () {
-                                        _addToCart(variantItem);
-                                        setModalState(() {});
-                                        setState(() {});
-                                      },
-                                      borderRadius: BorderRadius.circular(10),
-                                      child: Container(
-                                        width: 22,
-                                        height: 22,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          gradient: const LinearGradient(
-                                            colors: [Color(0xFF051C48), Color(0xFF0A2B66)],
-                                          ),
-                                          border: Border.all(color: Colors.white.withOpacity(0.4), width: 1),
-                                        ),
-                                        child: const Icon(Icons.add, size: 12, color: Colors.white),
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                buttonSize: 24,
+                                fontSize: 13.5,
                               )
                             else
                               SizedBox(
                                 height: 30,
-                                child: ElevatedButton(
+                                child: ElevatedButton.icon(
                                   onPressed: () {
-                                    _addToCart(variantItem);
+                                    _addToCart(variantItem, variantName: v.name);
                                     setModalState(() {});
                                     setState(() {});
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF051C48),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                                    elevation: 1,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    elevation: 0,
                                   ),
-                                  child: const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                                  icon: const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                                  label: const Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                                 ),
                               ),
                           ],
@@ -615,6 +720,59 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         ),
       );
     }
+  }
+
+  Widget _buildPosProductImage(MenuItemModel item) {
+    if (item.imageUrl.isEmpty) {
+      return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24)));
+    }
+    if (item.imageUrl.startsWith('http://') || item.imageUrl.startsWith('https://')) {
+      return Image.network(
+        item.imageUrl,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
+      );
+    }
+    final file = File(item.imageUrl);
+    if (file.existsSync()) {
+      return Image.file(
+        file,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
+      );
+    }
+    return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24)));
+  }
+
+  Widget _buildStruckPrice(String priceText, {double fontSize = 10, FontWeight fontWeight = FontWeight.w700, Color color = const Color(0xFF64748B)}) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Text(
+          priceText,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            color: color,
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          child: Container(
+            height: 1.6,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   void _showAddItemDialog() {
@@ -1890,69 +2048,60 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                             ],
                                           ),
                                           const SizedBox(height: 4),
-                                          Text(
-                                            '$currency${cItem.item.price.toStringAsFixed(1)}',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w900,
-                                              color: Color(0xFF051C48),
+                                          if (cItem.item.hasDiscount && cItem.item.discountPercent > 0)
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  '$currency${cItem.item.effectivePrice.toStringAsFixed(1)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Color(0xFF051C48),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                _buildStruckPrice('$currency${cItem.item.price.toStringAsFixed(1)}', fontSize: 11.5, fontWeight: FontWeight.w700),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  '(${cItem.item.discountPercent.toStringAsFixed(0)}% OFF)',
+                                                  style: const TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: Color(0xFF10B981),
+                                                  ),
+                                                ),
+                                              ],
+                                            )
+                                          else
+                                            Text(
+                                              '$currency${cItem.item.price.toStringAsFixed(1)}',
+                                              style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w900,
+                                                color: Color(0xFF051C48),
+                                              ),
                                             ),
-                                          ),
                                         ],
                                       ),
                                     ),
 
-                                    // Stepper (- QTY +)
-                                    Container(
-                                      height: 34,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF051C48),
-                                        borderRadius: BorderRadius.circular(10),
-                                        boxShadow: [
-                                          BoxShadow(
-                                            color: const Color(0xFF051C48).withValues(alpha: 0.2),
-                                            blurRadius: 4,
-                                            offset: const Offset(0, 2),
-                                          ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(Icons.remove, color: Colors.white, size: 15),
-                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 34),
-                                            padding: EdgeInsets.zero,
-                                            onPressed: () {
-                                              _decrementCartItem(cItem.item);
-                                              setStateModal(() {});
-                                              setState(() {});
-                                              _checkAndCloseEmptyCart(context, setStateModal);
-                                            },
-                                          ),
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                                            child: Text(
-                                              '${cItem.quantity}',
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(Icons.add, color: Colors.white, size: 15),
-                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 34),
-                                            padding: EdgeInsets.zero,
-                                            onPressed: () {
-                                              _addToCart(cItem.item);
-                                              setStateModal(() {});
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ],
-                                      ),
+                                    // Pill Quantity Stepper (- QTY +)
+                                    _buildPillQuantityStepper(
+                                      quantity: cItem.quantity,
+                                      onDecrement: () {
+                                        _decrementCartItem(cItem.item);
+                                        setStateModal(() {});
+                                        setState(() {});
+                                        _checkAndCloseEmptyCart(context, setStateModal);
+                                      },
+                                      onIncrement: () {
+                                        _addToCart(cItem.item);
+                                        setStateModal(() {});
+                                        setState(() {});
+                                      },
+                                      height: 32,
+                                      buttonSize: 26,
+                                      fontSize: 14,
                                     ),
                                     const SizedBox(width: 8),
 
@@ -2599,13 +2748,43 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               crossAxisCount: 3,
                               mainAxisSpacing: 8,
                               crossAxisSpacing: 8,
-                              childAspectRatio: showImages ? 0.60 : 0.88,
+                              childAspectRatio: showImages ? 0.60 : 0.82,
                             ),
                             itemCount: filteredItems.length,
                             itemBuilder: (context, index) {
                           final item = filteredItems[index];
                           final qty = _getItemCartQuantity(item);
                           final isSelected = qty > 0;
+
+                          final hasVariants = item.variants.isNotEmpty;
+
+                          // Check regular item discount
+                          final bool itemHasDisc = !hasVariants &&
+                              (item.hasDiscount || item.discountPercent > 0 || (item.salePrice != null && item.salePrice! > 0 && item.salePrice! < item.price));
+                          final double itemDiscPct = item.discountPercent > 0
+                              ? item.discountPercent
+                              : (item.price > 0 && item.salePrice != null && item.salePrice! < item.price
+                                  ? ((item.price - item.salePrice!) / item.price * 100)
+                                  : 0.0);
+
+                          // Check variant discount
+                          final bool variantHasDisc = hasVariants &&
+                              item.variants.any((v) => v.hasDiscount || v.discountPercent > 0 || (v.salePrice != null && v.salePrice! > 0 && v.salePrice! < v.price));
+
+                          // Determine starting variant
+                          final firstVariant = hasVariants ? item.variants.first : null;
+                          final double varDiscPct = (firstVariant != null)
+                              ? (firstVariant.discountPercent > 0
+                                  ? firstVariant.discountPercent
+                                  : (firstVariant.price > 0 && firstVariant.salePrice != null && firstVariant.salePrice! < firstVariant.price
+                                      ? ((firstVariant.price - firstVariant.salePrice!) / firstVariant.price * 100)
+                                      : 0.0))
+                              : 0.0;
+
+                          final isDiscounted = itemHasDisc || variantHasDisc;
+                          final double displaySalePrice = hasVariants ? (firstVariant?.effectivePrice ?? 0.0) : item.effectivePrice;
+                          final double displayOriginalPrice = hasVariants ? (firstVariant?.price ?? 0.0) : item.price;
+                          final double displayDiscountPct = hasVariants ? varDiscPct : itemDiscPct;
 
                           return Container(
                             decoration: BoxDecoration(
@@ -2629,149 +2808,244 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 mainAxisAlignment: MainAxisAlignment.start,
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  if (showImages) ...[
-                                    // Image fills remaining space (Expanded = no overflow)
-                                    Expanded(
-                                      child: Stack(
+                                  // Clickable Upper Card (Opens variants dialog if variants exist, else adds to cart)
+                                  Expanded(
+                                    child: GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        if (item.variants.isNotEmpty) {
+                                          _showVariantsSelectionDialog(item);
+                                        } else {
+                                          _addToCart(item);
+                                        }
+                                      },
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.stretch,
                                         children: [
-                                          Container(
-                                            width: double.infinity,
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF1F5F9),
-                                              borderRadius: BorderRadius.circular(10),
-                                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                                            ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(10),
-                                              child: item.imageUrl.isNotEmpty
-                                                  ? Image.file(
-                                                      File(item.imageUrl),
-                                                      fit: BoxFit.cover,
-                                                      width: double.infinity,
-                                                      height: double.infinity,
-                                                      errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
-                                                    )
-                                                  : Center(child: Text(item.emoji, style: const TextStyle(fontSize: 22))),
-                                            ),
-                                          ),
-                                          // FoodType Badge (Top Right)
-                                          Positioned(
-                                            top: 3,
-                                            right: 3,
-                                            child: Container(
-                                              padding: const EdgeInsets.all(2),
-                                              decoration: BoxDecoration(
-                                                color: Colors.white,
-                                                borderRadius: BorderRadius.circular(5),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black.withOpacity(0.15),
-                                                    blurRadius: 3,
+                                          if (showImages) ...[
+                                            // Image fills upper space
+                                            Expanded(
+                                              child: Stack(
+                                                children: [
+                                                  Container(
+                                                    width: double.infinity,
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFF1F5F9),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                                    ),
+                                                    child: ClipRRect(
+                                                      borderRadius: BorderRadius.circular(10),
+                                                      child: _buildPosProductImage(item),
+                                                    ),
                                                   ),
+                                                  // FoodType Badge (Top Right)
+                                                  Positioned(
+                                                    top: 3,
+                                                    right: 3,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.all(2),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.white,
+                                                        borderRadius: BorderRadius.circular(5),
+                                                        boxShadow: [
+                                                          BoxShadow(
+                                                            color: Colors.black.withOpacity(0.15),
+                                                            blurRadius: 3,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: _buildFoodTypeIcon(item.itemType),
+                                                    ),
+                                                  ),
+                                                  // Variants Badge (Top Left) - Clean & without top discount text
+                                                   if (hasVariants)
+                                                     Positioned(
+                                                       top: 3,
+                                                       left: 3,
+                                                       child: Container(
+                                                         padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
+                                                         decoration: BoxDecoration(
+                                                           color: const Color(0xFF051C48),
+                                                           borderRadius: BorderRadius.circular(5),
+                                                         ),
+                                                         child: Text(
+                                                           '${item.variants.length} Variants',
+                                                           style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                                         ),
+                                                       ),
+                                                     ),
                                                 ],
                                               ),
-                                              child: _buildFoodTypeIcon(item.itemType),
                                             ),
-                                          ),
-                                          // Variants Badge (Top Left)
-                                          if (item.variants.isNotEmpty)
-                                            Positioned(
-                                              top: 3,
-                                              left: 3,
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF051C48),
-                                                  borderRadius: BorderRadius.circular(5),
-                                                ),
-                                                child: Text(
-                                                  '${item.variants.length} Variants',
-                                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                                                ),
-                                              ),
-                                            ),
+                                             const SizedBox(height: 2),
+
+                                             // Product Name (arranged higher up)
+                                             Text(
+                                               item.name,
+                                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A), height: 1.1),
+                                               maxLines: 1,
+                                               overflow: TextOverflow.ellipsis,
+                                               textAlign: TextAlign.center,
+                                             ),
+
+                                             const SizedBox(height: 2),
+
+                                             // Price & Discount Hierarchy
+                                             if (isDiscounted && displayDiscountPct > 0) ...[
+                                               // First: Strike out main price from center + Second: Discount applied
+                                               FittedBox(
+                                                 fit: BoxFit.scaleDown,
+                                                 child: Row(
+                                                   mainAxisAlignment: MainAxisAlignment.center,
+                                                   children: [
+                                                     _buildStruckPrice('$currency ${displayOriginalPrice.toStringAsFixed(0)}', fontSize: 10, fontWeight: FontWeight.w700),
+                                                     const SizedBox(width: 4),
+                                                     Container(
+                                                       padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1),
+                                                       decoration: BoxDecoration(
+                                                         color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                                         borderRadius: BorderRadius.circular(3),
+                                                       ),
+                                                       child: Text(
+                                                         '${displayDiscountPct.toStringAsFixed(0)}% OFF',
+                                                         style: const TextStyle(
+                                                           fontSize: 8.5,
+                                                           fontWeight: FontWeight.w900,
+                                                           color: Color(0xFF10B981),
+                                                         ),
+                                                       ),
+                                                     ),
+                                                   ],
+                                                 ),
+                                               ),
+                                               // Last: Sale Price (without 'From')
+                                               FittedBox(
+                                                 fit: BoxFit.scaleDown,
+                                                 child: Text(
+                                                   '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                   style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                                   textAlign: TextAlign.center,
+                                                 ),
+                                               ),
+                                             ] else ...[
+                                               FittedBox(
+                                                 fit: BoxFit.scaleDown,
+                                                 child: Text(
+                                                   '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                   style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                                   textAlign: TextAlign.center,
+                                                 ),
+                                               ),
+                                             ],
+
+                                             const SizedBox(height: 2),
+                                           ] else ...[
+                                             // Compact Text-Only View (Without Image)
+                                             Row(
+                                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                               children: [
+                                                 _buildFoodTypeIcon(item.itemType),
+                                                 const SizedBox(width: 4),
+                                                 if (hasVariants)
+                                                   Flexible(
+                                                     child: Container(
+                                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                       decoration: BoxDecoration(
+                                                         color: const Color(0xFF051C48),
+                                                         borderRadius: BorderRadius.circular(4),
+                                                       ),
+                                                       child: Text(
+                                                         '${item.variants.length} Variants',
+                                                         style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                                         maxLines: 1,
+                                                         overflow: TextOverflow.ellipsis,
+                                                       ),
+                                                     ),
+                                                   )
+                                                 else
+                                                   Flexible(
+                                                     child: Container(
+                                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                       decoration: BoxDecoration(
+                                                         color: const Color(0xFFF1F5F9),
+                                                         borderRadius: BorderRadius.circular(4),
+                                                       ),
+                                                       child: Text(
+                                                         item.category,
+                                                         style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                                         maxLines: 1,
+                                                         overflow: TextOverflow.ellipsis,
+                                                       ),
+                                                     ),
+                                                   ),
+                                               ],
+                                             ),
+                                             const Spacer(),
+                                             // Product Name (arranged higher up)
+                                             Text(
+                                               item.name,
+                                               style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), height: 1.15),
+                                               maxLines: 2,
+                                               overflow: TextOverflow.ellipsis,
+                                             ),
+                                             const SizedBox(height: 2),
+                                             // Price & Discount Hierarchy in text-only card
+                                             if (isDiscounted && displayDiscountPct > 0) ...[
+                                               // First: Strike out main price from center + Second: Discount applied
+                                               FittedBox(
+                                                 fit: BoxFit.scaleDown,
+                                                 alignment: Alignment.centerLeft,
+                                                 child: Row(
+                                                   children: [
+                                                     _buildStruckPrice('$currency ${displayOriginalPrice.toStringAsFixed(0)}', fontSize: 10, fontWeight: FontWeight.w700),
+                                                     const SizedBox(width: 4),
+                                                     Container(
+                                                       padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                                       decoration: BoxDecoration(
+                                                         color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                                                         borderRadius: BorderRadius.circular(3),
+                                                       ),
+                                                       child: Text(
+                                                         '${displayDiscountPct.toStringAsFixed(0)}% OFF',
+                                                         style: const TextStyle(
+                                                           fontSize: 8.5,
+                                                           fontWeight: FontWeight.w900,
+                                                           color: Color(0xFF10B981),
+                                                         ),
+                                                       ),
+                                                     ),
+                                                   ],
+                                                 ),
+                                               ),
+                                               // Last: Sale Price (without 'From')
+                                               Text(
+                                                 '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                 style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                               ),
+                                             ] else ...[
+                                               Text(
+                                                 '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                 style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                               ),
+                                             ],
+                                             const Spacer(),
+                                          ],
                                         ],
                                       ),
                                     ),
+                                  ),
 
-                                    const SizedBox(height: 4),
-
-                                    // Product Name
-                                    Text(
-                                      item.name,
-                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                    ),
-
-                                    // Price
-                                    Text(
-                                      '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
-                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
-                                      textAlign: TextAlign.center,
-                                    ),
-
-                                    const SizedBox(height: 4),
-                                  ] else ...[
-                                    // Compact Text-Only View (Without Image)
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        _buildFoodTypeIcon(item.itemType),
-                                        if (item.variants.isNotEmpty)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF051C48),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              '${item.variants.length} Var',
-                                              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.white),
-                                            ),
-                                          )
-                                        else
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFFF1F5F9),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              item.category,
-                                              style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const Spacer(),
-                                    Text(
-                                      item.name,
-                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), height: 1.15),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      '$currency ${(item.variants.isNotEmpty ? item.variants.first.price : item.price).toStringAsFixed(0)}',
-                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
-                                    ),
-                                    const Spacer(),
-                                  ],
-
-                                  // Add Button or Quantity Stepper
+                                  // Add Button or Pill Quantity Stepper
                                   if (item.variants.isNotEmpty)
                                     SizedBox(
                                       width: double.infinity,
-                                      height: 26,
+                                      height: 28,
                                       child: ElevatedButton(
                                         onPressed: () => _showVariantsSelectionDialog(item),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: const Color(0xFF051C48),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                           padding: EdgeInsets.zero,
                                           elevation: 0,
                                         ),
@@ -2786,72 +3060,35 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     )
                                   else if (qty > 0)
                                     SizedBox(
-                                      height: 26,
-                                      child: Row(
-                                        children: [
-                                          Expanded(
-                                            child: GestureDetector(
-                                              onTap: () => _decrementCartItem(item),
-                                              child: Container(
-                                                height: 26,
-                                                decoration: BoxDecoration(
-                                                  gradient: const LinearGradient(
-                                                    colors: [Color(0xFF051C48), Color(0xFF0A2B66)],
-                                                  ),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                child: const Icon(Icons.remove, size: 13, color: Colors.white),
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: Center(
-                                              child: FittedBox(
-                                                fit: BoxFit.scaleDown,
-                                                child: Text(
-                                                  '$qty',
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF0F172A),
-                                                    fontWeight: FontWeight.w900,
-                                                    fontSize: 13,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          Expanded(
-                                            child: GestureDetector(
-                                              onTap: () => _addToCart(item),
-                                              child: Container(
-                                                height: 26,
-                                                decoration: BoxDecoration(
-                                                  gradient: const LinearGradient(
-                                                    colors: [Color(0xFF051C48), Color(0xFF0A2B66)],
-                                                  ),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                child: const Icon(Icons.add, size: 13, color: Colors.white),
-                                              ),
-                                            ),
-                                          ),
-                                        ],
+                                      width: double.infinity,
+                                      height: 28,
+                                      child: _buildPillQuantityStepper(
+                                        quantity: qty,
+                                        onDecrement: () => _decrementCartItem(item),
+                                        onIncrement: () => _addToCart(item),
+                                        width: double.infinity,
+                                        height: 28,
+                                        buttonSize: 24,
+                                        iconSize: 15,
+                                        fontSize: 14,
+                                        borderRadius: BorderRadius.circular(16),
                                       ),
                                     )
                                   else
                                     SizedBox(
                                       width: double.infinity,
-                                      height: 26,
+                                      height: 28,
                                       child: ElevatedButton(
                                         onPressed: () => _addToCart(item),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: const Color(0xFF051C48),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                           padding: EdgeInsets.zero,
                                           elevation: 0,
                                         ),
                                         child: const FittedBox(
                                           fit: BoxFit.scaleDown,
-                                          child: Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
+                                          child: Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
                                         ),
                                       ),
                                     ),
@@ -2859,10 +3096,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               ),
                             ),
                           );
+                            },
+                          );
                         },
-                      );
-                    },
-                  ),
+                      ),
               ),
             ],
           ),

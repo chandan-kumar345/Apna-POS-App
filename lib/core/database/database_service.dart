@@ -46,9 +46,6 @@ class DatabaseService extends ChangeNotifier {
   OrderService get _orderService => orderService;
   TableService get _tableService => tableService;
   InventoryService get _inventoryService => inventoryService;
-  CustomerService get _customerService => customerService;
-  ReportService get _reportService => reportService;
-  DashboardService get _dashboardService => dashboardService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -180,7 +177,7 @@ class DatabaseService extends ChangeNotifier {
     final catJson = _prefs?.getString('apna_pos_categories');
     if (catJson != null) {
       final List raw = jsonDecode(catJson);
-      categories = raw.map((e) => e.toString()).toList();
+      categories = raw.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
     } else {
       _syncCategoriesFromMenu();
     }
@@ -421,7 +418,7 @@ class DatabaseService extends ChangeNotifier {
     }
 
     currentUser = UserModel(
-      id: createdUser?.id?.toString() ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+      id: createdUser.id ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
       name: name.trim(),
       email: email.trim(),
       phone: phone?.trim(),
@@ -848,7 +845,15 @@ class DatabaseService extends ChangeNotifier {
 
   // --- MENU MANAGEMENT SERVICES ---
   Future<void> saveMenuItem(MenuItemModel item) async {
-    final index = menuItems.indexWhere((element) => element.id == item.id);
+    final String catName = item.category.trim();
+    if (catName.isNotEmpty && !categories.any((c) => (c ?? '').toString().toLowerCase() == catName.toLowerCase())) {
+      categories.add(catName);
+      await _saveCategoriesToPrefs();
+    }
+
+    final isNewItem = !menuItems.any((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+
+    final index = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
     if (index >= 0) {
       menuItems[index] = item;
     } else {
@@ -860,16 +865,22 @@ class DatabaseService extends ChangeNotifier {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        if (item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.length != 24) {
+        if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-')) {
           final created = await _productService.createProduct(item);
-          final newIdx = menuItems.indexWhere((element) => element.id == item.id);
+          final newIdx = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
           if (newIdx >= 0) {
             menuItems[newIdx] = created;
             await _saveMenuToPrefs();
             notifyListeners();
           }
         } else {
-          await _productService.updateProduct(item);
+          final updated = await _productService.updateProduct(item);
+          final newIdx = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+          if (newIdx >= 0) {
+            menuItems[newIdx] = updated;
+            await _saveMenuToPrefs();
+            notifyListeners();
+          }
         }
       }
     } catch (e) {
@@ -878,13 +889,13 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> deleteMenuItem(String id) async {
-    menuItems.removeWhere((item) => item.id == id);
+    menuItems.removeWhere((item) => item.id == id || item.productId == id);
     await _saveMenuToPrefs();
     notifyListeners();
 
     try {
       final isAuth = await _authService.isAuthenticated();
-      if (isAuth && id.length == 24) {
+      if (isAuth) {
         await _productService.deleteProduct(id);
       }
     } catch (e) {
@@ -893,7 +904,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> toggleMenuItemAvailability(String id) async {
-    final index = menuItems.indexWhere((item) => item.id == id);
+    final index = menuItems.indexWhere((item) => item.id == id || item.productId == id);
     if (index >= 0) {
       final updated = menuItems[index].copyWith(isAvailable: !menuItems[index].isAvailable);
       menuItems[index] = updated;
@@ -902,7 +913,7 @@ class DatabaseService extends ChangeNotifier {
 
       try {
         final isAuth = await _authService.isAuthenticated();
-        if (isAuth && id.length == 24) {
+        if (isAuth) {
           await _productService.updateProduct(updated);
         }
       } catch (e) {
@@ -951,6 +962,15 @@ class DatabaseService extends ChangeNotifier {
       await _saveMenuToPrefs();
       await _saveCategoriesToPrefs();
       notifyListeners();
+
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          await _productService.updateCategory(oldName, updatedName);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.editCategory] API error: $e');
+      }
     }
   }
 
@@ -1019,33 +1039,84 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  Future<void> addTable(String name, String floor, int capacity) async {
-    final nextNum = tables.isEmpty ? 1 : (tables.map((t) => t.tableNumber).reduce((a, b) => a > b ? a : b) + 1);
-    final newT = TableModel(
-      id: 'TBL-${DateTime.now().millisecondsSinceEpoch}',
-      tableNumber: nextNum,
-      name: name.trim().isEmpty ? 'T-$nextNum' : name.trim(),
-      floor: floor.trim().isEmpty ? 'Ground Floor' : floor.trim(),
-      capacity: capacity > 0 ? capacity : 4,
-      status: TableStatus.free,
-    );
-    tables.add(newT);
+  Future<void> addTable(String name, String floor, int capacity, {int count = 1}) async {
+    final qty = count > 0 ? count : 1;
+    final List<TableModel> newTablesToAdd = [];
+    int maxNum = tables.isEmpty ? 0 : (tables.map((t) => t.tableNumber).reduce((a, b) => a > b ? a : b));
+
+    final baseName = name.trim().isEmpty ? 'T' : name.trim();
+    final flr = floor.trim().isEmpty ? 'Ground Floor' : floor.trim();
+    final cap = capacity > 0 ? capacity : 4;
+
+    for (int i = 1; i <= qty; i++) {
+      maxNum++;
+      final tName = qty == 1
+          ? (name.trim().isEmpty ? 'T-$maxNum' : name.trim())
+          : '$baseName-$maxNum';
+      final newT = TableModel(
+        id: 'TBL-${DateTime.now().millisecondsSinceEpoch}-$i',
+        tableNumber: maxNum,
+        name: tName,
+        floor: flr,
+        capacity: cap,
+        status: TableStatus.free,
+      );
+      newTablesToAdd.add(newT);
+    }
+
+    tables.addAll(newTablesToAdd);
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(tableCount: tables.length);
+      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    }
     await _saveTablesToPrefs();
     notifyListeners();
 
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        final created = await _tableService.createTable(newT);
-        final idx = tables.indexWhere((t) => t.id == newT.id);
-        if (idx >= 0) {
-          tables[idx] = created;
+        final remoteCreated = await _tableService.createBulkTables(
+          name: baseName,
+          floor: flr,
+          capacity: cap,
+          count: qty,
+        );
+        if (remoteCreated.isNotEmpty) {
+          // Replace locally generated IDs with real MongoDB IDs
+          for (int i = 0; i < remoteCreated.length && i < newTablesToAdd.length; i++) {
+            final localItem = newTablesToAdd[i];
+            final remoteItem = remoteCreated[i];
+            final idx = tables.indexWhere((t) => t.id == localItem.id);
+            if (idx >= 0) {
+              tables[idx] = remoteItem;
+            }
+          }
           await _saveTablesToPrefs();
           notifyListeners();
         }
       }
     } catch (e) {
       debugPrint('[DatabaseService.addTable] API error: $e');
+    }
+  }
+
+  /// Synchronize total number of dining tables to target count
+  Future<void> syncTableCount(int count) async {
+    final target = count > 0 ? count : 1;
+    if (tables.length < target) {
+      final toAdd = target - tables.length;
+      await addTable('T', 'Ground Floor', 4, count: toAdd);
+    } else if (tables.length > target) {
+      final excess = tables.length - target;
+      final freeTables = tables.where((t) => t.status == TableStatus.free).toList();
+      final toRemove = freeTables.take(excess).map((t) => t.id).toList();
+      tables.removeWhere((t) => toRemove.contains(t.id));
+      if (restaurant != null) {
+        restaurant = restaurant!.copyWith(tableCount: tables.length);
+        await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      }
+      await _saveTablesToPrefs();
+      notifyListeners();
     }
   }
 
@@ -1277,14 +1348,15 @@ class DatabaseService extends ChangeNotifier {
 
   // SEEDERS
   void _seedCleanTables(int count) {
-    tables = List.generate(count, (index) {
+    final validCount = count > 0 ? count : 12;
+    tables = List.generate(validCount, (index) {
       final num = index + 1;
       final floor = num <= 8 ? 'Ground Floor' : 'Terrace Garden';
       final cap = (num % 3 == 0) ? 6 : (num % 2 == 0 ? 4 : 2);
       return TableModel(
         id: 'tbl_$num',
         tableNumber: num,
-        name: 'Table $num',
+        name: 'T-$num',
         floor: floor,
         capacity: cap,
         status: TableStatus.free,

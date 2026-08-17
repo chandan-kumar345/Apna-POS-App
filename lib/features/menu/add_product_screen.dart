@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
+import '../../core/services/upload_service.dart';
 
 class AddProductScreen extends StatefulWidget {
   final MenuItemModel? editItem;
@@ -209,67 +210,103 @@ class _AddProductScreenState extends State<AddProductScreen> {
             isCalcVariant = false;
           }
 
+          final screenWidth = MediaQuery.of(context).size.width;
+          final dialogWidth = screenWidth > 600 ? 520.0 : (screenWidth * 0.92).clamp(320.0, 520.0);
+
           return AlertDialog(
             backgroundColor: Colors.white,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Text('Add Product Variant', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold)),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Variant Name*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: vNameCtrl,
-                    style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5),
-                    decoration: InputDecoration(
-                      hintText: 'e.g. Half, Full, 500g, Large',
-                      prefixIcon: const Icon(Icons.tune, color: Color(0xFF051C48)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
-                    ),
+            titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+            contentPadding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+            actionsPadding: const EdgeInsets.fromLTRB(16, 0, 20, 16),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF051C48).withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  const SizedBox(height: 12),
-                  const Text('Variant Price*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: vPriceCtrl,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5),
-                    onChanged: (_) {
-                      if (vAddDiscount) calcVariantSalePrice();
-                    },
-                    decoration: InputDecoration(
-                      hintText: 'Price (${db.restaurant?.currencySymbol ?? "₹"})',
-                      prefixIcon: const Icon(Icons.payments_outlined, color: Color(0xFF051C48)),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
-                    ),
+                  child: const Icon(Icons.tune_rounded, color: Color(0xFF051C48), size: 20),
+                ),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Text(
+                    'Add Product Variant',
+                    style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16),
                   ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Switch(
-                        value: vAddDiscount,
-                        activeColor: const Color(0xFF051C48),
-                        onChanged: (val) {
-                          setDialogState(() {
-                            vAddDiscount = val;
-                            if (val) calcVariantSalePrice();
-                          });
-                        },
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: dialogWidth,
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Variant Name*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                    const SizedBox(height: 5),
+                    TextField(
+                      controller: vNameCtrl,
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5),
+                      decoration: InputDecoration(
+                        hintText: 'e.g. Half, Full, 500g, 1L, Regular, Large',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                        prefixIcon: const Icon(Icons.label_outline, color: Color(0xFF051C48), size: 18),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
                       ),
-                      const SizedBox(width: 6),
-                      const Text('Add Variant Discount', style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  if (vAddDiscount) ...[
-                    const SizedBox(height: 8),
+                    ),
+                    const SizedBox(height: 14),
+                    const Text('Variant Price*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                    const SizedBox(height: 5),
+                    TextField(
+                      controller: vPriceCtrl,
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5, fontWeight: FontWeight.bold),
+                      onChanged: (_) {
+                        if (vAddDiscount) calcVariantSalePrice();
+                      },
+                      decoration: InputDecoration(
+                        hintText: 'Price (${db.restaurant?.currencySymbol ?? "₹"})',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                        prefixIcon: const Icon(Icons.payments_outlined, color: Color(0xFF051C48), size: 18),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
-                        Expanded(
-                          child: Column(
+                        Switch(
+                          value: vAddDiscount,
+                          activeColor: const Color(0xFF051C48),
+                          onChanged: (val) {
+                            setDialogState(() {
+                              vAddDiscount = val;
+                              if (val) calcVariantSalePrice();
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 6),
+                        const Text('Add Variant Discount (Optional)', style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                    if (vAddDiscount) ...[
+                      const SizedBox(height: 10),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 280;
+                          final discWidget = Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text('Discount (%)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
@@ -281,17 +318,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 onChanged: (_) => calcVariantSalePrice(),
                                 decoration: InputDecoration(
                                   hintText: '10%',
-                                  prefixIcon: const Icon(Icons.discount_outlined, color: Color(0xFF051C48), size: 18),
+                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  prefixIcon: const Icon(Icons.discount_outlined, color: Color(0xFF051C48), size: 16),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF8FAFC),
                                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
                                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Column(
+                          );
+
+                          final saleWidget = Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text('Sale Price', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
@@ -299,28 +338,50 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               TextField(
                                 controller: vSalePriceCtrl,
                                 keyboardType: TextInputType.number,
-                                style: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold, fontSize: 13),
+                                style: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.w900, fontSize: 13),
                                 onChanged: (val) => calcVariantDiscountPct(val),
                                 decoration: InputDecoration(
                                   hintText: 'Sale Price',
-                                  prefixIcon: const Icon(Icons.sell_outlined, color: Color(0xFF051C48), size: 18),
+                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  prefixIcon: const Icon(Icons.sell_outlined, color: Color(0xFF051C48), size: 16),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF8FAFC),
                                   enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
                                   focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
                                 ),
                               ),
                             ],
-                          ),
-                        ),
-                      ],
-                    ),
+                          );
+
+                          if (isNarrow) {
+                            return Column(
+                              children: [
+                                discWidget,
+                                const SizedBox(height: 10),
+                                saleWidget,
+                              ],
+                            );
+                          }
+
+                          return Row(
+                            children: [
+                              Expanded(child: discWidget),
+                              const SizedBox(width: 10),
+                              Expanded(child: saleWidget),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+                child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
               ),
               ElevatedButton(
                 onPressed: () {
@@ -343,6 +404,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       price: price,
                       hasDiscount: vAddDiscount,
                       discountPercent: discPct,
+                      salePrice: vAddDiscount && discPct > 0 ? price * (1 - discPct / 100) : null,
                     ));
 
                     // If variants exist, set main price to 0 and lock it!
@@ -353,6 +415,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF051C48),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
                 ),
                 child: const Text('Add Variant', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               ),
@@ -411,45 +474,95 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
+  bool _isSaving = false;
+
   Future<void> _saveProduct() async {
+    if (_isSaving) return;
+
     final title = _titleController.text.trim();
     final price = double.tryParse(_priceController.text.trim()) ?? 0.0;
 
     if (title.isEmpty) {
-      _showErrorSnackBar('Please enter a product title');
+      _showErrorSnackBar('Product title is required! Please enter a title.');
       return;
     }
+
+    final String catName = _selectedCategory.trim().isNotEmpty
+        ? _selectedCategory.trim()
+        : (db.categories.isNotEmpty ? db.categories.first : 'Main Course');
+
+    final String foodType = _selectedType.trim().isNotEmpty ? _selectedType.trim() : 'Veg';
 
     if (price <= 0 && _variants.isEmpty) {
-      _showErrorSnackBar('Price is mandatory! Please enter a valid price or add variants');
+      _showErrorSnackBar('Price is required! Please enter a valid price or add variants.');
       return;
     }
 
-    final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
-    final stockVal = int.tryParse(_stockController.text.trim()) ?? 50;
+    setState(() => _isSaving = true);
 
-    final item = MenuItemModel(
-      id: widget.editItem?.id ?? 'prod_${DateTime.now().millisecondsSinceEpoch}',
-      name: title,
-      category: _selectedCategory,
-      price: _variants.isNotEmpty ? 0.0 : price,
-      description: _descriptionController.text.trim(),
-      emoji: '🥘',
-      imageUrl: _selectedImagePath ?? '',
-      itemType: _selectedType,
-      hasDiscount: _addDiscount,
-      discountPercent: discountVal,
-      stockQuantity: stockVal,
-      variants: List.from(_variants),
-      gstPercent: _selectedGstPercent,
-      trackInventory: _trackInventory,
-    );
+    try {
+      final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
+      final stockVal = int.tryParse(_stockController.text.trim()) ?? 50;
 
-    await db.saveMenuItem(item);
-    if (!mounted) return;
+      String finalImageUrl = _selectedImagePath ?? '';
+      // Image is completely optional: If user picked an image file, upload it; otherwise proceed with empty string
+      if (_selectedImagePath != null &&
+          _selectedImagePath!.isNotEmpty &&
+          !_selectedImagePath!.startsWith('http') &&
+          File(_selectedImagePath!).existsSync()) {
+        try {
+          final uploadedUrl = await UploadService().uploadImage(File(_selectedImagePath!));
+          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+            finalImageUrl = uploadedUrl;
+          }
+        } catch (e) {
+          debugPrint('[AddProductScreen] image upload fallback to local path: $e');
+        }
+      }
 
-    _showSuccessSnackBar('Product saved successfully!');
-    Navigator.pop(context, true);
+      final uniqueProdId = widget.editItem?.productId ??
+          widget.editItem?.id ??
+          'PRD-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}-${1000 + (DateTime.now().microsecond % 9000)}';
+
+      final double calculatedSalePrice = _addDiscount && discountVal > 0
+          ? price * (1 - discountVal / 100)
+          : (double.tryParse(_salePriceController.text.trim()) ?? price);
+
+      final item = MenuItemModel(
+        id: widget.editItem?.id ?? uniqueProdId,
+        productId: uniqueProdId,
+        name: title,
+        category: catName,
+        price: _variants.isNotEmpty ? 0.0 : price,
+        salePrice: _variants.isNotEmpty ? null : (_addDiscount ? calculatedSalePrice : null),
+        description: _descriptionController.text.trim(),
+        emoji: '🥘',
+        imageUrl: finalImageUrl,
+        images: finalImageUrl.isNotEmpty ? [finalImageUrl] : [],
+        itemType: foodType,
+        hasDiscount: _addDiscount,
+        discountPercent: discountVal,
+        stockQuantity: stockVal,
+        variants: List.from(_variants),
+        gstPercent: _selectedGstPercent,
+        trackInventory: _trackInventory,
+      );
+
+      await db.saveMenuItem(item);
+      if (!mounted) return;
+
+      _showSuccessSnackBar('Product saved successfully!');
+      Navigator.pop(context, true);
+    } catch (e) {
+      debugPrint('[AddProductScreen] _saveProduct error: $e');
+      if (mounted) {
+        _showErrorSnackBar('Failed to save product: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   @override
@@ -544,7 +657,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               const SizedBox(height: 18),
 
                               // 2. DESCRIPTION FIELD
-                              _buildFieldHeader('Description'),
+                              _buildFieldHeader('Description (Optional)'),
                               const SizedBox(height: 6),
                               TextField(
                                 controller: _descriptionController,
@@ -643,7 +756,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                     onChanged: (val) => setState(() => _addDiscount = val),
                                   ),
                                   const SizedBox(width: 8),
-                                  const Text('Add Discount', style: TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600)),
+                                  const Text('Add Discount (Optional)', style: TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600)),
                                 ],
                               ),
                               if (_addDiscount) ...[
@@ -717,7 +830,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               const SizedBox(height: 18),
 
                               // 6. UPLOAD PHOTOS AND IMAGE PREVIEW
-                              _buildFieldHeader('Product Image'),
+                              _buildFieldHeader('Product Image (Optional)'),
                               const SizedBox(height: 8),
                               Container(
                                 width: double.infinity,
@@ -774,7 +887,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                     ] else ...[
                                       const Icon(Icons.cloud_upload_outlined, size: 42, color: Color(0xFF051C48)),
                                       const SizedBox(height: 8),
-                                      const Text('Upload Product Image from Gallery', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                                      const Text('Upload Product Image from Gallery (Optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                                       const SizedBox(height: 4),
                                       const Text('Supports JPG, PNG formats', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
                                       const SizedBox(height: 12),
@@ -795,7 +908,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               const SizedBox(height: 18),
 
                               // 7. CATEGORY SELECTOR + PLUS ICON BUTTON FOR CREATE CATEGORY
-                              _buildFieldHeader('Category'),
+                              _buildFieldHeader('Category*', required: true),
                               const SizedBox(height: 6),
                               Row(
                                 children: [
@@ -854,7 +967,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                               // SECTION 2: VARIANTS
                               _buildAccordionHeader(
-                                title: 'Variants (${_variants.length})',
+                                title: 'Variants (Optional) (${_variants.length})',
                                 isExpanded: _isVariantsExpanded,
                                 onToggle: () => setState(() => _isVariantsExpanded = !_isVariantsExpanded),
                               ),
@@ -1007,7 +1120,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                               // INVENTORY SECTION (VISIBLE STOCK QUANTITY TEXT)
                               _buildAccordionHeader(
-                                title: 'Inventory',
+                                title: 'Inventory (Optional)',
                                 isExpanded: _isInventoryExpanded,
                                 onToggle: () => setState(() => _isInventoryExpanded = !_isInventoryExpanded),
                               ),
@@ -1062,21 +1175,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 width: double.infinity,
                                 height: 54,
                                 child: ElevatedButton(
-                                  onPressed: _saveProduct,
+                                  onPressed: _isSaving ? null : _saveProduct,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFF051C48),
+                                    disabledBackgroundColor: const Color(0xFF051C48).withOpacity(0.6),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
                                     elevation: 4,
                                   ),
-                                  child: const Text(
-                                    'Save Product',
-                                    style: TextStyle(
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                      letterSpacing: 0.5,
-                                    ),
-                                  ),
+                                  child: _isSaving
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5),
+                                        )
+                                      : const Text(
+                                          'Save Product',
+                                          style: TextStyle(
+                                            fontSize: 17,
+                                            fontWeight: FontWeight.w900,
+                                            color: Colors.white,
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
                                 ),
                               ),
                               const SizedBox(height: 20),

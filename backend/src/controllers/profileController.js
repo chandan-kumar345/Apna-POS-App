@@ -1,4 +1,5 @@
 const Business = require('../models/Business');
+const tableService = require('../services/tableService');
 const ApiResponse = require('../utils/ApiResponse');
 const ApiError = require('../utils/ApiError');
 
@@ -47,6 +48,9 @@ class ProfileController {
       if (req.body.address) allowedUpdates['address.addressLine'] = req.body.address;
       if (req.body.taxRate !== undefined) allowedUpdates['orderSettings.tax.percentage'] = req.body.taxRate;
       if (req.body.upiId) allowedUpdates['orderSettings.upiId'] = req.body.upiId;
+      if (req.body.tableCount !== undefined) {
+        allowedUpdates['orderSettings.tableCount'] = Math.max(0, parseInt(req.body.tableCount, 10) || 0);
+      }
       if (req.body.posViewMode) {
         if (!['with_image', 'without_image'].includes(req.body.posViewMode)) {
           throw ApiError.badRequest("posViewMode must be either 'with_image' or 'without_image'");
@@ -59,6 +63,10 @@ class ProfileController {
         { $set: allowedUpdates },
         { new: true, upsert: true }
       );
+
+      if (req.body.tableCount !== undefined && business) {
+        await tableService.syncBusinessTableCount(business._id, req.body.tableCount);
+      }
 
       return ApiResponse.success(res, { business }, 'Settings updated successfully');
     } catch (error) {

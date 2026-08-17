@@ -26,10 +26,9 @@ class UploadService {
         data: formData,
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = response.data;
-        if (data['success'] == true && data['data'] != null) {
-          final imageUrl = data['data']['imageUrl']?.toString();
+      if (response != null && response is Map<String, dynamic>) {
+        if (response['success'] == true && response['data'] != null) {
+          final imageUrl = response['data']['imageUrl']?.toString();
           debugPrint('[UploadService] Image uploaded successfully: $imageUrl');
           return imageUrl;
         }

@@ -269,6 +269,14 @@ class ApiEndpoints {
   static const String posSettings = '/profile/pos-settings';
   static const String profileSettings = '/profile/settings';
 
+  // Cart endpoints
+  static const String cart = '/cart';
+  static const String cartAdd = '/cart/add';
+  static const String cartReduce = '/cart/reduce';
+  static const String cartRemove = '/cart/remove';
+  static const String cartSync = '/cart/sync';
+  static const String cartClear = '/cart/clear';
+
   // Upload endpoints
   static const String uploadImage = '/upload/image';
 

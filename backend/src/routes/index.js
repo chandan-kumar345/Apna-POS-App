@@ -10,6 +10,7 @@ const tableRoutes = require('./tableRoutes');
 const customerRoutes = require('./customerRoutes');
 const inventoryRoutes = require('./inventoryRoutes');
 const uploadRoutes = require('./uploadRoutes');
+const cartRoutes = require('./cartRoutes');
 
 const router = express.Router();
 
@@ -33,5 +34,6 @@ router.use('/tables', tableRoutes);
 router.use('/customers', customerRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/upload', uploadRoutes);
+router.use('/cart', cartRoutes);
 
 module.exports = router;

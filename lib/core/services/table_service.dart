@@ -46,6 +46,43 @@ class TableService {
     }
   }
 
+  /// Create table or bulk tables (count = x)
+  Future<List<TableModel>> createBulkTables({
+    required String name,
+    required String floor,
+    required int capacity,
+    int count = 1,
+    int? tableNumber,
+  }) async {
+    try {
+      final payload = {
+        if (tableNumber != null && tableNumber > 0) 'tableNumber': tableNumber,
+        'name': name,
+        'floor': floor,
+        'capacity': capacity,
+        'count': count,
+      };
+
+      final response = await _apiClient.post(
+        ApiEndpoints.tables,
+        data: payload,
+      );
+
+      if (response != null && response['data'] != null) {
+        if (response['data']['tables'] != null) {
+          final raw = response['data']['tables'] as List<dynamic>;
+          return raw.map((t) => TableModel.fromJson(t as Map<String, dynamic>)).toList();
+        } else if (response['data']['table'] != null) {
+          return [TableModel.fromJson(response['data']['table'] as Map<String, dynamic>)];
+        }
+      }
+      return [];
+    } catch (e) {
+      debugPrint('[TableService.createBulkTables] error: $e');
+      return [];
+    }
+  }
+
   /// Update table status
   Future<bool> updateTableStatus(String tableId, TableStatus status, {String? orderId}) async {
     try {

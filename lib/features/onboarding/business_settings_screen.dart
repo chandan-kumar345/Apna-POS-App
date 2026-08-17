@@ -273,6 +273,9 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         tableCount: _selectedServices.contains('Dine In') ? _tableCount : 0,
       );
 
+      final effectiveCount = _selectedServices.contains('Dine In') ? _tableCount : 0;
+      await DatabaseService().syncTableCount(effectiveCount);
+
       if (widget.isFromOnboarding) {
         // Trigger backend onboarding verification
         await OnboardingService().completeOnboarding();

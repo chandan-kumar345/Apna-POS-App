@@ -13,25 +13,20 @@ class TableManagementScreen extends StatefulWidget {
   State<TableManagementScreen> createState() => _TableManagementScreenState();
 }
 
-class _TableManagementScreenState extends State<TableManagementScreen> {
+class _TableManagementScreenState extends State<TableManagementScreen> with AutomaticKeepAliveClientMixin {
   final db = DatabaseService();
   String _selectedFloor = 'All Floors';
 
   @override
-  void initState() {
-    super.initState();
-    db.addListener(_onDbChange);
-    db.syncWithBackend();
-  }
+  bool get wantKeepAlive => true;
 
   @override
-  void dispose() {
-    db.removeListener(_onDbChange);
-    super.dispose();
-  }
-
-  void _onDbChange() {
-    if (mounted) setState(() {});
+  void initState() {
+    super.initState();
+    // Non-blocking sync if table list is empty
+    if (db.tables.isEmpty) {
+      db.syncWithBackend();
+    }
   }
 
   List<String> get floors {
@@ -96,83 +91,212 @@ class _TableManagementScreenState extends State<TableManagementScreen> {
         MaterialPageRoute(
           builder: (_) => PosRegisterScreen(initialTable: tableName),
         ),
-      ).then((_) => setState(() {}));
+      );
     }
   }
 
   void _showAddTableDialog() {
     final nameCtrl = TextEditingController(text: 'T-${db.tables.length + 1}');
     final floorCtrl = TextEditingController(text: _selectedFloor == 'All Floors' ? 'Ground Floor' : _selectedFloor);
-    final capacityCtrl = TextEditingController(text: '4');
+    final existingFloors = floors.where((f) => f != 'All Floors').toList();
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Row(
-          children: [
-            Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48), size: 24),
-            SizedBox(width: 8),
-            Text('Add New Dining Table', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Table Name*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-            const SizedBox(height: 4),
-            TextField(
-              controller: nameCtrl,
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Table Name (e.g. T-13)',
-                prefixIcon: const Icon(Icons.chair_rounded, color: Color(0xFF051C48)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 12,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 580 : screenWidth * 0.94,
+                  minWidth: 320,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header Row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48), size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Add Dining Table',
+                                  style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w900, fontSize: 18),
+                                ),
+                                Text(
+                                  'Enter table name and assign a dining floor or area',
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                            tooltip: 'Close',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Scrollable Wrapped Content
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Table Name / Number Field
+                              const Text(
+                                'Table Name / Number*',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              TextField(
+                                controller: nameCtrl,
+                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600),
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. T-13, Table 13, VIP-1',
+                                  prefixIcon: const Icon(Icons.chair_rounded, color: Color(0xFF051C48), size: 20),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF8FAFC),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+
+                              // Floor / Area Field & Quick Select Pills
+                              const Text(
+                                'Floor / Dining Area*',
+                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              if (existingFloors.isNotEmpty) ...[
+                                Wrap(
+                                  spacing: 6,
+                                  runSpacing: 6,
+                                  children: existingFloors.map((fl) {
+                                    final isSel = floorCtrl.text.trim().toLowerCase() == fl.toLowerCase();
+                                    return ChoiceChip(
+                                      label: Text(fl),
+                                      selected: isSel,
+                                      selectedColor: const Color(0xFF051C48),
+                                      labelStyle: TextStyle(
+                                        color: isSel ? Colors.white : const Color(0xFF334155),
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      onSelected: (_) {
+                                        setDialogState(() => floorCtrl.text = fl);
+                                      },
+                                    );
+                                  }).toList(),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
+                              TextField(
+                                controller: floorCtrl,
+                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600),
+                                decoration: InputDecoration(
+                                  hintText: 'e.g. Ground Floor, Terrace, 1st Floor, Rooftop',
+                                  prefixIcon: const Icon(Icons.layers_outlined, color: Color(0xFF051C48), size: 20),
+                                  filled: true,
+                                  fillColor: const Color(0xFFF8FAFC),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                final name = nameCtrl.text.trim();
+                                final floor = floorCtrl.text.trim().isEmpty ? 'Ground Floor' : floorCtrl.text.trim();
+                                await db.addTable(name, floor, 4, count: 1);
+                                if (dialogCtx.mounted) {
+                                  Navigator.pop(dialogCtx);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 2,
+                              ),
+                              icon: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                              label: const Text(
+                                'Create Table',
+                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
-            const Text('Floor / Area*', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-            const SizedBox(height: 4),
-            TextField(
-              controller: floorCtrl,
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14),
-              decoration: InputDecoration(
-                hintText: 'Floor / Area (e.g. Ground Floor, Terrace)',
-                prefixIcon: const Icon(Icons.layers_outlined, color: Color(0xFF051C48)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              final cap = int.tryParse(capacityCtrl.text) ?? 4;
-              db.addTable(nameCtrl.text, floorCtrl.text, cap);
-              setState(() {});
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF051C48),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Create Table', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
+            );
+          },
+        );
+      },
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return ListenableBuilder(
       listenable: db,
       builder: (context, _) {

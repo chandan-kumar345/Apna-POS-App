@@ -834,6 +834,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         const SizedBox(width: 5),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          constraints: const BoxConstraints(maxWidth: 85),
                           decoration: BoxDecoration(
                             color: const Color(0xFF051C48).withValues(alpha: 0.08),
                             borderRadius: BorderRadius.circular(5),
@@ -846,6 +847,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               fontSize: 8.5,
                               fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ],

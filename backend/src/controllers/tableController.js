@@ -14,7 +14,8 @@ class TableController {
   async createTable(req, res, next) {
     try {
       const table = await tableService.createTable(req.businessId, req.body);
-      return ApiResponse.created(res, { table }, 'Table created');
+      const tables = Array.isArray(table) ? table : [table];
+      return ApiResponse.created(res, { table, tables }, 'Table created');
     } catch (error) {
       next(error);
     }
