@@ -27,16 +27,18 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build iOS Simulator App
-        run: flutter build ios --simulator --no-codesign
+      - name: Build iOS App for Device
+        run: flutter build ios --release --no-codesign
 
-      - name: Zip iOS Build
+      - name: Package into IPA
         run: |
-          cd build/ios/iphonesimulator
-          zip -r Runner.app.zip Runner.app
+          cd build/ios/iphoneos
+          mkdir Payload
+          mv Runner.app Payload/
+          zip -r Runner.ipa Payload
 
-      - name: Upload iOS Zip File
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-simulator-build
-          path: build/ios/iphonesimulator/Runner.app.zip
+          name: ios-ipa-build
+          path: build/ios/iphoneos/Runner.ipa
