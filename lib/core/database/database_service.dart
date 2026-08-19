@@ -120,24 +120,35 @@ class DatabaseService extends ChangeNotifier {
     if (_isInitialized) return;
     _prefs = await SharedPreferences.getInstance();
 
-    // 1. Load User Session from SessionManager (SharedPreferences session state)
+    // 1. Load User Session from SessionManager or direct SharedPreferences cache
     try {
-      final isLoggedIn = await sessionManager.isLoggedIn();
-      if (isLoggedIn) {
-        final activeUserId = await sessionManager.getLoggedInUserId();
-        if (activeUserId != null) {
-          final userEntity = await authRepository.getUserById(activeUserId);
-          if (userEntity != null) {
-            currentUser = UserModel(
-              id: userEntity.id ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
-              name: userEntity.fullName,
-              email: userEntity.email,
-              phone: userEntity.phoneNumber,
-              role: 'Owner',
-              pin: '1234',
-              restaurantId: restaurant?.id ?? 'rest_001',
-              profilePhotoPath: userEntity.profileImage,
-            );
+      final userJson = _prefs?.getString('apna_pos_user');
+      if (userJson != null && userJson.isNotEmpty) {
+        try {
+          currentUser = UserModel.fromJson(jsonDecode(userJson));
+        } catch (e) {
+          debugPrint('Error parsing cached user: $e');
+        }
+      }
+
+      if (currentUser == null) {
+        final isLoggedIn = await sessionManager.isLoggedIn();
+        if (isLoggedIn) {
+          final activeUserId = await sessionManager.getLoggedInUserId();
+          if (activeUserId != null) {
+            final userEntity = await authRepository.getUserById(activeUserId);
+            if (userEntity != null) {
+              currentUser = UserModel(
+                id: userEntity.id ?? 'usr_${DateTime.now().millisecondsSinceEpoch}',
+                name: userEntity.fullName,
+                email: userEntity.email,
+                phone: userEntity.phoneNumber,
+                role: 'Owner',
+                pin: '1234',
+                restaurantId: restaurant?.id ?? 'rest_001',
+                profilePhotoPath: userEntity.profileImage,
+              );
+            }
           }
         }
       }

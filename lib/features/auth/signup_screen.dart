@@ -55,14 +55,16 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
         if (success) {
           final rest = db.restaurant;
           if (rest != null && rest.isOnboarded) {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
               SlideUpPageRoute(page: const MainLayout()),
+              (route) => false,
             );
           } else {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
               SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+              (route) => false,
             );
           }
           return;
@@ -429,7 +431,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                             if (!context.mounted) return;
 
                                             Navigator.pop(context); // Close OTP Dialog
-                                            Navigator.pushReplacement(
+                                            Navigator.pushAndRemoveUntil(
                                               context,
                                               SlideRightPageRoute(
                                                 page: CreateProfileScreen(
@@ -437,6 +439,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                                   initialName: nameFromEmail,
                                                 ),
                                               ),
+                                              (route) => false,
                                             );
                                           } catch (e) {
                                             final errStr = e.toString().replaceAll('Exception:', '').trim();

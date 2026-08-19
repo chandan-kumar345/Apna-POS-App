@@ -4,8 +4,6 @@ const { connectDB } = require('./config/db');
 
 const startServer = async () => {
   try {
-    await connectDB();
-
     const server = app.listen(env.PORT, '0.0.0.0', () => {
       console.log(`================================================`);
       console.log(` Apna POS Backend Server Running`);
@@ -14,6 +12,11 @@ const startServer = async () => {
       console.log(` Local:       http://localhost:${env.PORT}/api/v1/health`);
       console.log(` Network:     http://0.0.0.0:${env.PORT}/api/v1/health`);
       console.log(`================================================`);
+    });
+
+    // Connect to Database asynchronously
+    connectDB().catch((err) => {
+      console.error(`[MongoDB Connection Error] ${err.message}`);
     });
 
     server.on('error', (err) => {

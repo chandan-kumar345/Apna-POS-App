@@ -4,8 +4,6 @@ import '../../core/services/network_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/network/api_endpoints.dart';
 
-
-import '../../core/widgets/no_internet_screen.dart';
 import '../dashboard/main_layout.dart';
 import 'get_started_screen.dart';
 import 'create_profile_screen.dart';
@@ -87,6 +85,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         await ApiEndpoints.initialize().timeout(const Duration(milliseconds: 1200));
       } catch (_) {}
 
+      final db = DatabaseService();
       final hasInternet = await NetworkService().hasInternet().timeout(
         const Duration(seconds: 2),
         onTimeout: () => true,
@@ -94,65 +93,65 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
       if (!mounted) return;
 
-      if (!hasInternet) {
-        // Fallback check: if user is logged in locally, allow offline POS access
-        final db = DatabaseService();
-        if (db.currentUser != null) {
-          targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
-              ? const MainLayout()
-              : const RestaurantOnboardingScreen();
-        } else {
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (context) => NoInternetScreen(
-                onRetrySuccess: () {
-                  Navigator.of(context).pushReplacement(
-                    MaterialPageRoute(builder: (context) => const SplashScreen()),
-                  );
-                },
-              ),
-            ),
-          );
-          return;
-        }
-      } else {
-        // 2. Online / LAN Check: Verify Active Authentication
-        final isAuth = await AuthService().isAuthenticated().timeout(
-          const Duration(seconds: 2),
-          onTimeout: () => false,
-        );
+      final isAuth = await AuthService().isAuthenticated().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => false,
+      );
 
-        if (isAuth) {
-          final meData = await AuthService().getMe().timeout(
-            const Duration(seconds: 3),
-          );
-          final user = meData['user'] as Map<String, dynamic>?;
-          final bool onboardingCompleted = user?['onboardingCompleted'] == true;
-          final int currentStep = (user?['onboardingStep'] as num?)?.toInt() ?? 0;
+      if (isAuth || db.currentUser != null) {
+        if (hasInternet && isAuth) {
+          try {
+            final meData = await AuthService().getMe().timeout(
+              const Duration(seconds: 3),
+            );
+            final user = meData['user'] as Map<String, dynamic>?;
+            final bool onboardingCompleted = user?['onboardingCompleted'] == true;
+            final int currentStep = (user?['onboardingStep'] as num?)?.toInt() ?? 0;
 
-          if (onboardingCompleted) {
-            targetScreen = const MainLayout();
-          } else {
-            // Route to exact incomplete step
-            switch (currentStep) {
-              case 0:
-                targetScreen = const CreateProfileScreen();
-                break;
-              case 1:
-                targetScreen = const RestaurantOnboardingScreen();
-                break;
-              case 2:
-                targetScreen = const AddBusinessAddressScreen();
-                break;
-              case 3:
-              case 4:
-                targetScreen = const BusinessSettingsScreen();
-                break;
-              default:
-                targetScreen = const CreateProfileScreen();
+            if (onboardingCompleted) {
+              targetScreen = const MainLayout();
+            } else {
+              // Route to exact incomplete step
+              switch (currentStep) {
+                case 0:
+                  targetScreen = const CreateProfileScreen();
+                  break;
+                case 1:
+                  targetScreen = const RestaurantOnboardingScreen();
+                  break;
+                case 2:
+                  targetScreen = const AddBusinessAddressScreen();
+                  break;
+                case 3:
+                case 4:
+                  targetScreen = const BusinessSettingsScreen();
+                  break;
+                default:
+                  targetScreen = const CreateProfileScreen();
+              }
+            }
+          } catch (e) {
+            debugPrint('SplashScreen getMe warning/fallback: $e');
+            if (db.currentUser != null) {
+              targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
+                  ? const MainLayout()
+                  : const RestaurantOnboardingScreen();
+            } else {
+              targetScreen = const MainLayout();
             }
           }
+        } else {
+          // Offline access with local session
+          if (db.currentUser != null) {
+            targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
+                ? const MainLayout()
+                : const RestaurantOnboardingScreen();
+          } else {
+            targetScreen = const MainLayout();
+          }
         }
+      } else {
+        targetScreen = const GetStartedScreen();
       }
     } catch (e) {
       debugPrint('SplashScreen auth verification error/fallback: $e');

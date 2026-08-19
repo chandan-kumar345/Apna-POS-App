@@ -283,14 +283,16 @@ class _LoginScreenState extends State<LoginScreen> {
         if (success) {
           final rest = db.restaurant;
           if (rest != null && rest.isOnboarded) {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
               SlideUpPageRoute(page: const MainLayout()),
+              (route) => false,
             );
           } else {
-            Navigator.pushReplacement(
+            Navigator.pushAndRemoveUntil(
               context,
               SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+              (route) => false,
             );
           }
           return;
@@ -579,14 +581,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                             Navigator.pop(context);
                                             final rest = db.restaurant;
                                             if (rest != null && rest.isOnboarded) {
-                                              Navigator.pushReplacement(
+                                              Navigator.pushAndRemoveUntil(
                                                 context,
                                                 SlideUpPageRoute(page: const MainLayout()),
+                                                (route) => false,
                                               );
                                             } else {
-                                              Navigator.pushReplacement(
+                                              Navigator.pushAndRemoveUntil(
                                                 context,
                                                 SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+                                                (route) => false,
                                               );
                                             }
                                           } else {
@@ -719,9 +723,10 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
 
         if (onboardingCompleted) {
-          Navigator.pushReplacement(
+          Navigator.pushAndRemoveUntil(
             context,
             SlideUpPageRoute(page: const MainLayout()),
+            (route) => false,
           );
         } else {
           Widget targetStepScreen = const CreateProfileScreen();
@@ -742,9 +747,10 @@ class _LoginScreenState extends State<LoginScreen> {
             default:
               targetStepScreen = const CreateProfileScreen();
           }
-          Navigator.pushReplacement(
+          Navigator.pushAndRemoveUntil(
             context,
             SlideUpPageRoute(page: targetStepScreen),
+            (route) => false,
           );
         }
         return;

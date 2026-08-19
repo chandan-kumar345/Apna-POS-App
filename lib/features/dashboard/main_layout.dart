@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:math' as math;
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
@@ -29,9 +30,19 @@ class MainLayout extends StatefulWidget {
 
 class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   int _selectedIndex = 1;
+  final List<int> _tabHistory = [];
   bool _isSidebarOpen = false;
   String? _selectedTableForPos;
   final db = DatabaseService();
+
+  void _selectTab(int index) {
+    if (_selectedIndex != index) {
+      setState(() {
+        _tabHistory.add(_selectedIndex);
+        _selectedIndex = index;
+      });
+    }
+  }
 
   // Animation controllers
   late final AnimationController _shimmerController;
@@ -147,7 +158,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () => setState(() => _selectedIndex = 1),
+              onPressed: () => _selectTab(1),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF0052FF),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -553,9 +564,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 onPressed: () async {
                   await AuthService().logout();
                   if (mounted) {
-                    Navigator.pushReplacement(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      (route) => false,
                     );
                   }
                 },
@@ -574,9 +586,40 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     final user = db.currentUser;
     final companyTitle = rest?.name ?? user?.companyName ?? 'Tea Coffee';
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF051C48), // Match exact deep navy blue from user image
-      body: SafeArea(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+
+        // 1. If sidebar is open, close it first
+        if (_isSidebarOpen) {
+          _closeSidebar();
+          return;
+        }
+
+        // 2. If user navigated to other tabs, navigate back through tab history
+        if (_tabHistory.isNotEmpty) {
+          final prevIndex = _tabHistory.removeLast();
+          setState(() {
+            _selectedIndex = prevIndex;
+          });
+          return;
+        }
+
+        // 3. If currently on a non-POS tab, return to POS billing screen
+        if (_selectedIndex != 1) {
+          setState(() {
+            _selectedIndex = 1;
+          });
+          return;
+        }
+
+        // 4. User is on POS billing screen (root of app) -> Close/exit the app cleanly
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFF051C48), // Match exact deep navy blue from user image
+        body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
             final isSmallScreen = constraints.maxWidth < 900;
@@ -688,19 +731,19 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                   index: _selectedIndex.clamp(0, 9),
                                   children: [
                                     GlassDashboardScreen(
-                                      onNavigateTab: (index) => setState(() => _selectedIndex = index),
+                                      onNavigateTab: (index) => _selectTab(index),
                                     ),
                                     PosRegisterScreen(
                                       initialTable: _selectedTableForPos,
                                       onOpenDrawer: _toggleSidebar,
-                                      onOpenTablesTab: () => setState(() => _selectedIndex = 2),
+                                      onOpenTablesTab: () => _selectTab(2),
                                     ),
                                     TableManagementScreen(
                                       onTakeOrder: (tableName) {
                                         setState(() {
                                           _selectedTableForPos = tableName;
-                                          _selectedIndex = 1;
                                         });
+                                        _selectTab(1);
                                       },
                                     ),
                                     const OrdersScreen(),
@@ -777,6 +820,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
           },
         ),
       ),
+    ),
     );
   }
 
@@ -861,9 +905,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
         onTap: () {
-          setState(() {
-            _selectedIndex = index;
-          });
+          _selectTab(index);
           if (isSmallScreen) {
             _closeSidebar();
           }

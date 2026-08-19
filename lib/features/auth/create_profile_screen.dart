@@ -624,7 +624,16 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                 Padding(
                   padding: const EdgeInsets.only(left: 20, top: 10),
                   child: InkWell(
-                    onTap: () => Navigator.pop(context),
+                    onTap: () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      } else {
+                        Navigator.pushReplacement(
+                          context,
+                          SlideUpPageRoute(page: const LoginScreen()),
+                        );
+                      }
+                    },
                     borderRadius: BorderRadius.circular(20),
                     child: Container(
                       width: 40,
