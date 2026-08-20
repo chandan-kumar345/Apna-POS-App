@@ -2,6 +2,15 @@ const productService = require('../services/productService');
 const ApiResponse = require('../utils/ApiResponse');
 
 class ProductController {
+  async getPosProducts(req, res, next) {
+    try {
+      const result = await productService.getPosProducts(req.businessId, req.query);
+      return ApiResponse.success(res, result, 'POS Products fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getProducts(req, res, next) {
     try {
       const result = await productService.getProducts(req.businessId, req.query);

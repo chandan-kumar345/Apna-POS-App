@@ -120,6 +120,42 @@ class ProductService {
     };
   }
 
+  async getPosProducts(businessId, { page = 1, limit = 100, category, search } = {}) {
+    const query = { businessId, isAvailable: true };
+
+    if (category && category !== 'All') {
+      query.category = category;
+    }
+
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      query.$or = [{ name: regex }, { barcode: search.trim() }, { sku: search.trim() }, { productId: search.trim() }];
+    }
+
+    const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
+    const parsedLimit = Math.max(1, parseInt(limit, 10));
+
+    const [products, total] = await Promise.all([
+      Product.find(query)
+        .select('id productId name price salePrice hasDiscount discountPercent image images foodType variants isAvailable stock category taxPercentage sku barcode')
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+      Product.countDocuments(query),
+    ]);
+
+    return {
+      products,
+      pagination: {
+        total,
+        page: parseInt(page, 10),
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit),
+      },
+    };
+  }
+
   async getProducts(businessId, { page = 1, limit = 100, category, search, isAvailable } = {}) {
     const query = { businessId };
 
@@ -140,7 +176,7 @@ class ProductService {
     const parsedLimit = Math.max(1, parseInt(limit, 10));
 
     const [products, total] = await Promise.all([
-      Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit),
+      Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit).lean(),
       Product.countDocuments(query),
     ]);
 

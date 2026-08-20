@@ -31,7 +31,12 @@ class OrderController {
 
   async updateStatus(req, res, next) {
     try {
-      const order = await orderService.updateOrderStatus(req.businessId, req.params.id, req.body.status);
+      const order = await orderService.updateOrderStatus(
+        req.businessId,
+        req.params.id,
+        req.body.status,
+        { reason: req.body.reason }
+      );
       return ApiResponse.success(res, { order }, 'Order status updated');
     } catch (error) {
       next(error);

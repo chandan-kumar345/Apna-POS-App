@@ -239,12 +239,14 @@ class ApiEndpoints {
 
   // Product & Category endpoints
   static const String products = '/products';
+  static const String productsPos = '/products/pos';
   static const String categories = '/products/categories';
   static const String productsBulk = '/products/bulk';
 
   // Order & POS endpoints
   static const String orders = '/orders';
   static const String orderTable = '/orders/table';
+  static const String paymentMethods = '/payment-methods';
 
   // Sales & Reports endpoints
   static const String sales = '/sales';
@@ -253,6 +255,12 @@ class ApiEndpoints {
 
   // Dashboard endpoints
   static const String dashboardSummary = '/dashboard/summary';
+  static const String dashboardOrderTypes = '/dashboard/order-types';
+  static const String dashboardProductSales = '/dashboard/product-sales';
+  static const String dashboardCustomers = '/dashboard/customers';
+  static const String dashboardPaymentMethods = '/dashboard/payment-methods';
+  static const String dashboardTaxes = '/dashboard/taxes';
+  static const String dashboardOrderStats = '/dashboard/order-stats';
   static const String dashboardChart = '/dashboard/chart';
 
   // Tables endpoints

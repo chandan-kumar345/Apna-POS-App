@@ -320,9 +320,9 @@ class DatabaseService extends ChangeNotifier {
         debugPrint('[DatabaseService] sync user error: $e');
       }
 
-      // 2. Fetch Live Products & Categories from Backend
+      // 2. Fetch Live Products & Categories from Backend (Optimized POS API)
       try {
-        final remoteProducts = await _productService.fetchProducts();
+        final remoteProducts = await _productService.fetchPosProducts();
         if (remoteProducts.isNotEmpty) {
           menuItems = remoteProducts;
           await _saveMenuToPrefs();
@@ -1218,6 +1218,7 @@ class DatabaseService extends ChangeNotifier {
           await _saveOrdersToPrefs();
           notifyListeners();
         }
+        newOrder = remoteOrder;
       }
     } catch (e) {
       debugPrint('[DatabaseService.createOrder] API error: $e');
@@ -1227,7 +1228,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> updateOrderStatus(String orderId, OrderStatus newStatus) async {
-    final index = orders.indexWhere((o) => o.id == orderId);
+    final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
       orders[index] = orders[index].copyWith(status: newStatus);
 
@@ -1253,8 +1254,11 @@ class DatabaseService extends ChangeNotifier {
 
       try {
         final isAuth = await _authService.isAuthenticated();
-        if (isAuth && orderId.length == 24) {
-          await _orderService.updateOrderStatus(orderId, newStatus);
+        if (isAuth) {
+          final targetId = orders[index].id;
+          if (targetId.length == 24) {
+            await _orderService.updateOrderStatus(targetId, newStatus);
+          }
         }
       } catch (e) {
         debugPrint('[DatabaseService.updateOrderStatus] API error: $e');
@@ -1263,14 +1267,15 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> completeOrderPayment(String orderId, String paymentMethod) async {
-    final index = orders.indexWhere((o) => o.id == orderId);
+    final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
       orders[index] = orders[index].copyWith(
         status: OrderStatus.completed,
         paymentMethod: paymentMethod,
       );
 
-      final tNum = orders[index].tableNumber;
+      final currentOrder = orders[index];
+      final tNum = currentOrder.tableNumber;
       if (tNum != null && tNum.isNotEmpty) {
         _liveCartTotals.remove(tNum);
         _liveTableCarts.remove(tNum);
@@ -1290,8 +1295,15 @@ class DatabaseService extends ChangeNotifier {
 
       try {
         final isAuth = await _authService.isAuthenticated();
-        if (isAuth && orderId.length == 24) {
-          await _orderService.payOrder(orderId, paymentMethod: paymentMethod);
+        if (isAuth) {
+          if (currentOrder.id.length == 24) {
+            await _orderService.payOrder(currentOrder.id, paymentMethod: paymentMethod);
+          } else {
+            final remoteOrder = await _orderService.createOrder(currentOrder);
+            orders[index] = remoteOrder;
+            await _saveOrdersToPrefs();
+            notifyListeners();
+          }
         }
       } catch (e) {
         debugPrint('[DatabaseService.completeOrderPayment] API error: $e');

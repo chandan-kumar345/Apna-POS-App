@@ -144,7 +144,9 @@ const productSchema = new mongoose.Schema(
 
 productSchema.index({ businessId: 1, productId: 1 });
 productSchema.index({ businessId: 1, category: 1 });
-productSchema.index({ businessId: 1, isAvailable: 1 });
+productSchema.index({ businessId: 1, isAvailable: 1, category: 1 });
+productSchema.index({ businessId: 1, sku: 1 });
+productSchema.index({ businessId: 1, createdAt: -1 });
 productSchema.index({ businessId: 1, name: 'text', description: 'text' });
 
 const Product = mongoose.model('Product', productSchema);

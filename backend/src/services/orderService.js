@@ -14,10 +14,46 @@ class OrderService {
   async createOrder(businessId, orderData) {
     const orderNumber = orderData.orderNumber || this._generateOrderNumber();
 
+    const taxAmount = Number(orderData.taxAmount) || 0;
+    const cgst = orderData.cgst !== undefined ? Number(orderData.cgst) : Number((taxAmount / 2).toFixed(2));
+    const sgst = orderData.sgst !== undefined ? Number(orderData.sgst) : Number((taxAmount / 2).toFixed(2));
+    const igst = orderData.igst !== undefined ? Number(orderData.igst) : 0;
+
+    let customerId = null;
+
+    // Update customer CRM if customer phone provided
+    if (orderData.customerPhone && orderData.customerPhone.trim()) {
+      const cleanPhone = orderData.customerPhone.trim();
+      const customer = await Customer.findOneAndUpdate(
+        { businessId, phone: cleanPhone },
+        {
+          $set: {
+            name: orderData.customerName || 'Walk-in Guest',
+            lastVisit: new Date(),
+          },
+          $inc: {
+            totalOrders: 1,
+            totalSpent: orderData.status === 'completed' ? (Number(orderData.totalAmount) || 0) : 0,
+          },
+          $setOnInsert: {
+            businessId,
+            phone: cleanPhone,
+            firstVisit: new Date(),
+          },
+        },
+        { upsert: true, new: true }
+      );
+      customerId = customer ? customer._id : null;
+    }
+
     const order = await Order.create({
       ...orderData,
       businessId,
       orderNumber,
+      customerId,
+      cgst,
+      sgst,
+      igst,
     });
 
     // If DineIn and table number provided, mark table as occupied
@@ -34,20 +70,30 @@ class OrderService {
       );
     }
 
-    // Update customer CRM if customer phone provided
-    if (order.customerPhone && order.customerPhone.trim()) {
-      await Customer.findOneAndUpdate(
-        { businessId, phone: order.customerPhone.trim() },
-        {
-          $set: {
-            name: order.customerName || 'Walk-in Guest',
-            lastVisit: new Date(),
-          },
-          $inc: { totalOrders: 1 },
-          $setOnInsert: { businessId, phone: order.customerPhone.trim() },
-        },
-        { upsert: true }
-      );
+    // If order was created directly with completed status, create Sale record
+    if (order.status === 'completed') {
+      await Sale.create({
+        businessId,
+        orderId: order._id,
+        orderNumber: order.orderNumber,
+        orderType: order.orderType,
+        tableNumber: order.tableNumber || '',
+        customerName: order.customerName || '',
+        customerPhone: order.customerPhone || '',
+        items: (order.items || []).map((i) => ({
+          name: i.name,
+          price: i.price,
+          quantity: i.quantity,
+          foodType: i.foodType || 'veg',
+        })),
+        subtotal: order.subtotal,
+        discountAmount: order.discountAmount || 0,
+        taxAmount: order.taxAmount || 0,
+        tipAmount: order.tipAmount || 0,
+        totalAmount: order.totalAmount,
+        paymentMethod: (order.paymentMethod || 'cash').toLowerCase(),
+        saleDate: order.createdAt || new Date(),
+      });
     }
 
     return order;
@@ -107,7 +153,7 @@ class OrderService {
     return order;
   }
 
-  async updateOrderStatus(businessId, orderId, status) {
+  async updateOrderStatus(businessId, orderId, status, { reason } = {}) {
     const order = await Order.findOne({ _id: orderId, businessId });
     if (!order) {
       throw ApiError.notFound('Order not found');
@@ -116,14 +162,58 @@ class OrderService {
     order.status = status;
     if (status === 'completed') {
       order.completedAt = new Date();
+      order.paymentStatus = 'paid';
       // Free linked table
       if (order.tableNumber) {
         await Table.findOneAndUpdate(
           { businessId, name: order.tableNumber },
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
+        );
+      }
+
+      // Upsert Sale record
+      await Sale.findOneAndUpdate(
+        { businessId, orderId: order._id },
+        {
+          $set: {
+            orderNumber: order.orderNumber,
+            orderType: order.orderType,
+            tableNumber: order.tableNumber || '',
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            items: (order.items || []).map((i) => ({
+              name: i.name,
+              price: i.price,
+              quantity: i.quantity,
+              foodType: i.foodType || 'veg',
+            })),
+            subtotal: order.subtotal,
+            discountAmount: order.discountAmount || 0,
+            taxAmount: order.taxAmount || 0,
+            tipAmount: order.tipAmount || 0,
+            totalAmount: order.totalAmount,
+            paymentMethod: (order.paymentMethod || 'cash').toLowerCase(),
+            saleDate: order.completedAt || new Date(),
+          },
+          $setOnInsert: { businessId, orderId: order._id },
+        },
+        { upsert: true }
+      );
+
+      // Update customer CRM total spent
+      if (order.customerPhone && order.customerPhone.trim()) {
+        await Customer.findOneAndUpdate(
+          { businessId, phone: order.customerPhone.trim() },
+          {
+            $inc: { totalSpent: order.totalAmount },
+            $set: { lastVisit: new Date() },
+          }
         );
       }
     } else if (status === 'cancelled') {
+      order.cancelledAt = new Date();
+      if (reason) order.cancellationReason = reason;
+
       // Free linked table
       if (order.tableNumber) {
         await Table.findOneAndUpdate(
@@ -131,6 +221,9 @@ class OrderService {
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
       }
+
+      // Remove any Sale record associated with cancelled order
+      await Sale.findOneAndDelete({ businessId, orderId: order._id });
     }
 
     await order.save();

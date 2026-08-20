@@ -27,6 +27,7 @@ router.delete('/categories/:name', (req, res, next) =>
 );
 
 // Products
+router.get('/pos', (req, res, next) => productController.getPosProducts(req, res, next));
 router.get('/', (req, res, next) => productController.getProducts(req, res, next));
 router.post('/', validate(createProductSchema), (req, res, next) =>
   productController.createProduct(req, res, next)

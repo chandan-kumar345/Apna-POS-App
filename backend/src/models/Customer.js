@@ -38,9 +38,15 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    firstVisit: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
     lastVisit: {
       type: Date,
       default: Date.now,
+      index: true,
     },
   },
   {
@@ -57,6 +63,8 @@ const customerSchema = new mongoose.Schema(
 );
 
 customerSchema.index({ businessId: 1, phone: 1 }, { unique: true });
+customerSchema.index({ businessId: 1, firstVisit: 1 });
+customerSchema.index({ businessId: 1, lastVisit: -1 });
 
 const Customer = mongoose.model('Customer', customerSchema);
 

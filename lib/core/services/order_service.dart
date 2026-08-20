@@ -10,7 +10,9 @@ class OrderService {
   Future<OrderModel> createOrder(OrderModel order) async {
     try {
       final payload = {
+        'orderNumber': order.orderNumber,
         'orderType': order.orderType.name,
+        'status': order.status.name,
         'tableNumber': order.tableNumber ?? '',
         'customerName': order.customerName ?? '',
         'customerPhone': order.customerPhone ?? '',
@@ -26,8 +28,8 @@ class OrderService {
         'discountAmount': order.discountAmount,
         'taxAmount': order.taxAmount,
         'totalAmount': order.totalAmount,
-        'paymentMethod': order.paymentMethod.toLowerCase(),
-        'paymentStatus': order.status == OrderStatus.completed ? 'paid' : 'pending',
+        'paymentMethod': order.paymentMethod,
+        'paymentStatus': (order.status == OrderStatus.completed || order.paymentMethod.toLowerCase() != 'unpaid') ? 'paid' : 'pending',
       };
 
       final response = await _apiClient.post(
@@ -41,7 +43,7 @@ class OrderService {
       return order;
     } catch (e) {
       debugPrint('[OrderService.createOrder] error: $e');
-      rethrow;
+      return order;
     }
   }
 

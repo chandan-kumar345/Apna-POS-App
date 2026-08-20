@@ -58,6 +58,11 @@ const orderSchema = new mongoose.Schema(
       default: '',
       index: true,
     },
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Customer',
+      index: true,
+    },
     customerName: {
       type: String,
       default: '',
@@ -85,6 +90,21 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    cgst: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    sgst: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    igst: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     taxAmount: {
       type: Number,
       default: 0,
@@ -102,7 +122,6 @@ const orderSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ['cash', 'upi', 'card', 'unpaid'],
       default: 'unpaid',
       index: true,
     },
@@ -125,6 +144,13 @@ const orderSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    cancellationReason: {
+      type: String,
+      default: '',
+    },
+    cancelledAt: {
+      type: Date,
+    },
     completedAt: {
       type: Date,
     },
@@ -143,7 +169,10 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ businessId: 1, createdAt: -1 });
-orderSchema.index({ businessId: 1, status: 1 });
+orderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, orderType: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, paymentMethod: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, customerId: 1 });
 orderSchema.index({ businessId: 1, tableNumber: 1 });
 
 const Order = mongoose.model('Order', orderSchema);
