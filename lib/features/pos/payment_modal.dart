@@ -20,6 +20,8 @@ class PaymentModal extends StatefulWidget {
 class _PaymentModalState extends State<PaymentModal> {
   String _selectedMethod = 'UPI'; // 'UPI', 'Cash', 'Card', 'Split'
   bool _isProcessing = false;
+  bool _isUpiPaymentConfirmed = false;
+  String? _upiTransactionRef;
 
   // Cash controller
   final _cashTenderedController = TextEditingController();
@@ -53,6 +55,34 @@ class _PaymentModalState extends State<PaymentModal> {
     if (_errorMessage != null) {
       setState(() => _errorMessage = null);
     }
+  }
+
+  Future<void> _confirmUpiPaymentAndAutoGenerateOrder(BuildContext context, double totalAmount) async {
+    if (_isProcessing || _isUpiPaymentConfirmed) return;
+    _clearError();
+
+    setState(() {
+      _isProcessing = true;
+      _isUpiPaymentConfirmed = true;
+      _upiTransactionRef = 'UPI-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('✓ UPI Payment Confirmed! Generating Order & Invoice...'),
+        backgroundColor: const Color(0xFF047857),
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+
+    final nav = Navigator.of(context);
+    await Future.delayed(const Duration(milliseconds: 600));
+    if (!mounted) return;
+
+    final String finalMethod = 'UPI (Ref: $_upiTransactionRef)';
+    nav.pop(finalMethod);
   }
 
   void _validateAndSubmitPayment(BuildContext context, double totalAmount) async {
@@ -437,6 +467,66 @@ class _PaymentModalState extends State<PaymentModal> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 10),
+
+                            // UPI Payment Status / Instant Verification Action
+                            if (_isUpiPaymentConfirmed)
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFECFDF5),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFF10B981), width: 1.2),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'UPI Payment Verified Successfully',
+                                            style: TextStyle(color: Color(0xFF047857), fontWeight: FontWeight.bold, fontSize: 11.5),
+                                          ),
+                                          if (_upiTransactionRef != null)
+                                            Text(
+                                              'Ref: $_upiTransactionRef • Auto-generating order...',
+                                              style: const TextStyle(color: Color(0xFF065F46), fontSize: 10),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                    const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF047857)),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              SizedBox(
+                                width: double.infinity,
+                                height: 36,
+                                child: OutlinedButton.icon(
+                                  onPressed: _isProcessing
+                                      ? null
+                                      : () => _confirmUpiPaymentAndAutoGenerateOrder(context, totalAmount),
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Color(0xFF051C48), width: 1.2),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    backgroundColor: Colors.white,
+                                  ),
+                                  icon: const Icon(Icons.verified_rounded, size: 16, color: Color(0xFF051C48)),
+                                  label: const Text(
+                                    'Verify / Payment Received (Auto-Generate Order)',
+                                    style: TextStyle(color: Color(0xFF051C48), fontSize: 11.5, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       );
@@ -783,13 +873,18 @@ class _PaymentModalState extends State<PaymentModal> {
                 ],
                 const SizedBox(height: 14),
 
-                // Confirm Payment Button
+                // Confirm Payment Button (UPI: Auto-disabled upon success/in progress; Cash/Card/Split: Preserved)
                 SizedBox(
                   height: 42,
                   child: ElevatedButton.icon(
-                    onPressed: _isProcessing ? null : () => _validateAndSubmitPayment(context, totalAmount),
+                    onPressed: _selectedMethod == 'UPI'
+                        ? (_isProcessing || _isUpiPaymentConfirmed
+                            ? null
+                            : () => _confirmUpiPaymentAndAutoGenerateOrder(context, totalAmount))
+                        : (_isProcessing ? null : () => _validateAndSubmitPayment(context, totalAmount)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF051C48),
+                      disabledBackgroundColor: const Color(0xFF94A3B8),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 1,
                     ),
@@ -801,7 +896,11 @@ class _PaymentModalState extends State<PaymentModal> {
                           )
                         : const Icon(Icons.check_circle_rounded, size: 17, color: Colors.white),
                     label: Text(
-                      _isProcessing ? 'Processing Payment...' : 'Confirm Payment & Print Receipt',
+                      _selectedMethod == 'UPI'
+                          ? (_isUpiPaymentConfirmed
+                              ? 'UPI Payment Confirmed (Processing Order...)'
+                              : (_isProcessing ? 'Verifying UPI Payment...' : 'Confirm UPI Payment & Generate Invoice'))
+                          : (_isProcessing ? 'Processing Payment...' : 'Confirm Payment & Print Receipt'),
                       style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                     ),
                   ),

@@ -9,6 +9,7 @@ class OrderService {
   /// Create a new order in backend
   Future<OrderModel> createOrder(OrderModel order) async {
     try {
+      final isPaid = order.status == OrderStatus.completed || (order.paymentMethod.isNotEmpty && order.paymentMethod.toLowerCase() != 'unpaid');
       final payload = {
         'orderNumber': order.orderNumber,
         'orderType': order.orderType.name,
@@ -29,7 +30,22 @@ class OrderService {
         'taxAmount': order.taxAmount,
         'totalAmount': order.totalAmount,
         'paymentMethod': order.paymentMethod,
-        'paymentStatus': (order.status == OrderStatus.completed || order.paymentMethod.toLowerCase() != 'unpaid') ? 'paid' : 'pending',
+        'paymentStatus': isPaid ? 'paid' : 'pending',
+        'idempotencyKey': 'pos:generatePosOrder:${order.id}',
+        'clientSyncId': order.id,
+        'localOrderId': order.id,
+        'isPaid': isPaid,
+        'isDineIn': order.orderType == OrderType.dineIn,
+        'paymentMode': order.paymentMethod,
+        'paymentDetails': [
+          {
+            'paymentType': order.paymentMethod,
+            'paymentName': order.paymentMethod,
+            'amount': order.totalAmount,
+            'paymentMethod': order.paymentMethod,
+            'ncReason': '',
+          }
+        ],
       };
 
       final response = await _apiClient.post(
@@ -44,6 +60,23 @@ class OrderService {
     } catch (e) {
       debugPrint('[OrderService.createOrder] error: $e');
       return order;
+    }
+  }
+
+  /// Generate POS Order with custom payload & idempotency
+  Future<Map<String, dynamic>?> generatePosOrder(Map<String, dynamic> payload) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.orders}/generateposorder',
+        data: payload,
+      );
+      if (response != null && response['data'] != null) {
+        return response['data'] as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[OrderService.generatePosOrder] error: $e');
+      rethrow;
     }
   }
 
@@ -115,12 +148,15 @@ class OrderService {
   /// Settle and pay order
   Future<bool> payOrder(String orderId, {required String paymentMethod, double? amountPaid}) async {
     try {
+      final data = <String, dynamic>{
+        'paymentMethod': paymentMethod.toLowerCase(),
+      };
+      if (amountPaid != null) {
+        data['amountPaid'] = amountPaid;
+      }
       final response = await _apiClient.post(
         '${ApiEndpoints.orders}/$orderId/pay',
-        data: {
-          'paymentMethod': paymentMethod.toLowerCase(),
-          if (amountPaid != null) 'amountPaid': amountPaid,
-        },
+        data: data,
       );
       return response != null && response['success'] == true;
     } catch (e) {

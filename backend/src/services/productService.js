@@ -191,8 +191,27 @@ class ProductService {
     };
   }
 
+  _escapeRegex(str) {
+    return (str || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   async createProduct(businessId, rawData) {
     const normalizedData = this._normalizeProductData(rawData, true);
+
+    if (normalizedData.name) {
+      const escapedName = this._escapeRegex(normalizedData.name);
+      const existingProduct = await Product.findOne({
+        businessId,
+        name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
+      });
+
+      if (existingProduct) {
+        throw ApiError.conflict(
+          `A product with name "${normalizedData.name}" already exists for this business.`,
+          'DUPLICATE_PRODUCT_NAME'
+        );
+      }
+    }
 
     const product = await Product.create({
       ...normalizedData,
@@ -223,6 +242,30 @@ class ProductService {
   async updateProduct(businessId, identifier, rawData) {
     const normalizedData = this._normalizeProductData(rawData, false);
     const query = this._buildProductQuery(businessId, identifier);
+
+    const existingProduct = await Product.findOne(query);
+    if (!existingProduct) {
+      throw ApiError.notFound('Product not found or does not belong to this business');
+    }
+
+    if (
+      normalizedData.name &&
+      normalizedData.name.trim().toLowerCase() !== (existingProduct.name || '').trim().toLowerCase()
+    ) {
+      const escapedName = this._escapeRegex(normalizedData.name.trim());
+      const duplicate = await Product.findOne({
+        businessId,
+        _id: { $ne: existingProduct._id },
+        name: { $regex: new RegExp(`^${escapedName}$`, 'i') },
+      });
+
+      if (duplicate) {
+        throw ApiError.conflict(
+          `A product with name "${normalizedData.name}" already exists for this business.`,
+          'DUPLICATE_PRODUCT_NAME'
+        );
+      }
+    }
 
     const product = await Product.findOneAndUpdate(
       query,

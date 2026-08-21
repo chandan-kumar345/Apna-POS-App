@@ -4,8 +4,30 @@ const ApiResponse = require('../utils/ApiResponse');
 class OrderController {
   async createOrder(req, res, next) {
     try {
-      const order = await orderService.createOrder(req.businessId, req.body);
-      return ApiResponse.created(res, { order }, 'Order created successfully');
+      const result = await orderService.generatePosOrder(req.businessId, req.body);
+      const order = result.order || result;
+      const statusCode = result.isExisting ? 200 : 201;
+      return ApiResponse.success(
+        res,
+        { ...result, order },
+        result.message || 'Order created successfully',
+        statusCode
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async generatePosOrder(req, res, next) {
+    try {
+      const result = await orderService.generatePosOrder(req.businessId, req.body);
+      const statusCode = result.isExisting ? 200 : 201;
+      return ApiResponse.success(
+        res,
+        result,
+        result.message || 'POS Order generated successfully',
+        statusCode
+      );
     } catch (error) {
       next(error);
     }

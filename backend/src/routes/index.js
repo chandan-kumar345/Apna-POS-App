@@ -29,6 +29,8 @@ router.use('/onboarding', onboardingRoutes);
 router.use('/profile', profileRoutes);
 router.use('/products', productRoutes);
 router.use('/orders', orderRoutes);
+router.use('/generateposorder', orderRoutes);
+router.use('/generatePosOrder', orderRoutes);
 router.use('/sales', salesRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/tables', tableRoutes);

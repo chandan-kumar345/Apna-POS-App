@@ -4,6 +4,7 @@ const authMiddleware = require('../middleware/authMiddleware');
 const validate = require('../middleware/validationMiddleware');
 const {
   createOrderSchema,
+  generatePosOrderSchema,
   updateOrderStatusSchema,
   payOrderSchema,
 } = require('../validators/orderValidator');
@@ -15,6 +16,12 @@ router.use(authMiddleware);
 router.get('/', (req, res, next) => orderController.getOrders(req, res, next));
 router.post('/', validate(createOrderSchema), (req, res, next) =>
   orderController.createOrder(req, res, next)
+);
+router.post('/generateposorder', validate(generatePosOrderSchema), (req, res, next) =>
+  orderController.generatePosOrder(req, res, next)
+);
+router.post('/generatePosOrder', validate(generatePosOrderSchema), (req, res, next) =>
+  orderController.generatePosOrder(req, res, next)
 );
 router.get('/table/:tableNumber', (req, res, next) =>
   orderController.getTableOrder(req, res, next)

@@ -2,6 +2,8 @@ const Order = require('../models/Order');
 const Sale = require('../models/Sale');
 const Table = require('../models/Table');
 const Customer = require('../models/Customer');
+const Cart = require('../models/Cart');
+const Product = require('../models/Product');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
@@ -11,29 +13,145 @@ class OrderService {
     return `ORD-${dateStr}-${random}`;
   }
 
-  async createOrder(businessId, orderData) {
-    const orderNumber = orderData.orderNumber || this._generateOrderNumber();
+  async generatePosOrder(businessId, rawData) {
+    // 1. Check Idempotency Key
+    const idempotencyKey = (
+      rawData.idempotencyKey ||
+      rawData.syncId ||
+      rawData.clientSyncId ||
+      rawData.localOrderId ||
+      ''
+    ).toString().trim();
 
-    const taxAmount = Number(orderData.taxAmount) || 0;
-    const cgst = orderData.cgst !== undefined ? Number(orderData.cgst) : Number((taxAmount / 2).toFixed(2));
-    const sgst = orderData.sgst !== undefined ? Number(orderData.sgst) : Number((taxAmount / 2).toFixed(2));
-    const igst = orderData.igst !== undefined ? Number(orderData.igst) : 0;
+    if (idempotencyKey) {
+      const existingOrder = await Order.findOne({
+        businessId,
+        $or: [
+          { idempotencyKey },
+          { clientSyncId: idempotencyKey },
+          { localOrderId: idempotencyKey },
+        ],
+      });
 
+      if (existingOrder) {
+        const existingSale = await Sale.findOne({ businessId, orderId: existingOrder._id });
+        return {
+          order: existingOrder,
+          sale: existingSale || null,
+          invoice: {
+            invoiceNumber: existingOrder.invoiceNumber || `INV-${existingOrder.orderNumber}`,
+            invoiceDate: existingOrder.completedAt || existingOrder.createdAt,
+            totalAmount: existingOrder.totalAmount,
+          },
+          isExisting: true,
+          message: 'Order already processed (idempotent)',
+        };
+      }
+    }
+
+    // 2. Map Payload Keys & Defaults
+    const venderUserId = (rawData.VenderUserId || rawData.venderUserId || rawData.vendorUserId || '').toString().trim();
+    const venderCardId = (rawData.VenderCardId || rawData.venderCardId || '').toString().trim();
+    const createdByUserId = (rawData.CreatedByUserId || rawData.createdByUserId || '').toString().trim();
+    const createdByCardId = (rawData.CreatedByCardId || rawData.createdByCardId || '').toString().trim();
+    const cartId = (rawData.cartId || '').toString().trim();
+    const isKOT = Boolean(rawData.isKOT);
+    const paymentDetails = Array.isArray(rawData.paymentDetails) ? rawData.paymentDetails : [];
+    const ncReason = (rawData.ncReason || '').toString().trim();
+    const paymentMode = (rawData.paymentMode || rawData.paymentMethod || 'CASH').toString().trim();
+    const orderDevice = (rawData.orderDevice || 'web').toString().trim();
+    const isPaid = rawData.isPaid === true || rawData.paymentStatus === 'paid' || rawData.status === 'completed';
+    const isDineIn = rawData.isDineIn !== undefined ? Boolean(rawData.isDineIn) : (rawData.orderType === 'dineIn' || Boolean(rawData.T || rawData.tableNumber));
+    const restaurantCode = (rawData.R || '').toString().trim();
+    const tableCode = (rawData.T || rawData.tableNumber || '').toString().trim();
+    const reason = (rawData.reason || '').toString().trim();
+    const remarks = (rawData.remarks || rawData.notes || '').toString().trim();
+    const clientSyncId = (rawData.clientSyncId || rawData.syncId || rawData.localOrderId || rawData._id || rawData.orderId || '').toString().trim();
+    const syncId = (rawData.syncId || '').toString().trim();
+    const localOrderId = (rawData.localOrderId || rawData._id || rawData.orderId || '').toString().trim();
+    const tokenNo = (rawData.TokenNo || rawData.tokenNo || '').toString().trim();
+    const orderNumber = (rawData.orderNumber || rawData.orderNo || rawData.orderNO || rawData.orderId || '').toString().trim() || this._generateOrderNumber();
+
+    // 3. Resolve Items & Cart
+    let items = Array.isArray(rawData.items) && rawData.items.length > 0 ? rawData.items : [];
+    let cartSubtotal = 0;
+    let cartDiscount = 0;
+
+    if (items.length === 0 && cartId) {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(cartId);
+      const cart = await Cart.findOne({
+        businessId,
+        ...(isObjectId ? { _id: cartId } : { tableNumber: cartId }),
+      });
+
+      if (cart && Array.isArray(cart.items) && cart.items.length > 0) {
+        items = cart.items.map((i) => ({
+          productId: i.productId,
+          name: i.name,
+          price: i.effectivePrice != null ? i.effectivePrice : i.price,
+          quantity: i.quantity,
+          foodType: (i.foodType || 'veg').toString().toLowerCase().replace('-', '_'),
+          note: '',
+        }));
+        cartSubtotal = cart.subtotal || 0;
+        cartDiscount = cart.totalDiscount || 0;
+      }
+    }
+
+    if (items.length === 0 && !ncReason) {
+      throw ApiError.badRequest('Order items or a valid cartId containing items is required');
+    }
+
+    // 4. Calculate Financials
+    const computedSubtotal = items.reduce((sum, i) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1), 0);
+    const subtotal = rawData.subtotal !== undefined ? Number(rawData.subtotal) : (computedSubtotal || cartSubtotal);
+    const discountAmount = rawData.discountAmount !== undefined ? Number(rawData.discountAmount) : cartDiscount;
+    const taxAmount = Number(rawData.taxAmount) || 0;
+    const cgst = rawData.cgst !== undefined ? Number(rawData.cgst) : Number((taxAmount / 2).toFixed(2));
+    const sgst = rawData.sgst !== undefined ? Number(rawData.sgst) : Number((taxAmount / 2).toFixed(2));
+    const igst = rawData.igst !== undefined ? Number(rawData.igst) : 0;
+    const tipAmount = Number(rawData.tipAmount) || 0;
+    const totalAmount = rawData.totalAmount !== undefined
+      ? Number(rawData.totalAmount)
+      : Math.max(0, Number(((subtotal - discountAmount) + taxAmount + tipAmount).toFixed(2)));
+
+    // 5. Validate Payment Details & Amounts
+    if (paymentDetails.length > 0) {
+      const totalPaidAmount = paymentDetails.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+      if (isPaid && !ncReason && totalPaidAmount < totalAmount - 0.01) {
+        throw ApiError.badRequest(
+          `Payment amount (${totalPaidAmount}) does not match or cover total order amount (${totalAmount})`
+        );
+      }
+    }
+
+    // Determine normalized paymentMethod and status
+    let paymentMethod = (rawData.paymentMethod || paymentMode || 'cash').toLowerCase();
+    if (paymentDetails.length > 1) {
+      paymentMethod = 'split';
+    } else if (paymentDetails.length === 1 && paymentDetails[0].paymentMethod) {
+      paymentMethod = paymentDetails[0].paymentMethod.toLowerCase();
+    }
+
+    const status = isPaid ? 'completed' : (rawData.status || 'pending');
+    const paymentStatus = isPaid ? 'paid' : (rawData.paymentStatus || 'pending');
+    const orderType = isDineIn ? 'dineIn' : (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway'));
+    const tableNumber = tableCode || rawData.tableNumber || '';
+
+    // 6. Update Customer CRM if phone provided
     let customerId = null;
-
-    // Update customer CRM if customer phone provided
-    if (orderData.customerPhone && orderData.customerPhone.trim()) {
-      const cleanPhone = orderData.customerPhone.trim();
+    if (rawData.customerPhone && rawData.customerPhone.trim()) {
+      const cleanPhone = rawData.customerPhone.trim();
       const customer = await Customer.findOneAndUpdate(
         { businessId, phone: cleanPhone },
         {
           $set: {
-            name: orderData.customerName || 'Walk-in Guest',
+            name: rawData.customerName || 'Walk-in Guest',
             lastVisit: new Date(),
           },
           $inc: {
             totalOrders: 1,
-            totalSpent: orderData.status === 'completed' ? (Number(orderData.totalAmount) || 0) : 0,
+            totalSpent: status === 'completed' ? totalAmount : 0,
           },
           $setOnInsert: {
             businessId,
@@ -46,57 +164,140 @@ class OrderService {
       customerId = customer ? customer._id : null;
     }
 
+    // 7. Create Order Document
+    const invoiceNumber = `INV-${orderNumber}`;
     const order = await Order.create({
-      ...orderData,
       businessId,
       orderNumber,
+      orderType,
+      tableNumber,
       customerId,
+      customerName: rawData.customerName || '',
+      customerPhone: rawData.customerPhone || '',
+      status,
+      items: items.map((i) => ({
+        productId: i.productId && i.productId.length === 24 ? i.productId : undefined,
+        name: i.name,
+        price: Number(i.price) || 0,
+        quantity: Number(i.quantity) || 1,
+        foodType: (i.foodType || 'veg').toString().toLowerCase().replace('-', '_'),
+        note: i.note || '',
+      })),
+      subtotal,
+      discountAmount,
+      taxAmount,
       cgst,
       sgst,
       igst,
+      tipAmount,
+      totalAmount,
+      paymentMethod,
+      paymentStatus,
+      kotStatus: rawData.kotStatus || (isKOT ? 'sent' : 'not_sent'),
+      kotNumber: rawData.kotNumber || (isKOT ? 1 : 0),
+      notes: remarks,
+      idempotencyKey,
+      cartId,
+      venderUserId,
+      venderCardId,
+      createdByUserId,
+      createdByCardId,
+      isKOT,
+      paymentDetails,
+      ncReason,
+      paymentMode,
+      orderDevice,
+      isPaid,
+      isDineIn,
+      tableCode,
+      restaurantCode,
+      reason,
+      remarks,
+      clientSyncId,
+      syncId,
+      localOrderId,
+      tokenNo,
+      invoiceNumber,
+      invoiceGenerated: status === 'completed',
     });
 
-    // If DineIn and table number provided, mark table as occupied
+    // 8. Update Table status
     if (order.orderType === 'dineIn' && order.tableNumber) {
-      await Table.findOneAndUpdate(
-        { businessId, name: order.tableNumber },
+      if (status === 'completed') {
+        await Table.findOneAndUpdate(
+          { businessId, name: order.tableNumber },
+          { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
+        );
+      } else {
+        await Table.findOneAndUpdate(
+          { businessId, name: order.tableNumber },
+          {
+            $set: {
+              status: 'occupied',
+              currentOrderId: order._id,
+              occupiedSince: new Date(),
+            },
+          }
+        );
+      }
+    }
+
+    // 9. Deduct Inventory & Create Sale/Invoice Record if completed
+    let sale = null;
+    if (status === 'completed') {
+      sale = await Sale.findOneAndUpdate(
+        { businessId, orderId: order._id },
         {
           $set: {
-            status: 'occupied',
-            currentOrderId: order._id,
-            occupiedSince: new Date(),
+            orderNumber: order.orderNumber,
+            orderType: order.orderType,
+            tableNumber: order.tableNumber || '',
+            customerName: order.customerName || '',
+            customerPhone: order.customerPhone || '',
+            items: (order.items || []).map((i) => ({
+              name: i.name,
+              price: i.price,
+              quantity: i.quantity,
+              foodType: i.foodType || 'veg',
+            })),
+            subtotal: order.subtotal,
+            discountAmount: order.discountAmount || 0,
+            taxAmount: order.taxAmount || 0,
+            tipAmount: order.tipAmount || 0,
+            totalAmount: order.totalAmount,
+            paymentMethod: (order.paymentMethod || 'cash').toLowerCase(),
+            saleDate: order.completedAt || order.createdAt || new Date(),
           },
-        }
+          $setOnInsert: { businessId, orderId: order._id },
+        },
+        { upsert: true, new: true }
       );
+
+      // Inventory deduction
+      for (const item of order.items) {
+        if (item.productId) {
+          await Product.findOneAndUpdate(
+            { _id: item.productId, businessId, trackInventory: true, stock: { $gt: 0 } },
+            { $inc: { stock: -item.quantity } }
+          );
+        }
+      }
     }
 
-    // If order was created directly with completed status, create Sale record
-    if (order.status === 'completed') {
-      await Sale.create({
-        businessId,
-        orderId: order._id,
-        orderNumber: order.orderNumber,
-        orderType: order.orderType,
-        tableNumber: order.tableNumber || '',
-        customerName: order.customerName || '',
-        customerPhone: order.customerPhone || '',
-        items: (order.items || []).map((i) => ({
-          name: i.name,
-          price: i.price,
-          quantity: i.quantity,
-          foodType: i.foodType || 'veg',
-        })),
-        subtotal: order.subtotal,
-        discountAmount: order.discountAmount || 0,
-        taxAmount: order.taxAmount || 0,
-        tipAmount: order.tipAmount || 0,
+    return {
+      order,
+      sale,
+      invoice: {
+        invoiceNumber,
+        invoiceDate: order.createdAt,
         totalAmount: order.totalAmount,
-        paymentMethod: (order.paymentMethod || 'cash').toLowerCase(),
-        saleDate: order.createdAt || new Date(),
-      });
-    }
+      },
+    };
+  }
 
-    return order;
+  async createOrder(businessId, orderData) {
+    const result = await this.generatePosOrder(businessId, orderData);
+    return result.order || result;
   }
 
   async getOrders(businessId, { page = 1, limit = 50, status, orderType, search, startDate, endDate } = {}) {
