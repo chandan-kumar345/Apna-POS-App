@@ -65,11 +65,21 @@ class DashboardService {
     return {
       businessId: bId,
       createdAt: { $gte: start, $lte: end },
-      status: { $ne: 'cancelled' },
-      $or: [
-        { status: { $in: ['completed', 'paid'] } },
-        { paymentStatus: 'paid' },
-      ],
+      status: { $in: ['completed', 'paid'] },
+      paymentStatus: 'paid',
+      paymentMethod: {
+        $nin: [
+          'KOT Pending',
+          'kot pending',
+          'kot',
+          'KOT',
+          'unpaid',
+          'UNPAID',
+          'pending',
+          'PENDING',
+          '',
+        ],
+      },
       ...extraMatch,
     };
   }
@@ -202,11 +212,25 @@ class DashboardService {
     const bId = new mongoose.Types.ObjectId(businessId);
     const { start, end } = this._resolveDateRange(query);
 
-    // Get all orders in this date range that have customer details
+    // Get all completed/paid orders in this date range that have customer details
     const ordersInRange = await Order.find({
       businessId: bId,
       createdAt: { $gte: start, $lte: end },
-      status: { $ne: 'cancelled' },
+      status: { $in: ['completed', 'paid'] },
+      paymentStatus: 'paid',
+      paymentMethod: {
+        $nin: [
+          'KOT Pending',
+          'kot pending',
+          'kot',
+          'KOT',
+          'unpaid',
+          'UNPAID',
+          'pending',
+          'PENDING',
+          '',
+        ],
+      },
       $or: [
         { customerPhone: { $exists: true, $ne: '' } },
         { customerName: { $exists: true, $ne: '' } },
@@ -297,7 +321,8 @@ class DashboardService {
         const orderCount = await Order.countDocuments({
           businessId: bId,
           $or: queryConds,
-          status: { $ne: 'cancelled' },
+          status: { $in: ['completed', 'paid'] },
+          paymentStatus: 'paid',
         });
         totalVisits = Math.max(totalVisits, orderCount);
       }

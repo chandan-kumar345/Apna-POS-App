@@ -181,157 +181,162 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       barrierDismissible: true,
       builder: (ctx) => Dialog(
         backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.18),
-                blurRadius: 32,
-                offset: const Offset(0, 12),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header gradient banner
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(24, 28, 24, 24),
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.18),
+                    blurRadius: 32,
+                    offset: const Offset(0, 12),
                   ),
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: Column(
-                  children: [
-                    // Crown emoji from asset / emoji
-                    const Text('👑', style: TextStyle(fontSize: 44)),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Premium Feature',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.white),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '$featureName is a premium feature.\nSubscribe to unlock full access.',
-                      style: const TextStyle(fontSize: 13, color: Color(0xFFB0C4DE)),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+                ],
               ),
-
-              // Plan cards
-              Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  children: [
-                    _buildPlanCard(
-                      '⚡ Monthly Plan',
-                      '₹999 / month',
-                      'All premium features for 30 days',
-                      const Color(0xFF051C48),
-                    ),
-                    const SizedBox(height: 10),
-                    _buildPlanCard(
-                      '🔥 Annual Plan',
-                      '₹7,999 / year',
-                      'Save 33% • Best value for growing businesses',
-                      const Color(0xFFF59E0B),
-                      isHighlighted: true,
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // What's included
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header gradient banner
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Premium includes:',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text('👑', style: TextStyle(fontSize: 40)),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Premium Feature',
+                          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.white),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$featureName is a premium feature.\nSubscribe to unlock full access.',
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFFB0C4DE)),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Plan cards
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      children: [
+                        _buildPlanCard(
+                          '⚡ Monthly Plan',
+                          '₹999 / mo',
+                          'All premium features for 30 days',
+                          const Color(0xFF051C48),
+                        ),
+                        const SizedBox(height: 10),
+                        _buildPlanCard(
+                          '🔥 Annual Plan',
+                          '₹7,999 / yr',
+                          'Save 33% • Best value for growing businesses',
+                          const Color(0xFFF59E0B),
+                          isHighlighted: true,
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // What's included
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
                           ),
-                          const SizedBox(height: 8),
-                          for (final f in [
-                            '👑  Loyalty & Rewards Program',
-                            '📢  Marketing Campaign Tools',
-                            '📦  Inventory & Stock Management',
-                            '📊  Advanced Analytics & Reports',
-                            '🔔  Priority Customer Support',
-                          ])
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(f, style: const TextStyle(fontSize: 12, color: Color(0xFF334155))),
-                            ),
-                        ],
-                      ),
-                    ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Premium includes:',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              for (final f in [
+                                '👑  Loyalty & Rewards Program',
+                                '📢  Marketing Campaign Tools',
+                                '📦  Inventory & Stock Management',
+                                '📊  Advanced Analytics & Reports',
+                                '🔔  Priority Customer Support',
+                              ])
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 3),
+                                  child: Text(f, style: const TextStyle(fontSize: 11.5, color: Color(0xFF334155))),
+                                ),
+                            ],
+                          ),
+                        ),
 
-                    const SizedBox(height: 16),
+                        const SizedBox(height: 16),
 
-                    // Subscribe button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 46,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          Navigator.pop(ctx);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Redirecting to subscription portal...'),
+                        // Subscribe button
+                        SizedBox(
+                          width: double.infinity,
+                          height: 44,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: const Text('Redirecting to subscription portal...'),
+                                  backgroundColor: const Color(0xFF051C48),
+                                  behavior: SnackBarBehavior.floating,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF051C48),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
                             ),
-                          );
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF051C48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 0,
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text('👑', style: TextStyle(fontSize: 16)),
-                            SizedBox(width: 8),
-                            Text(
-                              'Subscribe Now',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text('👑', style: TextStyle(fontSize: 15)),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Subscribe Now',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
+                                ),
+                              ],
                             ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
 
-                    const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text(
-                        'Maybe Later',
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                      ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          child: const Text(
+                            'Maybe Later',
+                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -341,7 +346,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   Widget _buildPlanCard(String title, String price, String subtitle, Color color, {bool isHighlighted = false}) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isHighlighted ? color.withOpacity(0.08) : Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -356,15 +361,19 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: color)),
+                Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color)),
                 const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                Text(subtitle, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
               ],
             ),
           ),
-          Text(
-            price,
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color),
+          const SizedBox(width: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              price,
+              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: color),
+            ),
           ),
         ],
       ),

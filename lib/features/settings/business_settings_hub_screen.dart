@@ -380,9 +380,10 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 10,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: SingleChildScrollView(
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
+                  constraints: const BoxConstraints(maxWidth: 560),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -390,24 +391,31 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF051C48),
-                                    shape: BoxShape.circle,
+                            Container(
+                              padding: const EdgeInsets.all(9),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 22),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Payment Setting',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                   ),
-                                  child: const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 20),
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  'Payment Setting',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                ),
-                              ],
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Configure your Merchant UPI VPA ID to receive instant customer payments',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
@@ -415,12 +423,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Configure your Merchant UPI VPA ID to receive instant customer payments',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 18),
 
                         if (modalError != null) ...[
                           Container(
@@ -446,11 +449,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           const SizedBox(height: 14),
                         ],
 
-                        const Text('Merchant UPI VPA ID *', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                        const Text('Merchant UPI VPA ID *', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
                         const SizedBox(height: 6),
                         TextField(
                           controller: _upiIdController,
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                           decoration: InputDecoration(
                             hintText: 'e.g. merchant@okicici, 9876543210@paytm',
                             hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
@@ -466,6 +469,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
                             ElevatedButton(
                               onPressed: () async {
                                 final text = _upiIdController.text.trim();
@@ -504,7 +512,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                               },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF051C48),
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                 elevation: 0,
                               ),
@@ -535,9 +543,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 10,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 480),
+                  constraints: const BoxConstraints(maxWidth: 580),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -545,35 +555,36 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF051C48),
-                                    shape: BoxShape.circle,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Outlet Info',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                   ),
-                                  child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  'Outlet Info',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                ),
-                              ],
+                                  Text(
+                                    'Update outlet name, tagline, contact phone and receipt header address',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Update outlet name, tagline, contact phone and receipt header address',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                         ),
                         const SizedBox(height: 16),
 
@@ -613,6 +624,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
                             ElevatedButton(
                               onPressed: () async {
                                 if (_nameController.text.trim().isEmpty) {
@@ -697,9 +713,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 10,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 460),
+                  constraints: const BoxConstraints(maxWidth: 560),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -707,35 +725,36 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF051C48),
-                                    shape: BoxShape.circle,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Tax Settings',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                   ),
-                                  child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 20),
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  'Tax Settings',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                ),
-                              ],
+                                  Text(
+                                    'Configure GSTIN and default tax percentage for billing',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Configure GSTIN and default tax percentage for billing',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                         ),
                         const SizedBox(height: 16),
 
@@ -771,6 +790,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                            const SizedBox(width: 8),
                             ElevatedButton(
                               onPressed: () async {
                                 final rateText = taxRateController.text.trim();
@@ -843,9 +867,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 10,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
+                  constraints: const BoxConstraints(maxWidth: 520),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -853,35 +879,36 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF051C48),
-                                    shape: BoxShape.circle,
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Sound Setting',
+                                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                   ),
-                                  child: const Icon(Icons.volume_up_rounded, color: Colors.white, size: 20),
-                                ),
-                                const SizedBox(width: 10),
-                                const Text(
-                                  'Sound Setting',
-                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                ),
-                              ],
+                                  Text(
+                                    'Configure POS app order & button click audio feedback sounds',
+                                    style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
                             ),
                             IconButton(
                               onPressed: () => Navigator.pop(context),
                               icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Configure POS app order & button click audio feedback sounds',
-                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                         ),
                         const SizedBox(height: 20),
 
@@ -896,35 +923,39 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: isEnabled ? const Color(0x1A051C48) : const Color(0x1AE2E8F0),
-                                      borderRadius: BorderRadius.circular(10),
-                                    ),
-                                    child: Icon(
-                                      isEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
-                                      color: isEnabled ? const Color(0xFF051C48) : const Color(0xFF94A3B8),
-                                      size: 22,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 12),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Sound Effects',
-                                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              Expanded(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: isEnabled ? const Color(0x1A051C48) : const Color(0x1AE2E8F0),
+                                        borderRadius: BorderRadius.circular(10),
                                       ),
-                                      Text(
-                                        isEnabled ? 'Audio feedback is ON' : 'Audio feedback is MUTED',
-                                        style: TextStyle(fontSize: 11, color: isEnabled ? const Color(0xFF15803D) : const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                      child: Icon(
+                                        isEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
+                                        color: isEnabled ? const Color(0xFF051C48) : const Color(0xFF94A3B8),
+                                        size: 22,
                                       ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Sound Effects',
+                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                          ),
+                                          Text(
+                                            isEnabled ? 'Audio feedback is ON' : 'Audio feedback is MUTED',
+                                            style: TextStyle(fontSize: 11, color: isEnabled ? const Color(0xFF15803D) : const Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                               Switch.adaptive(
                                 value: isEnabled,

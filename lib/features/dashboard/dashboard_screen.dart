@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'dart:ui';
 import '../../core/database/database_service.dart';
 import '../../core/services/dashboard_service.dart';
+import '../../core/models/order_model.dart';
 
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
 class GlassDashboardScreen extends StatefulWidget {
@@ -116,24 +117,56 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
       ]);
 
       if (mounted) {
+        var summary = results[0] as DashboardSummaryData;
+        var orderTypes = results[1] as OrderTypeStatsData;
+        var productSales = results[2] as List<ItemSaleReportItem>;
+        var customerData = results[3] as CustomerAnalyticsData;
+        var paymentMethodsData = results[4] as PaymentMethodsSummaryData;
+        var taxData = results[5] as TaxSummaryData;
+        var orderStatsData = results[6] as OrderStatsSummaryData;
+
+        // If cloud returned 0 orders and we have local orders in database, compute local fallback
+        if (summary.totalOrders == 0 && _db.orders.isNotEmpty) {
+          final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
+          if (localData != null && localData.summary.totalOrders > 0) {
+            summary = localData.summary;
+            orderTypes = localData.orderTypes;
+            productSales = localData.productSales;
+            customerData = localData.customers;
+            paymentMethodsData = localData.payments;
+            taxData = localData.taxes;
+            orderStatsData = localData.orderStats;
+          }
+        }
+
         setState(() {
-          _summaryData = results[0] as DashboardSummaryData;
-          _orderTypesData = results[1] as OrderTypeStatsData;
-          _productSales = results[2] as List<ItemSaleReportItem>;
-          _customerData = results[3] as CustomerAnalyticsData;
-          _paymentMethodsData = results[4] as PaymentMethodsSummaryData;
-          _taxData = results[5] as TaxSummaryData;
-          _orderStatsData = results[6] as OrderStatsSummaryData;
+          _summaryData = summary;
+          _orderTypesData = orderTypes;
+          _productSales = productSales;
+          _customerData = customerData;
+          _paymentMethodsData = paymentMethodsData;
+          _taxData = taxData;
+          _orderStatsData = orderStatsData;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('[GlassDashboardScreen] Error fetching dashboard data: $e');
       if (mounted) {
+        final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
         setState(() {
+          if (localData != null) {
+            _summaryData = localData.summary;
+            _orderTypesData = localData.orderTypes;
+            _productSales = localData.productSales;
+            _customerData = localData.customers;
+            _paymentMethodsData = localData.payments;
+            _taxData = localData.taxes;
+            _orderStatsData = localData.orderStats;
+          }
           _isLoading = false;
           _errorMessage =
-              'Failed to refresh cloud dashboard metrics. Showing cached data.';
+              'Showing local device records. Tap refresh to sync with cloud.';
         });
       }
     }
@@ -1819,6 +1852,7 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
         PopupMenuItem(value: 'Week', child: Text('This Week')),
         PopupMenuItem(value: 'Month', child: Text('This Month')),
         PopupMenuItem(value: 'Year', child: Text('This Year')),
+        PopupMenuItem(value: 'All Time', child: Text('All Time')),
         PopupMenuItem(value: 'Custom Date', child: Text('Custom Date Range')),
       ],
       child: Container(
@@ -1897,4 +1931,244 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
       ),
     );
   }
+
+  /// Fallback computation from local device memory/storage when cloud returns 0 or offline
+  _LocalDashboardComputed? _computeLocalDashboardData(
+    String period,
+    DateTime? customStart,
+    DateTime? customEnd,
+  ) {
+    try {
+      final now = DateTime.now();
+      DateTime start;
+      DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+
+      if (period == 'Custom Date' && customStart != null && customEnd != null) {
+        start = DateTime(customStart.year, customStart.month, customStart.day, 0, 0, 0);
+        end = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59, 999);
+      } else {
+        final p = period.toLowerCase();
+        if (p == 'yesterday') {
+          final y = now.subtract(const Duration(days: 1));
+          start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+          end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+        } else if (p == 'week' || p == 'this week') {
+          final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+          final mon = now.subtract(Duration(days: diff));
+          start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+        } else if (p == 'month' || p == 'this month') {
+          start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        } else if (p == 'year' || p == 'this year') {
+          start = DateTime(now.year, 1, 1, 0, 0, 0);
+        } else if (p == 'all time' || p == 'all') {
+          start = DateTime(2000, 1, 1);
+        } else {
+          // Today default
+          start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        }
+      }
+
+      final allOrders = _db.orders;
+      final filteredOrders = allOrders.where((o) {
+        if (o.status != OrderStatus.completed) return false;
+        final pm = o.paymentMethod.toLowerCase().trim();
+        if (pm.contains('kot') || pm.contains('pending') || pm == 'unpaid' || pm.isEmpty) {
+          return false;
+        }
+        DateTime? oDate;
+        if (o.orderNumber.length >= 8) {
+          final dStr = o.orderNumber.substring(0, 8);
+          final y = int.tryParse(dStr.substring(0, 4));
+          final m = int.tryParse(dStr.substring(4, 6));
+          final d = int.tryParse(dStr.substring(6, 8));
+          if (y != null && m != null && d != null) {
+            oDate = DateTime(y, m, d, 12, 0, 0);
+          }
+        }
+        oDate ??= now;
+        return oDate.isAfter(start.subtract(const Duration(seconds: 1))) &&
+            oDate.isBefore(end.add(const Duration(seconds: 1)));
+      }).toList();
+
+      final int totalOrders = filteredOrders.length;
+      final double totalRevenue = filteredOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+      final int activeOrdersCount = allOrders.where((o) =>
+          o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length;
+      final int totalProductsCount = _db.menuItems.length;
+
+      int dineInCount = 0;
+      double dineInAmount = 0;
+      int deliveryCount = 0;
+      double deliveryAmount = 0;
+      int takeawayCount = 0;
+      double takeawayAmount = 0;
+
+      for (var o in filteredOrders) {
+        if (o.orderType == OrderType.dineIn) {
+          dineInCount++;
+          dineInAmount += o.totalAmount;
+        } else if (o.orderType == OrderType.delivery) {
+          deliveryCount++;
+          deliveryAmount += o.totalAmount;
+        } else {
+          takeawayCount++;
+          takeawayAmount += o.totalAmount;
+        }
+      }
+
+      final Map<String, _LocalItemSaleAgg> productMap = {};
+      for (var o in filteredOrders) {
+        for (var item in o.items) {
+          final name = item.item.name;
+          if (!productMap.containsKey(name)) {
+            productMap[name] = _LocalItemSaleAgg(
+              productId: item.item.id,
+              productName: name,
+              price: item.item.price,
+              quantity: 0,
+              totalAmount: 0,
+            );
+          }
+          productMap[name]!.quantity += item.quantity;
+          productMap[name]!.totalAmount += item.totalPrice;
+        }
+      }
+
+      final productSalesList = productMap.values.toList()
+        ..sort((a, b) => b.quantity.compareTo(a.quantity));
+      final List<ItemSaleReportItem> itemsList = [];
+      for (int i = 0; i < productSalesList.length; i++) {
+        final p = productSalesList[i];
+        itemsList.add(ItemSaleReportItem(
+          srNo: i + 1,
+          productId: p.productId,
+          productName: p.productName,
+          price: p.price,
+          quantity: p.quantity,
+          totalAmount: p.totalAmount,
+        ));
+      }
+
+      final Map<String, _LocalPaymentAgg> payMap = {};
+      double totalPayAmount = 0.0;
+      for (var o in filteredOrders) {
+        var m = o.paymentMethod.toUpperCase().trim();
+        if (m.startsWith('CASH')) {
+          m = 'CASH';
+        } else if (m.startsWith('CARD')) {
+          m = 'CARD';
+        } else if (m.startsWith('UPI')) {
+          m = 'UPI';
+        } else if (m.startsWith('SPLIT')) {
+          m = 'SPLIT';
+        }
+        if (m.isEmpty) {
+          m = 'OTHER';
+        }
+
+        if (!payMap.containsKey(m)) {
+          payMap[m] = _LocalPaymentAgg(method: m, count: 0, amount: 0.0);
+        }
+        payMap[m]!.count += 1;
+        payMap[m]!.amount += o.totalAmount;
+        totalPayAmount += o.totalAmount;
+      }
+
+      final payList = payMap.values
+          .map((p) => PaymentMethodSaleItem(
+                method: p.method,
+                count: p.count,
+                amount: p.amount,
+              ))
+          .toList()
+        ..sort((a, b) => b.amount.compareTo(a.amount));
+
+      double totalTax = 0.0;
+      for (var o in filteredOrders) {
+        totalTax += o.taxAmount;
+      }
+
+      return _LocalDashboardComputed(
+        summary: DashboardSummaryData(
+          period: period,
+          revenue: totalRevenue,
+          totalOrders: totalOrders,
+          activeOrdersCount: activeOrdersCount,
+          totalProductsCount: totalProductsCount,
+        ),
+        orderTypes: OrderTypeStatsData(
+          dineIn: OrderTypeCountAmount(count: dineInCount, amount: dineInAmount),
+          delivery: OrderTypeCountAmount(count: deliveryCount, amount: deliveryAmount),
+          takeaway: OrderTypeCountAmount(count: takeawayCount, amount: takeawayAmount),
+          total: OrderTypeCountAmount(count: totalOrders, amount: totalRevenue),
+        ),
+        productSales: itemsList,
+        customers: CustomerAnalyticsData(),
+        payments: PaymentMethodsSummaryData(payments: payList, totalAmount: totalPayAmount),
+        taxes: TaxSummaryData(
+          totalGST: totalTax,
+          cgst: totalTax / 2,
+          sgst: totalTax / 2,
+          igst: 0,
+        ),
+        orderStats: OrderStatsSummaryData(
+          successfulOrders: totalOrders,
+          cancelledOrders: allOrders.where((o) => o.status == OrderStatus.cancelled).length,
+          otherOrders: 0,
+          totalOrders: totalOrders,
+        ),
+      );
+    } catch (e) {
+      debugPrint('Error computing local dashboard data: $e');
+      return null;
+    }
+  }
+}
+
+class _LocalDashboardComputed {
+  final DashboardSummaryData summary;
+  final OrderTypeStatsData orderTypes;
+  final List<ItemSaleReportItem> productSales;
+  final CustomerAnalyticsData customers;
+  final PaymentMethodsSummaryData payments;
+  final TaxSummaryData taxes;
+  final OrderStatsSummaryData orderStats;
+
+  _LocalDashboardComputed({
+    required this.summary,
+    required this.orderTypes,
+    required this.productSales,
+    required this.customers,
+    required this.payments,
+    required this.taxes,
+    required this.orderStats,
+  });
+}
+
+class _LocalItemSaleAgg {
+  final String productId;
+  final String productName;
+  final double price;
+  int quantity;
+  double totalAmount;
+
+  _LocalItemSaleAgg({
+    required this.productId,
+    required this.productName,
+    required this.price,
+    required this.quantity,
+    required this.totalAmount,
+  });
+}
+
+class _LocalPaymentAgg {
+  final String method;
+  int count;
+  double amount;
+
+  _LocalPaymentAgg({
+    required this.method,
+    required this.count,
+    required this.amount,
+  });
 }

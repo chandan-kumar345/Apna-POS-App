@@ -74,37 +74,39 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               backgroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               elevation: 12,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 720, maxHeight: 720),
+                constraints: const BoxConstraints(maxWidth: 680, maxHeight: 680),
                 child: Padding(
                   padding: const EdgeInsets.all(24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Modal Header
+                      // Modal Header (Wrapped & Adaptive)
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(
-                            child: Row(
+                          Container(
+                            padding: const EdgeInsets.all(9),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF051C48),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF051C48),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 22),
+                                Text(
+                                  'Import Products via CSV',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                 ),
-                                const SizedBox(width: 10),
-                                const Flexible(
-                                  child: Text(
-                                    'Import Products via CSV',
-                                    style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Bulk add products using a standard CSV spreadsheet template',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                                 ),
                               ],
                             ),
@@ -115,12 +117,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
-                      const Text(
-                        'Download the CSV template, fill in your product catalog, and upload to bulk add products.',
-                        style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                      ),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 10),
 
                       Expanded(
                         child: SingleChildScrollView(
@@ -132,7 +129,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               if (modalError != null) ...[
                                 Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFEE2E2),
                                     borderRadius: BorderRadius.circular(12),
@@ -140,12 +137,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
+                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           modalError!,
-                                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
@@ -158,7 +155,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               if (modalSuccess != null) ...[
                                 Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFDCFCE7),
                                     borderRadius: BorderRadius.circular(12),
@@ -166,12 +163,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 20),
+                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 18),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: Text(
                                           modalSuccess!,
-                                          style: const TextStyle(color: Color(0xFF14532D), fontSize: 12.5, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(color: Color(0xFF14532D), fontSize: 12, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
@@ -180,39 +177,44 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 const SizedBox(height: 14),
                               ],
 
-                              // Step 1: Download Template Section Box
+                              // Step 1: Download Template Box (Clean & Streamlined)
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(14),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  boxShadow: const [
-                                    BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
-                                  ],
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const Row(
                                       children: [
-                                        Icon(Icons.downloading_rounded, color: Color(0xFF051C48), size: 20),
+                                        Icon(Icons.downloading_rounded, color: Color(0xFF051C48), size: 18),
                                         SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Step 1: Download CSV Sample Template',
-                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                            'Step 1: Download Sample Template',
+                                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    const Text(
-                                      'Template Format & Headers:\n• Product Name (Required)\n• Description (Optional)\n• Food Type (Veg, Non-Veg, Egg)\n• Price (Required)\n• Variant Name (Optional: Half, Full)\n• Variant Price (Optional)\n• Category (e.g. Main Course, Beverages)',
-                                      style: TextStyle(fontSize: 11.5, color: Color(0xFF475569), height: 1.4),
-                                    ),
-                                    const SizedBox(height: 14),
+                                    // const SizedBox(height: 8),
+                                    // const Wrap(
+                                    //   spacing: 6,
+                                    //   runSpacing: 4,
+                                    //   children: [
+                                    //     _CsvHeaderChip('Product Name*'),
+                                    //     _CsvHeaderChip('Category*'),
+                                    //     _CsvHeaderChip('Price*'),
+                                    //     _CsvHeaderChip('Food Type'),
+                                    //     _CsvHeaderChip('Variant Name'),
+                                    //     _CsvHeaderChip('Variant Price'),
+                                    //   ],
+                                    // ),
+                                    // const SizedBox(height: 12),
                                     ElevatedButton.icon(
                                       onPressed: () async {
                                         try {
@@ -255,12 +257,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                           });
                                         }
                                       },
-                                      icon: const Icon(Icons.download_rounded, size: 18, color: Colors.white),
-                                      label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                      icon: const Icon(Icons.download_rounded, size: 16, color: Colors.white),
+                                      label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: const Color(0xFF10B981),
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                                         elevation: 0,
                                       ),
                                     ),
@@ -268,41 +270,33 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 16),
+                              const SizedBox(height: 14),
 
-                              // Step 2: Upload CSV File Section Box
+                              // Step 2: Upload CSV File Box (Clean & Direct)
                               Container(
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(16),
+                                  borderRadius: BorderRadius.circular(14),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  boxShadow: const [
-                                    BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
-                                  ],
                                 ),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     const Row(
                                       children: [
-                                        Icon(Icons.upload_file_rounded, color: Color(0xFF051C48), size: 20),
+                                        Icon(Icons.upload_file_rounded, color: Color(0xFF051C48), size: 18),
                                         SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
                                             'Step 2: Upload Filled CSV File',
-                                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 8),
-                                    const Text(
-                                      'Select your filled CSV file from your device to import all products automatically into your menu.',
-                                      style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                    ),
-                                    const SizedBox(height: 14),
+                                    const SizedBox(height: 12),
                                     ElevatedButton.icon(
                                       onPressed: isProcessing
                                           ? null
@@ -400,31 +394,54 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                 }
 
                                                 int addedCount = 0;
+                                                final List<MenuItemModel> itemsToImport = [];
+
                                                 for (final entry in productMap.values) {
                                                   final pName = entry['name'] as String;
-                                                  final pCategory = entry['category'] as String;
+                                                  final pCategory = (entry['category'] as String).trim();
                                                   final pPrice = entry['price'] as double;
                                                   final pDesc = entry['desc'] as String;
-                                                  final pFoodType = entry['foodType'] as String;
+                                                  final rawFoodType = (entry['foodType'] as String).trim();
                                                   final pVariants = entry['variants'] as List<ProductVariant>;
 
-                                                  if (!db.categories.contains(pCategory)) {
-                                                    await db.addCategory(pCategory);
+                                                  // Normalize food type to match Add Product form standards
+                                                  String normalizedFoodType = 'Veg';
+                                                  final lowerType = rawFoodType.toLowerCase();
+                                                  if (lowerType.contains('non') || lowerType == 'non_veg' || lowerType == 'nonveg') {
+                                                    normalizedFoodType = 'Non-Veg';
+                                                  } else if (lowerType.contains('egg')) {
+                                                    normalizedFoodType = 'Egg';
+                                                  } else if (lowerType.contains('bev')) {
+                                                    normalizedFoodType = 'Beverage';
                                                   }
 
+                                                  final uniqueProdId = 'PRD-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}-${1000 + (addedCount * 37 + DateTime.now().microsecond % 9000)}';
+
                                                   final newItem = MenuItemModel(
-                                                    id: 'item_${DateTime.now().millisecondsSinceEpoch}_${addedCount++}',
+                                                    id: uniqueProdId,
+                                                    productId: uniqueProdId,
                                                     name: pName,
-                                                    category: pCategory,
-                                                    price: pPrice,
+                                                    category: pCategory.isNotEmpty ? pCategory : 'General',
+                                                    price: pVariants.isNotEmpty ? 0.0 : pPrice,
+                                                    salePrice: pVariants.isNotEmpty ? null : pPrice,
                                                     description: pDesc,
-                                                    itemType: pFoodType,
-                                                    variants: pVariants,
+                                                    emoji: '🥘',
+                                                    imageUrl: '',
+                                                    images: const [],
+                                                    itemType: normalizedFoodType,
+                                                    hasDiscount: false,
+                                                    discountPercent: 0.0,
+                                                    stockQuantity: 50,
+                                                    variants: List.from(pVariants),
+                                                    trackInventory: true,
                                                     isAvailable: true,
                                                   );
-
-                                                  await db.saveMenuItem(newItem);
+                                                  itemsToImport.add(newItem);
+                                                  addedCount++;
                                                 }
+
+                                                // Bulk import and cloud sync to MongoDB backend
+                                                final importedTotal = await db.importProductsFromCsv(itemsToImport);
 
                                                 if (!context.mounted) return;
                                                 Navigator.pop(context);
@@ -437,7 +454,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                         const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                                                         const SizedBox(width: 10),
                                                         Text(
-                                                          'Successfully imported $addedCount products from CSV!',
+                                                          'Successfully imported $importedTotal products from CSV & synced to cloud!',
                                                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                                                         ),
                                                       ],
@@ -525,25 +542,39 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: const EdgeInsets.all(20),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        contentPadding: const EdgeInsets.all(22),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 420),
+          constraints: const BoxConstraints(maxWidth: 540),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Add New Category',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF051C48),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.category_rounded, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Add New Category',
+                    style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
               TextField(
                 controller: catCtrl,
-                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5),
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5, fontWeight: FontWeight.bold),
                 decoration: InputDecoration(
                   labelText: 'Category Name',
-                  hintText: 'e.g. Starters, Beverages',
+                  hintText: 'e.g. Starters, Beverages, Desserts',
                   hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                   labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13),
                   filled: true,
@@ -551,7 +582,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -559,7 +590,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -579,7 +610,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF051C48),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                      elevation: 0,
                     ),
                     icon: const Icon(Icons.check_rounded, size: 16, color: Colors.white),
                     label: const Text('Save Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
@@ -1036,54 +1068,83 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 context: context,
                 builder: (_) => AlertDialog(
                   backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  contentPadding: const EdgeInsets.all(18),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Edit Category Name',
-                          style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 16)),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: editCtrl,
-                        style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5),
-                        decoration: InputDecoration(
-                          hintText: 'Category Name',
-                          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                          filled: true,
-                          fillColor: const Color(0xFFF8FAFC),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                  contentPadding: const EdgeInsets.all(22),
+                  insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                  content: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 540),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
+                            ),
+                            const SizedBox(width: 10),
+                            const Text(
+                              'Edit Category Name',
+                              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: editCtrl,
+                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5, fontWeight: FontWeight.bold),
+                          decoration: InputDecoration(
+                            labelText: 'Category Name',
+                            hintText: 'Category Name',
+                            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                            labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
-                          ),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () {
-                              db.editCategory(cat, editCtrl.text.trim());
-                              setState(() {});
-                              Navigator.pop(context);
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF051C48),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        const SizedBox(height: 20),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                             ),
-                            child: const Text('Update', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    ],
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                if (editCtrl.text.trim().isNotEmpty) {
+                                  db.editCategory(cat, editCtrl.text.trim());
+                                  setState(() {});
+                                  Navigator.pop(context);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                                elevation: 0,
+                              ),
+                              child: const Text('Update Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -1365,6 +1426,28 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _CsvHeaderChip extends StatelessWidget {
+  final String label;
+
+  const _CsvHeaderChip(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFF051C48).withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.18)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(color: Color(0xFF051C48), fontSize: 10.5, fontWeight: FontWeight.bold),
       ),
     );
   }

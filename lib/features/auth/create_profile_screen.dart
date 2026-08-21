@@ -316,7 +316,12 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       await Permission.photos.request();
                       final picker = ImagePicker();
 
-                      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+                      final XFile? image = await picker.pickImage(
+                        source: ImageSource.gallery,
+                        maxWidth: 512,
+                        maxHeight: 512,
+                        imageQuality: 70,
+                      );
                       if (image != null) {
                         setState(() => _selectedPhotoPath = image.path);
                       } else {
@@ -394,7 +399,12 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       await Permission.camera.request();
                       final picker = ImagePicker();
 
-                      final XFile? image = await picker.pickImage(source: ImageSource.camera);
+                      final XFile? image = await picker.pickImage(
+                        source: ImageSource.camera,
+                        maxWidth: 512,
+                        maxHeight: 512,
+                        imageQuality: 70,
+                      );
                       if (image != null) {
                         setState(() => _selectedPhotoPath = image.path);
                       } else {
@@ -513,9 +523,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         if (!_selectedPhotoPath!.contains('_selected') && File(_selectedPhotoPath!).existsSync()) {
           try {
             final bytes = await File(_selectedPhotoPath!).readAsBytes();
-            final isPng = _selectedPhotoPath!.toLowerCase().endsWith('.png');
-            final base64String = base64Encode(bytes);
-            profileImagePayload = 'data:image/${isPng ? "png" : "jpeg"};base64,$base64String';
+            if (bytes.length <= 500 * 1024) {
+              final isPng = _selectedPhotoPath!.toLowerCase().endsWith('.png');
+              final base64String = base64Encode(bytes);
+              profileImagePayload = 'data:image/${isPng ? "png" : "jpeg"};base64,$base64String';
+            }
           } catch (_) {
             profileImagePayload = _selectedPhotoPath;
           }

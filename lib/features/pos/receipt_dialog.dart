@@ -52,6 +52,10 @@ class ReceiptDialog extends StatelessWidget {
     if (order.taxAmount > 0) {
       buffer.writeln('Tax: $currency${order.taxAmount.toStringAsFixed(2)}');
     }
+    if (order.roundOff.abs() > 0.001) {
+      final sign = order.roundOff >= 0 ? '+' : '';
+      buffer.writeln('Round Off: $sign$currency${order.roundOff.toStringAsFixed(2)}');
+    }
     buffer.writeln('GRAND TOTAL: $currency${order.totalAmount.toStringAsFixed(2)}');
     buffer.writeln('Payment Method: ${order.paymentMethod}');
     buffer.writeln('================================');
@@ -335,6 +339,13 @@ class ReceiptDialog extends StatelessWidget {
                           _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${cgstAmount.toStringAsFixed(2)}'),
                           const SizedBox(height: 3),
                           _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${sgstAmount.toStringAsFixed(2)}'),
+                          if (order.roundOff.abs() > 0.001) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow(
+                              'Round Off',
+                              '${order.roundOff >= 0 ? '+' : ''}$currency${order.roundOff.toStringAsFixed(2)}',
+                            ),
+                          ],
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),

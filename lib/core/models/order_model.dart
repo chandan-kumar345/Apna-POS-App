@@ -73,6 +73,7 @@ class OrderModel {
   final double subtotal;
   final double taxAmount;
   final double discountAmount;
+  final double roundOff;
   final double totalAmount;
   final String paymentMethod; // Cash, Card, UPI
   final String? deliveryAddress;
@@ -90,6 +91,7 @@ class OrderModel {
     required this.subtotal,
     required this.taxAmount,
     this.discountAmount = 0.0,
+    this.roundOff = 0.0,
     required this.totalAmount,
     this.paymentMethod = 'UPI',
     this.deliveryAddress,
@@ -108,6 +110,7 @@ class OrderModel {
         'subtotal': subtotal,
         'taxAmount': taxAmount,
         'discountAmount': discountAmount,
+        'roundOff': roundOff,
         'totalAmount': totalAmount,
         'paymentMethod': paymentMethod,
         'deliveryAddress': deliveryAddress,
@@ -135,6 +138,7 @@ class OrderModel {
         subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
         taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0.0,
         discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
+        roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
         totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
         paymentMethod: json['paymentMethod'] ?? 'Cash',
         deliveryAddress: json['deliveryAddress'],
@@ -150,6 +154,12 @@ class OrderModel {
     String? deliveryAddress,
     String? customerName,
     String? customerPhone,
+    double? roundOff,
+    double? totalAmount,
+    double? subtotal,
+    double? taxAmount,
+    double? discountAmount,
+    List<CartItemModel>? items,
   }) {
     return OrderModel(
       id: id,
@@ -157,11 +167,12 @@ class OrderModel {
       tableNumber: tableNumber ?? this.tableNumber,
       orderType: orderType,
       status: status ?? this.status,
-      items: items,
-      subtotal: subtotal,
-      taxAmount: taxAmount,
-      discountAmount: discountAmount,
-      totalAmount: totalAmount,
+      items: items ?? this.items,
+      subtotal: subtotal ?? this.subtotal,
+      taxAmount: taxAmount ?? this.taxAmount,
+      discountAmount: discountAmount ?? this.discountAmount,
+      roundOff: roundOff ?? this.roundOff,
+      totalAmount: totalAmount ?? this.totalAmount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,

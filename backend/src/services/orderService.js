@@ -58,9 +58,20 @@ class OrderService {
     const isKOT = Boolean(rawData.isKOT);
     const paymentDetails = Array.isArray(rawData.paymentDetails) ? rawData.paymentDetails : [];
     const ncReason = (rawData.ncReason || '').toString().trim();
-    const paymentMode = (rawData.paymentMode || rawData.paymentMethod || 'CASH').toString().trim();
+    const paymentMode = (rawData.paymentMode || rawData.paymentMethod || '').toString().trim();
     const orderDevice = (rawData.orderDevice || 'web').toString().trim();
-    const isPaid = rawData.isPaid === true || rawData.paymentStatus === 'paid' || rawData.status === 'completed';
+    const rawMethod = (rawData.paymentMethod || paymentMode || '').toLowerCase();
+    const isKotOrder = isKOT ||
+      rawMethod.includes('kot') ||
+      rawMethod.includes('pending') ||
+      rawMethod === 'unpaid' ||
+      rawData.status === 'pending' ||
+      rawData.status === 'preparing';
+    const isPaid = !isKotOrder && (
+      rawData.isPaid === true ||
+      (rawData.paymentStatus === 'paid' && rawData.status === 'completed') ||
+      rawData.status === 'completed'
+    );
     const isDineIn = rawData.isDineIn !== undefined ? Boolean(rawData.isDineIn) : (rawData.orderType === 'dineIn' || Boolean(rawData.T || rawData.tableNumber));
     const restaurantCode = (rawData.R || '').toString().trim();
     const tableCode = (rawData.T || rawData.tableNumber || '').toString().trim();
@@ -126,15 +137,21 @@ class OrderService {
     }
 
     // Determine normalized paymentMethod and status
-    let paymentMethod = (rawData.paymentMethod || paymentMode || 'cash').toLowerCase();
-    if (paymentDetails.length > 1) {
-      paymentMethod = 'split';
-    } else if (paymentDetails.length === 1 && paymentDetails[0].paymentMethod) {
-      paymentMethod = paymentDetails[0].paymentMethod.toLowerCase();
+    let paymentMethod = (rawData.paymentMethod || paymentMode || (isKotOrder ? 'kot pending' : 'cash')).toLowerCase();
+    if (isPaid) {
+      if (paymentDetails.length > 1) {
+        paymentMethod = 'split';
+      } else if (paymentDetails.length === 1 && paymentDetails[0].paymentMethod) {
+        paymentMethod = paymentDetails[0].paymentMethod.toLowerCase();
+      }
+    } else {
+      if (!paymentMethod.includes('kot') && isKotOrder) {
+        paymentMethod = 'kot pending';
+      }
     }
 
     const status = isPaid ? 'completed' : (rawData.status || 'pending');
-    const paymentStatus = isPaid ? 'paid' : (rawData.paymentStatus || 'pending');
+    const paymentStatus = isPaid ? 'paid' : 'pending';
     const orderType = isDineIn ? 'dineIn' : (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway'));
     const tableNumber = tableCode || rawData.tableNumber || '';
 

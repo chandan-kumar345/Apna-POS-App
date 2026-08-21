@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import '../models/business_model.dart';
 import '../models/restaurant_model.dart';
 import '../database/database_service.dart';
+import 'product_service.dart';
 
 import 'session_manager.dart';
 
@@ -46,6 +47,8 @@ class AuthService {
     await _storage.saveUserId(user.id);
     await _sessionManager.saveSession(user.id);
     await _db.saveActiveUser(user);
+    await _db.clearUserDataForNewAccount();
+    ProductService.clearPosCache();
 
     return data;
   }
@@ -77,6 +80,8 @@ class AuthService {
       await _storage.saveRefreshToken(refreshToken);
     }
 
+    ProductService.clearPosCache();
+
     // Extract business details if present
     final businessJson = (data['business'] ?? userJson['business']) as Map<String, dynamic>?;
     if (businessJson != null && businessJson['profile'] != null && businessJson['profile'] is Map) {
@@ -99,6 +104,7 @@ class AuthService {
     await _storage.saveUserId(user.id);
     await _sessionManager.saveSession(user.id);
     await _db.saveActiveUser(user);
+    await _db.loadUserDataForActiveUser(user.id);
 
     // If business data is attached in login response, update db cache
     if (businessJson != null) {
@@ -206,6 +212,7 @@ class AuthService {
     } catch (e) {
       debugPrint('Logout api warning: $e');
     } finally {
+      ProductService.clearPosCache();
       await _storage.clearAll();
       await _sessionManager.clearSession();
       await _db.logout();

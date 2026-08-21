@@ -112,8 +112,118 @@ class DatabaseService extends ChangeNotifier {
     return freeList.first;
   }
 
+  String _userKey(String baseKey) {
+    final uid = (currentUser?.id != null && currentUser!.id.isNotEmpty)
+        ? currentUser!.id
+        : 'guest';
+    return 'apna_pos_${uid}_$baseKey';
+  }
+
   bool _isInitialized = false;
   bool get isInitialized => _isInitialized;
+
+  /// Load or switch the dataset for the active user ID
+  Future<void> loadUserDataForActiveUser(String userId) async {
+    if (_prefs == null) {
+      _prefs = await SharedPreferences.getInstance();
+    }
+
+    ProductService.clearPosCache();
+    _holdOrders.clear();
+    _liveCartTotals.clear();
+    _liveTableCarts.clear();
+
+    // 1. Load Restaurant Profile (User-scoped)
+    final restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant');
+    if (restaurantJson != null && restaurantJson.isNotEmpty) {
+      try {
+        restaurant = RestaurantModel.fromJson(jsonDecode(restaurantJson));
+      } catch (e) {
+        restaurant = null;
+      }
+    } else {
+      restaurant = RestaurantModel(
+        id: 'rest_$userId',
+        name: currentUser?.companyName ?? currentUser?.name ?? 'Apna POS Store',
+        tagline: 'Authentic Flavors & Swift Service',
+        phone: currentUser?.phone ?? '',
+        address: '',
+        cuisineType: 'General',
+        currencySymbol: '₹',
+        taxRate: 5.0,
+        tableCount: 12,
+        isOnboarded: false,
+      );
+    }
+
+    // 2. Load Menu Items (User-scoped) - Default to empty list [] for user isolation
+    final menuJson = _prefs?.getString('apna_pos_${userId}_menu');
+    if (menuJson != null && menuJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(menuJson);
+        menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
+      } catch (e) {
+        menuItems = [];
+      }
+    } else {
+      menuItems = [];
+    }
+
+    // 3. Load Categories (User-scoped)
+    final catJson = _prefs?.getString('apna_pos_${userId}_categories');
+    if (catJson != null && catJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(catJson);
+        categories = raw.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
+      } catch (e) {
+        categories = [];
+      }
+    } else {
+      categories = [];
+      _syncCategoriesFromMenu();
+    }
+
+    // 4. Load Tables (User-scoped) or Seed Clean Floor
+    final tablesJson = _prefs?.getString('apna_pos_${userId}_tables');
+    if (tablesJson != null && tablesJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(tablesJson);
+        tables = raw.map((e) => TableModel.fromJson(e)).toList();
+      } catch (e) {
+        _seedCleanTables(restaurant?.tableCount ?? 12);
+      }
+    } else {
+      _seedCleanTables(restaurant?.tableCount ?? 12);
+    }
+
+    // 5. Load Orders (User-scoped) - Default to empty list [] for user isolation
+    final ordersJson = _prefs?.getString('apna_pos_${userId}_orders');
+    if (ordersJson != null && ordersJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(ordersJson);
+        orders = raw.map((e) => OrderModel.fromJson(e)).toList();
+      } catch (e) {
+        orders = [];
+      }
+    } else {
+      orders = [];
+    }
+
+    // 6. Load Inventory (User-scoped) - Default to empty list [] for user isolation
+    final inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory');
+    if (inventoryJson != null && inventoryJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(inventoryJson);
+        inventoryItems = raw.map((e) => InventoryItemModel.fromJson(e)).toList();
+      } catch (e) {
+        inventoryItems = [];
+      }
+    } else {
+      inventoryItems = [];
+    }
+
+    notifyListeners();
+  }
 
   // Initialize DB and load or seed data
   Future<void> init() async {
@@ -145,7 +255,7 @@ class DatabaseService extends ChangeNotifier {
                 phone: userEntity.phoneNumber,
                 role: 'Owner',
                 pin: '1234',
-                restaurantId: restaurant?.id ?? 'rest_001',
+                restaurantId: 'rest_$activeUserId',
                 profilePhotoPath: userEntity.profileImage,
               );
             }
@@ -156,86 +266,7 @@ class DatabaseService extends ChangeNotifier {
       debugPrint('Error restoring user session in DatabaseService.init: $e');
     }
 
-    // 2. Load Restaurant Profile
-    final restaurantJson = _prefs?.getString('apna_pos_restaurant');
-    if (restaurantJson != null) {
-      restaurant = RestaurantModel.fromJson(jsonDecode(restaurantJson));
-    } else {
-      // Default initial restaurant
-      restaurant = RestaurantModel(
-        id: 'rest_001',
-        name: 'Apna POS Diner',
-        tagline: 'Authentic Flavors & Swift Service',
-        phone: '+91 98765 43210',
-        address: '',
-        cuisineType: 'Indian & Continental',
-        currencySymbol: '₹',
-        taxRate: 5.0,
-        tableCount: 12,
-        isOnboarded: false,
-      );
-    }
-
-    // 3. Load Menu Items
-    final menuJson = _prefs?.getString('apna_pos_menu');
-    if (menuJson != null) {
-      final List raw = jsonDecode(menuJson);
-      menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
-    } else {
-      menuItems = [];
-    }
-
-    final catJson = _prefs?.getString('apna_pos_categories');
-    if (catJson != null) {
-      final List raw = jsonDecode(catJson);
-      categories = raw.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
-    } else {
-      _syncCategoriesFromMenu();
-    }
-
-    // 4. Load Tables or Seed Clean Floor
-    final tablesJson = _prefs?.getString('apna_pos_tables');
-    if (tablesJson != null) {
-      final List raw = jsonDecode(tablesJson);
-      tables = raw.map((e) {
-        final t = TableModel.fromJson(e);
-        if (t.name.startsWith('Table ')) {
-          return TableModel(
-            id: t.id,
-            tableNumber: t.tableNumber,
-            name: 'T-${t.tableNumber}',
-            floor: t.floor,
-            capacity: t.capacity,
-            status: t.status,
-            currentOrderId: t.currentOrderId,
-            occupiedSince: t.occupiedSince,
-          );
-        }
-        return t;
-      }).toList();
-    } else {
-      _seedCleanTables(restaurant?.tableCount ?? 12);
-    }
-
-    // 5. Load Orders
-    final ordersJson = _prefs?.getString('apna_pos_orders');
-    if (ordersJson != null) {
-      final List raw = jsonDecode(ordersJson);
-      orders = raw.map((e) => OrderModel.fromJson(e)).toList();
-    } else {
-      orders = [];
-    }
-
-    // 6. Load Inventory
-    final inventoryJson = _prefs?.getString('apna_pos_inventory');
-    if (inventoryJson != null) {
-      final List raw = jsonDecode(inventoryJson);
-      inventoryItems = raw.map((e) => InventoryItemModel.fromJson(e)).toList();
-    } else {
-      inventoryItems = [];
-    }
-
-    // 7. Load Registered Users List & Seed Default Testing Credential
+    // 2. Load Registered Users List
     final regUsersJson = _prefs?.getString('apna_pos_registered_users');
     if (regUsersJson != null) {
       final List raw = jsonDecode(regUsersJson);
@@ -255,11 +286,25 @@ class DatabaseService extends ChangeNotifier {
           phone: '9876543210',
           role: 'Owner',
           pin: '1234',
-          restaurantId: restaurant?.id ?? 'rest_001',
+          restaurantId: 'rest_001',
           companyName: 'Apna POS Diner',
         ),
       );
       _saveRegisteredUsers();
+    }
+
+    // 3. Load active user's dataset if logged in, otherwise clean state
+    if (currentUser != null && currentUser!.id.isNotEmpty) {
+      await loadUserDataForActiveUser(currentUser!.id);
+    } else {
+      menuItems.clear();
+      categories.clear();
+      orders.clear();
+      inventoryItems.clear();
+      _holdOrders.clear();
+      _liveCartTotals.clear();
+      _liveTableCarts.clear();
+      restaurant = null;
     }
 
     _isInitialized = true;
@@ -313,7 +358,7 @@ class DatabaseService extends ChangeNotifier {
               upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
             );
-            await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+            await _saveRestaurantToPrefs();
           }
         }
       } catch (e) {
@@ -322,16 +367,39 @@ class DatabaseService extends ChangeNotifier {
 
       // 2. Fetch Live Products & Categories from Backend (Optimized POS API)
       try {
-        final remoteProducts = await _productService.fetchPosProducts();
-        if (remoteProducts.isNotEmpty) {
+        final remoteProducts = await _productService.fetchPosProducts(forceRefresh: true);
+
+        // Auto-heal / sync any local products that were not yet uploaded to the cloud (e.g. offline/CSV created)
+        final unsyncedLocalItems = menuItems.where((localItem) =>
+            localItem.id.startsWith('item_') ||
+            localItem.id.startsWith('TEMP_') ||
+            !remoteProducts.any((r) =>
+                r.id == localItem.id ||
+                (r.productId.isNotEmpty && r.productId == localItem.productId) ||
+                r.name.trim().toLowerCase() == localItem.name.trim().toLowerCase())).toList();
+
+        if (unsyncedLocalItems.isNotEmpty) {
+          debugPrint('[DatabaseService] Auto-syncing ${unsyncedLocalItems.length} unsynced local products to backend cloud...');
+          final synced = await _productService.bulkImport(unsyncedLocalItems);
+          for (final s in synced) {
+            if (!remoteProducts.any((r) => r.id == s.id || (r.productId.isNotEmpty && r.productId == s.productId))) {
+              remoteProducts.add(s);
+            }
+          }
+        }
+
+        if (remoteProducts.isNotEmpty || menuItems.isEmpty) {
           menuItems = remoteProducts;
           await _saveMenuToPrefs();
         }
+
         final remoteCategories = await _productService.fetchCategories();
         if (remoteCategories.isNotEmpty) {
           categories = remoteCategories;
-          await _saveCategoriesToPrefs();
+        } else {
+          _syncCategoriesFromMenu();
         }
+        await _saveCategoriesToPrefs();
       } catch (e) {
         debugPrint('[DatabaseService] sync products error: $e');
       }
@@ -350,10 +418,8 @@ class DatabaseService extends ChangeNotifier {
       // 4. Fetch Live Orders from Backend
       try {
         final remoteOrders = await _orderService.fetchOrders();
-        if (remoteOrders.isNotEmpty) {
-          orders = remoteOrders;
-          await _saveOrdersToPrefs();
-        }
+        orders = remoteOrders;
+        await _saveOrdersToPrefs();
       } catch (e) {
         debugPrint('[DatabaseService] sync orders error: $e');
       }
@@ -361,10 +427,8 @@ class DatabaseService extends ChangeNotifier {
       // 5. Fetch Live Inventory from Backend
       try {
         final remoteInventory = await _inventoryService.fetchInventory();
-        if (remoteInventory.isNotEmpty) {
-          inventoryItems = remoteInventory;
-          await _saveInventoryToPrefs();
-        }
+        inventoryItems = remoteInventory;
+        await _saveInventoryToPrefs();
       } catch (e) {
         debugPrint('[DatabaseService] sync inventory error: $e');
       }
@@ -452,7 +516,14 @@ class DatabaseService extends ChangeNotifier {
     return true;
   }
 
+  Future<void> _saveRestaurantToPrefs() async {
+    if (restaurant != null) {
+      await _prefs?.setString(_userKey('restaurant'), jsonEncode(restaurant!.toJson()));
+    }
+  }
+
   Future<void> saveActiveUser(UserModel user) async {
+    final bool isUserSwitch = currentUser?.id != user.id;
     currentUser = user;
     final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == user.email.trim().toLowerCase());
     if (existingIdx >= 0) {
@@ -462,10 +533,14 @@ class DatabaseService extends ChangeNotifier {
     }
     await _saveRegisteredUsers();
     await _prefs?.setString('apna_pos_user', jsonEncode(user.toJson()));
-    
+
+    if (isUserSwitch) {
+      await loadUserDataForActiveUser(user.id);
+    }
+
     // Sync with Firestore
     await _firestoreService.saveUser(user);
-    
+
     notifyListeners();
   }
 
@@ -523,11 +598,11 @@ class DatabaseService extends ChangeNotifier {
 
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(name: cleanName);
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      await _saveRestaurantToPrefs();
       await _firestoreService.saveRestaurant(restaurant!);
     } else {
       restaurant = RestaurantModel(
-        id: 'rest_001',
+        id: 'rest_${currentUser?.id ?? "001"}',
         name: cleanName,
         tagline: 'Authentic Flavors & Swift Service',
         phone: '+91 98765 43210',
@@ -538,7 +613,7 @@ class DatabaseService extends ChangeNotifier {
         tableCount: 12,
         isOnboarded: true,
       );
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      await _saveRestaurantToPrefs();
     }
 
     notifyListeners();
@@ -547,7 +622,6 @@ class DatabaseService extends ChangeNotifier {
 
   Future<bool> loginUser(String identifier, String password) async {
     final cleanId = identifier.trim();
-
     final cleanPw = password.trim();
 
     if (cleanId.isEmpty || cleanPw.isEmpty) {
@@ -623,7 +697,7 @@ class DatabaseService extends ChangeNotifier {
         phone: fbUser?.phoneNumber ?? matched?.phone ?? cleanId,
         role: 'Owner',
         pin: '1234',
-        restaurantId: restaurant?.id ?? 'rest_001',
+        restaurantId: 'rest_$finalId',
       );
 
       final existingIdx = registeredUsers.indexWhere((u) => u.email.trim().toLowerCase() == finalEmail.toLowerCase());
@@ -634,13 +708,14 @@ class DatabaseService extends ChangeNotifier {
       }
       await _saveRegisteredUsers();
       await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-      
+
       // Sync with Firestore
       if (currentUser != null) {
         await _firestoreService.saveUser(currentUser!);
       }
 
       await sessionManager.saveSession(finalId);
+      await loadUserDataForActiveUser(finalId);
 
       notifyListeners();
       return true;
@@ -665,7 +740,7 @@ class DatabaseService extends ChangeNotifier {
         email: email,
         role: 'Owner',
         pin: '1234',
-        restaurantId: restaurant?.id ?? 'rest_001',
+        restaurantId: 'rest_001',
         profilePhotoPath: photoUrl,
       );
       registeredUsers.add(matched);
@@ -674,14 +749,16 @@ class DatabaseService extends ChangeNotifier {
 
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-    
+
     // Sync with Firestore
     if (currentUser != null) {
       await _firestoreService.saveUser(currentUser!);
     }
-    
+
     if (isNewAccount) {
       await clearUserDataForNewAccount();
+    } else {
+      await loadUserDataForActiveUser(matched.id);
     }
 
     notifyListeners();
@@ -701,7 +778,7 @@ class DatabaseService extends ChangeNotifier {
         phone: cleanPhone,
         role: 'Owner',
         pin: '1234',
-        restaurantId: restaurant?.id ?? 'rest_001',
+        restaurantId: 'rest_001',
       );
       registeredUsers.add(matched);
       await _saveRegisteredUsers();
@@ -709,14 +786,16 @@ class DatabaseService extends ChangeNotifier {
 
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
-    
+
     // Sync with Firestore
     if (currentUser != null) {
       await _firestoreService.saveUser(currentUser!);
     }
-    
+
     if (isNewAccount) {
       await clearUserDataForNewAccount();
+    } else {
+      await loadUserDataForActiveUser(matched.id);
     }
 
     notifyListeners();
@@ -725,6 +804,7 @@ class DatabaseService extends ChangeNotifier {
 
   /// Clears menu items, orders, tables, and inventory data when a brand new user account is created.
   Future<void> clearUserDataForNewAccount() async {
+    ProductService.clearPosCache();
     menuItems.clear();
     categories.clear();
     orders.clear();
@@ -733,13 +813,26 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.clear();
     _liveTableCarts.clear();
 
+    final uid = currentUser?.id ?? 'new_user';
+
+    // Remove user-scoped keys
+    await _prefs?.remove('apna_pos_${uid}_menu');
+    await _prefs?.remove('apna_pos_${uid}_categories');
+    await _prefs?.remove('apna_pos_${uid}_orders');
+    await _prefs?.remove('apna_pos_${uid}_inventory');
+    await _prefs?.remove('apna_pos_${uid}_tables');
+    await _prefs?.remove('apna_pos_${uid}_restaurant');
+
+    // Remove legacy un-scoped keys
     await _prefs?.remove('apna_pos_menu');
     await _prefs?.remove('apna_pos_categories');
     await _prefs?.remove('apna_pos_orders');
     await _prefs?.remove('apna_pos_inventory');
+    await _prefs?.remove('apna_pos_tables');
+    await _prefs?.remove('apna_pos_restaurant');
 
     restaurant = RestaurantModel(
-      id: 'rest_${DateTime.now().millisecondsSinceEpoch}',
+      id: 'rest_${currentUser?.id ?? DateTime.now().millisecondsSinceEpoch}',
       name: currentUser?.companyName ?? currentUser?.name ?? 'My Restaurant',
       tagline: 'Authentic Flavors & Swift Service',
       phone: currentUser?.phone ?? '',
@@ -750,7 +843,7 @@ class DatabaseService extends ChangeNotifier {
       tableCount: 12,
       isOnboarded: false,
     );
-    await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    await _saveRestaurantToPrefs();
     _seedCleanTables(12);
 
     notifyListeners();
@@ -778,7 +871,18 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    ProductService.clearPosCache();
     currentUser = null;
+    restaurant = null;
+    menuItems.clear();
+    categories.clear();
+    tables.clear();
+    orders.clear();
+    inventoryItems.clear();
+    _holdOrders.clear();
+    _liveCartTotals.clear();
+    _liveTableCarts.clear();
+
     await sessionManager.clearSession();
     await _prefs?.remove('apna_pos_user');
     notifyListeners();
@@ -787,21 +891,21 @@ class DatabaseService extends ChangeNotifier {
   // --- RESTAURANT ONBOARDING SERVICES ---
   Future<void> saveRestaurantOnboarding(RestaurantModel updated) async {
     restaurant = updated.copyWith(isOnboarded: true);
-    await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
-    
+    await _saveRestaurantToPrefs();
+
     // Sync with Firestore
     await _firestoreService.saveRestaurant(restaurant!);
 
     // Clear demo data for clean production launch if not manually set
-    if (_prefs?.getString('apna_pos_menu') == null) {
+    if (_prefs?.getString(_userKey('menu')) == null && _prefs?.getString('apna_pos_menu') == null) {
       menuItems = [];
       await _saveMenuToPrefs();
     }
-    if (_prefs?.getString('apna_pos_orders') == null) {
+    if (_prefs?.getString(_userKey('orders')) == null && _prefs?.getString('apna_pos_orders') == null) {
       orders = [];
       await _saveOrdersToPrefs();
     }
-    if (_prefs?.getString('apna_pos_inventory') == null) {
+    if (_prefs?.getString(_userKey('inventory')) == null && _prefs?.getString('apna_pos_inventory') == null) {
       inventoryItems = [];
       await _saveInventoryToPrefs();
     }
@@ -812,7 +916,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> updateRestaurantProfile(RestaurantModel updated) async {
     restaurant = updated;
-    await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    await _saveRestaurantToPrefs();
     await _firestoreService.saveRestaurant(restaurant!);
     notifyListeners();
 
@@ -839,7 +943,7 @@ class DatabaseService extends ChangeNotifier {
     if (mode != 'with_image' && mode != 'without_image') return;
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(posViewMode: mode);
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      await _saveRestaurantToPrefs();
       notifyListeners();
 
       try {
@@ -876,7 +980,7 @@ class DatabaseService extends ChangeNotifier {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-')) {
+        if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-') || item.id.startsWith('item_')) {
           final created = await _productService.createProduct(item);
           final newIdx = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
           if (newIdx >= 0) {
@@ -897,6 +1001,80 @@ class DatabaseService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[DatabaseService.saveMenuItem] API error: $e');
     }
+  }
+
+  /// Bulk import products from CSV and sync to both local cache and cloud MongoDB backend
+  Future<int> importProductsFromCsv(List<MenuItemModel> items) async {
+    if (items.isEmpty) return 0;
+
+    // 1. Ensure all categories exist locally and in DB
+    for (final item in items) {
+      final String catName = item.category.trim();
+      if (catName.isNotEmpty && !categories.any((c) => (c ?? '').toString().toLowerCase() == catName.toLowerCase())) {
+        categories.add(catName);
+      }
+    }
+    await _saveCategoriesToPrefs();
+
+    // 2. Add / update items in local menuItems list
+    for (final item in items) {
+      final index = menuItems.indexWhere((element) =>
+          element.id == item.id ||
+          (element.productId.isNotEmpty && element.productId == item.productId) ||
+          element.name.trim().toLowerCase() == item.name.trim().toLowerCase());
+      if (index >= 0) {
+        menuItems[index] = item;
+      } else {
+        menuItems.add(item);
+      }
+    }
+    await _saveMenuToPrefs();
+    notifyListeners();
+
+    // 3. Sync categories with remote backend
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        for (final item in items) {
+          final cat = item.category.trim();
+          if (cat.isNotEmpty) {
+            try {
+              await _productService.createCategory(cat);
+            } catch (_) {}
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.importProductsFromCsv] Category sync warning: $e');
+    }
+
+    // 4. Sync products with remote backend via ProductService.bulkImport
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final syncedProducts = await _productService.bulkImport(items);
+        if (syncedProducts.isNotEmpty) {
+          for (final synced in syncedProducts) {
+            final newIdx = menuItems.indexWhere((element) =>
+                element.id == synced.id ||
+                (element.productId.isNotEmpty && element.productId == synced.productId) ||
+                element.name.trim().toLowerCase() == synced.name.trim().toLowerCase());
+            if (newIdx >= 0) {
+              menuItems[newIdx] = synced;
+            } else {
+              menuItems.add(synced);
+            }
+          }
+          await _saveMenuToPrefs();
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.importProductsFromCsv] Remote sync error: $e');
+    }
+
+    ProductService.clearPosCache();
+    return items.length;
   }
 
   Future<void> deleteMenuItem(String id) async {
@@ -934,7 +1112,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveMenuToPrefs() async {
-    await _prefs?.setString('apna_pos_menu', jsonEncode(menuItems.map((e) => e.toJson()).toList()));
+    await _prefs?.setString(_userKey('menu'), jsonEncode(menuItems.map((e) => e.toJson()).toList()));
     _syncCategoriesFromMenu();
   }
 
@@ -1010,7 +1188,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveCategoriesToPrefs() async {
-    await _prefs?.setString('apna_pos_categories', jsonEncode(categories));
+    await _prefs?.setString(_userKey('categories'), jsonEncode(categories));
   }
 
   // --- TABLE MANAGEMENT SERVICES ---
@@ -1078,7 +1256,7 @@ class DatabaseService extends ChangeNotifier {
     tables.addAll(newTablesToAdd);
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(tableCount: tables.length);
-      await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+      await _saveRestaurantToPrefs();
     }
     await _saveTablesToPrefs();
     notifyListeners();
@@ -1124,7 +1302,7 @@ class DatabaseService extends ChangeNotifier {
       tables.removeWhere((t) => toRemove.contains(t.id));
       if (restaurant != null) {
         restaurant = restaurant!.copyWith(tableCount: tables.length);
-        await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+        await _saveRestaurantToPrefs();
       }
       await _saveTablesToPrefs();
       notifyListeners();
@@ -1132,7 +1310,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveTablesToPrefs() async {
-    await _prefs?.setString('apna_pos_tables', jsonEncode(tables.map((e) => e.toJson()).toList()));
+    await _prefs?.setString(_userKey('tables'), jsonEncode(tables.map((e) => e.toJson()).toList()));
   }
 
   // --- ORDERS & POS BILLING SERVICES ---
@@ -1142,6 +1320,8 @@ class DatabaseService extends ChangeNotifier {
     required OrderType orderType,
     required double discountAmount,
     required String paymentMethod,
+    double roundOff = 0.0,
+    double? totalAmount,
     String? deliveryAddress,
     OrderStatus? status,
     String? customerName,
@@ -1150,7 +1330,8 @@ class DatabaseService extends ChangeNotifier {
     final subtotal = items.fold(0.0, (sum, i) => sum + i.totalPrice);
     final taxRate = restaurant?.taxRate ?? 5.0;
     final taxAmount = (subtotal - discountAmount) * (taxRate / 100.0);
-    final totalAmount = (subtotal - discountAmount) + taxAmount;
+    final computedTotal = (subtotal - discountAmount) + taxAmount + roundOff;
+    final finalTotalAmount = totalAmount ?? computedTotal;
 
     final now = DateTime.now();
     final year = now.year.toString();
@@ -1176,7 +1357,8 @@ class DatabaseService extends ChangeNotifier {
       subtotal: subtotal,
       taxAmount: taxAmount,
       discountAmount: discountAmount,
-      totalAmount: totalAmount,
+      roundOff: roundOff,
+      totalAmount: finalTotalAmount,
       paymentMethod: paymentMethod,
       deliveryAddress: deliveryAddress,
       createdAt: DateTime.now().toString().substring(11, 16),
@@ -1266,12 +1448,19 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
-  Future<void> completeOrderPayment(String orderId, String paymentMethod) async {
+  Future<void> completeOrderPayment(
+    String orderId,
+    String paymentMethod, {
+    double? roundOff,
+    double? totalAmount,
+  }) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
       orders[index] = orders[index].copyWith(
         status: OrderStatus.completed,
         paymentMethod: paymentMethod,
+        roundOff: roundOff ?? orders[index].roundOff,
+        totalAmount: totalAmount ?? orders[index].totalAmount,
       );
 
       final currentOrder = orders[index];
@@ -1311,8 +1500,23 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Real-time check if an order has been paid via UPI gateway / webhook
+  Future<bool> checkUpiPaymentStatus(String orderId) async {
+    final localOrder = orders.where((o) => o.id == orderId || o.orderNumber == orderId).firstOrNull;
+    if (localOrder != null && localOrder.status == OrderStatus.completed) {
+      return true;
+    }
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        return await _orderService.checkUpiPaymentVerification(orderId);
+      }
+    } catch (_) {}
+    return false;
+  }
+
   Future<void> _saveOrdersToPrefs() async {
-    await _prefs?.setString('apna_pos_orders', jsonEncode(orders.map((e) => e.toJson()).toList()));
+    await _prefs?.setString(_userKey('orders'), jsonEncode(orders.map((e) => e.toJson()).toList()));
   }
 
   // --- INVENTORY SERVICES ---
@@ -1337,7 +1541,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveInventoryToPrefs() async {
-    await _prefs?.setString('apna_pos_inventory', jsonEncode(inventoryItems.map((e) => e.toJson()).toList()));
+    await _prefs?.setString(_userKey('inventory'), jsonEncode(inventoryItems.map((e) => e.toJson()).toList()));
   }
 
   // --- RE-SEED & RESET DATABASE ---
@@ -1365,7 +1569,7 @@ class DatabaseService extends ChangeNotifier {
       tableCount: 12,
       isOnboarded: true,
     );
-    await _prefs?.setString('apna_pos_restaurant', jsonEncode(restaurant!.toJson()));
+    await _saveRestaurantToPrefs();
     notifyListeners();
   }
 

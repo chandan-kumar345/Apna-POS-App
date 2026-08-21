@@ -52,8 +52,8 @@ class CartService {
           'salePrice': product.salePrice,
           'hasDiscount': product.hasDiscount,
           'discountPercent': product.discountPercent,
-          'foodType': product.foodType.name,
-          'imageUrl': product.imageUrl ?? '',
+          'foodType': product.itemType.toLowerCase(),
+          'imageUrl': product.imageUrl,
         },
       };
 
@@ -151,10 +151,10 @@ class CartService {
           'salePrice': ci.item.salePrice,
           'hasDiscount': ci.item.hasDiscount,
           'discountPercent': ci.item.discountPercent,
-          'variantName': ci.selectedVariant?.name ?? '',
+          'variantName': ci.note ?? '',
           'quantity': ci.quantity,
-          'foodType': ci.item.foodType.name,
-          'imageUrl': ci.item.imageUrl ?? '',
+          'foodType': ci.item.itemType.toLowerCase(),
+          'imageUrl': ci.item.imageUrl,
         }).toList(),
       };
 

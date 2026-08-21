@@ -9,7 +9,15 @@ class OrderService {
   /// Create a new order in backend
   Future<OrderModel> createOrder(OrderModel order) async {
     try {
-      final isPaid = order.status == OrderStatus.completed || (order.paymentMethod.isNotEmpty && order.paymentMethod.toLowerCase() != 'unpaid');
+      final pm = order.paymentMethod.toLowerCase().trim();
+      final isKotOrUnpaid = pm.contains('kot') ||
+          pm.contains('pending') ||
+          pm == 'unpaid' ||
+          pm.isEmpty ||
+          order.status == OrderStatus.pending ||
+          order.status == OrderStatus.preparing;
+
+      final isPaid = order.status == OrderStatus.completed && !isKotOrUnpaid;
       final payload = {
         'orderNumber': order.orderNumber,
         'orderType': order.orderType.name,
@@ -29,23 +37,25 @@ class OrderService {
         'discountAmount': order.discountAmount,
         'taxAmount': order.taxAmount,
         'totalAmount': order.totalAmount,
-        'paymentMethod': order.paymentMethod,
+        'paymentMethod': isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod,
         'paymentStatus': isPaid ? 'paid' : 'pending',
         'idempotencyKey': 'pos:generatePosOrder:${order.id}',
         'clientSyncId': order.id,
         'localOrderId': order.id,
         'isPaid': isPaid,
         'isDineIn': order.orderType == OrderType.dineIn,
-        'paymentMode': order.paymentMethod,
-        'paymentDetails': [
-          {
-            'paymentType': order.paymentMethod,
-            'paymentName': order.paymentMethod,
-            'amount': order.totalAmount,
-            'paymentMethod': order.paymentMethod,
-            'ncReason': '',
-          }
-        ],
+        'paymentMode': isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod,
+        'paymentDetails': isPaid
+            ? [
+                {
+                  'paymentType': order.paymentMethod,
+                  'paymentName': order.paymentMethod,
+                  'amount': order.totalAmount,
+                  'paymentMethod': order.paymentMethod,
+                  'ncReason': '',
+                }
+              ]
+            : [],
       };
 
       final response = await _apiClient.post(
@@ -176,6 +186,23 @@ class OrderService {
     } catch (e) {
       debugPrint('[OrderService.fetchTableOrder] error: $e');
       return null;
+    }
+  }
+
+  /// Check real-time UPI payment verification status for an order
+  Future<bool> checkUpiPaymentVerification(String orderId) async {
+    try {
+      final response = await _apiClient.get(
+        '${ApiEndpoints.orders}/$orderId/payment-status',
+      );
+      if (response != null && response['data'] != null) {
+        final paymentStatus = response['data']['paymentStatus']?.toString().toLowerCase() ?? '';
+        final isPaid = response['data']['isPaid'] == true;
+        return isPaid || paymentStatus == 'paid' || paymentStatus == 'completed' || paymentStatus == 'success';
+      }
+      return false;
+    } catch (_) {
+      return false;
     }
   }
 }

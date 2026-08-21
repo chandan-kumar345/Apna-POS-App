@@ -479,8 +479,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   if (variantHasDisc && vDiscPercent > 0)
                                     Row(
                                       children: [
-                                        // First: Strike out main price from center
-                                        _buildStruckPrice('$currency ${v.price.toStringAsFixed(0)}', fontSize: 11.5, fontWeight: FontWeight.w700),
+                                        // First: Strike out main price (bold & struck out)
+                                        Text(
+                                          '$currency ${v.price.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            color: Color(0xFF64748B),
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                            decoration: TextDecoration.lineThrough,
+                                            decorationThickness: 3.0,
+                                            decorationColor: Color(0xFF64748B),
+                                          ),
+                                        ),
                                         const SizedBox(width: 5),
                                         // Second: How much discount applied
                                         Container(
@@ -746,33 +756,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       );
     }
     return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24)));
-  }
-
-  Widget _buildStruckPrice(String priceText, {double fontSize = 10, FontWeight fontWeight = FontWeight.w700, Color color = const Color(0xFF64748B)}) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        Text(
-          priceText,
-          style: TextStyle(
-            fontSize: fontSize,
-            fontWeight: fontWeight,
-            color: color,
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          child: Container(
-            height: 1.6,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(1),
-            ),
-          ),
-        ),
-      ],
-    );
   }
 
   void _showAddItemDialog() {
@@ -2060,7 +2043,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                   ),
                                                 ),
                                                 const SizedBox(width: 6),
-                                                _buildStruckPrice('$currency${cItem.item.price.toStringAsFixed(1)}', fontSize: 11.5, fontWeight: FontWeight.w700),
+                                                Text(
+                                                  '$currency${cItem.item.price.toStringAsFixed(1)}',
+                                                  style: const TextStyle(
+                                                    fontSize: 11.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Color(0xFF64748B),
+                                                    decoration: TextDecoration.lineThrough,
+                                                    decorationThickness: 2.0,
+                                                    decorationColor: Color(0xFF64748B),
+                                                  ),
+                                                ),
                                                 const SizedBox(width: 6),
                                                 Text(
                                                   '(${cItem.item.discountPercent.toStringAsFixed(0)}% OFF)',
@@ -2785,6 +2778,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           final double displaySalePrice = hasVariants ? (firstVariant?.effectivePrice ?? 0.0) : item.effectivePrice;
                           final double displayOriginalPrice = hasVariants ? (firstVariant?.price ?? 0.0) : item.price;
                           final double displayDiscountPct = hasVariants ? varDiscPct : itemDiscPct;
+                          final bool hasItemDiscount = itemHasDisc;
+                          final bool hasVariantDiscount = variantHasDisc;
 
                           return Container(
                             decoration: BoxDecoration(
@@ -2858,27 +2853,51 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                       child: _buildFoodTypeIcon(item.itemType),
                                                     ),
                                                   ),
-                                                  // Variants Badge (Top Left) - Clean & without top discount text
-                                                   if (hasVariants)
-                                                     Positioned(
-                                                       top: 3,
-                                                       left: 3,
-                                                       child: Container(
-                                                         padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
-                                                         decoration: BoxDecoration(
-                                                           color: const Color(0xFF051C48),
-                                                           borderRadius: BorderRadius.circular(5),
-                                                         ),
-                                                         child: Text(
-                                                           '${item.variants.length} Variants',
-                                                           style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.white),
-                                                         ),
-                                                       ),
-                                                     ),
+                                                  // Variants Badge or Discount Ribbon (Top Left)
+                                                  if (hasVariants)
+                                                    Positioned(
+                                                      top: 3,
+                                                      left: 3,
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFF051C48),
+                                                          borderRadius: BorderRadius.circular(5),
+                                                        ),
+                                                        child: Text(
+                                                          hasVariantDiscount
+                                                              ? '${item.variants.length} Var • ${displayDiscountPct > 0 ? "${displayDiscountPct.toStringAsFixed(0)}% OFF" : "Sale"}'
+                                                              : '${item.variants.length} Variants',
+                                                          style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                                        ),
+                                                      ),
+                                                    )
+                                                  else if (hasItemDiscount)
+                                                    Positioned(
+                                                      top: 3,
+                                                      left: 3,
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFF10B981),
+                                                          borderRadius: BorderRadius.circular(5),
+                                                          boxShadow: [
+                                                            BoxShadow(
+                                                              color: Colors.black.withOpacity(0.15),
+                                                              blurRadius: 3,
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        child: Text(
+                                                          '${item.discountPercent.toStringAsFixed(0)}% OFF',
+                                                          style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: Colors.white),
+                                                        ),
+                                                      ),
+                                                    ),
                                                 ],
                                               ),
                                             ),
-                                             const SizedBox(height: 2),
+                                                                       const SizedBox(height: 2),
 
                                              // Product Name (arranged higher up)
                                              Text(
@@ -2893,13 +2912,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                                              // Price & Discount Hierarchy
                                              if (isDiscounted && displayDiscountPct > 0) ...[
-                                               // First: Strike out main price from center + Second: Discount applied
+                                               // First: Strike out main price + Second: Discount applied
                                                FittedBox(
                                                  fit: BoxFit.scaleDown,
                                                  child: Row(
                                                    mainAxisAlignment: MainAxisAlignment.center,
                                                    children: [
-                                                     _buildStruckPrice('$currency ${displayOriginalPrice.toStringAsFixed(0)}', fontSize: 10, fontWeight: FontWeight.w700),
+                                                     Text(
+                                                       '$currency ${displayOriginalPrice.toStringAsFixed(0)}',
+                                                       style: const TextStyle(
+                                                         fontSize: 10,
+                                                         fontWeight: FontWeight.w700,
+                                                         color: Color(0xFF64748B),
+                                                         decoration: TextDecoration.lineThrough,
+                                                         decorationThickness: 2.0,
+                                                         decorationColor: Color(0xFF64748B),
+                                                       ),
+                                                     ),
                                                      const SizedBox(width: 4),
                                                      Container(
                                                        padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1),
@@ -2919,11 +2948,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                    ],
                                                  ),
                                                ),
-                                               // Last: Sale Price (without 'From')
+                                               // Last: Sale Price
                                                FittedBox(
                                                  fit: BoxFit.scaleDown,
                                                  child: Text(
-                                                   '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                   hasVariants
+                                                       ? 'From $currency ${displaySalePrice.toStringAsFixed(0)}'
+                                                       : '$currency ${displaySalePrice.toStringAsFixed(0)}',
                                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                                                    textAlign: TextAlign.center,
                                                  ),
@@ -2932,7 +2963,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                FittedBox(
                                                  fit: BoxFit.scaleDown,
                                                  child: Text(
-                                                   '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                   hasVariants
+                                                       ? 'From $currency ${displaySalePrice.toStringAsFixed(0)}'
+                                                       : '$currency ${displaySalePrice.toStringAsFixed(0)}',
                                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                                                    textAlign: TextAlign.center,
                                                  ),
@@ -2956,7 +2989,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                          borderRadius: BorderRadius.circular(4),
                                                        ),
                                                        child: Text(
-                                                         '${item.variants.length} Variants',
+                                                         hasVariantDiscount
+                                                             ? '${item.variants.length} Var • ${displayDiscountPct.toStringAsFixed(0)}% OFF'
+                                                             : '${item.variants.length} Variants',
                                                          style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Colors.white),
                                                          maxLines: 1,
                                                          overflow: TextOverflow.ellipsis,
@@ -2965,18 +3000,39 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                    )
                                                  else
                                                    Flexible(
-                                                     child: Container(
-                                                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                                       decoration: BoxDecoration(
-                                                         color: const Color(0xFFF1F5F9),
-                                                         borderRadius: BorderRadius.circular(4),
-                                                       ),
-                                                       child: Text(
-                                                         item.category,
-                                                         style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                                                         maxLines: 1,
-                                                         overflow: TextOverflow.ellipsis,
-                                                       ),
+                                                     child: Row(
+                                                       mainAxisSize: MainAxisSize.min,
+                                                       children: [
+                                                         Flexible(
+                                                           child: Container(
+                                                             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                             decoration: BoxDecoration(
+                                                               color: const Color(0xFFF1F5F9),
+                                                               borderRadius: BorderRadius.circular(4),
+                                                             ),
+                                                             child: Text(
+                                                               item.category,
+                                                               style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                                               maxLines: 1,
+                                                               overflow: TextOverflow.ellipsis,
+                                                             ),
+                                                           ),
+                                                         ),
+                                                         if (hasItemDiscount) ...[
+                                                           const SizedBox(width: 3),
+                                                           Container(
+                                                             padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                                                             decoration: BoxDecoration(
+                                                               color: const Color(0xFF10B981),
+                                                               borderRadius: BorderRadius.circular(3),
+                                                             ),
+                                                             child: Text(
+                                                               '${item.discountPercent.toStringAsFixed(0)}%',
+                                                               style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.white),
+                                                             ),
+                                                           ),
+                                                         ],
+                                                       ],
                                                      ),
                                                    ),
                                                ],
@@ -2992,13 +3048,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                              const SizedBox(height: 2),
                                              // Price & Discount Hierarchy in text-only card
                                              if (isDiscounted && displayDiscountPct > 0) ...[
-                                               // First: Strike out main price from center + Second: Discount applied
+                                               // First: Strike out main price + Second: Discount applied
                                                FittedBox(
                                                  fit: BoxFit.scaleDown,
                                                  alignment: Alignment.centerLeft,
                                                  child: Row(
                                                    children: [
-                                                     _buildStruckPrice('$currency ${displayOriginalPrice.toStringAsFixed(0)}', fontSize: 10, fontWeight: FontWeight.w700),
+                                                     Text(
+                                                       '$currency ${displayOriginalPrice.toStringAsFixed(0)}',
+                                                       style: const TextStyle(
+                                                         fontSize: 10,
+                                                         fontWeight: FontWeight.w700,
+                                                         color: Color(0xFF64748B),
+                                                         decoration: TextDecoration.lineThrough,
+                                                         decorationThickness: 2.0,
+                                                         decorationColor: Color(0xFF64748B),
+                                                       ),
+                                                     ),
                                                      const SizedBox(width: 4),
                                                      Container(
                                                        padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
@@ -3018,14 +3084,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                    ],
                                                  ),
                                                ),
-                                               // Last: Sale Price (without 'From')
+                                               // Last: Sale Price
                                                Text(
-                                                 '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                 hasVariants
+                                                     ? 'From $currency ${displaySalePrice.toStringAsFixed(0)}'
+                                                     : '$currency ${displaySalePrice.toStringAsFixed(0)}',
                                                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                                                ),
                                              ] else ...[
                                                Text(
-                                                 '$currency ${displaySalePrice.toStringAsFixed(0)}',
+                                                 hasVariants
+                                                     ? 'From $currency ${displaySalePrice.toStringAsFixed(0)}'
+                                                     : '$currency ${displaySalePrice.toStringAsFixed(0)}',
                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                                                ),
                                              ],

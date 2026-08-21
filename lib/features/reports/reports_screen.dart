@@ -40,7 +40,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   List<OrderModel> get _filteredOrders {
-    final allOrders = db.orders;
+    final allOrders = db.orders.where((o) =>
+      o.status == OrderStatus.completed &&
+      !o.paymentMethod.toLowerCase().contains('kot')
+    ).toList();
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final yesterdayStart = todayStart.subtract(const Duration(days: 1));

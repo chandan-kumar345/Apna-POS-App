@@ -53,19 +53,21 @@ class ProductService {
 
       if (response != null && response['data'] != null) {
         final productsData = response['data']['products'] as List<dynamic>?;
-        if (productsData != null) {
-          final list = productsData
-              .map((p) => MenuItemModel.fromJson(p as Map<String, dynamic>))
-              .toList();
-          _posCache[cacheKey] = list;
-          _lastCacheTime = now;
-          return list;
-        }
+        final list = productsData != null
+            ? productsData
+                .map((p) => MenuItemModel.fromJson(p as Map<String, dynamic>))
+                .toList()
+            : <MenuItemModel>[];
+        _posCache[cacheKey] = list;
+        _lastCacheTime = now;
+        return list;
       }
+      _posCache[cacheKey] = [];
+      _lastCacheTime = now;
       return [];
     } catch (e) {
       debugPrint('[ProductService.fetchPosProducts] error: $e');
-      if (_posCache.containsKey(cacheKey)) {
+      if (!forceRefresh && _posCache.containsKey(cacheKey)) {
         return _posCache[cacheKey]!;
       }
       return fetchProducts(page: page, limit: limit, category: category, search: search);
@@ -220,8 +222,11 @@ class ProductService {
     }
   }
 
-  /// Bulk import products from CSV
-  Future<int> bulkImport(List<MenuItemModel> items) async {
+  /// Bulk import products from CSV with robust cloud sync and createProduct fallback
+  Future<List<MenuItemModel>> bulkImport(List<MenuItemModel> items) async {
+    clearPosCache();
+    if (items.isEmpty) return [];
+
     try {
       final payload = {
         'items': items.map((item) => item.toJson()).toList(),
@@ -232,11 +237,31 @@ class ProductService {
         data: payload,
       );
 
-      return (response?['data']?['importedCount'] as num?)?.toInt() ?? items.length;
+      if (response != null && response is Map && response['data'] != null) {
+        final List<dynamic>? rawList = response['data']['products'] as List<dynamic>? ??
+            response['data']['items'] as List<dynamic>?;
+        if (rawList != null && rawList.isNotEmpty) {
+          return rawList
+              .map((p) => MenuItemModel.fromJson(p as Map<dynamic, dynamic>))
+              .toList();
+        }
+      }
     } catch (e) {
-      debugPrint('[ProductService.bulkImport] error: $e');
-      rethrow;
+      debugPrint('[ProductService.bulkImport] /products/bulk error, falling back to individual product creation: $e');
     }
+
+    // Fallback: create each product using standard createProduct API (/products)
+    final List<MenuItemModel> createdList = [];
+    for (final item in items) {
+      try {
+        final created = await createProduct(item);
+        createdList.add(created);
+      } catch (e) {
+        debugPrint('[ProductService.bulkImport] createProduct fallback error for "${item.name}": $e');
+        createdList.add(item);
+      }
+    }
+    return createdList;
   }
 }
 
