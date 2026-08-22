@@ -11,6 +11,16 @@ class CustomerController {
     }
   }
 
+  async getSuggestions(req, res, next) {
+    try {
+      const query = req.query.q || req.query.search || req.query.phone || '';
+      const customers = await customerService.getSuggestions(req.businessId, query);
+      return ApiResponse.success(res, { customers }, 'Customer suggestions fetched');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async createOrUpdate(req, res, next) {
     try {
       const customer = await customerService.createOrUpdateCustomer(req.businessId, req.body);
@@ -31,3 +41,4 @@ class CustomerController {
 }
 
 module.exports = new CustomerController();
+

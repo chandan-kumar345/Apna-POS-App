@@ -16,6 +16,7 @@ import '../onboarding/business_settings_screen.dart';
 import '../dashboard/main_layout.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/network/api_exception.dart';
 
 // Country Code Item Model
 class CountryCodeItem {
@@ -667,7 +668,13 @@ class _LoginScreenState extends State<LoginScreen> {
         if (mounted) {
           Navigator.push(
             context,
-            SlideUpPageRoute(page: const SignupScreen()),
+            SlideUpPageRoute(
+              page: SignupScreen(
+                initialEmail: _emailController.text.trim(),
+                initialPassword: _passwordController.text.trim(),
+                initialPhone: _phoneController.text.trim(),
+              ),
+            ),
           );
         }
         return;
@@ -758,6 +765,37 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       final errStr = e.toString();
       debugPrint('Login exception detail: $errStr');
+
+      final isUserNotFound = (e is ApiException && (e.code == 'USER_NOT_FOUND' || e.statusCode == 404)) ||
+          errStr.toLowerCase().contains('no account found') ||
+          errStr.toLowerCase().contains('user not found') ||
+          errStr.toLowerCase().contains('please sign up') ||
+          errStr.toLowerCase().contains('not registered') ||
+          errStr.toLowerCase().contains('user_not_found');
+
+      if (isUserNotFound) {
+        setState(() {
+          _selectedTab = 1;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'No account found. Redirected to register with your entered details.',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              backgroundColor: Color(0xFF051C48),
+              behavior: SnackBarBehavior.floating,
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+
       setState(() {
         _errorMessage = errStr.replaceAll('Exception:', '').trim();
       });
@@ -1181,7 +1219,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
                           // Dynamic View: Switch between Login Form and Register Form Widget seamlessly in-place!
                           if (_selectedTab == 1) ...[
-                            const RegisterFormWidget(),
+                            RegisterFormWidget(
+                              initialEmail: _emailController.text.trim(),
+                              initialPassword: _passwordController.text.trim(),
+                              initialPhone: _phoneController.text.trim(),
+                            ),
                           ] else ...[
                             // Error Banner
                             if (_errorMessage != null) ...[

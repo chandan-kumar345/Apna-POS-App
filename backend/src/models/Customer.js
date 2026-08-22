@@ -10,7 +10,7 @@ const customerSchema = new mongoose.Schema(
     },
     name: {
       type: String,
-      required: [true, 'Customer name is required'],
+      default: '',
       trim: true,
     },
     phone: {

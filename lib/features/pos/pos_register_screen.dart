@@ -5,7 +5,9 @@ import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
+import '../../core/models/extra_model.dart';
 import '../../core/services/cart_api_service.dart';
+import '../../core/services/customer_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/food_type_icon.dart';
 import '../menu/add_product_screen.dart';
@@ -608,16 +610,21 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     double calculated = 0.0;
 
-    // 1. Coupon Codes
+    // 1. Coupon Codes (API-backed with fallback)
     final coupon = _appliedCoupon.trim().toUpperCase();
-    if (coupon == 'SAVE50') {
-      return (subtotal * 0.50).clamp(0.0, subtotal);
-    } else if (coupon == 'FLAT100') {
-      return 100.0.clamp(0.0, subtotal);
-    } else if (coupon == 'WELCOME10') {
-      return (subtotal * 0.10).clamp(0.0, subtotal);
-    } else if (coupon.isNotEmpty) {
-      return 50.0.clamp(0.0, subtotal);
+    if (coupon.isNotEmpty) {
+      final matchedExtra = db.extras.where((e) => e.code.toUpperCase() == coupon).firstOrNull;
+      if (matchedExtra != null) {
+        return matchedExtra.calculateDiscount(subtotal);
+      } else if (coupon == 'SAVE50') {
+        return (subtotal * 0.50).clamp(0.0, subtotal);
+      } else if (coupon == 'FLAT100') {
+        return 100.0.clamp(0.0, subtotal);
+      } else if (coupon == 'WELCOME10') {
+        return (subtotal * 0.10).clamp(0.0, subtotal);
+      } else {
+        return 50.0.clamp(0.0, subtotal);
+      }
     }
 
     // 2. Manual Discount Input
@@ -1249,139 +1256,28 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   void _showAddCustomerDialog(StateSetter setStateModal) {
-    final nameCtrl = TextEditingController(text: _customerName);
-    final phoneCtrl = TextEditingController(text: _customerPhone);
-
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          backgroundColor: Colors.white,
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF051C48).withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Icon(Icons.person_add_rounded, color: Color(0xFF051C48), size: 22),
-                    ),
-                    const SizedBox(width: 10),
-                    const Text(
-                      'Add Customer Info',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: 'Customer Number',
-                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
-                    hintText: 'Enter phone number',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    prefixIcon: const Icon(Icons.phone_outlined, color: Color(0xFF051C48)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-
-                TextField(
-                  controller: nameCtrl,
-                  keyboardType: TextInputType.name,
-                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.bold),
-                  decoration: InputDecoration(
-                    labelText: 'Customer Name',
-                    labelStyle: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600, fontSize: 13),
-                    hintText: 'Enter customer name',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFF051C48)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 20),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                          side: const BorderSide(color: Color(0xFFCBD5E1)),
-                        ),
-                        child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          setState(() {
-                            _customerName = nameCtrl.text.trim();
-                            _customerPhone = phoneCtrl.text.trim();
-                          });
-                          setStateModal(() {});
-                          Navigator.pop(context);
-                        },
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          backgroundColor: const Color(0xFF051C48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        ),
-                        child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
+        return _CustomerDetailsDialog(
+          initialName: _customerName,
+          initialPhone: _customerPhone,
+          onSave: (name, phone) {
+            setState(() {
+              _customerName = name;
+              _customerPhone = phone;
+            });
+            setStateModal(() {});
+          },
         );
       },
     );
   }
 
   void _showExtraBenefitDialog(StateSetter setStateModal) {
+    db.syncExtrasFromBackend();
+
     final couponCtrl = TextEditingController(text: _appliedCoupon);
     final discCtrl = TextEditingController(text: _discountInputValue > 0 ? _discountInputValue.toStringAsFixed(0) : '');
     final tipCtrl = TextEditingController(text: _tipAmount > 0 ? _tipAmount.toStringAsFixed(0) : '');
@@ -1390,9 +1286,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     String tempCoupon = _appliedCoupon;
     double tempDiscountVal = _discountInputValue;
     double tempTipVal = _tipAmount;
+    bool isValidatingCoupon = false;
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
@@ -1477,26 +1375,65 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   Container(
                                     margin: const EdgeInsets.all(4),
                                     child: ElevatedButton(
-                                      onPressed: () {
-                                        setDialogState(() {
-                                          tempCoupon = couponCtrl.text.trim();
-                                        });
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text(tempCoupon.isNotEmpty ? 'Coupon "$tempCoupon" Applied!' : 'Coupon cleared.'),
-                                            duration: const Duration(seconds: 1),
-                                            backgroundColor: const Color(0xFF051C48),
-                                            behavior: SnackBarBehavior.floating,
-                                          ),
-                                        );
-                                      },
+                                      onPressed: isValidatingCoupon
+                                          ? null
+                                          : () async {
+                                              final rawCode = couponCtrl.text.trim();
+                                              if (rawCode.isEmpty) {
+                                                setDialogState(() {
+                                                  tempCoupon = '';
+                                                });
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text('Coupon cleared.'),
+                                                    duration: Duration(seconds: 1),
+                                                    backgroundColor: Color(0xFF051C48),
+                                                    behavior: SnackBarBehavior.floating,
+                                                  ),
+                                                );
+                                                return;
+                                              }
+
+                                              setDialogState(() => isValidatingCoupon = true);
+                                              final result = await db.extraService.validateCoupon(
+                                                code: rawCode,
+                                                subtotal: cartSubtotal,
+                                              );
+                                              if (context.mounted) {
+                                                setDialogState(() {
+                                                  isValidatingCoupon = false;
+                                                  if (result.isValid) {
+                                                    tempCoupon = rawCode.toUpperCase();
+                                                  }
+                                                });
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text(result.message),
+                                                    duration: const Duration(seconds: 2),
+                                                    backgroundColor: result.isValid
+                                                        ? const Color(0xFF051C48)
+                                                        : const Color(0xFFDC2626),
+                                                    behavior: SnackBarBehavior.floating,
+                                                  ),
+                                                );
+                                              }
+                                            },
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: const Color(0xFF051C48),
                                         elevation: 0,
                                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                                         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                                       ),
-                                      child: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                      child: isValidatingCoupon
+                                          ? const SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                                     ),
                                   ),
                                 ],
@@ -3248,3 +3185,489 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 }
+
+/// Redesigned Add Name & Number Dialog with Indian Flag prefix and 2-3 digit auto-suggestions
+class _CustomerDetailsDialog extends StatefulWidget {
+  final String initialName;
+  final String initialPhone;
+  final Function(String name, String phone) onSave;
+
+  const _CustomerDetailsDialog({
+    required this.initialName,
+    required this.initialPhone,
+    required this.onSave,
+  });
+
+  @override
+  State<_CustomerDetailsDialog> createState() => _CustomerDetailsDialogState();
+}
+
+class _CustomerDetailsDialogState extends State<_CustomerDetailsDialog> {
+  late final TextEditingController _phoneCtrl;
+  late final TextEditingController _nameCtrl;
+  final FocusNode _phoneFocusNode = FocusNode();
+  final FocusNode _nameFocusNode = FocusNode();
+
+  final DatabaseService _db = DatabaseService();
+  List<CustomerModel> _suggestions = [];
+  bool _isSearchingRemote = false;
+  String? _errorMsg;
+
+  @override
+  void initState() {
+    super.initState();
+    _phoneCtrl = TextEditingController(text: widget.initialPhone);
+    _nameCtrl = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _phoneCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneFocusNode.dispose();
+    _nameFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _onPhoneChanged(String value) {
+    final query = value.trim();
+    if (_errorMsg != null) {
+      setState(() => _errorMsg = null);
+    }
+
+    if (query.length >= 2) {
+      // 1. Instant local search from DatabaseService
+      final localMatches = _db.searchCustomers(query);
+      setState(() {
+        _suggestions = localMatches;
+      });
+
+      // If user typed 10 digits and matches known customer, auto-fill name if empty
+      final cleanDigits = query.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cleanDigits.length >= 10 && _nameCtrl.text.trim().isEmpty) {
+        final match = _db.getCustomerByPhone(cleanDigits);
+        if (match != null && match.name.isNotEmpty) {
+          _nameCtrl.text = match.name;
+        }
+      }
+
+      // 2. Fetch fresh suggestions from server in background
+      _fetchRemoteSuggestions(query);
+    } else {
+      if (_suggestions.isNotEmpty) {
+        setState(() {
+          _suggestions = [];
+          _isSearchingRemote = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _fetchRemoteSuggestions(String query) async {
+    _isSearchingRemote = true;
+    try {
+      final remoteList = await _db.customerService.fetchSuggestions(query);
+      if (mounted && _phoneCtrl.text.trim() == query) {
+        final Map<String, CustomerModel> map = {
+          for (var c in _suggestions) c.phone.trim(): c,
+        };
+        for (var rc in remoteList) {
+          map[rc.phone.trim()] = rc;
+        }
+        setState(() {
+          _suggestions = map.values.take(10).toList();
+          _isSearchingRemote = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isSearchingRemote = false);
+      }
+    }
+  }
+
+  void _selectSuggestion(CustomerModel customer) {
+    setState(() {
+      _phoneCtrl.text = customer.phone;
+      _nameCtrl.text = customer.name;
+      _suggestions = [];
+    });
+    _nameFocusNode.requestFocus();
+  }
+
+  void _submit() {
+    final phone = _phoneCtrl.text.trim();
+    final name = _nameCtrl.text.trim();
+
+    if (phone.isEmpty && name.isEmpty) {
+      widget.onSave('', '');
+      Navigator.pop(context);
+      return;
+    }
+
+    if (phone.isNotEmpty && phone.replaceAll(RegExp(r'[^0-9]'), '').length < 3) {
+      setState(() => _errorMsg = 'Please enter a valid phone number');
+      return;
+    }
+
+    final finalName = name;
+    _db.saveCustomer(name: finalName, phone: phone);
+    widget.onSave(finalName, phone);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = math.min(screenWidth * 0.94, 560.0);
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      backgroundColor: Colors.white,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: Container(
+        width: dialogWidth,
+        constraints: const BoxConstraints(maxWidth: 560, minWidth: 320),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header with App Theme Badge (Close/X removed, barrierDismissible enabled)
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(9),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Icon(
+                        Icons.person_add_alt_1_rounded,
+                        color: Color(0xFF051C48),
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Add Customer Details',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.3,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                const SizedBox(height: 18),
+
+                // Mobile Number* Label
+                const Text(
+                  'Mobile Number*',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Mobile Number Input Field with Indian Flag
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: TextField(
+                    controller: _phoneCtrl,
+                    focusNode: _phoneFocusNode,
+                    keyboardType: TextInputType.phone,
+                    cursorColor: const Color(0xFF051C48),
+                    onChanged: _onPhoneChanged,
+                    style: const TextStyle(
+                      color: Color(0xFF0F172A),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Enter Mobile Number',
+                      hintStyle: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      prefixIcon: Container(
+                        padding: const EdgeInsets.only(left: 14, right: 10),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              '🇮🇳',
+                              style: TextStyle(fontSize: 20),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              width: 1,
+                              height: 22,
+                              color: const Color(0xFFCBD5E1),
+                            ),
+                          ],
+                        ),
+                      ),
+                      prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                      suffixIcon: _isSearchingRemote
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFF051C48),
+                                ),
+                              ),
+                            )
+                          : (_phoneCtrl.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF94A3B8)),
+                                  onPressed: () {
+                                    _phoneCtrl.clear();
+                                    _onPhoneChanged('');
+                                  },
+                                )
+                              : null),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                      ),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                  ),
+                ),
+
+                // Auto-Suggestions List (when user types 2-3 starting numbers)
+                if (_suggestions.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Container(
+                    constraints: const BoxConstraints(maxHeight: 190),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        padding: EdgeInsets.zero,
+                        itemCount: _suggestions.length,
+                        separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                        itemBuilder: (ctx, idx) {
+                          final cust = _suggestions[idx];
+                          return InkWell(
+                            onTap: () => _selectSuggestion(cust),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(7),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.person_rounded,
+                                      size: 16,
+                                      color: Color(0xFF051C48),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          cust.phone,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 14,
+                                            color: Color(0xFF0F172A),
+                                          ),
+                                        ),
+                                        if (cust.name.isNotEmpty)
+                                          Text(
+                                            cust.name,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              color: Color(0xFF64748B),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.touch_app_rounded, size: 12, color: Color(0xFF051C48)),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'Select',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF051C48),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+
+                if (_errorMsg != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    _errorMsg!,
+                    style: const TextStyle(color: Color(0xFFEF4444), fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ],
+
+                const SizedBox(height: 18),
+
+                // Name Label (Optional)
+                const Text(
+                  'Name',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Name Input Field
+                TextField(
+                  controller: _nameCtrl,
+                  focusNode: _nameFocusNode,
+                  keyboardType: TextInputType.name,
+                  textCapitalization: TextCapitalization.words,
+                  cursorColor: const Color(0xFF051C48),
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Enter Name (Optional)',
+                    hintStyle: const TextStyle(
+                      color: Color(0xFF94A3B8),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                    ),
+                    prefixIcon: const Icon(Icons.person_outline_rounded, color: Color(0xFF051C48), size: 20),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                    ),
+                    filled: true,
+                    fillColor: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Save Button (Full Width, Single Primary Action)
+                Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF051C48).withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    onPressed: _submit,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF051C48),
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: const Text(
+                      'Save Customer',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+

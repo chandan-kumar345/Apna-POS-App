@@ -14,20 +14,51 @@ import '../../core/services/auth_service.dart';
 
 // Standalone Register Form Widget (Embedded inline inside LoginScreen or used standalone)
 class RegisterFormWidget extends StatefulWidget {
-  const RegisterFormWidget({super.key});
+  final String? initialEmail;
+  final String? initialPassword;
+  final String? initialPhone;
+
+  const RegisterFormWidget({
+    super.key,
+    this.initialEmail,
+    this.initialPassword,
+    this.initialPhone,
+  });
 
   @override
   State<RegisterFormWidget> createState() => _RegisterFormWidgetState();
 }
 
 class _RegisterFormWidgetState extends State<RegisterFormWidget> {
-  final _emailController = TextEditingController();
-  final _passwordController = TextEditingController();
+  late final TextEditingController _emailController;
+  late final TextEditingController _passwordController;
 
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
   final db = DatabaseService();
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _passwordController = TextEditingController(text: widget.initialPassword ?? '');
+  }
+
+  @override
+  void didUpdateWidget(covariant RegisterFormWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initialEmail != null &&
+        widget.initialEmail != oldWidget.initialEmail &&
+        _emailController.text.trim().isEmpty) {
+      _emailController.text = widget.initialEmail!;
+    }
+    if (widget.initialPassword != null &&
+        widget.initialPassword != oldWidget.initialPassword &&
+        _passwordController.text.trim().isEmpty) {
+      _passwordController.text = widget.initialPassword!;
+    }
+  }
 
   final GoogleSignIn _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
 

@@ -70,7 +70,7 @@ class AuthService {
     }).select('+passwordHash');
 
     if (!user) {
-      throw ApiError.unauthorized('No account found with this email or phone number. Please sign up first.', 'INVALID_CREDENTIALS');
+      throw ApiError.unauthorized('No account found with this email or phone number. Please sign up first.', 'USER_NOT_FOUND');
     }
 
     // Verify password

@@ -533,7 +533,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                          Text(
                                            'Order Setting',
                                            style: TextStyle(
-                                             fontSize: 20,
+                                             fontSize: 15,
                                              fontWeight: FontWeight.w900,
                                              color: Color(0xFF0F172A),
                                              letterSpacing: -0.3,
@@ -547,7 +547,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
                                      ),
                                    ],
                                  ),
-                                 const SizedBox(height: 16),
+                                 const SizedBox(height: 5),
                                  const Divider(color: Color(0xFFE2E8F0)),
                                  const SizedBox(height: 14),
 

@@ -12,6 +12,7 @@ const inventoryRoutes = require('./inventoryRoutes');
 const uploadRoutes = require('./uploadRoutes');
 const cartRoutes = require('./cartRoutes');
 const paymentMethodRoutes = require('./paymentMethodRoutes');
+const extraRoutes = require('./extraRoutes');
 
 const router = express.Router();
 
@@ -39,5 +40,6 @@ router.use('/inventory', inventoryRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/cart', cartRoutes);
 router.use('/payment-methods', paymentMethodRoutes);
+router.use('/extras', extraRoutes);
 
 module.exports = router;

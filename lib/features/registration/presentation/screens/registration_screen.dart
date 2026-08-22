@@ -9,7 +9,16 @@ import '../providers/registration_state.dart';
 import '../../../auth/create_profile_screen.dart';
 
 class ProductionRegistrationScreen extends ConsumerStatefulWidget {
-  const ProductionRegistrationScreen({super.key});
+  final String? initialEmail;
+  final String? initialPhone;
+  final String? initialPassword;
+
+  const ProductionRegistrationScreen({
+    super.key,
+    this.initialEmail,
+    this.initialPhone,
+    this.initialPassword,
+  });
 
   @override
   ConsumerState<ProductionRegistrationScreen> createState() =>
@@ -23,9 +32,9 @@ class _ProductionRegistrationScreenState
   // Controllers
   final _fullNameController = TextEditingController();
   final _usernameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _passwordController = TextEditingController();
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _passwordController;
   final _streetController = TextEditingController();
   final _cityController = TextEditingController();
   final _stateController = TextEditingController();
@@ -41,6 +50,14 @@ class _ProductionRegistrationScreenState
   bool _privacyAccepted = true;
   bool _marketingConsent = false;
   bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.initialEmail ?? '');
+    _phoneController = TextEditingController(text: widget.initialPhone ?? '');
+    _passwordController = TextEditingController(text: widget.initialPassword ?? '');
+  }
 
   @override
   void dispose() {

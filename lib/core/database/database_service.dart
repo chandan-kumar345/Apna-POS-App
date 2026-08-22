@@ -7,6 +7,7 @@ import '../models/menu_item_model.dart';
 import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../models/inventory_model.dart';
+import '../models/extra_model.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/auth_repository_factory.dart';
@@ -18,6 +19,7 @@ import '../services/order_service.dart';
 import '../services/table_service.dart';
 import '../services/inventory_service.dart';
 import '../services/customer_service.dart';
+import '../services/extra_service.dart';
 import '../services/report_service.dart';
 import '../services/dashboard_service.dart';
 import '../network/api_client.dart';
@@ -33,12 +35,14 @@ class DatabaseService extends ChangeNotifier {
   IAuthRepository get authRepository => AuthRepositoryFactory.instance;
   final SessionManager sessionManager = SessionManager();
   final FirestoreService _firestoreService = FirestoreService();
+  AuthService get authService => AuthService();
   AuthService get _authService => AuthService();
   ProductService get productService => ProductService();
   OrderService get orderService => OrderService();
   TableService get tableService => TableService();
   InventoryService get inventoryService => InventoryService();
   CustomerService get customerService => CustomerService();
+  ExtraService get extraService => ExtraService();
   ReportService get reportService => ReportService();
   DashboardService get dashboardService => DashboardService();
   
@@ -46,6 +50,8 @@ class DatabaseService extends ChangeNotifier {
   OrderService get _orderService => orderService;
   TableService get _tableService => tableService;
   InventoryService get _inventoryService => inventoryService;
+  CustomerService get _customerService => customerService;
+  ExtraService get _extraService => extraService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -59,6 +65,8 @@ class DatabaseService extends ChangeNotifier {
   List<TableModel> tables = [];
   List<OrderModel> orders = [];
   List<InventoryItemModel> inventoryItems = [];
+  List<CustomerModel> customers = [];
+  List<ExtraModel> extras = [];
   final List<OrderModel> _holdOrders = [];
   List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
 
@@ -222,7 +230,23 @@ class DatabaseService extends ChangeNotifier {
       inventoryItems = [];
     }
 
+    // 7. Load Customers (User-scoped) - Default to empty list [] for user isolation
+    final customersJson = _prefs?.getString('apna_pos_${userId}_customers');
+    if (customersJson != null && customersJson.isNotEmpty) {
+      try {
+        final List raw = jsonDecode(customersJson);
+        customers = raw.map((e) => CustomerModel.fromJson(e)).toList();
+      } catch (e) {
+        customers = [];
+      }
+    } else {
+      customers = [];
+    }
+
     notifyListeners();
+
+    // Asynchronously sync customers from backend server
+    syncCustomersFromBackend();
   }
 
   // Initialize DB and load or seed data
@@ -1369,6 +1393,14 @@ class DatabaseService extends ChangeNotifier {
     orders.insert(0, newOrder);
     await _saveOrdersToPrefs();
 
+    // If customer phone is present, automatically save/update customer in CRM & local DB
+    if (customerPhone != null && customerPhone.trim().isNotEmpty) {
+      saveCustomer(
+        name: (customerName != null && customerName.trim().isNotEmpty) ? customerName.trim() : 'Customer',
+        phone: customerPhone.trim(),
+      );
+    }
+
     // If table assigned, mark table as Occupied or Billed
     if (tableNumber != null && tableNumber.isNotEmpty) {
       final tIndex = tables.indexWhere((t) => t.name == tableNumber || t.tableNumber.toString() == tableNumber);
@@ -1544,6 +1576,145 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_userKey('inventory'), jsonEncode(inventoryItems.map((e) => e.toJson()).toList()));
   }
 
+  // --- CUSTOMER MANAGEMENT & SUGGESTIONS ---
+  Future<void> _saveCustomersToPrefs() async {
+    await _prefs?.setString(_userKey('customers'), jsonEncode(customers.map((c) => c.toJson()).toList()));
+  }
+
+  Future<void> syncCustomersFromBackend() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      final remoteCustomers = await _customerService.fetchCustomers(limit: 100);
+      if (remoteCustomers.isNotEmpty) {
+        final Map<String, CustomerModel> merged = {
+          for (var c in customers) c.phone.trim(): c,
+        };
+        for (var rc in remoteCustomers) {
+          merged[rc.phone.trim()] = rc;
+        }
+        customers = merged.values.toList();
+        await _saveCustomersToPrefs();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.syncCustomersFromBackend] error: $e');
+    }
+  }
+
+  Future<CustomerModel> saveCustomer({
+    required String name,
+    required String phone,
+    String? email,
+    String? address,
+  }) async {
+    final cleanPhone = phone.trim();
+    final cleanName = name.trim().isNotEmpty ? name.trim() : 'Customer';
+    final existingIdx = customers.indexWhere((c) =>
+      c.phone.replaceAll(RegExp(r'[^0-9]'), '') == cleanPhone.replaceAll(RegExp(r'[^0-9]'), '') ||
+      c.phone.trim() == cleanPhone
+    );
+
+    CustomerModel customer;
+    if (existingIdx >= 0) {
+      final existing = customers[existingIdx];
+      customer = existing.copyWith(
+        name: cleanName,
+        phone: cleanPhone,
+        email: email ?? existing.email,
+        address: address ?? existing.address,
+        lastVisit: DateTime.now().toIso8601String(),
+        totalOrders: existing.totalOrders + 1,
+      );
+      customers[existingIdx] = customer;
+    } else {
+      customer = CustomerModel(
+        id: 'cust_${DateTime.now().millisecondsSinceEpoch}',
+        name: cleanName,
+        phone: cleanPhone,
+        email: email ?? '',
+        address: address ?? '',
+        totalOrders: 1,
+        lastVisit: DateTime.now().toIso8601String(),
+      );
+      customers.insert(0, customer);
+    }
+
+    await _saveCustomersToPrefs();
+    notifyListeners();
+
+    // Persist to backend API in background
+    _customerService.saveCustomer(
+      name: cleanName,
+      phone: cleanPhone,
+      email: email,
+      address: address,
+    ).then((remoteCustomer) {
+      if (remoteCustomer != null) {
+        final idx = customers.indexWhere((c) => c.phone.trim() == cleanPhone);
+        if (idx >= 0) {
+          customers[idx] = remoteCustomer;
+          _saveCustomersToPrefs();
+        }
+      }
+    }).catchError((e) {
+      debugPrint('[DatabaseService.saveCustomer] backend error: $e');
+    });
+
+    return customer;
+  }
+
+  List<CustomerModel> searchCustomers(String query) {
+    final clean = query.trim().toLowerCase();
+    if (clean.isEmpty) return [];
+
+    final cleanDigits = clean.replaceAll(RegExp(r'[^0-9]'), '');
+
+    final results = customers.where((c) {
+      final cDigits = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final phoneMatch = (cleanDigits.isNotEmpty && cDigits.contains(cleanDigits)) ||
+          c.phone.toLowerCase().contains(clean);
+      final nameMatch = c.name.toLowerCase().contains(clean);
+      return phoneMatch || nameMatch;
+    }).toList();
+
+    // Sort: exact prefix match first, then by last visit
+    results.sort((a, b) {
+      final aDigits = a.phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final bDigits = b.phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final aStarts = cleanDigits.isNotEmpty && aDigits.startsWith(cleanDigits);
+      final bStarts = cleanDigits.isNotEmpty && bDigits.startsWith(cleanDigits);
+      if (aStarts && !bStarts) return -1;
+      if (!aStarts && bStarts) return 1;
+      return 0;
+    });
+
+    return results.take(10).toList();
+  }
+
+  CustomerModel? getCustomerByPhone(String phone) {
+    final cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '').trim();
+    if (cleanDigits.isEmpty) return null;
+    return customers.where((c) =>
+      (cleanDigits.length >= 6 && c.phone.replaceAll(RegExp(r'[^0-9]'), '').endsWith(cleanDigits)) ||
+      c.phone.replaceAll(RegExp(r'[^0-9]'), '') == cleanDigits ||
+      c.phone.trim() == phone.trim()
+    ).firstOrNull;
+  }
+
+  Future<void> syncExtrasFromBackend() async {
+    try {
+      final list = await _extraService.fetchExtras();
+      if (list.isNotEmpty) {
+        extras = list;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.syncExtrasFromBackend] error: $e');
+    }
+  }
+
   // --- RE-SEED & RESET DATABASE ---
   Future<void> resetDatabase() async {
     await _prefs?.clear();
@@ -1551,6 +1722,8 @@ class DatabaseService extends ChangeNotifier {
     tables.clear();
     orders.clear();
     inventoryItems.clear();
+    customers.clear();
+    extras.clear();
 
     _seedDefaultMenu();
     _seedDefaultTables(12);

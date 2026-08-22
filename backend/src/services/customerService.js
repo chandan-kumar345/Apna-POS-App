@@ -29,18 +29,36 @@ class CustomerService {
     };
   }
 
+  async getSuggestions(businessId, queryText = '') {
+    const clean = (queryText || '').toString().trim();
+    const query = { businessId };
+
+    if (clean.length > 0) {
+      const regex = new RegExp(clean, 'i');
+      query.$or = [{ phone: regex }, { name: regex }];
+    }
+
+    const customers = await Customer.find(query)
+      .sort({ lastVisit: -1 })
+      .limit(10)
+      .select('name phone email address totalOrders totalSpent lastVisit');
+
+    return customers;
+  }
+
   async createOrUpdateCustomer(businessId, customerData) {
-    const phone = customerData.phone.trim();
+    const phone = (customerData.phone || '').toString().trim();
+    const name = (customerData.name || '').toString().trim();
     const customer = await Customer.findOneAndUpdate(
       { businessId, phone },
       {
         $set: {
-          name: customerData.name.trim(),
+          name,
           email: customerData.email ? customerData.email.trim() : '',
           address: customerData.address || '',
           lastVisit: new Date(),
         },
-        $setOnInsert: { businessId, phone },
+        $setOnInsert: { businessId, phone, firstVisit: new Date() },
       },
       { upsert: true, new: true }
     );
@@ -55,3 +73,4 @@ class CustomerService {
 }
 
 module.exports = new CustomerService();
+

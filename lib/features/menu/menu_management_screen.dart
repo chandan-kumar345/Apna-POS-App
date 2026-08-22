@@ -454,7 +454,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                         const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
                                                         const SizedBox(width: 10),
                                                         Text(
-                                                          'Successfully imported $importedTotal products from CSV & synced to cloud!',
+                                                          'Successfully imported $importedTotal products',
                                                           style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
                                                         ),
                                                       ],

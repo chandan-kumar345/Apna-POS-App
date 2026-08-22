@@ -285,6 +285,10 @@ class ApiEndpoints {
   static const String cartSync = '/cart/sync';
   static const String cartClear = '/cart/clear';
 
+  // Extras & Coupons endpoints
+  static const String extras = '/extras';
+  static const String validateCoupon = '/extras/validate-coupon';
+
   // Upload endpoints
   static const String uploadImage = '/upload/image';
 

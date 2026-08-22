@@ -33,6 +33,39 @@ class CustomerModel {
         totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 0.0,
         lastVisit: json['lastVisit']?.toString(),
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'name': name,
+        'phone': phone,
+        'email': email,
+        'address': address,
+        'totalOrders': totalOrders,
+        'totalSpent': totalSpent,
+        'lastVisit': lastVisit,
+      };
+
+  CustomerModel copyWith({
+    String? id,
+    String? name,
+    String? phone,
+    String? email,
+    String? address,
+    int? totalOrders,
+    double? totalSpent,
+    String? lastVisit,
+  }) {
+    return CustomerModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      totalOrders: totalOrders ?? this.totalOrders,
+      totalSpent: totalSpent ?? this.totalSpent,
+      lastVisit: lastVisit ?? this.lastVisit,
+    );
+  }
 }
 
 class CustomerService {
@@ -59,6 +92,25 @@ class CustomerService {
     } catch (e) {
       debugPrint('[CustomerService.fetchCustomers] error: $e');
       return [];
+    }
+  }
+
+  /// Fast customer suggestions by phone or name prefix/query
+  Future<List<CustomerModel>> fetchSuggestions(String query) async {
+    try {
+      final response = await _apiClient.get(
+        '${ApiEndpoints.customers}/suggest',
+        queryParameters: {'q': query.trim()},
+      );
+
+      if (response != null && response['data'] != null && response['data']['customers'] != null) {
+        final raw = response['data']['customers'] as List<dynamic>;
+        return raw.map((c) => CustomerModel.fromJson(c as Map<String, dynamic>)).toList();
+      }
+      return fetchCustomers(search: query, limit: 10);
+    } catch (e) {
+      debugPrint('[CustomerService.fetchSuggestions] error: $e');
+      return fetchCustomers(search: query, limit: 10);
     }
   }
 
@@ -104,3 +156,4 @@ class CustomerService {
     }
   }
 }
+
