@@ -44,17 +44,6 @@ class PosRegisterScreen extends StatefulWidget {
 class _PosRegisterScreenState extends State<PosRegisterScreen> {
   final db = DatabaseService();
   final _cartApiService = CartApiService();
-  final _productService = ProductService();
-
-  // POS Product Pagination
-  final ScrollController _productScrollController = ScrollController();
-  final List<MenuItemModel> _pagedProducts = [];
-  int _currentPage = 1;
-  static const int _pageSize = 10;
-  bool _isLoadingInitialProducts = false;
-  bool _isLoadingMoreProducts = false;
-  bool _hasMoreProducts = true;
-  Timer? _searchDebounce;
 
   String _selectedCategory = 'All';
   String _searchQuery = '';
@@ -101,8 +90,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
-    _productScrollController.addListener(_onProductScroll);
-    _loadInitialProducts();
     if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
@@ -111,133 +98,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void dispose() {
     db.removeListener(_onDbChange);
-    _searchDebounce?.cancel();
-    _productScrollController.removeListener(_onProductScroll);
-    _productScrollController.dispose();
     super.dispose();
   }
 
-  void _onProductScroll() {
-    if (_productScrollController.hasClients &&
-        _productScrollController.position.pixels >=
-            _productScrollController.position.maxScrollExtent - 250) {
-      if (!_isLoadingMoreProducts && !_isLoadingInitialProducts && _hasMoreProducts) {
-        _loadNextProductsPage();
-      }
-    }
-  }
-
-  Future<void> _loadInitialProducts() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingInitialProducts = true;
-      _currentPage = 1;
-      _hasMoreProducts = true;
-      _pagedProducts.clear();
-    });
-
-    try {
-      final items = await _productService.fetchPosProducts(
-        page: 1,
-        limit: _pageSize,
-        category: _selectedCategory,
-        search: _searchQuery,
-        forceRefresh: true,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _pagedProducts.addAll(items);
-        _isLoadingInitialProducts = false;
-        _hasMoreProducts = items.length >= _pageSize;
-      });
-    } catch (e) {
-      debugPrint('[PosRegisterScreen] Error loading initial products: $e');
-      if (!mounted) return;
-      // Fallback to local db if backend is unreachable
-      final local = _getLocalFilteredProducts();
-      setState(() {
-        _pagedProducts.addAll(local.take(_pageSize));
-        _isLoadingInitialProducts = false;
-        _hasMoreProducts = local.length > _pageSize;
-      });
-    }
-  }
-
-  Future<void> _loadNextProductsPage() async {
-    if (_isLoadingMoreProducts || !_hasMoreProducts || _isLoadingInitialProducts) return;
-
-    setState(() {
-      _isLoadingMoreProducts = true;
-    });
-
-    final nextPage = _currentPage + 1;
-
-    try {
-      final items = await _productService.fetchPosProducts(
-        page: nextPage,
-        limit: _pageSize,
-        category: _selectedCategory,
-        search: _searchQuery,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        _currentPage = nextPage;
-        for (final item in items) {
-          if (!_pagedProducts.any((p) => p.id == item.id || (p.productId.isNotEmpty && p.productId == item.productId))) {
-            _pagedProducts.add(item);
-          }
-        }
-        _isLoadingMoreProducts = false;
-        _hasMoreProducts = items.length >= _pageSize;
-      });
-    } catch (e) {
-      debugPrint('[PosRegisterScreen] Error loading more products: $e');
-      if (!mounted) return;
-      // Fallback to local dataset
-      final local = _getLocalFilteredProducts();
-      final skip = _currentPage * _pageSize;
-      final moreLocal = local.skip(skip).take(_pageSize).toList();
-      setState(() {
-        _currentPage = nextPage;
-        for (final item in moreLocal) {
-          if (!_pagedProducts.any((p) => p.id == item.id || (p.productId.isNotEmpty && p.productId == item.productId))) {
-            _pagedProducts.add(item);
-          }
-        }
-        _isLoadingMoreProducts = false;
-        _hasMoreProducts = local.length > (_currentPage * _pageSize);
-      });
-    }
-  }
-
-  List<MenuItemModel> _getLocalFilteredProducts() {
-    final seen = <String>{};
-    final unique = <MenuItemModel>[];
-    for (final item in db.menuItems) {
-      final k = item.name.trim().toLowerCase();
-      if (k.isNotEmpty && !seen.contains(k)) {
-        seen.add(k);
-        unique.add(item);
-      }
-    }
-    return unique.where((item) {
-      final matchesCat = _selectedCategory == 'All' || item.category.toLowerCase() == _selectedCategory.toLowerCase();
-      final matchesSearch = _searchQuery.isEmpty || item.name.toLowerCase().contains(_searchQuery.toLowerCase()) || item.category.toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesCat && matchesSearch;
-    }).toList();
-  }
-
   void _onDbChange() {
-    if (mounted) {
-      setState(() {});
-      if (_pagedProducts.isEmpty && !_isLoadingInitialProducts) {
-        _loadInitialProducts();
-      }
-    }
+    if (mounted) setState(() {});
   }
 
   @override
@@ -3128,24 +2993,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   Widget build(BuildContext context) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
 
-    final categoriesSet = <String>{'All'};
-    for (final cat in db.categories) {
-      if (cat.trim().isNotEmpty) categoriesSet.add(cat.trim());
-    }
-    for (final p in _pagedProducts) {
-      if (p.category.trim().isNotEmpty) categoriesSet.add(p.category.trim());
-    }
-    for (final p in db.menuItems) {
-      if (p.category.trim().isNotEmpty) categoriesSet.add(p.category.trim());
-    }
-    final allCategories = categoriesSet.toList();
-
-    // Ensure selected category is valid
-    if (_selectedCategory != 'All' && !allCategories.any((c) => c.toLowerCase() == _selectedCategory.toLowerCase())) {
-      _selectedCategory = 'All';
-    }
-
-    // Deduplicate in-memory items safely for fallback
+    // Deduplicate in-memory items safely for display
     final seenProductNames = <String>{};
     final uniqueItems = <MenuItemModel>[];
     for (final item in db.menuItems) {
@@ -3156,15 +3004,31 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
     }
 
+    // Only display categories that have products assigned to them
+    final categoriesWithProducts = db.categories.where((cat) {
+      return uniqueItems.any((item) => item.category.trim().toLowerCase() == cat.trim().toLowerCase());
+    }).toList();
+
+    // Include any categories directly present in uniqueItems
+    for (final item in uniqueItems) {
+      final catTrim = item.category.trim();
+      if (catTrim.isNotEmpty && !categoriesWithProducts.any((c) => c.toLowerCase() == catTrim.toLowerCase())) {
+        categoriesWithProducts.add(catTrim);
+      }
+    }
+
+    final allCategories = ['All', ...categoriesWithProducts];
+
+    // Ensure selected category is valid
+    if (_selectedCategory != 'All' && !allCategories.any((c) => c.toLowerCase() == _selectedCategory.toLowerCase())) {
+      _selectedCategory = 'All';
+    }
+
     final filteredItems = uniqueItems.where((item) {
       final matchesCat = _selectedCategory == 'All' || item.category.toLowerCase() == _selectedCategory.toLowerCase();
       final matchesSearch = _searchQuery.isEmpty || item.name.toLowerCase().contains(_searchQuery.toLowerCase()) || item.category.toLowerCase().contains(_searchQuery.toLowerCase());
       return matchesCat && matchesSearch;
     }).toList();
-
-    final displayProducts = _pagedProducts.isNotEmpty
-        ? _pagedProducts
-        : filteredItems;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -3333,13 +3197,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ],
                   ),
                   child: TextField(
-                    onChanged: (val) {
-                      setState(() => _searchQuery = val);
-                      _searchDebounce?.cancel();
-                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
-                        _loadInitialProducts();
-                      });
-                    },
+                    onChanged: (val) => setState(() => _searchQuery = val),
                     style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
                     decoration: InputDecoration(
                       hintText: 'Search products by name or category...',
@@ -3395,10 +3253,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
                         ),
-                        onSelected: (_) {
-                          setState(() => _selectedCategory = cat);
-                          _loadInitialProducts();
-                        },
+                        onSelected: (_) => setState(() => _selectedCategory = cat),
                       ),
                     );
                   },
@@ -3407,24 +3262,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
               const SizedBox(height: 10),
 
-              // 4) HIGHLIGHTED PRODUCT BOXES (WITH SMOOTH PAGINATION & LAZY LOADING)
+              // 4) HIGHLIGHTED PRODUCT BOXES (NO CATEGORY NAME, CENTERED IMAGE WITH SEMI-CURVED CORNERS, FOOD TYPE ICON, VARIANTS LABEL)
               Expanded(
-                child: _isLoadingInitialProducts && displayProducts.isEmpty
-                    ? const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            SizedBox(
-                              width: 32,
-                              height: 32,
-                              child: CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF051C48)),
-                            ),
-                            SizedBox(height: 12),
-                            Text('Loading products...', style: TextStyle(color: Color(0xFF64748B), fontSize: 13, fontWeight: FontWeight.w500)),
-                          ],
-                        ),
-                      )
-                    : displayProducts.isEmpty
+                child: filteredItems.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -3450,8 +3290,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           final bool showImages = db.restaurant?.showItemImages ?? true;
 
                           return GridView.builder(
-                            controller: _productScrollController,
-                            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                            physics: const BouncingScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(10, 6, 10, 90),
                             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                               crossAxisCount: 3,
@@ -3459,25 +3298,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               crossAxisSpacing: 8,
                               childAspectRatio: showImages ? 0.60 : 0.82,
                             ),
-                            itemCount: displayProducts.length + (_isLoadingMoreProducts ? 3 : 0),
+                            itemCount: filteredItems.length,
                             itemBuilder: (context, index) {
-                          if (index >= displayProducts.length) {
-                            return Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
-                              child: const Center(
-                                child: SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
-                                ),
-                              ),
-                            );
-                          }
-                          final item = displayProducts[index];
+                          final item = filteredItems[index];
                           final qty = _getItemCartQuantity(item);
                           final isSelected = qty > 0;
 
