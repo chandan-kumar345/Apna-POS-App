@@ -153,19 +153,25 @@ class OrderService {
     const status = isPaid ? 'completed' : (rawData.status || 'pending');
     const paymentStatus = isPaid ? 'paid' : 'pending';
     const orderType = isDineIn ? 'dineIn' : (rawData.orderType || (tableCode ? 'dineIn' : 'takeaway'));
-    const tableNumber = tableCode || rawData.tableNumber || '';
+    const tableNumber = orderType === 'dineIn' ? (tableCode || rawData.tableNumber || '') : '';
+    const deliveryAddress = orderType === 'delivery' ? (rawData.deliveryAddress || '').trim() : '';
 
     // 6. Update Customer CRM if phone provided
     let customerId = null;
     if (rawData.customerPhone && rawData.customerPhone.trim()) {
       const cleanPhone = rawData.customerPhone.trim();
+      const customerSetFields = {
+        name: rawData.customerName || 'Walk-in Guest',
+        lastVisit: new Date(),
+      };
+      if (deliveryAddress) {
+        customerSetFields.address = deliveryAddress;
+      }
+
       const customer = await Customer.findOneAndUpdate(
         { businessId, phone: cleanPhone },
         {
-          $set: {
-            name: rawData.customerName || 'Walk-in Guest',
-            lastVisit: new Date(),
-          },
+          $set: customerSetFields,
           $inc: {
             totalOrders: 1,
             totalSpent: status === 'completed' ? totalAmount : 0,
@@ -188,6 +194,7 @@ class OrderService {
       orderNumber,
       orderType,
       tableNumber,
+      deliveryAddress,
       customerId,
       customerName: rawData.customerName || '',
       customerPhone: rawData.customerPhone || '',
@@ -372,7 +379,21 @@ class OrderService {
   }
 
   async updateOrderStatus(businessId, orderId, status, { reason } = {}) {
-    const order = await Order.findOne({ _id: orderId, businessId });
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await Order.findOne({ _id: orderId, businessId });
+    }
+    if (!order) {
+      order = await Order.findOne({
+        businessId,
+        $or: [
+          { clientSyncId: orderId },
+          { localOrderId: orderId },
+          { orderNumber: orderId },
+          { orderNumber: (orderId || '').replace('ord_', '').replace('ORD-', '') },
+        ],
+      });
+    }
     if (!order) {
       throw ApiError.notFound('Order not found');
     }
@@ -449,7 +470,21 @@ class OrderService {
   }
 
   async payOrder(businessId, orderId, { paymentMethod, amountPaid }) {
-    const order = await Order.findOne({ _id: orderId, businessId });
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await Order.findOne({ _id: orderId, businessId });
+    }
+    if (!order) {
+      order = await Order.findOne({
+        businessId,
+        $or: [
+          { clientSyncId: orderId },
+          { localOrderId: orderId },
+          { orderNumber: orderId },
+          { orderNumber: (orderId || '').replace('ord_', '').replace('ORD-', '') },
+        ],
+      });
+    }
     if (!order) {
       throw ApiError.notFound('Order not found');
     }

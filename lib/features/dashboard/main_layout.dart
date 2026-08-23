@@ -29,9 +29,11 @@ class MainLayout extends StatefulWidget {
 }
 
 class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
+  final GlobalKey<GlassDashboardScreenState> _dashboardKey = GlobalKey<GlassDashboardScreenState>();
   int _selectedIndex = 1;
   final List<int> _tabHistory = [];
   bool _isSidebarOpen = false;
+  bool _isPosFullScreen = false;
   String? _selectedTableForPos;
   final db = DatabaseService();
 
@@ -40,7 +42,15 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       setState(() {
         _tabHistory.add(_selectedIndex);
         _selectedIndex = index;
+        if (index != 1) {
+          _isPosFullScreen = false;
+        }
       });
+      if (index == 0) {
+        _dashboardKey.currentState?.refreshDashboard();
+      }
+    } else if (index == 0) {
+      _dashboardKey.currentState?.refreshDashboard();
     }
   }
 
@@ -520,9 +530,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 _buildNavItem(4, 'Menu & Categories', Icons.restaurant_menu_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true, isSmallScreen: isSmallScreen),
                 _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(7, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
-                _buildNavItem(8, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
-                _buildNavItem(9, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(7, 'CRM', Icons.people_alt_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(10, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
               ],
             ),
           ),
@@ -639,71 +650,81 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 Column(
                   children: [
                     // TOP HEADER BAR (EXACT DEEP NAVY BLUE FROM IMAGE + LOGO & SEMI-CURVED NAME BADGE TOGETHER)
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Color(0xFF051C48), // Deep Navy Blue
-                            Color(0xFF0A2B66), // Rich Deep Royal Blue
+                    AnimatedCrossFade(
+                      firstChild: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0xFF051C48), // Deep Navy Blue
+                              Color(0xFF0A2B66), // Rich Deep Royal Blue
+                            ],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
+                            InkWell(
+                              onTap: _toggleSidebar,
+                              borderRadius: BorderRadius.circular(24),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 2),
+                                      boxShadow: const [
+                                        BoxShadow(color: Colors.black38, blurRadius: 6),
+                                      ],
+                                    ),
+                                    child: Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: _buildProfileAvatarImage(34),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+
+                                  // HIGHLIGHTED SEMI-CURVED FIELD FOR COMPANY NAME
+                                  GlassCompanyNameBadge(name: companyTitle),
+                                ],
+                              ),
+                            ),
                           ],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
                         ),
                       ),
-                      child: Row(
-                        children: [
-                          // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
-                          InkWell(
-                            onTap: _toggleSidebar,
-                            borderRadius: BorderRadius.circular(24),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(2),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                    boxShadow: const [
-                                      BoxShadow(color: Colors.black38, blurRadius: 6),
-                                    ],
-                                  ),
-                                  child: Container(
-                                    width: 34,
-                                    height: 34,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: _buildProfileAvatarImage(34),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-
-                                // HIGHLIGHTED SEMI-CURVED FIELD FOR COMPANY NAME
-                                GlassCompanyNameBadge(name: companyTitle),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      secondChild: const SizedBox.shrink(),
+                      crossFadeState: (_selectedIndex == 1 && _isPosFullScreen)
+                          ? CrossFadeState.showSecond
+                          : CrossFadeState.showFirst,
+                      duration: const Duration(milliseconds: 250),
+                      sizeCurve: Curves.easeInOutCubic,
                     ),
 
                     // ACTIVE SCREEN WORKSPACE (CURVED WHITE BACKGROUND DOWNSIDE)
                     Expanded(
-                      child: Container(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeInOutCubic,
                         width: double.infinity,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFF8FAFC),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(28),
+                            top: Radius.circular((_selectedIndex == 1 && _isPosFullScreen) ? 0 : 28),
                           ),
                         ),
                         child: ClipRRect(
-                          borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(28),
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular((_selectedIndex == 1 && _isPosFullScreen) ? 0 : 28),
                           ),
                           child: Row(
                             children: [
@@ -737,15 +758,28 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
                               Expanded(
                                 child: SmoothAnimatedIndexedStack(
-                                  index: _selectedIndex.clamp(0, 9),
+                                  index: _selectedIndex.clamp(0, 10),
                                   children: [
                                     GlassDashboardScreen(
+                                      key: _dashboardKey,
+                                      isActive: _selectedIndex == 0,
                                       onNavigateTab: (index) => _selectTab(index),
                                     ),
                                     PosRegisterScreen(
                                       initialTable: _selectedTableForPos,
                                       onOpenDrawer: _toggleSidebar,
                                       onOpenTablesTab: () => _selectTab(2),
+                                      isFullScreen: _isPosFullScreen,
+                                      onToggleFullScreen: () {
+                                        setState(() {
+                                          _isPosFullScreen = !_isPosFullScreen;
+                                        });
+                                      },
+                                      onFullScreenChanged: (full) {
+                                        setState(() {
+                                          _isPosFullScreen = full;
+                                        });
+                                      },
                                     ),
                                     TableManagementScreen(
                                       onTakeOrder: (tableName) {
@@ -755,10 +789,18 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                         _selectTab(1);
                                       },
                                     ),
-                                    const OrdersScreen(),
+                                    OrdersScreen(
+                                      onOpenPosForTable: (tableName) {
+                                        setState(() {
+                                          _selectedTableForPos = tableName;
+                                        });
+                                        _selectTab(1);
+                                      },
+                                    ),
                                     const MenuManagementScreen(),
                                     const InventoryScreen(),
                                     const ReportsScreen(),
+                                    _buildFeatureModalScreen('Customer Relationship Management (CRM)', Icons.people_alt_rounded, 'Manage customer directory, contact details, purchase histories, and relationships.'),
                                     _buildFeatureModalScreen('Loyalty & Rewards', Icons.card_giftcard_rounded, 'Manage customer loyalty points, rewards program, and VIP memberships.'),
                                     _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.'),
                                     const BusinessSettingsHubScreen(),

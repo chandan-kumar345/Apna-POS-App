@@ -40,9 +40,18 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   }
 
   List<MenuItemModel> get filteredProducts {
-    return db.menuItems.where((item) {
+    final seen = <String>{};
+    final uniqueList = <MenuItemModel>[];
+    for (final item in db.menuItems) {
+      final key = item.name.trim().toLowerCase();
+      if (key.isNotEmpty && !seen.contains(key)) {
+        seen.add(key);
+        uniqueList.add(item);
+      }
+    }
+    return uniqueList.where((item) {
       final matchesCat =
-          _selectedCategoryFilter == 'All' || item.category == _selectedCategoryFilter;
+          _selectedCategoryFilter == 'All' || item.category.toLowerCase() == _selectedCategoryFilter.toLowerCase();
       final matchesSearch = item.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           item.category.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           item.description.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -347,7 +356,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                   return;
                                                 }
 
-                                                // Group items by product name
+                                                // Group items by normalized product name
                                                 final Map<String, Map<String, dynamic>> productMap = {};
 
                                                 for (int i = 1; i < lines.length; i++) {
@@ -357,8 +366,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                   final cols = _parseCsvLine(line);
                                                   if (cols.isEmpty) continue;
 
-                                                  final name = cols.length > 0 ? cols[0].trim() : '';
-                                                  if (name.isEmpty) continue;
+                                                  final rawName = cols.isNotEmpty ? cols[0].trim() : '';
+                                                  if (rawName.isEmpty) continue;
+                                                  final nameKey = rawName.toLowerCase();
 
                                                   final desc = cols.length > 1 ? cols[1].trim() : '';
                                                   final foodType = cols.length > 2 ? cols[2].trim() : 'Veg';
@@ -367,9 +377,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                   final varPrice = cols.length > 5 ? (double.tryParse(cols[5].trim()) ?? price) : price;
                                                   final category = cols.length > 6 ? cols[6].trim() : 'General';
 
-                                                  if (!productMap.containsKey(name)) {
-                                                    productMap[name] = {
-                                                      'name': name,
+                                                  if (!productMap.containsKey(nameKey)) {
+                                                    productMap[nameKey] = {
+                                                      'name': rawName,
                                                       'desc': desc,
                                                       'foodType': foodType.isEmpty ? 'Veg' : foodType,
                                                       'price': price,
@@ -379,9 +389,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                   }
 
                                                   if (varName.isNotEmpty) {
-                                                    (productMap[name]!['variants'] as List<ProductVariant>).add(
-                                                      ProductVariant(name: varName, price: varPrice),
-                                                    );
+                                                    final variantsList = productMap[nameKey]!['variants'] as List<ProductVariant>;
+                                                    if (!variantsList.any((v) => v.name.trim().toLowerCase() == varName.toLowerCase())) {
+                                                      variantsList.add(
+                                                        ProductVariant(name: varName, price: varPrice),
+                                                      );
+                                                    }
                                                   }
                                                 }
 
@@ -415,23 +428,30 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                                     normalizedFoodType = 'Beverage';
                                                   }
 
-                                                  final uniqueProdId = 'PRD-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}-${1000 + (addedCount * 37 + DateTime.now().microsecond % 9000)}';
+                                                  // Reuse existing product ID if already registered to prevent duplicates
+                                                  final existingItem = db.menuItems.where((m) => m.name.trim().toLowerCase() == pName.trim().toLowerCase()).firstOrNull;
+                                                  final uniqueProdId = (existingItem != null && existingItem.id.isNotEmpty)
+                                                      ? existingItem.id
+                                                      : 'PRD-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}-${1000 + (addedCount * 37 + DateTime.now().microsecond % 9000)}';
+                                                  final uniqueProductId = (existingItem != null && existingItem.productId.isNotEmpty)
+                                                      ? existingItem.productId
+                                                      : uniqueProdId;
 
                                                   final newItem = MenuItemModel(
                                                     id: uniqueProdId,
-                                                    productId: uniqueProdId,
+                                                    productId: uniqueProductId,
                                                     name: pName,
                                                     category: pCategory.isNotEmpty ? pCategory : 'General',
                                                     price: pVariants.isNotEmpty ? 0.0 : pPrice,
                                                     salePrice: pVariants.isNotEmpty ? null : pPrice,
-                                                    description: pDesc,
-                                                    emoji: '🥘',
-                                                    imageUrl: '',
-                                                    images: const [],
+                                                    description: pDesc.isNotEmpty ? pDesc : (existingItem?.description ?? ''),
+                                                    emoji: existingItem?.emoji ?? '🥘',
+                                                    imageUrl: existingItem?.imageUrl ?? '',
+                                                    images: existingItem?.images ?? const [],
                                                     itemType: normalizedFoodType,
                                                     hasDiscount: false,
                                                     discountPercent: 0.0,
-                                                    stockQuantity: 50,
+                                                    stockQuantity: existingItem?.stockQuantity ?? 50,
                                                     variants: List.from(pVariants),
                                                     trackInventory: true,
                                                     isAvailable: true,

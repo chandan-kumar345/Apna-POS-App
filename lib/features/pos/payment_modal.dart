@@ -34,7 +34,6 @@ class PaymentModal extends StatefulWidget {
 
 class _PaymentModalState extends State<PaymentModal> {
   String _selectedMethod = 'Cash'; // Default: Cash option visible first
-  bool _isProcessing = false;
   bool _isUpiPaymentConfirmed = false;
   String? _upiTransactionRef;
   Timer? _upiPollingTimer;
@@ -185,11 +184,6 @@ class _PaymentModalState extends State<PaymentModal> {
       }
     }
 
-    setState(() => _isProcessing = true);
-    final nav = Navigator.of(context);
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (!mounted) return;
-
     String finalMethod = _selectedMethod;
     if (_selectedMethod == 'Cash') {
       finalMethod = 'Cash (Rec: ${widget.currency}${cashTendered.toStringAsFixed(0)})';
@@ -200,12 +194,38 @@ class _PaymentModalState extends State<PaymentModal> {
           'Split (Cash: ${widget.currency}${splitCash.toStringAsFixed(0)}, Card: ${widget.currency}${splitCard.toStringAsFixed(0)}, UPI: ${widget.currency}${splitUpi.toStringAsFixed(0)})';
     }
 
-    nav.pop(PaymentModalResult(
+    Navigator.of(context).pop(PaymentModalResult(
       paymentMethod: finalMethod,
       roundOff: (_selectedMethod == 'Cash' || _selectedMethod == 'UPI') ? roundOff : 0.0,
       totalAmount: payableAmount,
       cashTendered: _selectedMethod == 'Cash' ? cashTendered : null,
     ));
+  }
+
+  String _getOrderTypeLabel() {
+    switch (widget.order.orderType) {
+      case OrderType.delivery:
+        return 'Delivery';
+      case OrderType.takeaway:
+        return 'Takeaway';
+      case OrderType.dineIn:
+        if (widget.order.tableNumber != null && widget.order.tableNumber!.trim().isNotEmpty) {
+          final tNum = widget.order.tableNumber!.replaceAll('T-', '').trim();
+          return 'Dine-In • Table $tNum';
+        }
+        return 'Dine-In';
+    }
+  }
+
+  Color _getOrderTypeBadgeColor() {
+    switch (widget.order.orderType) {
+      case OrderType.delivery:
+        return const Color(0xFF059669); // Emerald Green
+      case OrderType.takeaway:
+        return const Color(0xFFD97706); // Amber
+      case OrderType.dineIn:
+        return const Color(0xFF0284C7); // Sky Blue / Navy
+    }
   }
 
   @override
@@ -279,16 +299,17 @@ class _PaymentModalState extends State<PaymentModal> {
                                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                               ),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                                  color: _getOrderTypeBadgeColor().withValues(alpha: 0.12),
                                   borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: _getOrderTypeBadgeColor().withValues(alpha: 0.3), width: 0.8),
                                 ),
                                 child: Text(
-                                  widget.order.tableNumber ?? 'Dine-In',
-                                  style: const TextStyle(
-                                    color: Color(0xFF051C48),
-                                    fontSize: 10,
+                                  _getOrderTypeLabel(),
+                                  style: TextStyle(
+                                    color: _getOrderTypeBadgeColor(),
+                                    fontSize: 10.5,
                                     fontWeight: FontWeight.bold,
                                   ),
                                 ),
@@ -366,10 +387,31 @@ class _PaymentModalState extends State<PaymentModal> {
                                   'Sub: ${widget.currency}${widget.order.subtotal.toStringAsFixed(1)}',
                                   style: const TextStyle(color: Colors.white70, fontSize: 11),
                                 ),
+                                if (widget.order.discountAmount > 0) ...[
+                                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                  Text(
+                                    'Disc: -${widget.currency}${widget.order.discountAmount.toStringAsFixed(1)}',
+                                    style: const TextStyle(color: Color(0xFF34D399), fontSize: 11, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
                                 if (widget.order.taxAmount > 0) ...[
                                   const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
                                   Text(
                                     'Tax: ${widget.currency}${widget.order.taxAmount.toStringAsFixed(1)}',
+                                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                  ),
+                                ],
+                                if (widget.order.tipAmount > 0) ...[
+                                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                  Text(
+                                    'Tip: +${widget.currency}${widget.order.tipAmount.toStringAsFixed(1)}',
+                                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
+                                if (widget.order.deliveryCharge > 0) ...[
+                                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                                  Text(
+                                    'Del: +${widget.currency}${widget.order.deliveryCharge.toStringAsFixed(1)}',
                                     style: const TextStyle(color: Colors.white70, fontSize: 11),
                                   ),
                                 ],
@@ -843,25 +885,18 @@ class _PaymentModalState extends State<PaymentModal> {
                   SizedBox(
                     height: 44,
                     child: ElevatedButton.icon(
-                      onPressed: _isProcessing ? null : () => _validateAndSubmitPayment(context, payableAmount, roundOff),
+                      onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF051C48),
-                        disabledBackgroundColor: const Color(0xFF94A3B8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                         elevation: 1,
                       ),
-                      icon: _isProcessing
-                          ? const SizedBox(
-                              width: 16,
-                              height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Icon(Icons.check_circle_rounded, size: 18, color: Colors.white),
-                      label: FittedBox(
+                      icon: const Icon(Icons.check_circle_rounded, size: 18, color: Colors.white),
+                      label: const FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          _isProcessing ? 'Processing...' : 'Confirm & Print Receipt',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
+                          'Confirm & Print Receipt',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
                         ),
                       ),
                     ),

@@ -38,8 +38,11 @@ class ReceiptDialog extends StatelessWidget {
     if (order.customerName != null && order.customerName!.isNotEmpty) {
       buffer.writeln('Customer: ${order.customerName}');
     }
-    if (order.tableNumber != null && order.tableNumber!.isNotEmpty) {
+    if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty) {
       buffer.writeln('Table: ${order.tableNumber}');
+    }
+    if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
+      buffer.writeln('Delivery Address:\n${order.deliveryAddress}');
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('ITEMS:');
@@ -49,8 +52,17 @@ class ReceiptDialog extends StatelessWidget {
     }
     buffer.writeln('--------------------------------');
     buffer.writeln('Subtotal: $currency${order.subtotal.toStringAsFixed(2)}');
+    if (order.discountAmount > 0) {
+      buffer.writeln('Discount: -$currency${order.discountAmount.toStringAsFixed(2)}');
+    }
     if (order.taxAmount > 0) {
-      buffer.writeln('Tax: $currency${order.taxAmount.toStringAsFixed(2)}');
+      buffer.writeln('Tax (GST): $currency${order.taxAmount.toStringAsFixed(2)}');
+    }
+    if (order.tipAmount > 0) {
+      buffer.writeln('Tip: +$currency${order.tipAmount.toStringAsFixed(2)}');
+    }
+    if (order.deliveryCharge > 0) {
+      buffer.writeln('Delivery Charge: +$currency${order.deliveryCharge.toStringAsFixed(2)}');
     }
     if (order.roundOff.abs() > 0.001) {
       final sign = order.roundOff >= 0 ? '+' : '';
@@ -248,11 +260,37 @@ class ReceiptDialog extends StatelessWidget {
                                 : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery'),
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
                           ),
-                          if (order.tableNumber != null && order.tableNumber!.isNotEmpty)
+                          if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty)
                             Text(
                               'Dine In - Table ${order.tableNumber!.replaceAll('T-', '')}',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
                             ),
+                          if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF94A3B8), width: 0.8),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'DELIVERY ADDRESS:',
+                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    order.deliveryAddress!,
+                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000), height: 1.25),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 6),
                           if (order.customerName != null && order.customerName!.isNotEmpty)
                             Text(
@@ -335,10 +373,24 @@ class ReceiptDialog extends StatelessWidget {
                           _buildDashedLine(),
                           const SizedBox(height: 6),
                           _buildReceiptRow('Sub Total', '$currency${order.subtotal.toStringAsFixed(2)}'),
-                          const SizedBox(height: 3),
-                          _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${cgstAmount.toStringAsFixed(2)}'),
-                          const SizedBox(height: 3),
-                          _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${sgstAmount.toStringAsFixed(2)}'),
+                          if (order.discountAmount > 0) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('Discount', '- $currency${order.discountAmount.toStringAsFixed(2)}'),
+                          ],
+                          if (order.taxAmount > 0) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${cgstAmount.toStringAsFixed(2)}'),
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${sgstAmount.toStringAsFixed(2)}'),
+                          ],
+                          if (order.tipAmount > 0) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('Tip', '+ $currency${order.tipAmount.toStringAsFixed(2)}'),
+                          ],
+                          if (order.deliveryCharge > 0) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('Delivery Charge', '+ $currency${order.deliveryCharge.toStringAsFixed(2)}'),
+                          ],
                           if (order.roundOff.abs() > 0.001) ...[
                             const SizedBox(height: 3),
                             _buildReceiptRow(

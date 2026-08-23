@@ -44,11 +44,18 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
         ? List.from(db.tables)
         : db.tables.where((t) => t.floor == _selectedFloor).toList();
 
-    // Sequence tables strictly floor-wise then table number wise
+    // Sequence tables strictly in natural numerical order
     list.sort((a, b) {
-      int c = a.floor.compareTo(b.floor);
-      if (c != 0) return c;
-      return a.tableNumber.compareTo(b.tableNumber);
+      final numA = a.tableNumber > 0
+          ? a.tableNumber
+          : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+      final numB = b.tableNumber > 0
+          ? b.tableNumber
+          : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+      if (numA != numB) {
+        return numA.compareTo(numB);
+      }
+      return a.name.compareTo(b.name);
     });
 
     return list;

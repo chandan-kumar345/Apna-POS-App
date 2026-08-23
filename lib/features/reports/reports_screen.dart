@@ -51,42 +51,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
     switch (_selectedDateFilter) {
       case SalesDateFilter.today:
         return allOrders.where((o) {
-          final dt = DateTime.tryParse(o.createdAt);
-          if (dt == null) return true;
-          return dt.isAfter(todayStart);
+          final dt = o.createdDateTime;
+          return dt.isAfter(todayStart.subtract(const Duration(seconds: 1)));
         }).toList();
 
       case SalesDateFilter.yesterday:
         return allOrders.where((o) {
-          final dt = DateTime.tryParse(o.createdAt);
-          if (dt == null) return false;
-          return dt.isAfter(yesterdayStart) && dt.isBefore(todayStart);
+          final dt = o.createdDateTime;
+          return dt.isAfter(yesterdayStart.subtract(const Duration(seconds: 1))) && dt.isBefore(todayStart);
         }).toList();
 
       case SalesDateFilter.thisWeek:
         final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
         return allOrders.where((o) {
-          final dt = DateTime.tryParse(o.createdAt);
-          if (dt == null) return true;
-          return dt.isAfter(weekStart);
+          final dt = o.createdDateTime;
+          return dt.isAfter(weekStart.subtract(const Duration(seconds: 1)));
         }).toList();
 
       case SalesDateFilter.thisMonth:
         final monthStart = DateTime(now.year, now.month, 1);
         return allOrders.where((o) {
-          final dt = DateTime.tryParse(o.createdAt);
-          if (dt == null) return true;
-          return dt.isAfter(monthStart);
+          final dt = o.createdDateTime;
+          return dt.isAfter(monthStart.subtract(const Duration(seconds: 1)));
         }).toList();
 
       case SalesDateFilter.custom:
         if (_customDateRange == null) return allOrders;
-        final start = _customDateRange!.start;
-        final end = _customDateRange!.end.add(const Duration(days: 1));
+        final start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day, 0, 0, 0);
+        final end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999);
         return allOrders.where((o) {
-          final dt = DateTime.tryParse(o.createdAt);
-          if (dt == null) return true;
-          return dt.isAfter(start) && dt.isBefore(end);
+          final dt = o.createdDateTime;
+          return dt.isAfter(start.subtract(const Duration(seconds: 1))) && dt.isBefore(end.add(const Duration(seconds: 1)));
         }).toList();
 
       case SalesDateFilter.allTime:
@@ -248,9 +243,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        child: RefreshIndicator(
+          onRefresh: () async => await db.syncWithBackend(),
+          color: const Color(0xFF051C48),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -632,8 +630,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildFilterChip(String label, SalesDateFilter filter) {
     final isSelected = _selectedDateFilter == filter;

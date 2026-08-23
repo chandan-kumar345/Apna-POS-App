@@ -14,9 +14,9 @@ class ApiClient {
   ApiClient._internal() {
     final baseOptions = BaseOptions(
       baseUrl: ApiEndpoints.baseUrl,
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 10),
-      sendTimeout: const Duration(seconds: 8),
+      connectTimeout: const Duration(seconds: 15),
+      receiveTimeout: const Duration(seconds: 25),
+      sendTimeout: const Duration(seconds: 15),
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
@@ -37,17 +37,46 @@ class ApiClient {
     }
   }
 
+  Future<Response<dynamic>> _executeWithRetry(
+    Future<Response<dynamic>> Function() request,
+  ) async {
+    _syncBaseUrl();
+    try {
+      return await request();
+    } on DioException catch (e) {
+      final isConnectionIssue = e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.sendTimeout ||
+          e.type == DioExceptionType.receiveTimeout ||
+          (e.error != null && e.error.toString().toLowerCase().contains('socketexception'));
+
+      if (isConnectionIssue) {
+        // Fast parallel re-scan to discover active server endpoint
+        await ApiEndpoints.initialize(forceRecheck: true);
+        _syncBaseUrl();
+        // Retry request once with the newly discovered endpoint
+        try {
+          return await request();
+        } catch (_) {
+          rethrow;
+        }
+      }
+      rethrow;
+    }
+  }
+
   Future<dynamic> get(
     String path, {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    _syncBaseUrl();
     try {
-      final response = await _dio.get(
-        path,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _executeWithRetry(
+        () => _dio.get(
+          path,
+          queryParameters: queryParameters,
+          options: options,
+        ),
       );
       return response.data;
     } on DioException catch (e) {
@@ -63,13 +92,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    _syncBaseUrl();
     try {
-      final response = await _dio.post(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _executeWithRetry(
+        () => _dio.post(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        ),
       );
       return response.data;
     } on DioException catch (e) {
@@ -85,13 +115,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    _syncBaseUrl();
     try {
-      final response = await _dio.patch(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _executeWithRetry(
+        () => _dio.patch(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        ),
       );
       return response.data;
     } on DioException catch (e) {
@@ -107,13 +138,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    _syncBaseUrl();
     try {
-      final response = await _dio.put(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _executeWithRetry(
+        () => _dio.put(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        ),
       );
       return response.data;
     } on DioException catch (e) {
@@ -129,13 +161,14 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     Options? options,
   }) async {
-    _syncBaseUrl();
     try {
-      final response = await _dio.delete(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: options,
+      final response = await _executeWithRetry(
+        () => _dio.delete(
+          path,
+          data: data,
+          queryParameters: queryParameters,
+          options: options,
+        ),
       );
       return response.data;
     } on DioException catch (e) {

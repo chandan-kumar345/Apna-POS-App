@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/email_service.dart';
@@ -11,6 +12,7 @@ import '../onboarding/restaurant_onboarding_screen.dart';
 import 'create_profile_screen.dart';
 import '../dashboard/main_layout.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/firestore_service.dart';
 
 // Standalone Register Form Widget (Embedded inline inside LoginScreen or used standalone)
 class RegisterFormWidget extends StatefulWidget {
@@ -427,12 +429,39 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                           }
 
                                           try {
-                                            // Register user directly via backend API
+                                            // Register user in Firebase Authentication & backend API
                                             final nameFromEmail = emailText.contains('@')
                                                 ? emailText.split('@').first
                                                 : emailText;
                                             final password = _passwordController.text.trim();
 
+                                            // 1. Create or sign in user in Firebase Authentication
+                                            try {
+                                              final auth = FirebaseAuth.instance;
+                                              UserCredential? fbCred;
+                                              try {
+                                                fbCred = await auth.createUserWithEmailAndPassword(
+                                                  email: emailText,
+                                                  password: password,
+                                                );
+                                              } on FirebaseAuthException catch (fbErr) {
+                                                if (fbErr.code == 'email-already-in-use') {
+                                                  fbCred = await auth.signInWithEmailAndPassword(
+                                                    email: emailText,
+                                                    password: password,
+                                                  );
+                                                } else {
+                                                  debugPrint('[FirebaseAuth] signup warning: ${fbErr.code} - ${fbErr.message}');
+                                                }
+                                              }
+                                              if (fbCred?.user != null) {
+                                                await fbCred!.user!.updateDisplayName(nameFromEmail);
+                                              }
+                                            } catch (fbEx) {
+                                              debugPrint('[FirebaseAuth] signup exception: $fbEx');
+                                            }
+
+                                            // 2. Register user in Backend REST API
                                             try {
                                               await AuthService().register(emailText, password);
                                             } catch (e) {
@@ -454,6 +483,12 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                               } else {
                                                 rethrow;
                                               }
+                                            }
+
+                                            // 3. Immediately sync user document to Cloud Firestore
+                                            final activeUser = DatabaseService().currentUser;
+                                            if (activeUser != null) {
+                                              await FirestoreService().saveUser(activeUser);
                                             }
 
                                             // Clear OTP only after successful registration

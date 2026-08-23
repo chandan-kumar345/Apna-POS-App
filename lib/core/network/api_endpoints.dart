@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiEndpoints {
   /// Current local development LAN IP (auto-updated to your machine's IP)
-  static const String defaultLanIp = '172.16.2.3';
+  static const String defaultLanIp = '172.16.2.4';
   static const int defaultPort = 5000;
 
   /// Compile-time environment variable support e.g. flutter run --dart-define=API_URL=https://api.apnapos.com/api/v1
@@ -55,9 +55,9 @@ class ApiEndpoints {
   }
 
   /// Initialize and auto-discover reachable backend server endpoint
-  static Future<void> initialize() async {
-    // 0. If already resolved and not empty, return early
-    if (_resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty) {
+  static Future<void> initialize({bool forceRecheck = false}) async {
+    // 0. If already resolved and not forced, verify health quickly
+    if (!forceRecheck && _resolvedBaseUrl != null && _resolvedBaseUrl!.isNotEmpty) {
       return;
     }
 
@@ -73,9 +73,12 @@ class ApiEndpoints {
       final prefs = await SharedPreferences.getInstance();
       final savedUrl = prefs.getString('custom_backend_base_url');
       if (savedUrl != null && savedUrl.isNotEmpty) {
-        _resolvedBaseUrl = savedUrl;
-        debugPrint('[ApiEndpoints] Using saved custom backend URL: $_resolvedBaseUrl');
-        return;
+        final isCustomAlive = await _pingHealth(savedUrl, timeoutMs: 1200);
+        if (isCustomAlive) {
+          _resolvedBaseUrl = savedUrl;
+          debugPrint('[ApiEndpoints] Using saved custom backend URL: $_resolvedBaseUrl');
+          return;
+        }
       }
     } catch (_) {}
 
@@ -85,32 +88,32 @@ class ApiEndpoints {
       return;
     }
 
-    // 4. Primary candidate base URLs in priority order:
-    // (1) Local LAN (fastest on Wi-Fi)
-    // (2) Production Cloud Render (24/7 online)
-    // (3) Cloudflare Tunnel / Public Tunnel
+    final bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
     final primaryCandidates = [
       'http://$defaultLanIp:$defaultPort/api/v1',
-      productionApiUrl,
-      cloudflareTunnelUrl,
-      publicTunnelUrl,
+      if (isDesktop) 'http://127.0.0.1:$defaultPort/api/v1',
+      if (isDesktop) 'http://localhost:$defaultPort/api/v1',
       if (Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
       'http://127.0.0.1:$defaultPort/api/v1',
       'http://localhost:$defaultPort/api/v1',
+      'http://172.16.2.3:$defaultPort/api/v1',
+      productionApiUrl,
+      cloudflareTunnelUrl,
+      publicTunnelUrl,
     ];
 
-    for (final candidate in primaryCandidates) {
-      if (await _pingHealth(candidate, timeoutMs: 1500)) {
-        _resolvedBaseUrl = candidate;
-        debugPrint('[ApiEndpoints] Connected to active backend at: $candidate');
-        return;
-      }
+    // Fast parallel probe across all primary candidates
+    final activeCandidate = await _scanCandidatesParallel(primaryCandidates, timeoutMs: 1200);
+    if (activeCandidate != null) {
+      _resolvedBaseUrl = activeCandidate;
+      debugPrint('[ApiEndpoints] Connected to active backend at: $activeCandidate');
+      return;
     }
 
     // 5. Dynamic Subnet Auto-Discovery (if primary candidates failed)
     if (!kIsWeb) {
       final subnetCandidates = _generateSubnetCandidates();
-      final dynamicResolved = await _scanCandidatesParallel(subnetCandidates, timeoutMs: 400);
+      final dynamicResolved = await _scanCandidatesParallel(subnetCandidates, timeoutMs: 500);
       if (dynamicResolved != null) {
         _resolvedBaseUrl = dynamicResolved;
         debugPrint('[ApiEndpoints] Auto-discovered backend on subnet: $dynamicResolved');
@@ -118,8 +121,15 @@ class ApiEndpoints {
       }
     }
 
-    // 6. Default fallback: Production Cloud Render URL
-    _resolvedBaseUrl = productionApiUrl;
+    // 6. Default fallback: Default LAN IP on Android, localhost on Desktop
+    if (Platform.isAndroid) {
+      _resolvedBaseUrl = 'http://$defaultLanIp:$defaultPort/api/v1';
+    } else if (isDesktop) {
+      _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
+    } else {
+      _resolvedBaseUrl = productionApiUrl;
+    }
+    debugPrint('[ApiEndpoints] Fallback base URL: $_resolvedBaseUrl');
   }
 
   /// Fast parallel ping across candidate endpoints

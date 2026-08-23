@@ -1,5 +1,8 @@
+const mongoose = require('mongoose');
 const Table = require('../models/Table');
 const Business = require('../models/Business');
+const Order = require('../models/Order');
+const Cart = require('../models/Cart');
 const ApiError = require('../utils/ApiError');
 
 class TableService {
@@ -47,7 +50,72 @@ class TableService {
       }
     }
 
-    return tables;
+    // Fetch active uncompleted orders and active carts for this business to provide authoritative multi-device table state
+    const [activeOrders, activeCarts] = await Promise.all([
+      Order.find({
+        businessId,
+        status: { $in: ['pending', 'preparing'] },
+        orderType: 'dineIn',
+      }).lean(),
+      Cart.find({
+        businessId,
+        orderType: 'dineIn',
+        'items.0': { $exists: true },
+      }).lean(),
+    ]);
+
+    const enrichedTables = tables.map((t) => {
+      const tJson = t.toJSON();
+      const tNumStr = t.tableNumber.toString();
+      const tName = (t.name || `T-${tNumStr}`).trim().toLowerCase();
+      const tNumClean = `t-${tNumStr}`.toLowerCase();
+
+      // Check for active Running KOT order for this table
+      const activeOrder = activeOrders.find((o) => {
+        const oTbl = (o.tableNumber || '').trim().toLowerCase();
+        return oTbl === tName || oTbl === tNumStr || oTbl === tNumClean || oTbl === t._id.toString();
+      });
+
+      // Check for active uncompleted Cart for this table
+      const activeCart = activeCarts.find((c) => {
+        const cTbl = (c.tableNumber || '').trim().toLowerCase();
+        return cTbl === tName || cTbl === tNumStr || cTbl === tNumClean;
+      });
+
+      let effectiveStatus = t.status || 'free';
+      if (activeOrder) {
+        effectiveStatus = 'runningKot';
+      } else if (activeCart && activeCart.items && activeCart.items.length > 0) {
+        if (effectiveStatus !== 'reserved') {
+          effectiveStatus = 'occupied';
+        }
+      }
+
+      return {
+        ...tJson,
+        status: effectiveStatus,
+        activeOrder: activeOrder
+          ? {
+              id: activeOrder._id.toString(),
+              orderNumber: activeOrder.orderNumber,
+              status: activeOrder.status,
+              totalAmount: activeOrder.totalAmount,
+              itemCount: activeOrder.items ? activeOrder.items.length : 0,
+              items: activeOrder.items || [],
+              createdAt: activeOrder.createdAt,
+            }
+          : null,
+        cart: activeCart
+          ? {
+              itemCount: activeCart.itemCount || (activeCart.items ? activeCart.items.length : 0),
+              totalAmount: activeCart.subtotal || 0,
+              items: activeCart.items || [],
+            }
+          : null,
+      };
+    });
+
+    return enrichedTables;
   }
 
   /**
@@ -163,23 +231,49 @@ class TableService {
   }
 
   async updateTableStatus(businessId, tableId, { status, currentOrderId }) {
-    const update = { status };
-    if (status === 'occupied') {
+    const isObjectId = mongoose.Types.ObjectId.isValid(tableId);
+    let normalizedStatus = status === 'running_kot' ? 'runningKot' : status;
+    const update = { status: normalizedStatus };
+
+    if (normalizedStatus === 'occupied' || normalizedStatus === 'runningKot') {
       update.occupiedSince = new Date();
-      if (currentOrderId) update.currentOrderId = currentOrderId;
-    } else if (status === 'free') {
+      if (currentOrderId && mongoose.Types.ObjectId.isValid(currentOrderId)) {
+        update.currentOrderId = currentOrderId;
+      }
+    } else if (normalizedStatus === 'free') {
       update.occupiedSince = null;
       update.currentOrderId = null;
+      update.currentOrderNumber = null;
+      update.currentOrderTotal = 0;
+      update.activeItemCount = 0;
     }
 
     const table = await Table.findOneAndUpdate(
-      { _id: tableId, businessId },
+      {
+        businessId,
+        ...(isObjectId
+          ? { _id: tableId }
+          : { $or: [{ name: tableId }, { tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 0 }] }),
+      },
       { $set: update },
       { new: true }
     );
 
     if (!table) {
       throw ApiError.notFound('Table not found');
+    }
+
+    // If table freed, also clean active uncompleted Cart for that table
+    if (normalizedStatus === 'free') {
+      try {
+        await Cart.deleteMany({
+          businessId,
+          orderType: 'dineIn',
+          tableNumber: { $in: [table.name, table.tableNumber.toString(), `T-${table.tableNumber}`, `T${table.tableNumber}`] },
+        });
+      } catch (err) {
+        // non-blocking
+      }
     }
 
     return table;

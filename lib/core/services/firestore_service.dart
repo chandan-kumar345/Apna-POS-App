@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
@@ -7,7 +8,8 @@ class FirestoreService {
   FirebaseFirestore? get _db {
     try {
       return FirebaseFirestore.instance;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[FirestoreService] FirebaseFirestore initialization error: $e');
       return null;
     }
   }
@@ -20,7 +22,10 @@ class FirestoreService {
   Future<void> saveUser(UserModel user) async {
     try {
       final db = _db;
-      if (db == null) return;
+      if (db == null) {
+        debugPrint('[FirestoreService] FirebaseFirestore is null or not initialized.');
+        return;
+      }
       
       final data = user.toJson();
       // Sanitize large base64/blob strings to prevent Android SQLite CursorWindow (2MB) crash
@@ -28,13 +33,27 @@ class FirestoreService {
         data['profilePhotoPath'] = '';
       }
 
-      await db.collection(usersCollection).doc(user.id).set(
+      final docId = user.id.isNotEmpty
+          ? user.id
+          : (FirebaseAuth.instance.currentUser?.uid ?? 'usr_${DateTime.now().millisecondsSinceEpoch}');
+
+      await db.collection(usersCollection).doc(docId).set(
         data,
         SetOptions(merge: true),
       );
-      debugPrint('User ${user.id} saved to Firestore');
+      debugPrint('[FirestoreService] User $docId successfully saved to Firestore (Collection: $usersCollection)');
+
+      // If Firebase Auth has a different UID than user.id (e.g. MongoDB ID), also link/save under currentUser.uid
+      final fbUid = FirebaseAuth.instance.currentUser?.uid;
+      if (fbUid != null && fbUid.isNotEmpty && fbUid != docId) {
+        await db.collection(usersCollection).doc(fbUid).set(
+          data,
+          SetOptions(merge: true),
+        );
+        debugPrint('[FirestoreService] User duplicate linked to Firestore with Firebase Auth UID: $fbUid');
+      }
     } catch (e) {
-      debugPrint('Error saving user to Firestore (non-fatal): $e');
+      debugPrint('[FirestoreService] Error saving user to Firestore: $e');
     }
   }
 

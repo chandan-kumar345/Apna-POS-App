@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'api_endpoints.dart';
 
@@ -15,8 +16,15 @@ class ApiException implements Exception {
   });
 
   factory ApiException.fromDioException(DioException error) {
-    if (error.response?.data != null && error.response!.data is Map) {
-      final data = error.response!.data as Map<String, dynamic>;
+    dynamic rawData = error.response?.data;
+    if (rawData is String && rawData.trim().startsWith('{')) {
+      try {
+        rawData = jsonDecode(rawData);
+      } catch (_) {}
+    }
+
+    if (rawData != null && rawData is Map) {
+      final data = Map<String, dynamic>.from(rawData);
       final errObj = data['error'] as Map<String, dynamic>?;
       if (errObj != null) {
         String msg = errObj['message']?.toString() ?? 'An error occurred';

@@ -8,14 +8,19 @@ import '../../core/models/order_model.dart';
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
 class GlassDashboardScreen extends StatefulWidget {
   final Function(int index)? onNavigateTab;
+  final bool isActive;
 
-  const GlassDashboardScreen({super.key, this.onNavigateTab});
+  const GlassDashboardScreen({
+    super.key,
+    this.onNavigateTab,
+    this.isActive = true,
+  });
 
   @override
-  State<GlassDashboardScreen> createState() => _GlassDashboardScreenState();
+  State<GlassDashboardScreen> createState() => GlassDashboardScreenState();
 }
 
-class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
+class GlassDashboardScreenState extends State<GlassDashboardScreen> {
   final DatabaseService _db = DatabaseService();
   final DashboardService _dashboardService = DashboardService();
 
@@ -38,6 +43,32 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
   void initState() {
     super.initState();
     _db.addListener(_onDbChange);
+    // Instant initial render from local cache if available
+    if (_db.orders.isNotEmpty) {
+      final initialLocal = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
+      if (initialLocal != null) {
+        _summaryData = initialLocal.summary;
+        _orderTypesData = initialLocal.orderTypes;
+        _productSales = initialLocal.productSales;
+        _customerData = initialLocal.customers;
+        _paymentMethodsData = initialLocal.payments;
+        _taxData = initialLocal.taxes;
+        _orderStatsData = initialLocal.orderStats;
+        _isLoading = false;
+      }
+    }
+    _loadDashboardData();
+  }
+
+  @override
+  void didUpdateWidget(covariant GlassDashboardScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.isActive && !oldWidget.isActive) {
+      _loadDashboardData();
+    }
+  }
+
+  void refreshDashboard() {
     _loadDashboardData();
   }
 
@@ -53,18 +84,52 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
     }
   }
 
-  String? get _startDateParam {
-    if (_dashboardFilter == 'Custom Date' && _customStartDate != null) {
-      return _customStartDate!.toIso8601String();
+  DateTimeRange _getFilterDateRange() {
+    final now = DateTime.now();
+    DateTime start;
+    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+
+    if (_dashboardFilter == 'Custom Date' && _customStartDate != null && _customEndDate != null) {
+      start = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day, 0, 0, 0);
+      end = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 23, 59, 59, 999);
+    } else {
+      final p = _dashboardFilter.toLowerCase();
+      if (p == 'yesterday') {
+        final y = now.subtract(const Duration(days: 1));
+        start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+        end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+      } else if (p == 'week' || p == 'this week') {
+        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+        final mon = now.subtract(Duration(days: diff));
+        start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (p == 'month' || p == 'this month') {
+        start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+      } else if (p == 'year' || p == 'this year') {
+        start = DateTime(now.year, 1, 1, 0, 0, 0);
+        end = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+      } else if (p == 'all time' || p == 'all') {
+        start = DateTime(2020, 1, 1, 0, 0, 0);
+        end = DateTime(now.year + 1, 12, 31, 23, 59, 59, 999);
+      } else {
+        // Today default
+        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      }
     }
-    return null;
+    return DateTimeRange(start: start, end: end);
   }
 
-  String? get _endDateParam {
-    if (_dashboardFilter == 'Custom Date' && _customEndDate != null) {
-      return _customEndDate!.toIso8601String();
-    }
-    return null;
+  String get _startDateParam {
+    final range = _getFilterDateRange();
+    return range.start.toUtc().toIso8601String();
+  }
+
+  String get _endDateParam {
+    final range = _getFilterDateRange();
+    return range.end.toUtc().toIso8601String();
   }
 
   Future<void> _loadDashboardData() async {
@@ -117,27 +182,13 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
       ]);
 
       if (mounted) {
-        var summary = results[0] as DashboardSummaryData;
-        var orderTypes = results[1] as OrderTypeStatsData;
-        var productSales = results[2] as List<ItemSaleReportItem>;
-        var customerData = results[3] as CustomerAnalyticsData;
-        var paymentMethodsData = results[4] as PaymentMethodsSummaryData;
-        var taxData = results[5] as TaxSummaryData;
-        var orderStatsData = results[6] as OrderStatsSummaryData;
-
-        // If cloud returned 0 orders and we have local orders in database, compute local fallback
-        if (summary.totalOrders == 0 && _db.orders.isNotEmpty) {
-          final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
-          if (localData != null && localData.summary.totalOrders > 0) {
-            summary = localData.summary;
-            orderTypes = localData.orderTypes;
-            productSales = localData.productSales;
-            customerData = localData.customers;
-            paymentMethodsData = localData.payments;
-            taxData = localData.taxes;
-            orderStatsData = localData.orderStats;
-          }
-        }
+        final summary = results[0] as DashboardSummaryData;
+        final orderTypes = results[1] as OrderTypeStatsData;
+        final productSales = results[2] as List<ItemSaleReportItem>;
+        final customerData = results[3] as CustomerAnalyticsData;
+        final paymentMethodsData = results[4] as PaymentMethodsSummaryData;
+        final taxData = results[5] as TaxSummaryData;
+        final orderStatsData = results[6] as OrderStatsSummaryData;
 
         setState(() {
           _summaryData = summary;
@@ -148,10 +199,11 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
           _taxData = taxData;
           _orderStatsData = orderStatsData;
           _isLoading = false;
+          _errorMessage = null;
         });
       }
     } catch (e) {
-      debugPrint('[GlassDashboardScreen] Error fetching dashboard data: $e');
+      debugPrint('[GlassDashboardScreen] Error fetching dashboard data from cloud API: $e');
       if (mounted) {
         final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
         setState(() {
@@ -166,7 +218,7 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
           }
           _isLoading = false;
           _errorMessage =
-              'Showing local device records. Tap refresh to sync with cloud.';
+              'Showing local device records (Offline). Tap refresh to sync with cloud.';
         });
       }
     }
@@ -1939,34 +1991,9 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
     DateTime? customEnd,
   ) {
     try {
-      final now = DateTime.now();
-      DateTime start;
-      DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-
-      if (period == 'Custom Date' && customStart != null && customEnd != null) {
-        start = DateTime(customStart.year, customStart.month, customStart.day, 0, 0, 0);
-        end = DateTime(customEnd.year, customEnd.month, customEnd.day, 23, 59, 59, 999);
-      } else {
-        final p = period.toLowerCase();
-        if (p == 'yesterday') {
-          final y = now.subtract(const Duration(days: 1));
-          start = DateTime(y.year, y.month, y.day, 0, 0, 0);
-          end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
-        } else if (p == 'week' || p == 'this week') {
-          final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
-          final mon = now.subtract(Duration(days: diff));
-          start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
-        } else if (p == 'month' || p == 'this month') {
-          start = DateTime(now.year, now.month, 1, 0, 0, 0);
-        } else if (p == 'year' || p == 'this year') {
-          start = DateTime(now.year, 1, 1, 0, 0, 0);
-        } else if (p == 'all time' || p == 'all') {
-          start = DateTime(2000, 1, 1);
-        } else {
-          // Today default
-          start = DateTime(now.year, now.month, now.day, 0, 0, 0);
-        }
-      }
+      final range = _getFilterDateRange();
+      final start = range.start;
+      final end = range.end;
 
       final allOrders = _db.orders;
       final filteredOrders = allOrders.where((o) {
@@ -1975,17 +2002,7 @@ class _GlassDashboardScreenState extends State<GlassDashboardScreen> {
         if (pm.contains('kot') || pm.contains('pending') || pm == 'unpaid' || pm.isEmpty) {
           return false;
         }
-        DateTime? oDate;
-        if (o.orderNumber.length >= 8) {
-          final dStr = o.orderNumber.substring(0, 8);
-          final y = int.tryParse(dStr.substring(0, 4));
-          final m = int.tryParse(dStr.substring(4, 6));
-          final d = int.tryParse(dStr.substring(6, 8));
-          if (y != null && m != null && d != null) {
-            oDate = DateTime(y, m, d, 12, 0, 0);
-          }
-        }
-        oDate ??= now;
+        final oDate = o.createdDateTime;
         return oDate.isAfter(start.subtract(const Duration(seconds: 1))) &&
             oDate.isBefore(end.add(const Duration(seconds: 1)));
       }).toList();

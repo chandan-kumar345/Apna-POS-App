@@ -6,25 +6,26 @@ const Table = require('../models/Table');
 
 class DashboardService {
   /**
-   * Helper to resolve flexible date filters (period / from-to / startDate-endDate)
+   * Helper to resolve flexible date filters (period / from-to / startDate-endDate / timezoneOffset)
    */
-  _resolveDateRange({ period, startDate, endDate, from, to } = {}) {
+  _resolveDateRange({ period, startDate, endDate, from, to, timezoneOffset } = {}) {
     const now = new Date();
     const effectiveFrom = from || startDate;
     const effectiveTo = to || endDate;
 
     if (effectiveFrom && effectiveTo) {
       let start = new Date(effectiveFrom);
+      let end = new Date(effectiveTo);
+
       if (isNaN(start.getTime())) {
         start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      } else {
+      } else if (typeof effectiveFrom === 'string' && !effectiveFrom.includes('T') && !effectiveFrom.includes(':')) {
         start.setHours(0, 0, 0, 0);
       }
 
-      let end = new Date(effectiveTo);
       if (isNaN(end.getTime())) {
         end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-      } else {
+      } else if (typeof effectiveTo === 'string' && !effectiveTo.includes('T') && !effectiveTo.includes(':')) {
         end.setHours(23, 59, 59, 999);
       }
       return { start, end };
@@ -49,24 +50,28 @@ class DashboardService {
       end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
     } else if (p === 'month' || p === 'this month') {
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
     } else if (p === 'year' || p === 'this year') {
       start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
     } else if (p === 'all time' || p === 'all') {
       start = new Date(0);
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      end = new Date(now.getFullYear() + 1, 11, 31, 23, 59, 59, 999);
     }
 
     return { start, end };
   }
 
   _getCompletedOrderMatch(bId, start, end, extraMatch = {}) {
+    const bIdObj = mongoose.Types.ObjectId.isValid(bId) ? new mongoose.Types.ObjectId(bId) : bId;
     return {
-      businessId: bId,
+      businessId: { $in: [bIdObj, bId.toString()] },
       createdAt: { $gte: start, $lte: end },
-      status: { $in: ['completed', 'paid'] },
-      paymentStatus: 'paid',
+      status: { $nin: ['cancelled', 'void'] },
+      $or: [
+        { status: { $in: ['completed', 'paid'] } },
+        { paymentStatus: 'paid' },
+      ],
       paymentMethod: {
         $nin: [
           'KOT Pending',
@@ -77,7 +82,6 @@ class DashboardService {
           'UNPAID',
           'pending',
           'PENDING',
-          '',
         ],
       },
       ...extraMatch,
@@ -212,30 +216,15 @@ class DashboardService {
     const bId = new mongoose.Types.ObjectId(businessId);
     const { start, end } = this._resolveDateRange(query);
 
-    // Get all completed/paid orders in this date range that have customer details
-    const ordersInRange = await Order.find({
-      businessId: bId,
-      createdAt: { $gte: start, $lte: end },
-      status: { $in: ['completed', 'paid'] },
-      paymentStatus: 'paid',
-      paymentMethod: {
-        $nin: [
-          'KOT Pending',
-          'kot pending',
-          'kot',
-          'KOT',
-          'unpaid',
-          'UNPAID',
-          'pending',
-          'PENDING',
-          '',
-        ],
-      },
+    const matchStage = this._getCompletedOrderMatch(bId, start, end, {
       $or: [
         { customerPhone: { $exists: true, $ne: '' } },
         { customerName: { $exists: true, $ne: '' } },
       ],
-    })
+    });
+
+    // Get all completed/paid orders in this date range that have customer details
+    const ordersInRange = await Order.find(matchStage)
       .select('customerName customerPhone createdAt')
       .lean();
 

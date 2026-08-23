@@ -7,7 +7,9 @@ import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  final Function(String tableName)? onOpenPosForTable;
+
+  const OrdersScreen({super.key, this.onOpenPosForTable});
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -20,12 +22,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String _selectedOrderTypeFilter = 'DineIn'; // 'DineIn', 'TakeAway', 'Delivery'
   String _selectedStatusFilter = 'Preparing'; // 'Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'
   String _searchQuery = '';
+  bool _isManualRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
     db.syncWithBackend();
+  }
+
+  Future<void> _refreshOrders() async {
+    setState(() => _isManualRefreshing = true);
+    await db.syncWithBackend();
+    if (mounted) {
+      setState(() => _isManualRefreshing = false);
+    }
   }
 
   @override
@@ -146,17 +157,33 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Bar: Clean Title Only (REMOVED COMPANY NAME WHITE BACKGROUND BADGE)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 12, 16, 10),
-                  child: Text(
-                    'All Received Orders',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF0F172A),
-                      letterSpacing: 0.3,
-                    ),
+                // Top Bar: Clean Title with Refresh Action
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'All Received Orders',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: _isManualRefreshing ? null : _refreshOrders,
+                        icon: _isManualRefreshing
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
+                              )
+                            : const Icon(Icons.refresh_rounded, color: Color(0xFF051C48), size: 22),
+                        tooltip: 'Refresh Orders from Server',
+                      ),
+                    ],
                   ),
                 ),
 
@@ -242,13 +269,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
                 const SizedBox(height: 12),
 
-                // 4) Responsive Order Cards — self-sizing, no fixed height, no overflow
+                // 4) Responsive Order Cards with Pull to Refresh
                 Expanded(
-                  child: filteredOrders.isEmpty
-                      ? Center(
-                          child: SingleChildScrollView(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
+                  child: RefreshIndicator(
+                    onRefresh: _refreshOrders,
+                    color: const Color(0xFF051C48),
+                    child: filteredOrders.isEmpty
+                        ? Center(
+                            child: SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 Container(
                                   width: 100,
@@ -398,6 +429,37 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                               ],
                                             ),
                                             const Spacer(),
+                                            if (order.tableNumber != null &&
+                                                order.tableNumber!.trim().isNotEmpty &&
+                                                (effectiveStatus == OrderStatus.pending ||
+                                                    effectiveStatus == OrderStatus.preparing))
+                                              Padding(
+                                                padding: const EdgeInsets.only(right: 6),
+                                                child: InkWell(
+                                                  onTap: () {
+                                                    if (widget.onOpenPosForTable != null) {
+                                                      widget.onOpenPosForTable!(order.tableNumber!);
+                                                    }
+                                                  },
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  child: Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFF051C48).withOpacity(0.08),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                                                    ),
+                                                    child: const Row(
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Icon(Icons.point_of_sale_rounded, size: 12, color: Color(0xFF051C48)),
+                                                        SizedBox(width: 3),
+                                                        Text('POS', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                             // KOT Button
                                             InkWell(
                                               onTap: () async {
@@ -555,6 +617,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                             );
                           },
                         ),
+                  ),
                 ),
               ],
             ),

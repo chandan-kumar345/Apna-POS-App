@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/utils/form_validators.dart';
@@ -15,6 +16,7 @@ import '../onboarding/add_business_address_screen.dart';
 import '../onboarding/business_settings_screen.dart';
 import '../dashboard/main_layout.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/firestore_service.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/network/api_exception.dart';
 
@@ -721,11 +723,35 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // Authenticate with backend API
+        // 1. Authenticate with Firebase Auth in parallel so Firebase context is authenticated
+        try {
+          final auth = FirebaseAuth.instance;
+          try {
+            await auth.signInWithEmailAndPassword(email: email, password: password);
+          } on FirebaseAuthException catch (fbErr) {
+            if (fbErr.code == 'user-not-found' || fbErr.code == 'invalid-credential') {
+              try {
+                await auth.createUserWithEmailAndPassword(email: email, password: password);
+              } catch (_) {}
+            } else {
+              debugPrint('[FirebaseAuth] login warning: ${fbErr.code} - ${fbErr.message}');
+            }
+          }
+        } catch (fbEx) {
+          debugPrint('[FirebaseAuth] login exception: $fbEx');
+        }
+
+        // 2. Authenticate with backend API
         final result = await AuthService().login(email, password);
         final userJson = result['user'] as Map<String, dynamic>?;
         final bool onboardingCompleted = userJson?['onboardingCompleted'] == true;
         final int currentStep = (userJson?['onboardingStep'] as num?)?.toInt() ?? 0;
+
+        // 3. Sync user document to Firestore
+        final activeUser = DatabaseService().currentUser;
+        if (activeUser != null) {
+          await FirestoreService().saveUser(activeUser);
+        }
 
         if (!mounted) return;
 
@@ -1249,6 +1275,43 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ),
                                       ),
                                     ),
+                                    if (_errorMessage!.toLowerCase().contains('connect') ||
+                                        _errorMessage!.toLowerCase().contains('server') ||
+                                        _errorMessage!.toLowerCase().contains('internet')) ...[
+                                      const SizedBox(width: 8),
+                                      InkWell(
+                                        onTap: () async {
+                                          setState(() => _isLoading = true);
+                                          await ApiEndpoints.initialize(forceRecheck: true);
+                                          setState(() {
+                                            _isLoading = false;
+                                            _errorMessage = null;
+                                          });
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Server connected: ${ApiEndpoints.baseUrl}'),
+                                                backgroundColor: const Color(0xFF051C48),
+                                                behavior: SnackBarBehavior.floating,
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF051C48),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Text(
+                                            'Retry Sync',
+                                            style: TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

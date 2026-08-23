@@ -135,15 +135,28 @@ class ProductService {
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
     const parsedLimit = Math.max(1, parseInt(limit, 10));
 
-    const [products, total] = await Promise.all([
+    const [rawProducts, total] = await Promise.all([
       Product.find(query)
-        .select('id productId name price salePrice hasDiscount discountPercent image images foodType variants isAvailable stock category taxPercentage sku barcode')
         .sort({ name: 1 })
         .skip(skip)
         .limit(parsedLimit)
         .lean(),
       Product.countDocuments(query),
     ]);
+
+    const seenNames = new Set();
+    const products = [];
+    for (const p of rawProducts) {
+      const nameKey = (p.name || '').trim().toLowerCase();
+      if (!nameKey || seenNames.has(nameKey)) continue;
+      seenNames.add(nameKey);
+
+      p.id = p._id ? p._id.toString() : (p.id || p.productId);
+      p.productId = p.productId || p.id;
+      delete p._id;
+      delete p.__v;
+      products.push(p);
+    }
 
     return {
       products,
@@ -175,10 +188,24 @@ class ProductService {
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
     const parsedLimit = Math.max(1, parseInt(limit, 10));
 
-    const [products, total] = await Promise.all([
+    const [rawProducts, total] = await Promise.all([
       Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit).lean(),
       Product.countDocuments(query),
     ]);
+
+    const seenNames = new Set();
+    const products = [];
+    for (const p of rawProducts) {
+      const nameKey = (p.name || '').trim().toLowerCase();
+      if (!nameKey || seenNames.has(nameKey)) continue;
+      seenNames.add(nameKey);
+
+      p.id = p._id ? p._id.toString() : (p.id || p.productId);
+      p.productId = p.productId || p.id;
+      delete p._id;
+      delete p.__v;
+      products.push(p);
+    }
 
     return {
       products,
@@ -376,18 +403,35 @@ class ProductService {
       throw ApiError.badRequest('Items array is required for bulk import');
     }
 
-    const docs = items.map((item) => {
+    const results = [];
+    for (const item of items) {
       const normalized = this._normalizeProductData(item, true);
-      return {
-        ...normalized,
-        businessId,
-      };
-    });
+      if (!normalized.name) continue;
 
-    const inserted = await Product.insertMany(docs);
+      const escapedName = this._escapeRegex(normalized.name);
+      const query = {
+        businessId,
+        $or: [
+          ...(normalized.productId ? [{ productId: normalized.productId }] : []),
+          { name: { $regex: new RegExp(`^${escapedName}$`, 'i') } }
+        ]
+      };
+
+      const updated = await Product.findOneAndUpdate(
+        query,
+        {
+          $set: {
+            ...normalized,
+            businessId,
+          }
+        },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+      results.push(updated);
+    }
 
     // Sync categories
-    const distinctCategories = [...new Set(docs.map((d) => d.category))];
+    const distinctCategories = [...new Set(results.map((d) => d.category).filter(Boolean))];
     for (const cat of distinctCategories) {
       await Category.findOneAndUpdate(
         { businessId, name: cat },
@@ -396,7 +440,7 @@ class ProductService {
       );
     }
 
-    return { importedCount: inserted.length, products: inserted };
+    return { importedCount: results.length, products: results };
   }
 }
 

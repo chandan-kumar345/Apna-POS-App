@@ -57,6 +57,11 @@ const orderSchema = new mongoose.Schema(
       default: '',
       index: true,
     },
+    deliveryAddress: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Customer',

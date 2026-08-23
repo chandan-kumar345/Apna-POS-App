@@ -1091,59 +1091,59 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Screen Header Title Banner
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x1F000000), blurRadius: 12, offset: Offset(0, 4)),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.15),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF00C2FF), size: 28),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Business Setting',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                  letterSpacing: 0.2,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                db.restaurant?.name.isNotEmpty == true
-                                    ? 'Outlet Settings & Configuration for ${db.restaurant!.name}'
-                                    : 'Configure store preferences, orders, hardware & payments',
-                                style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  // Container(
+                  //   width: double.infinity,
+                  //   padding: const EdgeInsets.all(20),
+                  //   decoration: BoxDecoration(
+                  //     gradient: const LinearGradient(
+                  //       colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                  //       begin: Alignment.topLeft,
+                  //       end: Alignment.bottomRight,
+                  //     ),
+                  //     borderRadius: BorderRadius.circular(20),
+                  //     boxShadow: const [
+                  //       BoxShadow(color: Color(0x1F000000), blurRadius: 12, offset: Offset(0, 4)),
+                  //     ],
+                  //   ),
+                    // child: Row(
+                    //   children: [
+                    //     Container(
+                    //       padding: const EdgeInsets.all(12),
+                    //       decoration: BoxDecoration(
+                    //         color: Colors.white.withValues(alpha: 0.15),
+                    //         shape: BoxShape.circle,
+                    //       ),
+                    //       child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF00C2FF), size: 28),
+                    //     ),
+                        // const SizedBox(width: 14),
+                        // Expanded(
+                        //   child: Column(
+                        //     crossAxisAlignment: CrossAxisAlignment.start,
+                        //     children: [
+                        //       const Text(
+                        //         'Business Setting',
+                        //         style: TextStyle(
+                        //           fontSize: 22,
+                        //           fontWeight: FontWeight.w900,
+                        //           color: Colors.white,
+                        //           letterSpacing: 0.2,
+                        //         ),
+                        //       ),
+                        //       const SizedBox(height: 3),
+                        //       Text(
+                        //         db.restaurant?.name.isNotEmpty == true
+                        //             ? 'Outlet Settings & Configuration for ${db.restaurant!.name}'
+                        //             : 'Configure store preferences, orders, hardware & payments',
+                        //         style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
+                        //       ),
+                        //     ],
+                        //   ),
+                  //       // ),
+                  //     ],
+                  //   ),
+                  // ),
 
-                  const SizedBox(height: 24),
+                  // const SizedBox(height: 24),
 
                   // CATEGORY 1: STORE & ORDER CONFIGURATION
                   _buildSectionPillHeader('Store & Order Configuration', Icons.storefront_rounded),

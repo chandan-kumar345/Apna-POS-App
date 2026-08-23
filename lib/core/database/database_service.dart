@@ -170,6 +170,7 @@ class DatabaseService extends ChangeNotifier {
       try {
         final List raw = jsonDecode(menuJson);
         menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
+        _deduplicateMenuItems();
       } catch (e) {
         menuItems = [];
       }
@@ -197,6 +198,7 @@ class DatabaseService extends ChangeNotifier {
       try {
         final List raw = jsonDecode(tablesJson);
         tables = raw.map((e) => TableModel.fromJson(e)).toList();
+        _sortTablesSequentially();
       } catch (e) {
         _seedCleanTables(restaurant?.tableCount ?? 12);
       }
@@ -406,7 +408,10 @@ class DatabaseService extends ChangeNotifier {
           debugPrint('[DatabaseService] Auto-syncing ${unsyncedLocalItems.length} unsynced local products to backend cloud...');
           final synced = await _productService.bulkImport(unsyncedLocalItems);
           for (final s in synced) {
-            if (!remoteProducts.any((r) => r.id == s.id || (r.productId.isNotEmpty && r.productId == s.productId))) {
+            if (!remoteProducts.any((r) =>
+                r.id == s.id ||
+                (r.productId.isNotEmpty && r.productId == s.productId) ||
+                r.name.trim().toLowerCase() == s.name.trim().toLowerCase())) {
               remoteProducts.add(s);
             }
           }
@@ -414,6 +419,7 @@ class DatabaseService extends ChangeNotifier {
 
         if (remoteProducts.isNotEmpty || menuItems.isEmpty) {
           menuItems = remoteProducts;
+          _deduplicateMenuItems();
           await _saveMenuToPrefs();
         }
 
@@ -433,6 +439,16 @@ class DatabaseService extends ChangeNotifier {
         final remoteTables = await _tableService.fetchTables();
         if (remoteTables.isNotEmpty) {
           tables = remoteTables;
+          for (final t in remoteTables) {
+            if (t.status == TableStatus.free) {
+              _liveCartTotals.remove(t.name);
+              _liveTableCarts.remove(t.name);
+              _liveCartTotals.remove('T-${t.tableNumber}');
+              _liveTableCarts.remove('T-${t.tableNumber}');
+            } else if (t.activeOrderTotal > 0) {
+              setLiveCartTotal(t.name, t.activeOrderTotal);
+            }
+          }
           await _saveTablesToPrefs();
         }
       } catch (e) {
@@ -982,22 +998,63 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  // Deduplicate in-memory menu items by normalized product name and productId
+  void _deduplicateMenuItems() {
+    final Map<String, MenuItemModel> uniqueMap = {};
+    for (final item in menuItems) {
+      final key = item.name.trim().toLowerCase();
+      if (key.isEmpty) continue;
+      if (!uniqueMap.containsKey(key)) {
+        uniqueMap[key] = item;
+      } else {
+        final existing = uniqueMap[key]!;
+        final preferredId = (item.id.isNotEmpty && !item.id.startsWith('PRD-') && !item.id.startsWith('item_') && !item.id.startsWith('TEMP_'))
+            ? item.id
+            : existing.id;
+        final preferredProductId = (item.productId.isNotEmpty && !item.productId.startsWith('PRD-'))
+            ? item.productId
+            : existing.productId;
+        final mergedVariants = (item.variants.length >= existing.variants.length) ? item.variants : existing.variants;
+
+        uniqueMap[key] = existing.copyWith(
+          id: preferredId,
+          productId: preferredProductId,
+          variants: mergedVariants,
+          price: item.price > 0 ? item.price : existing.price,
+          salePrice: item.salePrice ?? existing.salePrice,
+          description: item.description.isNotEmpty ? item.description : existing.description,
+          imageUrl: item.imageUrl.isNotEmpty ? item.imageUrl : existing.imageUrl,
+          itemType: item.itemType.isNotEmpty ? item.itemType : existing.itemType,
+        );
+      }
+    }
+    menuItems = uniqueMap.values.toList();
+  }
+
   // --- MENU MANAGEMENT SERVICES ---
   Future<void> saveMenuItem(MenuItemModel item) async {
     final String catName = item.category.trim();
-    if (catName.isNotEmpty && !categories.any((c) => (c ?? '').toString().toLowerCase() == catName.toLowerCase())) {
+    if (catName.isNotEmpty && !categories.any((c) => c.toLowerCase() == catName.toLowerCase())) {
       categories.add(catName);
       await _saveCategoriesToPrefs();
     }
 
-    final isNewItem = !menuItems.any((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+    final cleanName = item.name.trim().toLowerCase();
+    final isNewItem = !menuItems.any((element) =>
+        element.id == item.id ||
+        (element.productId.isNotEmpty && element.productId == item.productId) ||
+        element.name.trim().toLowerCase() == cleanName);
 
-    final index = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+    final index = menuItems.indexWhere((element) =>
+        element.id == item.id ||
+        (element.productId.isNotEmpty && element.productId == item.productId) ||
+        element.name.trim().toLowerCase() == cleanName);
     if (index >= 0) {
       menuItems[index] = item;
     } else {
       menuItems.add(item);
     }
+    _deduplicateMenuItems();
     await _saveMenuToPrefs();
     notifyListeners();
 
@@ -1006,17 +1063,25 @@ class DatabaseService extends ChangeNotifier {
       if (isAuth) {
         if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-') || item.id.startsWith('item_')) {
           final created = await _productService.createProduct(item);
-          final newIdx = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+          final newIdx = menuItems.indexWhere((element) =>
+              element.id == item.id ||
+              (element.productId.isNotEmpty && element.productId == item.productId) ||
+              element.name.trim().toLowerCase() == cleanName);
           if (newIdx >= 0) {
             menuItems[newIdx] = created;
+            _deduplicateMenuItems();
             await _saveMenuToPrefs();
             notifyListeners();
           }
         } else {
           final updated = await _productService.updateProduct(item);
-          final newIdx = menuItems.indexWhere((element) => element.id == item.id || (element.productId.isNotEmpty && element.productId == item.productId));
+          final newIdx = menuItems.indexWhere((element) =>
+              element.id == item.id ||
+              (element.productId.isNotEmpty && element.productId == item.productId) ||
+              element.name.trim().toLowerCase() == cleanName);
           if (newIdx >= 0) {
             menuItems[newIdx] = updated;
+            _deduplicateMenuItems();
             await _saveMenuToPrefs();
             notifyListeners();
           }
@@ -1034,24 +1099,22 @@ class DatabaseService extends ChangeNotifier {
     // 1. Ensure all categories exist locally and in DB
     for (final item in items) {
       final String catName = item.category.trim();
-      if (catName.isNotEmpty && !categories.any((c) => (c ?? '').toString().toLowerCase() == catName.toLowerCase())) {
+      if (catName.isNotEmpty && !categories.any((c) => c.toLowerCase() == catName.toLowerCase())) {
         categories.add(catName);
       }
     }
     await _saveCategoriesToPrefs();
 
-    // 2. Add / update items in local menuItems list
+    // 2. Add / update items in local menuItems list with clean deduplication
     for (final item in items) {
-      final index = menuItems.indexWhere((element) =>
-          element.id == item.id ||
+      final nameKey = item.name.trim().toLowerCase();
+      menuItems.removeWhere((element) =>
+          element.name.trim().toLowerCase() == nameKey ||
           (element.productId.isNotEmpty && element.productId == item.productId) ||
-          element.name.trim().toLowerCase() == item.name.trim().toLowerCase());
-      if (index >= 0) {
-        menuItems[index] = item;
-      } else {
-        menuItems.add(item);
-      }
+          element.id == item.id);
+      menuItems.add(item);
     }
+    _deduplicateMenuItems();
     await _saveMenuToPrefs();
     notifyListeners();
 
@@ -1079,16 +1142,14 @@ class DatabaseService extends ChangeNotifier {
         final syncedProducts = await _productService.bulkImport(items);
         if (syncedProducts.isNotEmpty) {
           for (final synced in syncedProducts) {
-            final newIdx = menuItems.indexWhere((element) =>
-                element.id == synced.id ||
+            final nameKey = synced.name.trim().toLowerCase();
+            menuItems.removeWhere((element) =>
+                element.name.trim().toLowerCase() == nameKey ||
                 (element.productId.isNotEmpty && element.productId == synced.productId) ||
-                element.name.trim().toLowerCase() == synced.name.trim().toLowerCase());
-            if (newIdx >= 0) {
-              menuItems[newIdx] = synced;
-            } else {
-              menuItems.add(synced);
-            }
+                element.id == synced.id);
+            menuItems.add(synced);
           }
+          _deduplicateMenuItems();
           await _saveMenuToPrefs();
           notifyListeners();
         }
@@ -1103,6 +1164,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> deleteMenuItem(String id) async {
     menuItems.removeWhere((item) => item.id == id || item.productId == id);
+    _deduplicateMenuItems();
     await _saveMenuToPrefs();
     notifyListeners();
 
@@ -1136,6 +1198,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveMenuToPrefs() async {
+    _deduplicateMenuItems();
     await _prefs?.setString(_userKey('menu'), jsonEncode(menuItems.map((e) => e.toJson()).toList()));
     _syncCategoriesFromMenu();
   }
@@ -1217,34 +1280,39 @@ class DatabaseService extends ChangeNotifier {
 
   // --- TABLE MANAGEMENT SERVICES ---
   Future<void> updateTableStatus(String tableId, TableStatus status, {String? orderId}) async {
-    final index = tables.indexWhere((t) => t.id == tableId);
+    final index = tables.indexWhere((t) =>
+        t.id == tableId ||
+        t.name.trim().toLowerCase() == tableId.trim().toLowerCase() ||
+        t.tableNumber.toString() == tableId ||
+        'T-${t.tableNumber}'.toLowerCase() == tableId.trim().toLowerCase());
+
     if (index >= 0) {
       final isFree = status == TableStatus.free;
+      final tbl = tables[index];
+      final tblName = tbl.name;
+
       if (isFree) {
-        final tblName = tables[index].name;
         _liveCartTotals.remove(tblName);
         _liveTableCarts.remove(tblName);
-        _liveCartTotals.remove('T-${tables[index].tableNumber}');
-        _liveTableCarts.remove('T-${tables[index].tableNumber}');
+        _liveCartTotals.remove('T-${tbl.tableNumber}');
+        _liveTableCarts.remove('T-${tbl.tableNumber}');
       }
       final nowStr = status == TableStatus.occupied ? DateTime.now().toString().substring(11, 16) : null;
-      tables[index] = TableModel(
-        id: tables[index].id,
-        tableNumber: tables[index].tableNumber,
-        name: tables[index].name,
-        floor: tables[index].floor,
-        capacity: tables[index].capacity,
+      tables[index] = tbl.copyWith(
         status: status,
-        currentOrderId: isFree ? null : (orderId ?? tables[index].currentOrderId),
-        occupiedSince: isFree ? null : (nowStr ?? tables[index].occupiedSince),
+        currentOrderId: isFree ? null : (orderId ?? tbl.currentOrderId),
+        occupiedSince: isFree ? null : (nowStr ?? tbl.occupiedSince),
+        activeOrderTotal: isFree ? 0.0 : tbl.activeOrderTotal,
+        activeItemCount: isFree ? 0 : tbl.activeItemCount,
       );
       await _saveTablesToPrefs();
       notifyListeners();
 
       try {
         final isAuth = await _authService.isAuthenticated();
-        if (isAuth && tableId.length == 24) {
-          await _tableService.updateTableStatus(tableId, status, orderId: orderId);
+        if (isAuth) {
+          final targetApiId = tbl.id.isNotEmpty ? tbl.id : tblName;
+          await _tableService.updateTableStatus(targetApiId, status, orderId: orderId);
         }
       } catch (e) {
         debugPrint('[DatabaseService.updateTableStatus] API error: $e');
@@ -1333,7 +1401,23 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  void _sortTablesSequentially() {
+    tables.sort((a, b) {
+      final numA = a.tableNumber > 0
+          ? a.tableNumber
+          : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+      final numB = b.tableNumber > 0
+          ? b.tableNumber
+          : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+      if (numA != numB) {
+        return numA.compareTo(numB);
+      }
+      return a.name.compareTo(b.name);
+    });
+  }
+
   Future<void> _saveTablesToPrefs() async {
+    _sortTablesSequentially();
     await _prefs?.setString(_userKey('tables'), jsonEncode(tables.map((e) => e.toJson()).toList()));
   }
 
@@ -1346,16 +1430,20 @@ class DatabaseService extends ChangeNotifier {
     required String paymentMethod,
     double roundOff = 0.0,
     double? totalAmount,
+    double tipAmount = 0.0,
+    double deliveryCharge = 0.0,
+    double? subtotalOverride,
+    double? taxAmountOverride,
     String? deliveryAddress,
     OrderStatus? status,
     String? customerName,
     String? customerPhone,
   }) async {
-    final subtotal = items.fold(0.0, (sum, i) => sum + i.totalPrice);
-    final taxRate = restaurant?.taxRate ?? 5.0;
-    final taxAmount = (subtotal - discountAmount) * (taxRate / 100.0);
-    final computedTotal = (subtotal - discountAmount) + taxAmount + roundOff;
-    final finalTotalAmount = totalAmount ?? computedTotal;
+    final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
+    final double taxRate = restaurant?.taxRate ?? 5.0;
+    final double taxAmount = taxAmountOverride ?? ((subtotal - discountAmount).clamp(0.0, double.infinity) * (taxRate / 100.0));
+    final double computedTotal = (subtotal - discountAmount + taxAmount + tipAmount + deliveryCharge + roundOff).clamp(0.0, double.infinity);
+    final double finalTotalAmount = totalAmount ?? computedTotal;
 
     final now = DateTime.now();
     final year = now.year.toString();
@@ -1381,11 +1469,13 @@ class DatabaseService extends ChangeNotifier {
       subtotal: subtotal,
       taxAmount: taxAmount,
       discountAmount: discountAmount,
+      tipAmount: tipAmount,
+      deliveryCharge: deliveryCharge,
       roundOff: roundOff,
       totalAmount: finalTotalAmount,
       paymentMethod: paymentMethod,
       deliveryAddress: deliveryAddress,
-      createdAt: DateTime.now().toString().substring(11, 16),
+      createdAt: DateTime.now().toIso8601String(),
       customerName: customerName,
       customerPhone: customerPhone,
     );
@@ -1398,14 +1488,16 @@ class DatabaseService extends ChangeNotifier {
       saveCustomer(
         name: (customerName != null && customerName.trim().isNotEmpty) ? customerName.trim() : 'Customer',
         phone: customerPhone.trim(),
+        address: (deliveryAddress != null && deliveryAddress.trim().isNotEmpty) ? deliveryAddress.trim() : null,
       );
     }
 
-    // If table assigned, mark table as Occupied or Billed
+    // If table assigned, mark table as Occupied (pending) or Free (completed)
     if (tableNumber != null && tableNumber.isNotEmpty) {
       final tIndex = tables.indexWhere((t) => t.name == tableNumber || t.tableNumber.toString() == tableNumber);
       if (tIndex >= 0) {
-        updateTableStatus(tables[tIndex].id, TableStatus.occupied, orderId: orderId);
+        final targetStatus = (status == OrderStatus.completed) ? TableStatus.free : TableStatus.occupied;
+        updateTableStatus(tables[tIndex].id, targetStatus, orderId: status == OrderStatus.completed ? null : orderId);
       }
     }
 
@@ -1421,22 +1513,23 @@ class DatabaseService extends ChangeNotifier {
     _saveMenuToPrefs();
     notifyListeners();
 
-    // Persist to backend API asynchronously
-    try {
-      final isAuth = await _authService.isAuthenticated();
+    // Persist to backend API asynchronously in background (non-blocking for instant UI response)
+    _authService.isAuthenticated().then((isAuth) {
       if (isAuth) {
-        final remoteOrder = await _orderService.createOrder(newOrder);
-        final idx = orders.indexWhere((o) => o.id == orderId);
-        if (idx >= 0) {
-          orders[idx] = remoteOrder;
-          await _saveOrdersToPrefs();
-          notifyListeners();
-        }
-        newOrder = remoteOrder;
+        _orderService.createOrder(newOrder).then((remoteOrder) async {
+          final idx = orders.indexWhere((o) => o.id == orderId);
+          if (idx >= 0) {
+            orders[idx] = remoteOrder;
+            await _saveOrdersToPrefs();
+            notifyListeners();
+          }
+        }).catchError((e) {
+          debugPrint('[DatabaseService.createOrder] API error: $e');
+        });
       }
-    } catch (e) {
-      debugPrint('[DatabaseService.createOrder] API error: $e');
-    }
+    }).catchError((e) {
+      debugPrint('[DatabaseService.createOrder] Auth error: $e');
+    });
 
     return newOrder;
   }
@@ -1514,21 +1607,30 @@ class DatabaseService extends ChangeNotifier {
       await _saveOrdersToPrefs();
       notifyListeners();
 
-      try {
-        final isAuth = await _authService.isAuthenticated();
+      // Persist payment status to backend API asynchronously in background (non-blocking for instant UI response)
+      _authService.isAuthenticated().then((isAuth) {
         if (isAuth) {
           if (currentOrder.id.length == 24) {
-            await _orderService.payOrder(currentOrder.id, paymentMethod: paymentMethod);
+            _orderService.payOrder(currentOrder.id, paymentMethod: paymentMethod).catchError((e) {
+              debugPrint('[DatabaseService.completeOrderPayment] API payOrder error: $e');
+              return false;
+            });
           } else {
-            final remoteOrder = await _orderService.createOrder(currentOrder);
-            orders[index] = remoteOrder;
-            await _saveOrdersToPrefs();
-            notifyListeners();
+            _orderService.createOrder(currentOrder).then((remoteOrder) async {
+              final idx = orders.indexWhere((o) => o.id == currentOrder.id || o.orderNumber == currentOrder.orderNumber);
+              if (idx >= 0) {
+                orders[idx] = remoteOrder;
+                await _saveOrdersToPrefs();
+                notifyListeners();
+              }
+            }).catchError((e) {
+              debugPrint('[DatabaseService.completeOrderPayment] API createOrder error: $e');
+            });
           }
         }
-      } catch (e) {
-        debugPrint('[DatabaseService.completeOrderPayment] API error: $e');
-      }
+      }).catchError((e) {
+        debugPrint('[DatabaseService.completeOrderPayment] Auth error: $e');
+      });
     }
   }
 
@@ -1622,8 +1724,8 @@ class DatabaseService extends ChangeNotifier {
       customer = existing.copyWith(
         name: cleanName,
         phone: cleanPhone,
-        email: email ?? existing.email,
-        address: address ?? existing.address,
+        email: (email != null && email.trim().isNotEmpty) ? email : existing.email,
+        address: (address != null && address.trim().isNotEmpty) ? address.trim() : existing.address,
         lastVisit: DateTime.now().toIso8601String(),
         totalOrders: existing.totalOrders + 1,
       );
@@ -1634,7 +1736,7 @@ class DatabaseService extends ChangeNotifier {
         name: cleanName,
         phone: cleanPhone,
         email: email ?? '',
-        address: address ?? '',
+        address: (address != null && address.trim().isNotEmpty) ? address.trim() : '',
         totalOrders: 1,
         lastVisit: DateTime.now().toIso8601String(),
       );
@@ -1649,7 +1751,7 @@ class DatabaseService extends ChangeNotifier {
       name: cleanName,
       phone: cleanPhone,
       email: email,
-      address: address,
+      address: customer.address,
     ).then((remoteCustomer) {
       if (remoteCustomer != null) {
         final idx = customers.indexWhere((c) => c.phone.trim() == cleanPhone);

@@ -73,6 +73,8 @@ class OrderModel {
   final double subtotal;
   final double taxAmount;
   final double discountAmount;
+  final double tipAmount;
+  final double deliveryCharge;
   final double roundOff;
   final double totalAmount;
   final String paymentMethod; // Cash, Card, UPI
@@ -91,6 +93,8 @@ class OrderModel {
     required this.subtotal,
     required this.taxAmount,
     this.discountAmount = 0.0,
+    this.tipAmount = 0.0,
+    this.deliveryCharge = 0.0,
     this.roundOff = 0.0,
     required this.totalAmount,
     this.paymentMethod = 'UPI',
@@ -110,6 +114,8 @@ class OrderModel {
         'subtotal': subtotal,
         'taxAmount': taxAmount,
         'discountAmount': discountAmount,
+        'tipAmount': tipAmount,
+        'deliveryCharge': deliveryCharge,
         'roundOff': roundOff,
         'totalAmount': totalAmount,
         'paymentMethod': paymentMethod,
@@ -138,6 +144,8 @@ class OrderModel {
         subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
         taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0.0,
         discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
+        tipAmount: (json['tipAmount'] as num?)?.toDouble() ?? 0.0,
+        deliveryCharge: (json['deliveryCharge'] as num?)?.toDouble() ?? 0.0,
         roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
         totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
         paymentMethod: json['paymentMethod'] ?? 'Cash',
@@ -146,6 +154,25 @@ class OrderModel {
         customerName: json['customerName'],
         customerPhone: json['customerPhone'],
       );
+
+  /// Helper to safely resolve the exact DateTime of this order
+  DateTime get createdDateTime {
+    if (createdAt.isNotEmpty) {
+      final parsed = DateTime.tryParse(createdAt);
+      if (parsed != null) return parsed;
+    }
+    // Fallback: try parsing orderNumber if formatted with date prefix (e.g. YYYYMMDD-...)
+    if (orderNumber.length >= 8) {
+      final dStr = orderNumber.substring(0, 8);
+      final y = int.tryParse(dStr.substring(0, 4));
+      final m = int.tryParse(dStr.substring(4, 6));
+      final d = int.tryParse(dStr.substring(6, 8));
+      if (y != null && m != null && d != null) {
+        return DateTime(y, m, d);
+      }
+    }
+    return DateTime.now();
+  }
 
   OrderModel copyWith({
     String? tableNumber,
@@ -159,6 +186,8 @@ class OrderModel {
     double? subtotal,
     double? taxAmount,
     double? discountAmount,
+    double? tipAmount,
+    double? deliveryCharge,
     List<CartItemModel>? items,
   }) {
     return OrderModel(
@@ -171,6 +200,8 @@ class OrderModel {
       subtotal: subtotal ?? this.subtotal,
       taxAmount: taxAmount ?? this.taxAmount,
       discountAmount: discountAmount ?? this.discountAmount,
+      tipAmount: tipAmount ?? this.tipAmount,
+      deliveryCharge: deliveryCharge ?? this.deliveryCharge,
       roundOff: roundOff ?? this.roundOff,
       totalAmount: totalAmount ?? this.totalAmount,
       paymentMethod: paymentMethod ?? this.paymentMethod,

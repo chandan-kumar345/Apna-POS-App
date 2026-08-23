@@ -29,7 +29,7 @@ const tableSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['free', 'occupied', 'billed', 'reserved'],
+      enum: ['free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved'],
       default: 'free',
       index: true,
     },
@@ -37,6 +37,18 @@ const tableSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Order',
       default: null,
+    },
+    currentOrderNumber: {
+      type: String,
+      default: null,
+    },
+    currentOrderTotal: {
+      type: Number,
+      default: 0,
+    },
+    activeItemCount: {
+      type: Number,
+      default: 0,
     },
     occupiedSince: {
       type: Date,

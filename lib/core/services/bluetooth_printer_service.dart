@@ -310,7 +310,7 @@ class BluetoothPrinterService {
         PosColumn(text: 'Time: ${_toAscii(timeStr)}', width: 6, styles: const PosStyles(align: PosAlign.right)),
       ]);
 
-      if (order.tableNumber != null && order.tableNumber!.isNotEmpty) {
+      if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty) {
         bytes += generator.text('Table: ${_toAscii(order.tableNumber!.replaceAll('T-', ''))}', styles: const PosStyles(bold: true));
       }
       if (order.customerName != null && order.customerName!.isNotEmpty) {
@@ -318,6 +318,15 @@ class BluetoothPrinterService {
       }
       if (order.customerPhone != null && order.customerPhone!.isNotEmpty) {
         bytes += generator.text('Phone: ${_toAscii(order.customerPhone!)}');
+      }
+      if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
+        bytes += generator.text('Delivery Address:', styles: const PosStyles(bold: true));
+        final lines = order.deliveryAddress!.split('\n');
+        for (var l in lines) {
+          if (l.trim().isNotEmpty) {
+            bytes += generator.text(_toAscii(l.trim()));
+          }
+        }
       }
 
       bytes += generator.hr();
@@ -352,19 +361,39 @@ class BluetoothPrinterService {
         PosColumn(text: 'Gross Subtotal', width: 7),
         PosColumn(text: '$safeCurrency${order.subtotal.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
       ]);
-      bytes += generator.row([
-        PosColumn(text: 'CGST (${cgstRate.toStringAsFixed(1)}%)', width: 7),
-        PosColumn(text: '$safeCurrency${cgstAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-      bytes += generator.row([
-        PosColumn(text: 'SGST (${sgstRate.toStringAsFixed(1)}%)', width: 7),
-        PosColumn(text: '$safeCurrency${sgstAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-
       if (order.discountAmount > 0) {
         bytes += generator.row([
           PosColumn(text: 'Discount', width: 7),
           PosColumn(text: '-$safeCurrency${order.discountAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      if (order.taxAmount > 0) {
+        bytes += generator.row([
+          PosColumn(text: 'CGST (${cgstRate.toStringAsFixed(1)}%)', width: 7),
+          PosColumn(text: '$safeCurrency${cgstAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+        bytes += generator.row([
+          PosColumn(text: 'SGST (${sgstRate.toStringAsFixed(1)}%)', width: 7),
+          PosColumn(text: '$safeCurrency${sgstAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      if (order.tipAmount > 0) {
+        bytes += generator.row([
+          PosColumn(text: 'Tip', width: 7),
+          PosColumn(text: '+$safeCurrency${order.tipAmount.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      if (order.deliveryCharge > 0) {
+        bytes += generator.row([
+          PosColumn(text: 'Delivery Charge', width: 7),
+          PosColumn(text: '+$safeCurrency${order.deliveryCharge.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+        ]);
+      }
+      if (order.roundOff.abs() > 0.001) {
+        final sign = order.roundOff >= 0 ? '+' : '';
+        bytes += generator.row([
+          PosColumn(text: 'Round Off', width: 7),
+          PosColumn(text: '$sign$safeCurrency${order.roundOff.toStringAsFixed(2)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
         ]);
       }
 
