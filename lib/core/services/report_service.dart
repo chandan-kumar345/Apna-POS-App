@@ -3,6 +3,169 @@ import '../models/order_model.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 
+/// Complete Sales Report Summary Metrics
+class SalesReportSummary {
+  final double totalRevenue;
+  final double grossSales;
+  final double netSales;
+  final int totalOrders;
+  final int totalItems;
+  final double totalDiscount;
+  final double totalTax;
+  final double cgst;
+  final double sgst;
+  final double igst;
+  final double avgOrderValue;
+
+  SalesReportSummary({
+    this.totalRevenue = 0.0,
+    this.grossSales = 0.0,
+    this.netSales = 0.0,
+    this.totalOrders = 0,
+    this.totalItems = 0,
+    this.totalDiscount = 0.0,
+    this.totalTax = 0.0,
+    this.cgst = 0.0,
+    this.sgst = 0.0,
+    this.igst = 0.0,
+    this.avgOrderValue = 0.0,
+  });
+
+  factory SalesReportSummary.fromJson(Map<String, dynamic> json) => SalesReportSummary(
+        totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
+        grossSales: (json['grossSales'] as num?)?.toDouble() ?? 0.0,
+        netSales: (json['netSales'] as num?)?.toDouble() ?? 0.0,
+        totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
+        totalItems: (json['totalItems'] as num?)?.toInt() ?? 0,
+        totalDiscount: (json['totalDiscount'] as num?)?.toDouble() ?? 0.0,
+        totalTax: (json['totalTax'] as num?)?.toDouble() ?? 0.0,
+        cgst: (json['cgst'] as num?)?.toDouble() ?? 0.0,
+        sgst: (json['sgst'] as num?)?.toDouble() ?? 0.0,
+        igst: (json['igst'] as num?)?.toDouble() ?? 0.0,
+        avgOrderValue: (json['avgOrderValue'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+/// Dynamic Payment Mode Metric returned from backend
+class PaymentModeStat {
+  final String mode;
+  final String rawMode;
+  final int count;
+  final double amount;
+  final double percentage;
+
+  PaymentModeStat({
+    required this.mode,
+    this.rawMode = '',
+    this.count = 0,
+    this.amount = 0.0,
+    this.percentage = 0.0,
+  });
+
+  factory PaymentModeStat.fromJson(Map<String, dynamic> json) => PaymentModeStat(
+        mode: json['mode']?.toString() ?? 'Cash',
+        rawMode: json['rawMode']?.toString() ?? '',
+        count: (json['count'] as num?)?.toInt() ?? 0,
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+/// Order Type Metric (Dine-in, Takeaway, Delivery)
+class OrderTypeStat {
+  final String type;
+  final String rawType;
+  final int count;
+  final double amount;
+
+  OrderTypeStat({
+    required this.type,
+    this.rawType = '',
+    this.count = 0,
+    this.amount = 0.0,
+  });
+
+  factory OrderTypeStat.fromJson(Map<String, dynamic> json) => OrderTypeStat(
+        type: json['type']?.toString() ?? 'Dine In',
+        rawType: json['rawType']?.toString() ?? '',
+        count: (json['count'] as num?)?.toInt() ?? 0,
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      );
+}
+
+/// Top Product Sales Data
+class TopProductData {
+  final String name;
+  final int quantity;
+  final double revenue;
+  final String foodType;
+
+  TopProductData({
+    required this.name,
+    required this.quantity,
+    required this.revenue,
+    this.foodType = 'veg',
+  });
+
+  factory TopProductData.fromJson(Map<String, dynamic> json) => TopProductData(
+        name: json['name']?.toString() ?? '',
+        quantity: (json['totalQuantity'] ?? json['quantity'] as num?)?.toInt() ?? 0,
+        revenue: (json['totalRevenue'] ?? json['revenue'] as num?)?.toDouble() ?? 0.0,
+        foodType: json['foodType']?.toString() ?? 'veg',
+      );
+}
+
+/// Unified Sales Report Complete Response Model
+class SalesReportData {
+  final SalesReportSummary summary;
+  final List<PaymentModeStat> paymentModes;
+  final List<OrderTypeStat> salesByOrderType;
+  final List<TopProductData> topProducts;
+  final List<OrderModel> orders;
+  final String startDate;
+  final String endDate;
+  final String period;
+
+  SalesReportData({
+    SalesReportSummary? summary,
+    this.paymentModes = const [],
+    this.salesByOrderType = const [],
+    this.topProducts = const [],
+    this.orders = const [],
+    this.startDate = '',
+    this.endDate = '',
+    this.period = 'allTime',
+  }) : summary = summary ?? SalesReportSummary();
+
+  factory SalesReportData.fromJson(Map<String, dynamic> json) {
+    final summaryJson = json['summary'] as Map<String, dynamic>? ?? {};
+    final paymentModesList = (json['paymentModes'] as List<dynamic>? ?? [])
+        .map((p) => PaymentModeStat.fromJson(p as Map<String, dynamic>))
+        .toList();
+    final orderTypesList = (json['salesByOrderType'] as List<dynamic>? ?? [])
+        .map((t) => OrderTypeStat.fromJson(t as Map<String, dynamic>))
+        .toList();
+    final topProductsList = (json['topProducts'] as List<dynamic>? ?? [])
+        .map((tp) => TopProductData.fromJson(tp as Map<String, dynamic>))
+        .toList();
+    final ordersList = (json['orders'] as List<dynamic>? ?? [])
+        .map((o) => OrderModel.fromJson(o as Map<String, dynamic>))
+        .toList();
+
+    return SalesReportData(
+      summary: SalesReportSummary.fromJson(summaryJson),
+      paymentModes: paymentModesList,
+      salesByOrderType: orderTypesList,
+      topProducts: topProductsList,
+      orders: ordersList,
+      startDate: json['startDate']?.toString() ?? '',
+      endDate: json['endDate']?.toString() ?? '',
+      period: json['period']?.toString() ?? 'allTime',
+    );
+  }
+}
+
+/// Backwards-compatible sales summary class
 class SalesSummaryData {
   final double totalRevenue;
   final double totalSubtotal;
@@ -26,7 +189,7 @@ class SalesSummaryData {
 
   factory SalesSummaryData.fromJson(Map<String, dynamic> json) => SalesSummaryData(
         totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
-        totalSubtotal: (json['totalSubtotal'] as num?)?.toDouble() ?? 0.0,
+        totalSubtotal: (json['totalSubtotal'] ?? json['grossSales'] as num?)?.toDouble() ?? 0.0,
         totalTax: (json['totalTax'] as num?)?.toDouble() ?? 0.0,
         totalDiscount: (json['totalDiscount'] as num?)?.toDouble() ?? 0.0,
         totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
@@ -36,29 +199,42 @@ class SalesSummaryData {
       );
 }
 
-class TopProductData {
-  final String name;
-  final int quantity;
-  final double revenue;
-  final String foodType;
-
-  TopProductData({
-    required this.name,
-    required this.quantity,
-    required this.revenue,
-    this.foodType = 'veg',
-  });
-
-  factory TopProductData.fromJson(Map<String, dynamic> json) => TopProductData(
-        name: json['name'] ?? '',
-        quantity: (json['totalQuantity'] ?? json['quantity'] as num?)?.toInt() ?? 0,
-        revenue: (json['totalRevenue'] ?? json['revenue'] as num?)?.toDouble() ?? 0.0,
-        foodType: json['foodType'] ?? 'veg',
-      );
-}
-
 class ReportService {
   final ApiClient _apiClient = ApiClient();
+
+  /// Unified Authoritative Sales Report API
+  Future<SalesReportData> fetchSalesReport({
+    String? period,
+    String? startDate,
+    String? endDate,
+    String? fromDate,
+    String? toDate,
+    int limit = 500,
+  }) async {
+    try {
+      final queryParams = <String, dynamic>{
+        'limit': limit,
+      };
+      if (period != null && period.isNotEmpty) queryParams['period'] = period;
+      if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
+      if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
+      if (fromDate != null && fromDate.isNotEmpty) queryParams['fromDate'] = fromDate;
+      if (toDate != null && toDate.isNotEmpty) queryParams['toDate'] = toDate;
+
+      final response = await _apiClient.get(
+        ApiEndpoints.salesReport,
+        queryParameters: queryParams,
+      );
+
+      if (response != null && response['data'] != null) {
+        return SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
+      }
+      return SalesReportData();
+    } catch (e) {
+      debugPrint('[ReportService.fetchSalesReport] error: $e');
+      rethrow;
+    }
+  }
 
   /// Fetch sales list
   Future<List<OrderModel>> fetchSales({

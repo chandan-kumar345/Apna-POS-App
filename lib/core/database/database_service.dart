@@ -22,6 +22,7 @@ import '../services/customer_service.dart';
 import '../services/extra_service.dart';
 import '../services/report_service.dart';
 import '../services/dashboard_service.dart';
+import '../services/payment_service.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -43,6 +44,7 @@ class DatabaseService extends ChangeNotifier {
   InventoryService get inventoryService => InventoryService();
   CustomerService get customerService => CustomerService();
   ExtraService get extraService => ExtraService();
+  PaymentService get paymentService => PaymentService();
   ReportService get reportService => ReportService();
   DashboardService get dashboardService => DashboardService();
   
@@ -1096,7 +1098,7 @@ class DatabaseService extends ChangeNotifier {
   Future<int> importProductsFromCsv(List<MenuItemModel> items) async {
     if (items.isEmpty) return 0;
 
-    // 1. Ensure all categories exist locally and in DB
+    // 1. Ensure all categories exist locally
     for (final item in items) {
       final String catName = item.category.trim();
       if (catName.isNotEmpty && !categories.any((c) => c.toLowerCase() == catName.toLowerCase())) {
@@ -1118,24 +1120,7 @@ class DatabaseService extends ChangeNotifier {
     await _saveMenuToPrefs();
     notifyListeners();
 
-    // 3. Sync categories with remote backend
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        for (final item in items) {
-          final cat = item.category.trim();
-          if (cat.isNotEmpty) {
-            try {
-              await _productService.createCategory(cat);
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (e) {
-      debugPrint('[DatabaseService.importProductsFromCsv] Category sync warning: $e');
-    }
-
-    // 4. Sync products with remote backend via ProductService.bulkImport
+    // 3. Sync products in single batch with remote backend via ProductService.bulkImport
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
@@ -1634,19 +1619,73 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Generate Dynamic UPI QR (Razorpay Gateway or offline standard UPI)
+  Future<PaymentQrResult> generateUpiPaymentQr({
+    required String orderId,
+    required String orderNumber,
+    required double amount,
+    String? customerName,
+    String? customerPhone,
+  }) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        return await paymentService.generatePaymentQr(
+          orderId: orderId,
+          orderNumber: orderNumber,
+          amount: amount,
+          customerName: customerName,
+          customerPhone: customerPhone,
+        );
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.generateUpiPaymentQr] server error: $e');
+    }
+
+    // Local standard UPI fallback
+    final businessName = restaurant?.name ?? 'Apna POS';
+    final businessUpi = restaurant?.upiId ?? 'apnapos@razorpay';
+    final encodedBusinessName = Uri.encodeComponent(businessName);
+    final encodedNote = Uri.encodeComponent('Bill $orderNumber');
+    final fallbackUpiIntent = 'upi://pay?pa=$businessUpi&pn=$encodedBusinessName&am=${amount.toStringAsFixed(2)}&cu=INR&tr=$orderNumber&tn=$encodedNote';
+
+    return PaymentQrResult(
+      success: true,
+      isDynamicGateway: false,
+      gateway: 'standard_upi',
+      qrId: 'local_${DateTime.now().millisecondsSinceEpoch}',
+      qrImageUrl: '',
+      qrIntentUrl: fallbackUpiIntent,
+      amount: amount,
+      orderNumber: orderNumber,
+      orderId: orderId,
+    );
+  }
+
   /// Real-time check if an order has been paid via UPI gateway / webhook
-  Future<bool> checkUpiPaymentStatus(String orderId) async {
+  Future<PaymentStatusResult> checkUpiPaymentStatusDetails(String orderId) async {
     final localOrder = orders.where((o) => o.id == orderId || o.orderNumber == orderId).firstOrNull;
     if (localOrder != null && localOrder.status == OrderStatus.completed) {
-      return true;
+      return PaymentStatusResult(
+        isPaid: true,
+        paymentStatus: 'paid',
+        orderNumber: localOrder.orderNumber,
+        totalAmount: localOrder.totalAmount,
+      );
     }
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        return await _orderService.checkUpiPaymentVerification(orderId);
+        return await paymentService.checkPaymentStatus(orderId);
       }
     } catch (_) {}
-    return false;
+    return PaymentStatusResult(isPaid: false, paymentStatus: 'pending');
+  }
+
+  /// Check boolean UPI payment status for an order
+  Future<bool> checkUpiPaymentStatus(String orderId) async {
+    final res = await checkUpiPaymentStatusDetails(orderId);
+    return res.isPaid;
   }
 
   Future<void> _saveOrdersToPrefs() async {

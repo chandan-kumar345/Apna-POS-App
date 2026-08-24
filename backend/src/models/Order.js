@@ -270,6 +270,46 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    razorpayQrId: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    razorpayPaymentId: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    razorpayOrderId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    upiUtr: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    upiVpa: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    qrImageUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    qrIntentUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    qrExpiresAt: {
+      type: Date,
+    },
   },
   {
     timestamps: true,

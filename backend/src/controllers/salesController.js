@@ -20,6 +20,15 @@ class SalesController {
     }
   }
 
+  async getReport(req, res, next) {
+    try {
+      const report = await salesService.getSalesReport(req.businessId, req.query);
+      return ApiResponse.success(res, report, 'Sales report fetched successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getTopProducts(req, res, next) {
     try {
       const topProducts = await salesService.getTopSellingProducts(req.businessId, req.query);

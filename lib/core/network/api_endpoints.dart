@@ -257,10 +257,14 @@ class ApiEndpoints {
   static const String orders = '/orders';
   static const String orderTable = '/orders/table';
   static const String paymentMethods = '/payment-methods';
+  static const String payments = '/payments';
+  static const String createPaymentQr = '/payments/create-qr';
+  static const String paymentStatus = '/payments/status';
 
   // Sales & Reports endpoints
   static const String sales = '/sales';
   static const String salesSummary = '/sales/summary';
+  static const String salesReport = '/sales/report';
   static const String topProducts = '/sales/top-products';
 
   // Dashboard endpoints

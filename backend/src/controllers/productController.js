@@ -94,7 +94,8 @@ class ProductController {
 
   async bulkImport(req, res, next) {
     try {
-      const result = await productService.bulkImportProducts(req.businessId, req.body.items);
+      const items = Array.isArray(req.body) ? req.body : (req.body.items || req.body.products || []);
+      const result = await productService.bulkImportProducts(req.businessId, items);
       return ApiResponse.success(res, result, `${result.importedCount} products imported successfully`);
     } catch (error) {
       next(error);

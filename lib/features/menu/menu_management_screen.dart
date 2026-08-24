@@ -79,15 +79,24 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       builder: (context) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final mediaQuery = MediaQuery.of(context);
+            final isSmallScreen = mediaQuery.size.width < 500;
+
             return Dialog(
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
               elevation: 12,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: isSmallScreen ? 12 : 24,
+                vertical: isSmallScreen ? 14 : 20,
+              ),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680, maxHeight: 680),
+                constraints: BoxConstraints(
+                  maxWidth: 520,
+                  maxHeight: isSmallScreen ? (mediaQuery.size.height * 0.70) : 410,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(24),
+                  padding: EdgeInsets.all(isSmallScreen ? 14 : 18),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,14 +105,14 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(9),
+                            padding: const EdgeInsets.all(8),
                             decoration: const BoxDecoration(
                               color: Color(0xFF051C48),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 22),
+                            child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 20),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,21 +121,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   'Import Products via CSV',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                                 ),
-                                SizedBox(height: 2),
+                                SizedBox(height: 1),
                                 Text(
-                                  'Bulk add products using a standard CSV spreadsheet template',
-                                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                  'Bulk add products using CSV spreadsheet template',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                                 ),
                               ],
                             ),
                           ),
                           IconButton(
                             onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
+                            constraints: const BoxConstraints(),
+                            padding: const EdgeInsets.all(4),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
 
                       Expanded(
                         child: SingleChildScrollView(
@@ -138,61 +149,61 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               if (modalError != null) ...[
                                 Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFEE2E2),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFEF4444), width: 1.2),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
-                                      const SizedBox(width: 10),
+                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                                      const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           modalError!,
-                                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(color: Color(0xFF991B1B), fontSize: 11.5, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 14),
+                                const SizedBox(height: 10),
                               ],
 
                               // Success Banner
                               if (modalSuccess != null) ...[
                                 Container(
                                   width: double.infinity,
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFDCFCE7),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFF22C55E), width: 1.5),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 18),
-                                      const SizedBox(width: 10),
+                                      const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 16),
+                                      const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
                                           modalSuccess!,
-                                          style: const TextStyle(color: Color(0xFF14532D), fontSize: 12, fontWeight: FontWeight.bold),
+                                          style: const TextStyle(color: Color(0xFF14532D), fontSize: 11.5, fontWeight: FontWeight.bold),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 14),
+                                const SizedBox(height: 10),
                               ],
 
-                              // Step 1: Download Template Box (Clean & Streamlined)
+                              // Step 1: Download Template Box (Clean & Compact)
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
                                 child: Column(
@@ -200,30 +211,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   children: [
                                     const Row(
                                       children: [
-                                        Icon(Icons.downloading_rounded, color: Color(0xFF051C48), size: 18),
-                                        SizedBox(width: 8),
+                                        Icon(Icons.downloading_rounded, color: Color(0xFF051C48), size: 16),
+                                        SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
                                             'Step 1: Download Sample Template',
-                                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    // const SizedBox(height: 8),
-                                    // const Wrap(
-                                    //   spacing: 6,
-                                    //   runSpacing: 4,
-                                    //   children: [
-                                    //     _CsvHeaderChip('Product Name*'),
-                                    //     _CsvHeaderChip('Category*'),
-                                    //     _CsvHeaderChip('Price*'),
-                                    //     _CsvHeaderChip('Food Type'),
-                                    //     _CsvHeaderChip('Variant Name'),
-                                    //     _CsvHeaderChip('Variant Price'),
-                                    //   ],
-                                    // ),
-                                    // const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     ElevatedButton.icon(
                                       onPressed: () async {
                                         try {
@@ -266,12 +264,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                           });
                                         }
                                       },
-                                      icon: const Icon(Icons.download_rounded, size: 16, color: Colors.white),
-                                      label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                                      icon: const Icon(Icons.download_rounded, size: 15, color: Colors.white),
+                                      label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
                                       style: ElevatedButton.styleFrom(
                                         backgroundColor: const Color(0xFF10B981),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                         elevation: 0,
                                       ),
                                     ),
@@ -279,15 +277,15 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 ),
                               ),
 
-                              const SizedBox(height: 14),
+                              const SizedBox(height: 10),
 
-                              // Step 2: Upload CSV File Box (Clean & Direct)
+                              // Step 2: Upload CSV File Box (Clean & Compact)
                               Container(
                                 width: double.infinity,
-                                padding: const EdgeInsets.all(16),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
                                 child: Column(
@@ -295,17 +293,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   children: [
                                     const Row(
                                       children: [
-                                        Icon(Icons.upload_file_rounded, color: Color(0xFF051C48), size: 18),
-                                        SizedBox(width: 8),
+                                        Icon(Icons.upload_file_rounded, color: Color(0xFF051C48), size: 16),
+                                        SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
                                             'Step 2: Upload Filled CSV File',
-                                            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                           ),
                                         ),
                                       ],
                                     ),
-                                    const SizedBox(height: 12),
+                                    const SizedBox(height: 8),
                                     ElevatedButton.icon(
                                       onPressed: isProcessing
                                           ? null

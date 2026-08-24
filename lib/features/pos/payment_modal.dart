@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/models/order_model.dart';
 import '../../core/database/database_service.dart';
+import '../../core/services/payment_service.dart';
 
 class PaymentModalResult {
   final String paymentMethod;
@@ -38,6 +40,14 @@ class _PaymentModalState extends State<PaymentModal> {
   String? _upiTransactionRef;
   Timer? _upiPollingTimer;
 
+  // Dynamic QR & Verification State
+  bool _isGeneratingQr = false;
+  PaymentQrResult? _dynamicQrResult;
+  int _upiExpirySeconds = 300; // 5 minutes countdown
+  Timer? _expiryCountdownTimer;
+  final _manualUtrController = TextEditingController();
+  bool _showManualUtr = false;
+
   // Cash controller
   final _cashTenderedController = TextEditingController();
 
@@ -62,21 +72,90 @@ class _PaymentModalState extends State<PaymentModal> {
   @override
   void dispose() {
     _stopUpiPolling();
+    _stopExpiryCountdown();
     _cashTenderedController.dispose();
     _splitCashCtrl.dispose();
     _splitCardCtrl.dispose();
     _splitUpiCtrl.dispose();
+    _manualUtrController.dispose();
     super.dispose();
+  }
+
+  void _startExpiryCountdown() {
+    _stopExpiryCountdown();
+    _upiExpirySeconds = 300;
+    _expiryCountdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
+      if (_upiExpirySeconds > 0) {
+        setState(() {
+          _upiExpirySeconds--;
+        });
+      } else {
+        _stopExpiryCountdown();
+      }
+    });
+  }
+
+  void _stopExpiryCountdown() {
+    _expiryCountdownTimer?.cancel();
+    _expiryCountdownTimer = null;
+  }
+
+  Future<void> _fetchDynamicUpiQr(double roundedTotal) async {
+    if (!mounted) return;
+    setState(() {
+      _isGeneratingQr = true;
+    });
+
+    try {
+      final db = DatabaseService();
+      final orderNumber = widget.order.orderNumber.isNotEmpty
+          ? widget.order.orderNumber
+          : (widget.order.id.length > 8 ? widget.order.id.substring(widget.order.id.length - 6).toUpperCase() : widget.order.id);
+
+      final qrResult = await db.generateUpiPaymentQr(
+        orderId: widget.order.id,
+        orderNumber: orderNumber,
+        amount: roundedTotal,
+        customerName: widget.order.customerName,
+        customerPhone: widget.order.customerPhone,
+      );
+
+      if (mounted) {
+        setState(() {
+          _dynamicQrResult = qrResult;
+          _isGeneratingQr = false;
+        });
+        _startExpiryCountdown();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isGeneratingQr = false;
+        });
+      }
+    }
   }
 
   void _startUpiPolling(double roundedTotal, double roundOff) {
     _stopUpiPolling();
-    _upiPollingTimer = Timer.periodic(const Duration(milliseconds: 2500), (_) async {
+
+    // If dynamic QR not yet generated, request it
+    if (_dynamicQrResult == null && !_isGeneratingQr) {
+      _fetchDynamicUpiQr(roundedTotal);
+    }
+
+    _upiPollingTimer = Timer.periodic(const Duration(milliseconds: 2000), (_) async {
       if (!mounted || _selectedMethod != 'UPI' || _isUpiPaymentConfirmed) return;
       final db = DatabaseService();
-      final isPaid = await db.checkUpiPaymentStatus(widget.order.id);
-      if (isPaid && mounted && !_isUpiPaymentConfirmed) {
-        _onUpiPaymentAutoVerified(roundedTotal, roundOff);
+      final statusResult = await db.checkUpiPaymentStatusDetails(widget.order.id);
+      if (statusResult.isPaid && mounted && !_isUpiPaymentConfirmed) {
+        _onUpiPaymentAutoVerified(
+          roundedTotal,
+          roundOff,
+          utr: statusResult.utr,
+          paymentId: statusResult.paymentId,
+        );
       }
     });
   }
@@ -94,27 +173,45 @@ class _PaymentModalState extends State<PaymentModal> {
 
   Future<void> _onUpiPaymentAutoVerified(
     double roundedAmount,
-    double roundOff,
-  ) async {
+    double roundOff, {
+    String? utr,
+    String? paymentId,
+  }) async {
     if (_isUpiPaymentConfirmed) return;
     _stopUpiPolling();
+    _stopExpiryCountdown();
+
+    HapticFeedback.heavyImpact();
+
+    final String finalRef = utr ?? paymentId ?? 'UPI-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
 
     setState(() {
       _isUpiPaymentConfirmed = true;
-      _upiTransactionRef = 'UPI-${DateTime.now().millisecondsSinceEpoch.toString().substring(5)}';
+      _upiTransactionRef = finalRef;
     });
 
     final nav = Navigator.of(context);
-    // Display "Payment Done! Generating invoice..." briefly before auto-closing
-    await Future.delayed(const Duration(milliseconds: 800));
+    // Display animated success screen briefly before closing
+    await Future.delayed(const Duration(milliseconds: 900));
     if (!mounted) return;
 
-    final String finalMethod = 'UPI (Ref: $_upiTransactionRef)';
+    final String finalMethod = 'UPI (UTR: $_upiTransactionRef)';
     nav.pop(PaymentModalResult(
       paymentMethod: finalMethod,
       roundOff: roundOff,
       totalAmount: roundedAmount,
     ));
+  }
+
+  void _submitManualUtrPayment(double roundedAmount, double roundOff) {
+    final utrText = _manualUtrController.text.trim();
+    if (utrText.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter the 12-digit UPI UTR / Ref Number';
+      });
+      return;
+    }
+    _onUpiPaymentAutoVerified(roundedAmount, roundOff, utr: utrText);
   }
 
   void _validateAndSubmitPayment(
@@ -228,6 +325,12 @@ class _PaymentModalState extends State<PaymentModal> {
     }
   }
 
+  String _formatTimer(int seconds) {
+    final min = (seconds ~/ 60).toString().padLeft(2, '0');
+    final sec = (seconds % 60).toString().padLeft(2, '0');
+    return '$min:$sec';
+  }
+
   @override
   Widget build(BuildContext context) {
     final double rawTotal = widget.order.totalAmount;
@@ -329,6 +432,7 @@ class _PaymentModalState extends State<PaymentModal> {
                     InkWell(
                       onTap: () {
                         _stopUpiPolling();
+                        _stopExpiryCountdown();
                         Navigator.pop(context, null);
                       },
                       borderRadius: BorderRadius.circular(10),
@@ -398,32 +502,14 @@ class _PaymentModalState extends State<PaymentModal> {
                                   const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
                                   Text(
                                     'Tax: ${widget.currency}${widget.order.taxAmount.toStringAsFixed(1)}',
-                                    style: const TextStyle(color: Colors.white70, fontSize: 11),
+                                    style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 11),
                                   ),
                                 ],
-                                if (widget.order.tipAmount > 0) ...[
+                                if (isRoundOffApplicable && roundOff != 0.0) ...[
                                   const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
                                   Text(
-                                    'Tip: +${widget.currency}${widget.order.tipAmount.toStringAsFixed(1)}',
-                                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w700),
-                                  ),
-                                ],
-                                if (widget.order.deliveryCharge > 0) ...[
-                                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                                  Text(
-                                    'Del: +${widget.currency}${widget.order.deliveryCharge.toStringAsFixed(1)}',
-                                    style: const TextStyle(color: Colors.white70, fontSize: 11),
-                                  ),
-                                ],
-                                if (isRoundOffApplicable && roundOff.abs() > 0.001) ...[
-                                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 10)),
-                                  Text(
-                                    'Round: ${roundOff >= 0 ? '+' : ''}${widget.currency}${roundOff.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      color: Color(0xFF34D399),
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                                    'Rnd: ${roundOff > 0 ? "+" : ""}${widget.currency}${roundOff.toStringAsFixed(2)}',
+                                    style: const TextStyle(color: Color(0xFFFBBF24), fontSize: 11, fontWeight: FontWeight.w600),
                                   ),
                                 ],
                               ],
@@ -431,40 +517,76 @@ class _PaymentModalState extends State<PaymentModal> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '${widget.currency}${payableAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            color: Color(0xFF10B981),
-                            fontSize: 21,
-                            fontWeight: FontWeight.w900,
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: -0.5,
+                            ),
                           ),
-                        ),
+                          if (isRoundOffApplicable && roundOff != 0.0)
+                            Text(
+                              'Exact: ${widget.currency}${rawTotal.toStringAsFixed(2)}',
+                              style: const TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 10.5,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 14),
 
-                // Payment Mode Selector Tabs (Cash First)
+                // Method Selector Chips
                 Row(
                   children: [
-                    _buildPaymentTab('Cash', Icons.payments_rounded, roundedTotal, roundOff),
-                    const SizedBox(width: 6),
-                    _buildPaymentTab('UPI', Icons.qr_code_2_rounded, roundedTotal, roundOff),
-                    const SizedBox(width: 6),
-                    _buildPaymentTab('Card', Icons.credit_card_rounded, roundedTotal, roundOff),
-                    const SizedBox(width: 6),
-                    _buildPaymentTab('Split', Icons.call_split_rounded, roundedTotal, roundOff),
+                    Expanded(child: _buildPaymentMethodChip('Cash', Icons.payments_rounded, roundedTotal, roundOff)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildPaymentMethodChip('UPI', Icons.qr_code_2_rounded, roundedTotal, roundOff)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildPaymentMethodChip('Card', Icons.credit_card_rounded, roundedTotal, roundOff)),
+                    const SizedBox(width: 8),
+                    Expanded(child: _buildPaymentMethodChip('Split', Icons.call_split_rounded, roundedTotal, roundOff)),
                   ],
                 ),
                 const SizedBox(height: 14),
 
-                // Active Mode Details View
+                // Error alert banner
+                if (_errorMessage != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFFECACA)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _errorMessage!,
+                            style: const TextStyle(color: Color(0xFF991B1B), fontSize: 11.5, fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // DYNAMIC METHOD CONTENT
                 if (_selectedMethod == 'Cash') ...[
-                  // Clean Cash View (No price selection chips)
+                  // Cash Tendered & Change Section
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -475,44 +597,34 @@ class _PaymentModalState extends State<PaymentModal> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            const Text(
-                              'Cash Received',
-                              style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                            if (roundOff.abs() > 0.001)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF051C48).withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  'Rounded: ${widget.currency}${roundedTotal.toStringAsFixed(0)}',
-                                  style: const TextStyle(color: Color(0xFF051C48), fontSize: 10.5, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                          ],
+                        const Text(
+                          'Cash Received from Customer',
+                          style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _cashTenderedController,
-                          keyboardType: TextInputType.number,
-                          onChanged: (_) {
-                            _clearError();
-                            setState(() {});
-                          },
-                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 16, fontWeight: FontWeight.bold),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                           decoration: InputDecoration(
-                            hintText: roundedTotal.toStringAsFixed(0),
-                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                            prefixIcon: const Icon(Icons.payments_outlined, color: Color(0xFF051C48), size: 19),
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.only(left: 12, right: 8),
+                              child: Text(
+                                widget.currency,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                              ),
+                            ),
+                            prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                            suffixIcon: IconButton(
+                              icon: const Icon(Icons.clear_rounded, size: 18),
+                              onPressed: () {
+                                _cashTenderedController.clear();
+                                setState(() {});
+                              },
+                            ),
                             filled: true,
                             fillColor: Colors.white,
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
                               borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -526,41 +638,71 @@ class _PaymentModalState extends State<PaymentModal> {
                               borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
                             ),
                           ),
+                          onChanged: (_) {
+                            _clearError();
+                            setState(() {});
+                          },
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Quick Tender Buttons
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildQuickTenderChip('Exact', payableAmount),
+                            _buildQuickTenderChip(
+                              '${widget.currency}${((payableAmount / 50).ceil() * 50)}',
+                              ((payableAmount / 50).ceil() * 50).toDouble(),
+                            ),
+                            _buildQuickTenderChip(
+                              '${widget.currency}${((payableAmount / 100).ceil() * 100)}',
+                              ((payableAmount / 100).ceil() * 100).toDouble(),
+                            ),
+                            _buildQuickTenderChip(
+                              '${widget.currency}${((payableAmount / 500).ceil() * 500)}',
+                              ((payableAmount / 500).ceil() * 500).toDouble(),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 12),
 
-                        // Change to Return Box (Wrapped & Adaptive)
+                        // Return Change Output Card
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: isCashDeficit ? const Color(0xFFFEF2F2) : const Color(0xFFECFDF5),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
-                              color: isCashDeficit ? const Color(0xFFEF4444) : const Color(0xFF10B981),
+                              color: isCashDeficit ? const Color(0xFFFECACA) : const Color(0xFFA7F3D0),
                             ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    isCashDeficit ? Icons.warning_amber_rounded : Icons.change_circle_rounded,
+                                    color: isCashDeficit ? const Color(0xFFDC2626) : const Color(0xFF059669),
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    isCashDeficit ? 'Deficit Shortage:' : 'Return Change to Customer:',
+                                    style: TextStyle(
+                                      color: isCashDeficit ? const Color(0xFF991B1B) : const Color(0xFF065F46),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
                               Flexible(
                                 child: Text(
-                                  isCashDeficit ? 'Shortage Amount:' : 'Change to Return:',
-                                  style: TextStyle(
-                                    color: isCashDeficit ? const Color(0xFFDC2626) : const Color(0xFF047857),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                child: Text(
                                   isCashDeficit
-                                      ? '${widget.currency}${(payableAmount - cashTendered).toStringAsFixed(2)} short'
-                                      : '${widget.currency}${changeAmount.toStringAsFixed(2)}',
+                                      ? '-${widget.currency}${(payableAmount - cashTendered).toStringAsFixed(1)}'
+                                      : '${widget.currency}${changeAmount.toStringAsFixed(1)}',
                                   style: TextStyle(
                                     color: isCashDeficit ? const Color(0xFFDC2626) : const Color(0xFF047857),
                                     fontWeight: FontWeight.w900,
@@ -575,166 +717,277 @@ class _PaymentModalState extends State<PaymentModal> {
                     ),
                   ),
                 ] else if (_selectedMethod == 'UPI') ...[
-                  // Automated UPI Screen (No manual buttons, real-time status listener)
-                  Builder(
-                    builder: (context) {
-                      final db = DatabaseService();
-                      final String merchantUpiId = (db.restaurant?.upiId ?? '').isNotEmpty
-                          ? db.restaurant!.upiId
-                          : 'apnapos@upi';
-                      final String merchantName = (db.restaurant?.name ?? '').isNotEmpty
-                          ? db.restaurant!.name
-                          : 'Apna POS Store';
-                      final String orderShortId = widget.order.id.length > 6
-                          ? widget.order.id.substring(widget.order.id.length - 6).toUpperCase()
-                          : widget.order.id;
-
-                      final String upiUri =
-                          'upi://pay?pa=$merchantUpiId&pn=${Uri.encodeComponent(merchantName)}&am=${roundedTotal.toStringAsFixed(2)}&cu=INR&tn=Order_$orderShortId';
-                      final String qrCodeUrl =
-                          'https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${Uri.encodeComponent(upiUri)}';
-
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                  // PRODUCTION DYNAMIC RAZORPAY / GATEWAY UPI SCREEN
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Gateway Brand / Header Indicator
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Compact Dynamic QR Code Box
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x0F000000),
-                                    blurRadius: 8,
-                                    offset: Offset(0, 2),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF051C48).withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
                                   ),
-                                ],
-                              ),
-                              child: ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.network(
-                                  qrCodeUrl,
-                                  width: 145,
-                                  height: 145,
-                                  fit: BoxFit.contain,
-                                  loadingBuilder: (context, child, loadingProgress) {
-                                    if (loadingProgress == null) return child;
-                                    return const SizedBox(
-                                      width: 145,
-                                      height: 145,
-                                      child: Center(
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
-                                      ),
-                                    );
-                                  },
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return const SizedBox(
-                                      width: 145,
-                                      height: 145,
-                                      child: Center(
-                                        child: Icon(Icons.qr_code_2_rounded, size: 70, color: Color(0xFF051C48)),
-                                      ),
-                                    );
-                                  },
+                                  child: const Icon(Icons.bolt_rounded, color: Color(0xFF051C48), size: 14),
                                 ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-
-                            // Clean Single-Line VPA Copy Pill
-                            InkWell(
-                              onTap: () {
-                                Clipboard.setData(ClipboardData(text: merchantUpiId));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('UPI ID ($merchantUpiId) copied!'),
-                                    backgroundColor: const Color(0xFF051C48),
-                                    behavior: SnackBarBehavior.floating,
-                                    duration: const Duration(seconds: 1),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  _dynamicQrResult?.isDynamicGateway == true
+                                      ? 'Razorpay Dynamic UPI'
+                                      : 'Instant UPI Payment',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
                                   ),
-                                );
-                              },
-                              borderRadius: BorderRadius.circular(8),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF051C48).withValues(alpha: 0.08),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
                                 ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.copy_rounded, color: Color(0xFF051C48), size: 12),
-                                    const SizedBox(width: 5),
-                                    Text(
-                                      merchantUpiId,
-                                      style: const TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                              ],
                             ),
-                            const SizedBox(height: 12),
-
-                            // Automated Real-Time Status Badge
+                            // Countdown Expiry Badge
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                               decoration: BoxDecoration(
-                                color: _isUpiPaymentConfirmed ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(10),
+                                color: _upiExpirySeconds > 30 ? const Color(0xFFF1F5F9) : const Color(0xFFFEF2F2),
+                                borderRadius: BorderRadius.circular(6),
                                 border: Border.all(
-                                  color: _isUpiPaymentConfirmed ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
-                                  width: 1.2,
+                                  color: _upiExpirySeconds > 30 ? const Color(0xFFCBD5E1) : const Color(0xFFFCA5A5),
                                 ),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  if (_isUpiPaymentConfirmed) ...[
-                                    const Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 16),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Payment Done! Generating Invoice...',
-                                      style: TextStyle(
-                                        color: Color(0xFF047857),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                  Icon(
+                                    Icons.timer_outlined,
+                                    size: 12,
+                                    color: _upiExpirySeconds > 30 ? const Color(0xFF475569) : const Color(0xFFDC2626),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _formatTimer(_upiExpirySeconds),
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                      color: _upiExpirySeconds > 30 ? const Color(0xFF0F172A) : const Color(0xFFDC2626),
                                     ),
-                                  ] else ...[
-                                    const SizedBox(
-                                      width: 13,
-                                      height: 13,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Waiting for payment confirmation',
-                                      style: TextStyle(
-                                        color: Color(0xFF475569),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ],
                               ),
                             ),
                           ],
                         ),
-                      );
-                    },
+                        const SizedBox(height: 12),
+
+                        // Dynamic QR Code Render Box
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x0A000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: _isGeneratingQr
+                              ? const SizedBox(
+                                  width: 160,
+                                  height: 160,
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        CircularProgressIndicator(strokeWidth: 2.5, color: Color(0xFF051C48)),
+                                        SizedBox(height: 10),
+                                        Text(
+                                          'Generating QR...',
+                                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : (_dynamicQrResult != null && _dynamicQrResult!.qrIntentUrl.isNotEmpty)
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: QrImageView(
+                                        data: _dynamicQrResult!.qrIntentUrl,
+                                        version: QrVersions.auto,
+                                        size: 160.0,
+                                        backgroundColor: Colors.white,
+                                        gapless: true,
+                                        errorCorrectionLevel: QrErrorCorrectLevel.M,
+                                      ),
+                                    )
+                                  : SizedBox(
+                                      width: 160,
+                                      height: 160,
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.qr_code_2_rounded, size: 50, color: Color(0xFF94A3B8)),
+                                            const SizedBox(height: 6),
+                                            TextButton.icon(
+                                              onPressed: () => _fetchDynamicUpiQr(roundedTotal),
+                                              icon: const Icon(Icons.refresh_rounded, size: 14),
+                                              label: const Text('Retry QR', style: TextStyle(fontSize: 11)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Amount to pay pill
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF051C48).withValues(alpha: 0.06),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            'Scan with GPay, PhonePe, Paytm, BHIM • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Real-Time Auto-Verification Status Badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _isUpiPaymentConfirmed ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: _isUpiPaymentConfirmed ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
+                              width: 1.2,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (_isUpiPaymentConfirmed) ...[
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
+                                const SizedBox(width: 8),
+                                Flexible(
+                                  child: Text(
+                                    'Payment Verified! Ref: $_upiTransactionRef',
+                                    style: const TextStyle(
+                                      color: Color(0xFF047857),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ] else ...[
+                                const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
+                                ),
+                                const SizedBox(width: 8),
+                                const Text(
+                                  'Waiting for customer payment...',
+                                  style: TextStyle(
+                                    color: Color(0xFF475569),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Manual UTR Fallback Toggle
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _showManualUtr = !_showManualUtr;
+                                });
+                              },
+                              icon: Icon(
+                                _showManualUtr ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                size: 16,
+                                color: const Color(0xFF64748B),
+                              ),
+                              label: Text(
+                                _showManualUtr ? 'Hide Manual Verification' : 'Manual UTR / Bank Ref Entry',
+                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                            const Text('•', style: TextStyle(color: Color(0xFFCBD5E1))),
+                            TextButton.icon(
+                              onPressed: () => _fetchDynamicUpiQr(roundedTotal),
+                              icon: const Icon(Icons.refresh_rounded, size: 14, color: Color(0xFF051C48)),
+                              label: const Text(
+                                'Regenerate',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF051C48), fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (_showManualUtr) ...[
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _manualUtrController,
+                                  keyboardType: TextInputType.text,
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter 12-digit UTR / Ref ID',
+                                    hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () => _submitManualUtrPayment(roundedTotal, roundOff),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF051C48),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                ),
+                                child: const Text('Confirm', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ] else if (_selectedMethod == 'Card') ...[
                   // Card POS Terminal View
@@ -772,16 +1025,12 @@ class _PaymentModalState extends State<PaymentModal> {
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.point_of_sale_rounded, color: Color(0xFF051C48), size: 24),
-                              SizedBox(width: 12),
+                              Icon(Icons.point_of_sale_rounded, color: Color(0xFF051C48), size: 22),
+                              SizedBox(width: 10),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Card POS Terminal Ready', style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 12)),
-                                    SizedBox(height: 2),
-                                    Text('Tap, Insert, or Swipe card on device.', style: TextStyle(color: Color(0xFF64748B), fontSize: 10.5)),
-                                  ],
+                                child: Text(
+                                  'Swipe / Dip / Tap card on physical POS terminal, then click Complete Payment.',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF334155), fontWeight: FontWeight.w500),
                                 ),
                               ),
                             ],
@@ -791,7 +1040,7 @@ class _PaymentModalState extends State<PaymentModal> {
                     ),
                   ),
                 ] else if (_selectedMethod == 'Split') ...[
-                  // Multi-Mode Split View
+                  // Split Multi-tender Section
                   Container(
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
@@ -803,44 +1052,47 @@ class _PaymentModalState extends State<PaymentModal> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Split Payment (Cash + Card + UPI)',
+                          'Split Amounts',
                           style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12),
                         ),
                         const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            _buildSplitInputField('Cash', _splitCashCtrl),
-                            const SizedBox(width: 6),
-                            _buildSplitInputField('Card', _splitCardCtrl),
-                            const SizedBox(width: 6),
-                            _buildSplitInputField('UPI', _splitUpiCtrl),
-                          ],
-                        ),
+                        _buildSplitRow('Cash', _splitCashCtrl, Icons.payments_rounded),
+                        const SizedBox(height: 8),
+                        _buildSplitRow('Card', _splitCardCtrl, Icons.credit_card_rounded),
+                        const SizedBox(height: 8),
+                        _buildSplitRow('UPI', _splitUpiCtrl, Icons.qr_code_2_rounded),
                         const SizedBox(height: 12),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                           decoration: BoxDecoration(
-                            color: splitRemaining <= 0 ? const Color(0xFFECFDF5) : const Color(0xFFFFFBEB),
+                            color: splitRemaining == 0
+                                ? const Color(0xFFECFDF5)
+                                : (splitRemaining > 0 ? const Color(0xFFFEF2F2) : const Color(0xFFFEF3C7)),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: splitRemaining <= 0 ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
-                            ),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                'Entered: ${widget.currency}${splitTotal.toStringAsFixed(0)}',
-                                style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 11.5),
+                                splitRemaining == 0
+                                    ? 'Exact Split Balanced!'
+                                    : (splitRemaining > 0 ? 'Remaining to Split:' : 'Excess Split Entered:'),
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: splitRemaining == 0
+                                      ? const Color(0xFF047857)
+                                      : (splitRemaining > 0 ? const Color(0xFF991B1B) : const Color(0xFF92400E)),
+                                ),
                               ),
                               Text(
-                                splitRemaining <= 0
-                                    ? 'Full Amount Covered!'
-                                    : 'Remaining: ${widget.currency}${splitRemaining.toStringAsFixed(0)}',
+                                '${widget.currency}${splitRemaining.abs().toStringAsFixed(1)}',
                                 style: TextStyle(
-                                  color: splitRemaining <= 0 ? const Color(0xFF047857) : const Color(0xFFB45309),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 11.5,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                  color: splitRemaining == 0
+                                      ? const Color(0xFF047857)
+                                      : (splitRemaining > 0 ? const Color(0xFFDC2626) : const Color(0xFFD97706)),
                                 ),
                               ),
                             ],
@@ -851,54 +1103,28 @@ class _PaymentModalState extends State<PaymentModal> {
                   ),
                 ],
 
-                if (_errorMessage != null) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFEF4444)),
+                const SizedBox(height: 18),
+
+                // Submit / Confirm Button (Hidden for UPI automated polling unless fallback)
+                if (_selectedMethod != 'UPI') ...[
+                  ElevatedButton(
+                    onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF051C48),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
                     ),
                     child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                        const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _errorMessage!,
-                            style: const TextStyle(color: Color(0xFFDC2626), fontSize: 11.5, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                        InkWell(
-                          onTap: _clearError,
-                          child: const Icon(Icons.close_rounded, color: Color(0xFFDC2626), size: 16),
+                        Text(
+                          'Complete Payment • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                         ),
                       ],
-                    ),
-                  ),
-                ],
-
-                // Bottom Action Button: Rendered ONLY for Cash, Card, Split (UPI is fully automated without buttons)
-                if (_selectedMethod != 'UPI') ...[
-                  const SizedBox(height: 14),
-                  SizedBox(
-                    height: 44,
-                    child: ElevatedButton.icon(
-                      onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF051C48),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        elevation: 1,
-                      ),
-                      icon: const Icon(Icons.check_circle_rounded, size: 18, color: Colors.white),
-                      label: const FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          'Confirm & Print Receipt',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13.5),
-                        ),
-                      ),
                     ),
                   ),
                 ],
@@ -910,73 +1136,107 @@ class _PaymentModalState extends State<PaymentModal> {
     );
   }
 
-  Widget _buildPaymentTab(String method, IconData icon, double roundedTotal, double roundOff) {
-    final isSel = _selectedMethod == method;
-    return Expanded(
-      child: GestureDetector(
-        onTap: () {
-          setState(() {
-            _selectedMethod = method;
-            _errorMessage = null;
-          });
-          if (method == 'UPI') {
-            _startUpiPolling(roundedTotal, roundOff);
-          } else {
-            _stopUpiPolling();
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSel ? const Color(0xFF051C48) : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isSel ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
-              width: 1.2,
+  Widget _buildPaymentMethodChip(
+    String method,
+    IconData icon,
+    double roundedTotal,
+    double roundOff,
+  ) {
+    final bool isSelected = _selectedMethod == method;
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedMethod = method;
+        });
+        if (method == 'UPI') {
+          _startUpiPolling(roundedTotal, roundOff);
+        } else {
+          _stopUpiPolling();
+          _stopExpiryCountdown();
+        }
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF051C48) : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
+            width: 1.2,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+              size: 18,
             ),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: isSel ? Colors.white : const Color(0xFF475569), size: 18),
-              const SizedBox(height: 3),
-              Text(
-                method,
-                style: TextStyle(
-                  color: isSel ? Colors.white : const Color(0xFF475569),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 11.5,
-                ),
+            const SizedBox(height: 4),
+            Text(
+              method,
+              style: TextStyle(
+                color: isSelected ? Colors.white : const Color(0xFF334155),
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickTenderChip(String label, double value) {
+    return InkWell(
+      onTap: () {
+        _cashTenderedController.text = value.toStringAsFixed(0);
+        _clearError();
+        setState(() {});
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFCBD5E1)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
         ),
       ),
     );
   }
 
   Widget _buildCardTypeChip(String type) {
-    final isSel = _selectedCardType == type;
+    final bool isSelected = _selectedCardType == type;
     return Expanded(
       child: InkWell(
         onTap: () {
-          setState(() => _selectedCardType = type);
+          setState(() {
+            _selectedCardType = type;
+          });
         },
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: isSel ? const Color(0xFF051C48).withValues(alpha: 0.12) : Colors.white,
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+            color: isSelected ? const Color(0xFF051C48) : Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+            ),
           ),
           child: Text(
             type,
+            textAlign: TextAlign.center,
             style: TextStyle(
-              color: isSel ? const Color(0xFF051C48) : const Color(0xFF475569),
-              fontSize: 10.5,
-              fontWeight: FontWeight.bold,
+              color: isSelected ? Colors.white : const Color(0xFF334155),
+              fontSize: 11,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
             ),
           ),
         ),
@@ -984,47 +1244,53 @@ class _PaymentModalState extends State<PaymentModal> {
     );
   }
 
-  Widget _buildSplitInputField(String label, TextEditingController controller) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(color: Color(0xFF475569), fontSize: 10.5, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 3),
-          SizedBox(
-            height: 34,
-            child: TextField(
-              controller: controller,
-              keyboardType: TextInputType.number,
-              onChanged: (_) {
-                _clearError();
-                setState(() {});
-              },
-              style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.bold),
-              decoration: InputDecoration(
-                hintText: '0',
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                filled: true,
-                fillColor: Colors.white,
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                ),
+  Widget _buildSplitRow(String method, TextEditingController ctrl, IconData icon) {
+    return Row(
+      children: [
+        Container(
+          width: 80,
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFCBD5E1)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 14, color: const Color(0xFF051C48)),
+              const SizedBox(width: 4),
+              Text(
+                method,
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            decoration: InputDecoration(
+              hintText: '0.00',
+              prefixText: '${widget.currency} ',
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
               ),
             ),
+            onChanged: (_) {
+              _clearError();
+              setState(() {});
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

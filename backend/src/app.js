@@ -50,8 +50,15 @@ if (env.NODE_ENV !== 'test') {
 
 const path = require('path');
 
-// 5. Body Parsers
-app.use(express.json({ limit: '10mb' }));
+// 5. Body Parsers (preserve rawBody for HMAC webhook verification)
+app.use(
+  express.json({
+    limit: '10mb',
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // 6. Serve static uploads (local fallback)
