@@ -145,9 +145,15 @@ class RazorpayService {
    * Cryptographically verify Razorpay webhook signature (HMAC SHA-256)
    */
   verifyWebhookSignature(rawBody, signature, customSecret) {
-    const secret = customSecret || process.env.RAZORPAY_WEBHOOK_SECRET || env.RAZORPAY_WEBHOOK_SECRET;
+    const candidateSecrets = [
+      customSecret,
+      process.env.RAZORPAY_WEBHOOK_SECRET,
+      env.RAZORPAY_WEBHOOK_SECRET,
+      process.env.RAZORPAY_LIVE_WEBHOOK_SECRET,
+      process.env.RAZORPAY_TEST_WEBHOOK_SECRET,
+    ].filter(Boolean);
 
-    if (!secret) {
+    if (candidateSecrets.length === 0) {
       if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') {
         return true;
       }
@@ -158,25 +164,28 @@ class RazorpayService {
       return false;
     }
 
-    try {
-      const bodyString = typeof rawBody === 'string' ? rawBody : (rawBody ? rawBody.toString('utf8') : '');
-      const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(bodyString)
-        .digest('hex');
+    const bodyString = typeof rawBody === 'string' ? rawBody : (rawBody ? rawBody.toString('utf8') : '');
 
-      if (expectedSignature.length !== signature.length) {
-        return false;
-      }
+    // Verify against configured secrets (supports both test and live)
+    for (const secret of candidateSecrets) {
+      try {
+        const expectedSignature = crypto
+          .createHmac('sha256', secret)
+          .update(bodyString)
+          .digest('hex');
 
-      return crypto.timingSafeEqual(
-        Buffer.from(expectedSignature, 'utf8'),
-        Buffer.from(signature, 'utf8')
-      );
-    } catch (e) {
-      console.error('[RazorpayService.verifyWebhookSignature] Verification failed:', e.message);
-      return false;
+        if (expectedSignature.length === signature.length) {
+          const isMatch = crypto.timingSafeEqual(
+            Buffer.from(expectedSignature, 'utf8'),
+            Buffer.from(signature, 'utf8')
+          );
+          if (isMatch) return true;
+        }
+      } catch (_) {}
     }
+
+    console.error('[RazorpayService.verifyWebhookSignature] Verification failed against configured webhook secrets');
+    return false;
   }
 
   /**
