@@ -270,6 +270,10 @@ const orderSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    printCount: {
+      type: Number,
+      default: 0,
+    },
     razorpayQrId: {
       type: String,
       default: '',

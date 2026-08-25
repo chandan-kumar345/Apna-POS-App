@@ -6,11 +6,8 @@ import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
-import '../../core/models/extra_model.dart';
 import '../../core/services/cart_api_service.dart';
 import '../../core/services/customer_service.dart';
-import '../../core/services/sound_service.dart';
-import '../../core/services/product_service.dart';
 import '../../core/widgets/food_type_icon.dart';
 import '../menu/add_product_screen.dart';
 import '../tables/table_management_screen.dart';
@@ -64,6 +61,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   String _deliveryCity = '';
   String _deliveryState = '';
   String _deliveryPincode = '';
+  String? _activeRunningOrderId;
+  String? _activeRunningOrderNumber;
 
   String get _formattedDeliveryAddress {
     final parts = <String>[];
@@ -123,7 +122,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (activeOrder != null) {
         _cartItems.addAll(activeOrder.items);
         _discountAmount = activeOrder.discountAmount;
+        _activeRunningOrderId = activeOrder.id;
+        _activeRunningOrderNumber = activeOrder.orderNumber;
+        _customerName = activeOrder.customerName ?? '';
+        _customerPhone = activeOrder.customerPhone ?? '';
       } else {
+        _activeRunningOrderId = null;
+        _activeRunningOrderNumber = null;
         final savedCart = db.getLiveTableCart(tableName);
         if (savedCart.isNotEmpty) {
           _cartItems.addAll(savedCart);
@@ -2794,34 +2799,91 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                   ),
 
-                  // Bottom Action Buttons (KOT & Pay — Hold Button Removed as requested)
+                  // Bottom Action Buttons: KOT | Save & Print | Settle
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
+                    padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
                     child: Row(
                       children: [
+                        // 1) KOT Button
                         Expanded(
+                          flex: 2,
                           child: SizedBox(
                             height: 48,
                             child: OutlinedButton(
-                              onPressed: () async {
-                                await _sendKotOrder(setStateModal);
-                              },
+                              onPressed: _cartItems.isEmpty
+                                  ? null
+                                  : () async {
+                                      await _sendKotOrder(setStateModal);
+                                    },
                               style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                                side: BorderSide(
+                                  color: _cartItems.isEmpty ? const Color(0xFFCBD5E1) : const Color(0xFF051C48),
+                                  width: 1.5,
+                                ),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                 backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
                               ),
-                              child: const Text(
-                                'KOT',
-                                style: TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold, fontSize: 15),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'KOT',
+                                  style: TextStyle(
+                                    color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14.5,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
 
+                        // 2) Save & Print Button (Between KOT and Settle)
                         Expanded(
-                          flex: 2,
+                          flex: 3,
+                          child: SizedBox(
+                            height: 48,
+                            child: OutlinedButton.icon(
+                              onPressed: _cartItems.isEmpty
+                                  ? null
+                                  : () async {
+                                      await _handleSaveAndPrint(setStateModal, context);
+                                    },
+                              style: OutlinedButton.styleFrom(
+                                side: BorderSide(
+                                  color: _cartItems.isEmpty ? const Color(0xFFCBD5E1) : const Color(0xFF051C48),
+                                  width: 1.5,
+                                ),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 6),
+                              ),
+                              icon: Icon(
+                                Icons.print_outlined,
+                                size: 17,
+                                color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                              ),
+                              label: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'Save & Print',
+                                  style: TextStyle(
+                                    color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13.5,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // 3) Settle Button (Changed from Pay)
+                        Expanded(
+                          flex: 3,
                           child: SizedBox(
                             height: 48,
                             child: Container(
@@ -2852,10 +2914,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
                                 ),
-                                child: const Text(
-                                  'Pay',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                                child: const FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    'Settle',
+                                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14.5),
+                                  ),
                                 ),
                               ),
                             ),
@@ -2873,13 +2939,79 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  Future<void> _handleSaveAndPrint([StateSetter? setStateModal, BuildContext? callerContext]) async {
+    if (_cartItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add items to cart before Save & Print!'),
+          backgroundColor: Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final calc = currentOrderCalculation;
+    final targetContext = callerContext ?? context;
+
+    try {
+      final savedOrder = await db.saveAndPrintOrder(
+        existingOrderId: _activeRunningOrderId,
+        existingOrderNumber: _activeRunningOrderNumber,
+        items: List.from(_cartItems),
+        tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+        deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+        orderType: _selectedOrderType,
+        subtotalOverride: calc.subtotal,
+        discountAmount: calc.orderDiscount,
+        taxAmountOverride: calc.taxAmount,
+        tipAmount: calc.tipAmount,
+        deliveryCharge: calc.deliveryCharge,
+        totalAmount: calc.totalPayableAmount,
+        customerName: _customerName.trim().isNotEmpty ? _customerName.trim() : null,
+        customerPhone: _customerPhone.trim().isNotEmpty ? _customerPhone.trim() : null,
+      );
+
+      // Track active running order ID & number for future edits / settle
+      setState(() {
+        _activeRunningOrderId = savedOrder.id;
+        _activeRunningOrderNumber = savedOrder.orderNumber;
+      });
+      if (setStateModal != null) {
+        setStateModal(() {});
+      }
+
+      // DO NOT clear cart, DO NOT mark as paid, DO NOT close modal.
+      // Show ReceiptDialog with generated invoice and dynamic QR
+      if (mounted && targetContext.mounted) {
+        await showDialog(
+          context: targetContext,
+          useRootNavigator: true,
+          barrierDismissible: true,
+          builder: (dialogCtx) => ReceiptDialog(order: savedOrder, currency: currency),
+        );
+      }
+    } catch (e) {
+      debugPrint('[_handleSaveAndPrint] error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save & Print failed: ${e.toString()}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _checkoutOrder({BuildContext? cartContext}) async {
     if (_cartItems.isEmpty) return;
 
     final currency = db.restaurant?.currencySymbol ?? '₹';
     final calc = currentOrderCalculation;
-    final tempOrderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    final tempOrderNumber = (db.orders.length + 1).toString().padLeft(4, '0');
+    final tempOrderId = _activeRunningOrderId ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+    final tempOrderNumber = _activeRunningOrderNumber ?? (db.orders.length + 1).toString().padLeft(4, '0');
 
     final previewOrder = OrderModel(
       id: tempOrderId,
@@ -2895,7 +3027,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       deliveryCharge: calc.deliveryCharge,
       totalAmount: calc.totalPayableAmount,
       paymentMethod: 'Cash',
-      status: OrderStatus.completed,
+      paymentStatus: 'pending',
+      isPaid: false,
+      status: OrderStatus.pending,
       customerName: _customerName,
       customerPhone: _customerPhone,
       createdAt: DateTime.now().toIso8601String(),
@@ -2903,6 +3037,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     final modalResult = await showDialog<dynamic>(
       context: context,
+      useRootNavigator: true,
       builder: (_) => PaymentModal(
         order: previewOrder,
         currency: currency,
@@ -2917,47 +3052,66 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       final double? totalAmount = modalResult is PaymentModalResult ? modalResult.totalAmount : null;
 
       if (resultMethod.isNotEmpty) {
-        if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
-          final targetTable = _selectedTable!;
+        // If order was already saved in DB (via KOT or Save&Print), settle it; otherwise create completed order
+        final existingKotIndex = db.orders.indexWhere((o) =>
+          (_activeRunningOrderId != null && (o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId)) ||
+          (_selectedOrderType == OrderType.dineIn && _selectedTable != null &&
+           ((o.tableNumber?.trim().toLowerCase() ?? '') == _selectedTable!.trim().toLowerCase() ||
+            'T-${o.tableNumber}'.toLowerCase() == _selectedTable!.trim().toLowerCase()) &&
+           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing))
+        );
 
-          // Remove any existing active running KOT order for this table
-          db.orders.removeWhere((o) =>
-            ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
-             'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
-            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        OrderModel completedOrder;
+        if (existingKotIndex >= 0) {
+          final targetKotOrder = db.orders[existingKotIndex];
+          completedOrder = await db.settleOrder(
+            orderId: targetKotOrder.id,
+            paymentMethod: resultMethod,
+            totalAmount: totalAmount ?? calc.totalPayableAmount,
+            roundOff: roundOff ?? 0.0,
           );
-
-          final tbl = db.tables.where((t) =>
-            t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
-            t.tableNumber.toString() == targetTable ||
-            'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
-          ).firstOrNull;
-
-          if (tbl != null) {
-            db.updateTableStatus(tbl.id, TableStatus.free);
-          }
-          db.setLiveTableCart(targetTable, []);
-          db.setLiveCartTotal(targetTable, 0);
+        } else {
+          // CREATE FINALIZED COMPLETED ORDER ATOMICALLY
+          completedOrder = await db.createOrder(
+            items: List.from(_cartItems),
+            tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+            deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+            orderType: _selectedOrderType,
+            subtotalOverride: calc.subtotal,
+            discountAmount: calc.orderDiscount,
+            taxAmountOverride: calc.taxAmount,
+            tipAmount: calc.tipAmount,
+            deliveryCharge: calc.deliveryCharge,
+            paymentMethod: resultMethod,
+            status: OrderStatus.completed,
+            customerName: _customerName,
+            customerPhone: _customerPhone,
+            roundOff: roundOff ?? 0.0,
+            totalAmount: totalAmount ?? calc.totalPayableAmount,
+          );
         }
 
-        // CREATE FINALIZED COMPLETED ORDER ATOMICALLY
-        final completedOrder = await db.createOrder(
-          items: List.from(_cartItems),
-          tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-          deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-          orderType: _selectedOrderType,
-          subtotalOverride: calc.subtotal,
-          discountAmount: calc.orderDiscount,
-          taxAmountOverride: calc.taxAmount,
-          tipAmount: calc.tipAmount,
-          deliveryCharge: calc.deliveryCharge,
-          paymentMethod: resultMethod,
-          status: OrderStatus.completed,
-          customerName: _customerName,
-          customerPhone: _customerPhone,
-          roundOff: roundOff ?? 0.0,
-          totalAmount: totalAmount ?? calc.totalPayableAmount,
-        );
+        // Robustly free table on settlement
+        final targetTableStr = _selectedTable ?? completedOrder.tableNumber;
+        if (targetTableStr != null && targetTableStr.isNotEmpty) {
+          final cleanTarget = targetTableStr.replaceAll(RegExp(r'[^0-9]'), '');
+          final tbl = db.tables.where((t) {
+            final cleanTableTNum = t.tableNumber.toString().replaceAll(RegExp(r'[^0-9]'), '');
+            final cleanTableName = t.name.replaceAll(RegExp(r'[^0-9]'), '');
+            return t.name.trim().toLowerCase() == targetTableStr.trim().toLowerCase() ||
+                t.tableNumber.toString() == targetTableStr.trim() ||
+                't-${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
+                't${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
+                'table ${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
+                (cleanTarget.isNotEmpty && (cleanTableTNum == cleanTarget || cleanTableName == cleanTarget));
+          }).firstOrNull;
+
+          if (tbl != null) {
+            await db.updateTableStatus(tbl.id, TableStatus.free);
+          }
+          db.setLiveTableCart(targetTableStr, []);
+          db.setLiveCartTotal(targetTableStr, 0);
+        }
 
         // Close the cart screen modal ONLY when payment is successfully done
         if (cartContext != null && cartContext.mounted) {
@@ -2967,6 +3121,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         if (!mounted) return;
         showDialog(
           context: context,
+          useRootNavigator: true,
+          barrierDismissible: true,
           builder: (_) => ReceiptDialog(order: completedOrder, currency: currency),
         );
 
@@ -2984,6 +3140,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           _deliveryCity = '';
           _deliveryState = '';
           _deliveryPincode = '';
+          _activeRunningOrderId = null;
+          _activeRunningOrderNumber = null;
         });
       }
     }
@@ -3115,7 +3273,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       // TABLES BUTTON
                       SizedBox(
                         height: 36,
-                        child: ElevatedButton.icon(
+                        child: ElevatedButton(
                           onPressed: () {
                             if (widget.onOpenTablesTab != null) {
                               widget.onOpenTablesTab!();
@@ -3163,7 +3321,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 12),
                             elevation: 2,
                           ),
-                          label: const Text('Tables', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                          child: const Text('Tables', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
                         ),
                       ),
                       const SizedBox(width: 8),

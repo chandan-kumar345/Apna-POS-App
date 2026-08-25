@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/user_model.dart';
@@ -170,7 +171,10 @@ class ReceiptDialog extends StatelessWidget {
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
+        constraints: BoxConstraints(
+          maxWidth: 440,
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -407,8 +411,52 @@ class ReceiptDialog extends StatelessWidget {
                           const SizedBox(height: 6),
                           _buildReceiptRow('Payment Method', order.paymentMethod.toUpperCase(), isBold: true),
                           const SizedBox(height: 3),
-                          _buildReceiptRow('Payment Status', 'PAID (COMPLETED)', isBold: true),
-                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Payment Status',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: order.isPaid
+                                      ? const Color(0xFFDCFCE7)
+                                      : const Color(0xFFFEF3C7),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: Border.all(
+                                    color: order.isPaid
+                                        ? const Color(0xFF16A34A)
+                                        : const Color(0xFFD97706),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Text(
+                                  order.isPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: order.isPaid
+                                        ? const Color(0xFF166534)
+                                        : const Color(0xFF92400E),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (order.printCount > 0) ...[
+                            const SizedBox(height: 3),
+                            _buildReceiptRow('Print Version', '#${order.printCount}'),
+                          ],
+                          const SizedBox(height: 8),
+                          _buildCenterLine(),
+                          const SizedBox(height: 6),
+
+                          // Dynamic Payment QR Code Section
+                          _buildDynamicPaymentQrSection(context),
+
+                          const SizedBox(height: 6),
                           _buildCenterLine(),
                           const SizedBox(height: 8),
                           const Text(
@@ -514,17 +562,17 @@ class ReceiptDialog extends StatelessWidget {
   Widget _buildDashedLine() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final double width = constraints.maxWidth;
+        final double width = constraints.maxWidth.isFinite && constraints.maxWidth > 0 ? constraints.maxWidth : 320.0;
         const double dashWidth = 4;
         const double dashSpace = 3;
-        final int count = (width / (dashWidth + dashSpace)).floor();
+        final int count = (width / (dashWidth + dashSpace)).floor().clamp(1, 100);
         return Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: List.generate(count, (_) {
-            return SizedBox(
+            return const SizedBox(
               width: dashWidth,
               height: 1,
-              child: const DecoratedBox(
+              child: DecoratedBox(
                 decoration: BoxDecoration(color: Color(0xFF94A3B8)),
               ),
             );
@@ -565,6 +613,71 @@ class ReceiptDialog extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDynamicPaymentQrSection(BuildContext context) {
+    final rest = DatabaseService().restaurant;
+    final String upiId = (rest?.upiId ?? '').trim();
+    final String qrPayload = (order.qrIntentUrl != null && order.qrIntentUrl!.isNotEmpty)
+        ? order.qrIntentUrl!
+        : (upiId.isNotEmpty
+            ? 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(rest?.name ?? "Apna POS")}&am=${order.totalAmount.toStringAsFixed(2)}&cu=INR&tr=${order.orderNumber}&tn=${Uri.encodeComponent("Bill ${order.orderNumber}")}'
+            : 'upi://pay?pa=apnapos@upi&pn=${Uri.encodeComponent(rest?.name ?? "Apna POS")}&am=${order.totalAmount.toStringAsFixed(2)}&cu=INR&tr=${order.orderNumber}&tn=${Uri.encodeComponent("Bill ${order.orderNumber}")}');
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      child: Column(
+        children: [
+          Text(
+            order.isPaid ? 'PAYMENT QR (UPI)' : 'SCAN & PAY WITH ANY UPI APP',
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.bold,
+              letterSpacing: 0.5,
+              color: Color(0xFF051C48),
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 6),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+              ),
+              child: QrImageView(
+                data: qrPayload,
+                version: QrVersions.auto,
+                size: 110.0,
+                backgroundColor: Colors.white,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Amount: $currency${order.totalAmount.toStringAsFixed(2)}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+          if (upiId.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              'UPI ID: $upiId',
+              style: const TextStyle(
+                fontSize: 9.5,
+                color: Color(0xFF64748B),
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

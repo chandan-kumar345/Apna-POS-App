@@ -77,6 +77,40 @@ class OrderService {
     }
   }
 
+  /// Save current cart/order state and generate bill snapshot via Save & Print API
+  Future<Map<String, dynamic>?> saveAndPrintOrder(Map<String, dynamic> payload) async {
+    try {
+      final response = await _apiClient.post(
+        ApiEndpoints.orderSaveAndPrint,
+        data: payload,
+      );
+      if (response != null && response['data'] != null) {
+        return response['data'] as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[OrderService.saveAndPrintOrder] error: $e');
+      rethrow;
+    }
+  }
+
+  /// Settle and complete order with full payment details
+  Future<Map<String, dynamic>?> settleOrder(String orderId, Map<String, dynamic> paymentData) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.orders}/$orderId/settle',
+        data: paymentData,
+      );
+      if (response != null && response['data'] != null) {
+        return response['data'] as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[OrderService.settleOrder] error: $e');
+      rethrow;
+    }
+  }
+
   /// Generate POS Order with custom payload & idempotency
   Future<Map<String, dynamic>?> generatePosOrder(Map<String, dynamic> payload) async {
     try {

@@ -3,6 +3,7 @@ import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
 import '../pos/receipt_dialog.dart';
+import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 
@@ -36,6 +37,43 @@ class _OrdersScreenState extends State<OrdersScreen> {
     await db.syncWithBackend();
     if (mounted) {
       setState(() => _isManualRefreshing = false);
+    }
+  }
+
+  Future<void> _settleOrderFromList(OrderModel order) async {
+    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final modalResult = await showDialog<dynamic>(
+      context: context,
+      builder: (_) => PaymentModal(
+        order: order,
+        currency: currency,
+      ),
+    );
+
+    if (modalResult != null) {
+      final String resultMethod = modalResult is PaymentModalResult
+          ? modalResult.paymentMethod
+          : modalResult.toString();
+      final double? roundOff = modalResult is PaymentModalResult ? modalResult.roundOff : null;
+      final double? totalAmount = modalResult is PaymentModalResult ? modalResult.totalAmount : null;
+
+      if (resultMethod.isNotEmpty) {
+        final completedOrder = await db.settleOrder(
+          orderId: order.id,
+          paymentMethod: resultMethod,
+          totalAmount: totalAmount ?? order.totalAmount,
+          roundOff: roundOff ?? 0.0,
+        );
+
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          useRootNavigator: true,
+          barrierDismissible: true,
+          builder: (_) => ReceiptDialog(order: completedOrder, currency: currency),
+        );
+        setState(() {});
+      }
     }
   }
 
@@ -365,7 +403,44 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                                 style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
                                               ),
                                             ),
+                                            if (order.printCount > 0) ...[
+                                              const SizedBox(width: 4),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF051C48).withOpacity(0.06),
+                                                  borderRadius: BorderRadius.circular(6),
+                                                ),
+                                                child: Text(
+                                                  'P#${order.printCount}',
+                                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                                ),
+                                              ),
+                                            ],
                                             const Spacer(),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              decoration: BoxDecoration(
+                                                color: order.isPaid
+                                                    ? const Color(0xFF10B981).withOpacity(0.12)
+                                                    : const Color(0xFFF59E0B).withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(7),
+                                                border: Border.all(
+                                                  color: order.isPaid
+                                                      ? const Color(0xFF10B981).withOpacity(0.4)
+                                                      : const Color(0xFFF59E0B).withOpacity(0.4),
+                                                ),
+                                              ),
+                                              child: Text(
+                                                order.isPaid ? 'PAID' : 'UNPAID',
+                                                style: TextStyle(
+                                                  color: order.isPaid ? const Color(0xFF10B981) : const Color(0xFFD97706),
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 4),
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                               decoration: BoxDecoration(
@@ -513,6 +588,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                             InkWell(
                                               onTap: () => showDialog(
                                                 context: context,
+                                                useRootNavigator: true,
+                                                barrierDismissible: true,
                                                 builder: (_) => ReceiptDialog(order: order, currency: currency),
                                               ),
                                               borderRadius: BorderRadius.circular(8),
@@ -533,6 +610,38 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                                 ),
                                               ),
                                             ),
+                                            // Settle Button for Unpaid Orders
+                                            if (!order.isPaid && effectiveStatus != OrderStatus.cancelled) ...[
+                                              const SizedBox(width: 6),
+                                              InkWell(
+                                                onTap: () => _settleOrderFromList(order),
+                                                borderRadius: BorderRadius.circular(8),
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                                                  decoration: BoxDecoration(
+                                                    gradient: const LinearGradient(
+                                                      colors: [Color(0xFF051C48), Color(0xFF0A2E7A)],
+                                                    ),
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF051C48).withOpacity(0.25),
+                                                        blurRadius: 4,
+                                                        offset: const Offset(0, 2),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  child: const Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      Icon(Icons.check_circle_outline, size: 12, color: Colors.white),
+                                                      SizedBox(width: 3),
+                                                      Text('Settle', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                             const SizedBox(width: 6),
                                             // Status Transition Button
                                             if (effectiveStatus == OrderStatus.pending)

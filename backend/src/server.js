@@ -1,3 +1,4 @@
+// Apna POS Server Entrypoint
 const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');

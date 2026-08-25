@@ -420,6 +420,33 @@ class BluetoothPrinterService {
         PosColumn(text: 'Payment Method', width: 6),
         PosColumn(text: _toAscii(order.paymentMethod.toUpperCase()), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
+      final String paymentStatusStr = order.isPaid ? 'PAID (COMPLETED)' : 'UNPAID / PENDING';
+      bytes += generator.row([
+        PosColumn(text: 'Payment Status', width: 6, styles: const PosStyles(bold: true)),
+        PosColumn(text: paymentStatusStr, width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+      ]);
+
+      // Print Dynamic UPI QR code if available or restaurant UPI configured
+      final String upiId = (restaurant?.upiId ?? '').trim();
+      final String qrPayload = (order.qrIntentUrl != null && order.qrIntentUrl!.isNotEmpty)
+          ? order.qrIntentUrl!
+          : (upiId.isNotEmpty
+              ? 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(restaurant?.name ?? "Apna POS")}&am=${order.totalAmount.toStringAsFixed(2)}&cu=INR&tr=${order.orderNumber}&tn=${Uri.encodeComponent("Bill ${order.orderNumber}")}'
+              : '');
+
+      if (qrPayload.isNotEmpty) {
+        bytes += generator.hr();
+        bytes += generator.text(
+          order.isPaid ? 'PAYMENT QR (UPI)' : 'SCAN & PAY WITH UPI APP',
+          styles: const PosStyles(align: PosAlign.center, bold: true),
+        );
+        try {
+          bytes += generator.qrcode(qrPayload, size: QRSize.size4);
+        } catch (_) {}
+        if (upiId.isNotEmpty) {
+          bytes += generator.text('UPI ID: ${_toAscii(upiId)}', styles: const PosStyles(align: PosAlign.center));
+        }
+      }
 
       bytes += generator.hr();
 

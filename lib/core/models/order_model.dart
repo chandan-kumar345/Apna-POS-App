@@ -78,10 +78,16 @@ class OrderModel {
   final double roundOff;
   final double totalAmount;
   final String paymentMethod; // Cash, Card, UPI
+  final String paymentStatus; // pending, paid
+  final bool isPaid;
   final String? deliveryAddress;
   final String createdAt;
   final String? customerName;
   final String? customerPhone;
+  final String? invoiceNumber;
+  final int printCount;
+  final String? qrIntentUrl;
+  final String? qrImageUrl;
 
   OrderModel({
     required this.id,
@@ -98,10 +104,16 @@ class OrderModel {
     this.roundOff = 0.0,
     required this.totalAmount,
     this.paymentMethod = 'UPI',
+    this.paymentStatus = 'pending',
+    this.isPaid = false,
     this.deliveryAddress,
     required this.createdAt,
     this.customerName,
     this.customerPhone,
+    this.invoiceNumber,
+    this.printCount = 0,
+    this.qrIntentUrl,
+    this.qrImageUrl,
   });
 
   Map<String, dynamic> toJson() => {
@@ -119,41 +131,60 @@ class OrderModel {
         'roundOff': roundOff,
         'totalAmount': totalAmount,
         'paymentMethod': paymentMethod,
+        'paymentStatus': paymentStatus,
+        'isPaid': isPaid,
         'deliveryAddress': deliveryAddress,
         'createdAt': createdAt,
         'customerName': customerName,
         'customerPhone': customerPhone,
+        'invoiceNumber': invoiceNumber,
+        'printCount': printCount,
+        'qrIntentUrl': qrIntentUrl,
+        'qrImageUrl': qrImageUrl,
       };
 
-  factory OrderModel.fromJson(Map<String, dynamic> json) => OrderModel(
-        id: json['id'] ?? '',
-        orderNumber: json['orderNumber'] ?? '',
-        tableNumber: json['tableNumber'],
-        orderType: OrderType.values.firstWhere(
-          (e) => e.name == json['orderType'],
-          orElse: () => OrderType.dineIn,
-        ),
-        status: OrderStatus.values.firstWhere(
-          (e) => e.name == json['status'],
-          orElse: () => OrderStatus.pending,
-        ),
-        items: (json['items'] as List<dynamic>?)
-                ?.map((i) => CartItemModel.fromJson(i))
-                .toList() ??
-            [],
-        subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
-        taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0.0,
-        discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
-        tipAmount: (json['tipAmount'] as num?)?.toDouble() ?? 0.0,
-        deliveryCharge: (json['deliveryCharge'] as num?)?.toDouble() ?? 0.0,
-        roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
-        totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
-        paymentMethod: json['paymentMethod'] ?? 'Cash',
-        deliveryAddress: json['deliveryAddress'],
-        createdAt: json['createdAt'] ?? '',
-        customerName: json['customerName'],
-        customerPhone: json['customerPhone'],
-      );
+  factory OrderModel.fromJson(Map<String, dynamic> json) {
+    final rawPm = (json['paymentMethod'] ?? 'Cash').toString();
+    final rawPs = (json['paymentStatus'] ?? '').toString().toLowerCase();
+    final bool rawIsPaid = json['isPaid'] == true || rawPs == 'paid' || json['status'] == 'completed';
+
+    return OrderModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      orderNumber: json['orderNumber']?.toString() ?? '',
+      tableNumber: json['tableNumber']?.toString(),
+      orderType: OrderType.values.firstWhere(
+        (e) => e.name == (json['orderType']?.toString() ?? ''),
+        orElse: () => OrderType.dineIn,
+      ),
+      status: OrderStatus.values.firstWhere(
+        (e) => e.name == (json['status']?.toString() ?? ''),
+        orElse: () => OrderStatus.pending,
+      ),
+      items: (json['items'] as List<dynamic>?)
+              ?.map((i) => i is Map ? CartItemModel.fromJson(Map<String, dynamic>.from(i)) : null)
+              .whereType<CartItemModel>()
+              .toList() ??
+          [],
+      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
+      taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0.0,
+      discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
+      tipAmount: (json['tipAmount'] as num?)?.toDouble() ?? 0.0,
+      deliveryCharge: (json['deliveryCharge'] as num?)?.toDouble() ?? 0.0,
+      roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
+      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      paymentMethod: rawPm,
+      paymentStatus: rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending'),
+      isPaid: rawIsPaid,
+      deliveryAddress: json['deliveryAddress']?.toString(),
+      createdAt: json['createdAt']?.toString() ?? '',
+      customerName: json['customerName']?.toString(),
+      customerPhone: json['customerPhone']?.toString(),
+      invoiceNumber: json['invoiceNumber']?.toString(),
+      printCount: (json['printCount'] as num?)?.toInt() ?? 0,
+      qrIntentUrl: json['qrIntentUrl']?.toString(),
+      qrImageUrl: json['qrImageUrl']?.toString(),
+    );
+  }
 
   /// Helper to safely resolve the exact DateTime of this order
   DateTime get createdDateTime {
@@ -178,6 +209,8 @@ class OrderModel {
     String? tableNumber,
     OrderStatus? status,
     String? paymentMethod,
+    String? paymentStatus,
+    bool? isPaid,
     String? deliveryAddress,
     String? customerName,
     String? customerPhone,
@@ -189,6 +222,10 @@ class OrderModel {
     double? tipAmount,
     double? deliveryCharge,
     List<CartItemModel>? items,
+    String? invoiceNumber,
+    int? printCount,
+    String? qrIntentUrl,
+    String? qrImageUrl,
   }) {
     return OrderModel(
       id: id,
@@ -205,10 +242,16 @@ class OrderModel {
       roundOff: roundOff ?? this.roundOff,
       totalAmount: totalAmount ?? this.totalAmount,
       paymentMethod: paymentMethod ?? this.paymentMethod,
+      paymentStatus: paymentStatus ?? this.paymentStatus,
+      isPaid: isPaid ?? this.isPaid,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
+      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
+      printCount: printCount ?? this.printCount,
+      qrIntentUrl: qrIntentUrl ?? this.qrIntentUrl,
+      qrImageUrl: qrImageUrl ?? this.qrImageUrl,
     );
   }
 }

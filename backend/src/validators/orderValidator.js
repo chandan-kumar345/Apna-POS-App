@@ -132,7 +132,14 @@ const updateOrderStatusSchema = Joi.object({
 
 const payOrderSchema = Joi.object({
   paymentMethod: Joi.string().allow('', null).default('cash'),
+  paymentMode: Joi.string().allow('', null).optional(),
   amountPaid: Joi.number().min(0).optional(),
+  totalAmount: Joi.number().min(0).optional(),
+  roundOff: Joi.number().optional(),
+  paymentDetails: Joi.array().items(paymentDetailItemSchema).optional(),
+  ncReason: Joi.string().allow('', null).optional(),
+  user: Joi.string().allow('', null).optional(),
+  CreatedByUserId: Joi.string().allow('', null).optional(),
 });
 
 module.exports = {

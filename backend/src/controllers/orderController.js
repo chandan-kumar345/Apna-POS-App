@@ -74,6 +74,34 @@ class OrderController {
     }
   }
 
+  async saveAndPrint(req, res, next) {
+    try {
+      const result = await orderService.saveAndPrintOrder(req.businessId, req.body);
+      return ApiResponse.success(
+        res,
+        result,
+        'Order saved and invoice print snapshot generated successfully',
+        200
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async settleOrder(req, res, next) {
+    try {
+      const result = await orderService.settleOrder(req.businessId, req.params.id, req.body);
+      return ApiResponse.success(
+        res,
+        result,
+        result.message || 'Order settled successfully',
+        200
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async getTableOrder(req, res, next) {
     try {
       const order = await orderService.getActiveTableOrder(req.businessId, req.params.tableNumber);

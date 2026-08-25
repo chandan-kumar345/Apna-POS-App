@@ -23,6 +23,7 @@ import '../services/extra_service.dart';
 import '../services/report_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/payment_service.dart';
+import '../services/print_log_service.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -47,6 +48,7 @@ class DatabaseService extends ChangeNotifier {
   PaymentService get paymentService => PaymentService();
   ReportService get reportService => ReportService();
   DashboardService get dashboardService => DashboardService();
+  PrintLogService get printLogService => PrintLogService();
   
   ProductService get _productService => productService;
   OrderService get _orderService => orderService;
@@ -1558,6 +1560,252 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Save and Print: saves/updates running order to API, generates immutable PrintLog snapshot and returns OrderModel
+  Future<OrderModel> saveAndPrintOrder({
+    String? existingOrderId,
+    String? existingOrderNumber,
+    required List<CartItemModel> items,
+    String? tableNumber,
+    required OrderType orderType,
+    required double discountAmount,
+    double roundOff = 0.0,
+    double? totalAmount,
+    double tipAmount = 0.0,
+    double deliveryCharge = 0.0,
+    double? subtotalOverride,
+    double? taxAmountOverride,
+    String? deliveryAddress,
+    String? customerName,
+    String? customerPhone,
+    String? notes,
+  }) async {
+    final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
+    final double taxRate = restaurant?.taxRate ?? 5.0;
+    final double taxAmount = taxAmountOverride ?? ((subtotal - discountAmount).clamp(0.0, double.infinity) * (taxRate / 100.0));
+    final double computedTotal = (subtotal - discountAmount + taxAmount + tipAmount + deliveryCharge + roundOff).clamp(0.0, double.infinity);
+    final double finalTotalAmount = totalAmount ?? computedTotal;
+
+    final String upiId = (restaurant?.upiId ?? 'apnapos@upi').trim();
+    final String restName = (restaurant?.name ?? 'Apna POS Store').trim();
+    final String safeOrderNum = (existingOrderNumber != null && existingOrderNumber.isNotEmpty)
+        ? existingOrderNumber
+        : '${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+    final String fallbackQr = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(restName)}&am=${finalTotalAmount.toStringAsFixed(2)}&cu=INR&tr=$safeOrderNum&tn=${Uri.encodeComponent("Bill $safeOrderNum")}';
+
+    final payload = {
+      if (existingOrderId != null && existingOrderId.isNotEmpty) 'orderId': existingOrderId,
+      if (existingOrderNumber != null && existingOrderNumber.isNotEmpty) 'orderNumber': existingOrderNumber,
+      'orderType': orderType.name,
+      'status': 'pending',
+      'paymentStatus': 'pending',
+      'paymentMethod': 'unpaid',
+      'tableNumber': orderType == OrderType.dineIn ? (tableNumber ?? '') : '',
+      'deliveryAddress': orderType == OrderType.delivery ? (deliveryAddress ?? '') : '',
+      'customerName': customerName ?? '',
+      'customerPhone': customerPhone ?? '',
+      'items': items.map((i) => {
+        'productId': i.item.id.length == 24 ? i.item.id : null,
+        'name': i.item.name,
+        'price': i.item.price,
+        'quantity': i.quantity,
+        'foodType': i.item.itemType.toLowerCase().replaceAll('-', '_'),
+        'note': i.note ?? '',
+      }).toList(),
+      'subtotal': subtotal,
+      'discountAmount': discountAmount,
+      'taxAmount': taxAmount,
+      'tipAmount': tipAmount,
+      'deliveryCharge': deliveryCharge,
+      'roundOff': roundOff,
+      'totalAmount': finalTotalAmount,
+      'notes': notes ?? '',
+    };
+
+    OrderModel currentOrder = OrderModel(
+      id: existingOrderId ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+      orderNumber: safeOrderNum,
+      tableNumber: tableNumber,
+      orderType: orderType,
+      status: OrderStatus.pending,
+      paymentStatus: 'pending',
+      isPaid: false,
+      items: items,
+      subtotal: subtotal,
+      taxAmount: taxAmount,
+      discountAmount: discountAmount,
+      tipAmount: tipAmount,
+      deliveryCharge: deliveryCharge,
+      roundOff: roundOff,
+      totalAmount: finalTotalAmount,
+      paymentMethod: 'unpaid',
+      deliveryAddress: deliveryAddress,
+      createdAt: DateTime.now().toIso8601String(),
+      customerName: customerName,
+      customerPhone: customerPhone,
+      invoiceNumber: 'INV-$safeOrderNum',
+      qrIntentUrl: fallbackQr,
+      printCount: 1,
+    );
+
+    // If table assigned, keep table occupied
+    if (tableNumber != null && tableNumber.isNotEmpty && orderType == OrderType.dineIn) {
+      final tIndex = tables.indexWhere((t) => t.name == tableNumber || t.tableNumber.toString() == tableNumber);
+      if (tIndex >= 0) {
+        updateTableStatus(tables[tIndex].id, TableStatus.occupied, orderId: currentOrder.id);
+      }
+    }
+
+    // Save customer if phone provided
+    if (customerPhone != null && customerPhone.trim().isNotEmpty) {
+      saveCustomer(
+        name: (customerName != null && customerName.trim().isNotEmpty) ? customerName.trim() : 'Customer',
+        phone: customerPhone.trim(),
+        address: (deliveryAddress != null && deliveryAddress.trim().isNotEmpty) ? deliveryAddress.trim() : null,
+      );
+    }
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final apiResult = await _orderService.saveAndPrintOrder(payload);
+        if (apiResult != null && apiResult['order'] != null && apiResult['order'] is Map) {
+          final serverOrder = OrderModel.fromJson(Map<String, dynamic>.from(apiResult['order'] as Map));
+          final qrData = apiResult['qrData'] is Map ? Map<String, dynamic>.from(apiResult['qrData'] as Map) : null;
+          final String resolvedQr = qrData?['qrIntentUrl']?.toString() ?? serverOrder.qrIntentUrl ?? fallbackQr;
+
+          currentOrder = serverOrder.copyWith(
+            items: serverOrder.items.isNotEmpty ? serverOrder.items : List.from(items),
+            qrIntentUrl: resolvedQr,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.saveAndPrintOrder] API error: $e');
+    }
+
+    // Upsert in local orders list
+    final existingIdx = orders.indexWhere((o) => o.id == currentOrder.id || o.orderNumber == currentOrder.orderNumber);
+    if (existingIdx >= 0) {
+      orders[existingIdx] = currentOrder;
+    } else {
+      orders.insert(0, currentOrder);
+    }
+
+    await _saveOrdersToPrefs();
+    notifyListeners();
+
+    return currentOrder;
+  }
+
+  /// Settle Order: completes payment, creates sale, frees table, and clears cart
+  Future<OrderModel> settleOrder({
+    required String orderId,
+    required String paymentMethod,
+    required double totalAmount,
+    double roundOff = 0.0,
+    List<Map<String, dynamic>>? paymentDetails,
+    String? ncReason,
+  }) async {
+    final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
+    OrderModel baseOrder;
+    if (index >= 0) {
+      baseOrder = orders[index];
+    } else {
+      baseOrder = OrderModel(
+        id: orderId,
+        orderNumber: orderId,
+        items: [],
+        subtotal: totalAmount,
+        taxAmount: 0,
+        totalAmount: totalAmount,
+        createdAt: DateTime.now().toIso8601String(),
+      );
+    }
+
+    final completedOrder = baseOrder.copyWith(
+      status: OrderStatus.completed,
+      paymentStatus: 'paid',
+      isPaid: true,
+      paymentMethod: paymentMethod,
+      roundOff: roundOff,
+      totalAmount: totalAmount,
+    );
+
+    if (index >= 0) {
+      orders[index] = completedOrder;
+    } else {
+      orders.insert(0, completedOrder);
+    }
+
+    // Free table if dineIn
+    final tNum = completedOrder.tableNumber;
+    if (tNum != null && tNum.isNotEmpty) {
+      _liveCartTotals.remove(tNum);
+      _liveTableCarts.remove(tNum);
+
+      final cleanTNum = tNum.replaceAll(RegExp(r'[^0-9]'), '');
+      final tIndex = tables.indexWhere((t) {
+        final cleanTableTNum = t.tableNumber.toString().replaceAll(RegExp(r'[^0-9]'), '');
+        final cleanTableName = t.name.replaceAll(RegExp(r'[^0-9]'), '');
+        return t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
+            t.tableNumber.toString() == tNum.trim() ||
+            't-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
+            't${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
+            'table ${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
+            (cleanTNum.isNotEmpty && (cleanTableTNum == cleanTNum || cleanTableName == cleanTNum));
+      });
+      if (tIndex >= 0) {
+        await updateTableStatus(tables[tIndex].id, TableStatus.free);
+      }
+    }
+
+    // Deduct stock quantity locally
+    for (var cartItem in completedOrder.items) {
+      final mIndex = menuItems.indexWhere((m) => m.id == cartItem.item.id);
+      if (mIndex >= 0) {
+        final currentQty = menuItems[mIndex].stockQuantity;
+        final newQty = (currentQty - cartItem.quantity).clamp(0, 999);
+        menuItems[mIndex] = menuItems[mIndex].copyWith(stockQuantity: newQty);
+      }
+    }
+
+    await _saveOrdersToPrefs();
+    await _saveMenuToPrefs();
+    notifyListeners();
+
+    // Call API settlement
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final payload = {
+          'paymentMethod': paymentMethod,
+          'paymentMode': paymentMethod,
+          'totalAmount': totalAmount,
+          'roundOff': roundOff,
+          'amountPaid': totalAmount,
+          if (paymentDetails != null && paymentDetails.isNotEmpty) 'paymentDetails': paymentDetails,
+          if (ncReason != null && ncReason.isNotEmpty) 'ncReason': ncReason,
+        };
+
+        final targetApiId = completedOrder.id.length == 24 ? completedOrder.id : (completedOrder.orderNumber.isNotEmpty ? completedOrder.orderNumber : completedOrder.id);
+        final settleResult = await _orderService.settleOrder(targetApiId, payload);
+        if (settleResult != null && settleResult['order'] != null) {
+          final serverOrder = OrderModel.fromJson(settleResult['order'] as Map<String, dynamic>);
+          final idx = orders.indexWhere((o) => o.id == completedOrder.id || o.orderNumber == completedOrder.orderNumber);
+          if (idx >= 0) {
+            orders[idx] = serverOrder;
+            await _saveOrdersToPrefs();
+            notifyListeners();
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.settleOrder] API error: $e');
+    }
+
+    return completedOrder;
+  }
+
   Future<void> completeOrderPayment(
     String orderId,
     String paymentMethod, {
@@ -1568,6 +1816,8 @@ class DatabaseService extends ChangeNotifier {
     if (index >= 0) {
       orders[index] = orders[index].copyWith(
         status: OrderStatus.completed,
+        paymentStatus: 'paid',
+        isPaid: true,
         paymentMethod: paymentMethod,
         roundOff: roundOff ?? orders[index].roundOff,
         totalAmount: totalAmount ?? orders[index].totalAmount,

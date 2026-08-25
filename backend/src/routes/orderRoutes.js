@@ -23,6 +23,15 @@ router.post('/generateposorder', validate(generatePosOrderSchema), (req, res, ne
 router.post('/generatePosOrder', validate(generatePosOrderSchema), (req, res, next) =>
   orderController.generatePosOrder(req, res, next)
 );
+router.post('/save-and-print', (req, res, next) =>
+  orderController.saveAndPrint(req, res, next)
+);
+router.post('/save-print', (req, res, next) =>
+  orderController.saveAndPrint(req, res, next)
+);
+router.post('/saveprint', (req, res, next) =>
+  orderController.saveAndPrint(req, res, next)
+);
 router.get('/table/:tableNumber', (req, res, next) =>
   orderController.getTableOrder(req, res, next)
 );
@@ -30,8 +39,11 @@ router.get('/:id', (req, res, next) => orderController.getOrderById(req, res, ne
 router.patch('/:id/status', validate(updateOrderStatusSchema), (req, res, next) =>
   orderController.updateStatus(req, res, next)
 );
+router.post('/:id/settle', (req, res, next) =>
+  orderController.settleOrder(req, res, next)
+);
 router.post('/:id/pay', validate(payOrderSchema), (req, res, next) =>
-  orderController.payOrder(req, res, next)
+  orderController.settleOrder(req, res, next)
 );
 
 module.exports = router;
