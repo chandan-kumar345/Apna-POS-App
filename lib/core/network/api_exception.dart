@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
-import 'api_endpoints.dart';
 
 class ApiException implements Exception {
   final String message;
@@ -53,8 +52,6 @@ class ApiException implements Exception {
         );
       }
     }
-
-    final targetUrl = ApiEndpoints.baseUrl;
 
     switch (error.type) {
       case DioExceptionType.connectionTimeout:

@@ -65,7 +65,10 @@ class AuthInterceptor extends Interceptor {
         } catch (e) {
           _isRefreshing = false;
           _failedRequestsQueue.clear();
-          await _storageService.clearAll();
+          // Only clear if refreshToken is explicitly rejected
+          if (e is DioException && e.response?.statusCode == 401) {
+            await _storageService.clearAll();
+          }
         }
       } else {
         _failedRequestsQueue.add({'options': err.requestOptions, 'handler': handler});
@@ -77,21 +80,33 @@ class AuthInterceptor extends Interceptor {
 
   Future<String?> _performTokenRefresh() async {
     final refreshToken = await _storageService.getRefreshToken();
-    if (refreshToken == null) return null;
+    if (refreshToken == null || refreshToken.isEmpty) return null;
 
-    final response = await _dio.post('/auth/refresh', data: {
-      'refreshToken': refreshToken,
-    });
+    final refreshUrl = _dio.options.baseUrl.endsWith('/api/v1')
+        ? '${_dio.options.baseUrl}/auth/refresh'
+        : '${_dio.options.baseUrl}/api/v1/auth/refresh';
+
+    final response = await _dio.post(
+      refreshUrl,
+      data: {
+        'refreshToken': refreshToken,
+      },
+      options: Options(
+        headers: {
+          'Authorization': '', // Avoid sending expired access token
+        },
+      ),
+    );
 
     if (response.statusCode == 200 && response.data != null) {
       final data = response.data['data'] ?? response.data;
       final newAccessToken = data['accessToken'] as String?;
       final newRefreshToken = data['refreshToken'] as String?;
 
-      if (newAccessToken != null) {
+      if (newAccessToken != null && newAccessToken.isNotEmpty) {
         await _storageService.saveAccessToken(newAccessToken);
       }
-      if (newRefreshToken != null) {
+      if (newRefreshToken != null && newRefreshToken.isNotEmpty) {
         await _storageService.saveRefreshToken(newRefreshToken);
       }
 

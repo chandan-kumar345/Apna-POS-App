@@ -1,76 +1,114 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import '../network/api_endpoints.dart';
+import '../database/database_service.dart';
 
-/// Global network connectivity checker service for checking internet and network availability.
+/// Global network connectivity & reachability service for offline/online state detection.
 class NetworkService {
   static final NetworkService _instance = NetworkService._internal();
   factory NetworkService() => _instance;
-  NetworkService._internal();
+  NetworkService._internal() {
+    _startMonitoring();
+  }
 
+  final ValueNotifier<bool> isOnlineNotifier = ValueNotifier<bool>(true);
+  bool get isOnline => isOnlineNotifier.value;
+
+  Timer? _monitorTimer;
   DateTime? _lastCheckTime;
-  bool _lastCheckResult = true;
+  bool _isChecking = false;
 
-  /// Check whether the device currently has active network / internet access.
-  /// Uses reliable HTTP connectivity probe, DNS lookup, and active interface check.
-  Future<bool> hasInternet() async {
-    if (kIsWeb) {
-      return true;
-    }
+  void _startMonitoring() {
+    _monitorTimer?.cancel();
+    _monitorTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      checkNow();
+    });
+    checkNow();
+  }
 
-    // Return cached result if checked within the last 3 seconds
-    if (_lastCheckTime != null &&
-        DateTime.now().difference(_lastCheckTime!) < const Duration(seconds: 3)) {
-      return _lastCheckResult;
-    }
+  void dispose() {
+    _monitorTimer?.cancel();
+    _monitorTimer = null;
+  }
+
+  /// Force immediate connection check and notify listeners
+  Future<bool> checkNow() async {
+    if (_isChecking) return isOnlineNotifier.value;
+    _isChecking = true;
 
     try {
-      final isOnline = await _checkConnectivity().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => true, // Fallback to true on timeout so Wi-Fi users are never blocked
-      );
-      _lastCheckResult = isOnline;
+      final wasOnline = isOnlineNotifier.value;
+      final isNowOnline = await _checkConnectivity();
+
+      if (isOnlineNotifier.value != isNowOnline) {
+        isOnlineNotifier.value = isNowOnline;
+        debugPrint('[NetworkService] Connection state changed: ${isNowOnline ? "ONLINE" : "OFFLINE"}');
+
+        // Automatically trigger sync when transitioning from offline to online!
+        if (!wasOnline && isNowOnline) {
+          try {
+            debugPrint('[NetworkService] Reconnected! Triggering automatic cloud sync...');
+            DatabaseService().syncWithBackend();
+          } catch (e) {
+            debugPrint('[NetworkService] Auto-sync error on reconnect: $e');
+          }
+        }
+      }
+
+      _lastCheckResult = isNowOnline;
       _lastCheckTime = DateTime.now();
-      return isOnline;
+      return isNowOnline;
     } catch (_) {
-      _lastCheckResult = true;
-      return true;
+      return isOnlineNotifier.value;
+    } finally {
+      _isChecking = false;
     }
   }
 
+  bool _lastCheckResult = true;
+
+  /// Check whether the device currently has active network / internet access.
+  Future<bool> hasInternet() async {
+    if (kIsWeb) return true;
+
+    if (_lastCheckTime != null &&
+        DateTime.now().difference(_lastCheckTime!) < const Duration(seconds: 2)) {
+      return _lastCheckResult;
+    }
+
+    return checkNow();
+  }
+
   Future<bool> _checkConnectivity() async {
-    // 1. Fast DNS host lookup (works over all standard Wi-Fi / cellular connections)
+    if (kIsWeb) return true;
+
+    // 1. Direct probe to active backend server endpoint if available
     try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(const Duration(milliseconds: 1500));
-      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-        return true;
-      }
+      final isServerAlive = await ApiEndpoints.testConnection(ApiEndpoints.baseUrl);
+      if (isServerAlive) return true;
     } catch (_) {}
 
     // 2. HTTP 204 Connectivity Check (standard Android/Chromium captive portal test)
     try {
-      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 1500);
+      final client = HttpClient()..connectionTimeout = const Duration(milliseconds: 1200);
       final request = await client.getUrl(Uri.parse('https://connectivitycheck.gstatic.com/generate_204'));
-      final response = await request.close();
+      final response = await request.close().timeout(const Duration(milliseconds: 1200));
       client.close();
       if (response.statusCode == 204 || response.statusCode == 200) {
         return true;
       }
     } catch (_) {}
 
-    // 3. Fallback: Check if device has active network interfaces (Wi-Fi, Ethernet, Mobile)
+    // 3. Fast DNS host lookup (google.com / 1.1.1.1)
     try {
-      final interfaces = await NetworkInterface.list(
-        includeLoopback: false,
-        type: InternetAddressType.IPv4,
-      ).timeout(const Duration(milliseconds: 1000));
-      if (interfaces.isNotEmpty) {
+      final result = await InternetAddress.lookup('google.com')
+          .timeout(const Duration(milliseconds: 1200));
+      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
         return true;
       }
     } catch (_) {}
 
-    // Default to true so local network / Wi-Fi users can connect to local or LAN backend
-    return true;
+    return false;
   }
 }

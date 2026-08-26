@@ -4,6 +4,7 @@ import 'dart:ui';
 import '../../core/database/database_service.dart';
 import '../../core/services/dashboard_service.dart';
 import '../../core/models/order_model.dart';
+import '../../core/widgets/connection_status_badge.dart';
 
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
 class GlassDashboardScreen extends StatefulWidget {
@@ -140,6 +141,27 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     });
 
     try {
+      final isAuth = await _db.authService.isAuthenticated();
+      if (!isAuth) {
+        final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
+        if (mounted) {
+          setState(() {
+            if (localData != null) {
+              _summaryData = localData.summary;
+              _orderTypesData = localData.orderTypes;
+              _productSales = localData.productSales;
+              _customerData = localData.customers;
+              _paymentMethodsData = localData.payments;
+              _taxData = localData.taxes;
+              _orderStatsData = localData.orderStats;
+            }
+            _isLoading = false;
+            _errorMessage = null;
+          });
+        }
+        return;
+      }
+
       final sDate = _startDateParam;
       final eDate = _endDateParam;
 
@@ -190,6 +212,25 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         final taxData = results[5] as TaxSummaryData;
         final orderStatsData = results[6] as OrderStatsSummaryData;
 
+        // If cloud API returned empty data, fallback to local data
+        if (summary.totalOrders == 0 && summary.revenue == 0 && _db.orders.isNotEmpty) {
+          final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
+          if (localData != null && (localData.summary.totalOrders > 0 || localData.summary.revenue > 0)) {
+            setState(() {
+              _summaryData = localData.summary;
+              _orderTypesData = localData.orderTypes;
+              _productSales = localData.productSales;
+              _customerData = localData.customers;
+              _paymentMethodsData = localData.payments;
+              _taxData = localData.taxes;
+              _orderStatsData = localData.orderStats;
+              _isLoading = false;
+              _errorMessage = null;
+            });
+            return;
+          }
+        }
+
         setState(() {
           _summaryData = summary;
           _orderTypesData = orderTypes;
@@ -203,7 +244,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         });
       }
     } catch (e) {
-      debugPrint('[GlassDashboardScreen] Error fetching dashboard data from cloud API: $e');
+      debugPrint('[GlassDashboardScreen] Error fetching dashboard data: $e');
       if (mounted) {
         final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
         setState(() {
@@ -217,8 +258,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             _orderStatsData = localData.orderStats;
           }
           _isLoading = false;
-          _errorMessage =
-              'Showing local device records (Offline). Tap refresh to sync with cloud.';
+          _errorMessage = null;
         });
       }
     }
@@ -2105,6 +2145,37 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         totalTax += o.taxAmount;
       }
 
+      final Map<String, CustomerInsightItem> custMap = {};
+      for (var o in filteredOrders) {
+        final name = (o.customerName ?? '').trim();
+        final phone = (o.customerPhone ?? '').trim();
+        final key = phone.isNotEmpty ? phone : name;
+        if (key.isEmpty) continue;
+
+        if (!custMap.containsKey(key)) {
+          final totalVisits = allOrders.where((ao) {
+            final aPhone = (ao.customerPhone ?? '').trim();
+            final aName = (ao.customerName ?? '').trim();
+            return (phone.isNotEmpty && aPhone == phone) || (name.isNotEmpty && aName == name);
+          }).length;
+          custMap[key] = CustomerInsightItem(
+            name: name.isNotEmpty ? name : 'Customer',
+            phone: phone,
+            visitCount: totalVisits > 0 ? totalVisits : 1,
+          );
+        }
+      }
+
+      final List<CustomerInsightItem> localNewCust = [];
+      final List<CustomerInsightItem> localRetCust = [];
+      for (var item in custMap.values) {
+        if (item.visitCount > 1) {
+          localRetCust.add(item);
+        } else {
+          localNewCust.add(item);
+        }
+      }
+
       return _LocalDashboardComputed(
         summary: DashboardSummaryData(
           period: period,
@@ -2120,7 +2191,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           total: OrderTypeCountAmount(count: totalOrders, amount: totalRevenue),
         ),
         productSales: itemsList,
-        customers: CustomerAnalyticsData(),
+        customers: CustomerAnalyticsData(
+          newCustomers: localNewCust,
+          returningCustomers: localRetCust,
+        ),
         payments: PaymentMethodsSummaryData(payments: payList, totalAmount: totalPayAmount),
         taxes: TaxSummaryData(
           totalGST: totalTax,

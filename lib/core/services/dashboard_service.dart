@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
+import '../models/order_model.dart';
+import '../database/database_service.dart';
+import 'auth_service.dart';
 import 'report_service.dart';
 
 class DashboardSummaryData {
@@ -98,16 +101,14 @@ class ItemSaleReportItem {
     required this.totalAmount,
   });
 
-  factory ItemSaleReportItem.fromJson(Map<String, dynamic> json) {
-    return ItemSaleReportItem(
-      srNo: (json['srNo'] as num?)?.toInt() ?? 0,
-      productId: json['productId']?.toString() ?? '',
-      productName: json['productName']?.toString() ?? '',
-      price: (json['price'] as num?)?.toDouble() ?? 0.0,
-      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
-      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
+  factory ItemSaleReportItem.fromJson(Map<String, dynamic> json) => ItemSaleReportItem(
+        srNo: (json['srNo'] as num?)?.toInt() ?? 1,
+        productId: json['productId']?.toString() ?? '',
+        productName: json['productName']?.toString() ?? '',
+        price: (json['price'] as num?)?.toDouble() ?? 0.0,
+        quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+        totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      );
 }
 
 class CustomerInsightItem {
@@ -117,17 +118,15 @@ class CustomerInsightItem {
 
   CustomerInsightItem({
     required this.name,
-    required this.phone,
-    required this.visitCount,
+    this.phone = '',
+    this.visitCount = 1,
   });
 
-  factory CustomerInsightItem.fromJson(Map<String, dynamic> json) {
-    return CustomerInsightItem(
-      name: json['name']?.toString() ?? 'Unknown',
-      phone: json['phone']?.toString() ?? '',
-      visitCount: (json['visitCount'] as num?)?.toInt() ?? 1,
-    );
-  }
+  factory CustomerInsightItem.fromJson(Map<String, dynamic> json) => CustomerInsightItem(
+        name: json['name']?.toString() ?? 'Customer',
+        phone: json['phone']?.toString() ?? '',
+        visitCount: (json['visitCount'] as num?)?.toInt() ?? 1,
+      );
 }
 
 class CustomerAnalyticsData {
@@ -156,17 +155,15 @@ class PaymentMethodSaleItem {
 
   PaymentMethodSaleItem({
     required this.method,
-    required this.count,
-    required this.amount,
+    this.count = 0,
+    this.amount = 0.0,
   });
 
-  factory PaymentMethodSaleItem.fromJson(Map<String, dynamic> json) {
-    return PaymentMethodSaleItem(
-      method: json['method']?.toString() ?? 'OTHER',
-      count: (json['count'] as num?)?.toInt() ?? 0,
-      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-    );
-  }
+  factory PaymentMethodSaleItem.fromJson(Map<String, dynamic> json) => PaymentMethodSaleItem(
+        method: json['method']?.toString() ?? 'OTHER',
+        count: (json['count'] as num?)?.toInt() ?? 0,
+        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      );
 }
 
 class PaymentMethodsSummaryData {
@@ -253,6 +250,8 @@ class ChartPointData {
 
 class DashboardService {
   final ApiClient _apiClient = ApiClient();
+  final AuthService _authService = AuthService();
+  DatabaseService get _db => DatabaseService();
 
   Map<String, dynamic> _buildQueryParams(String period, String? startDate, String? endDate) {
     final queryParams = <String, dynamic>{'period': period};
@@ -268,19 +267,37 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardSummary,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardSummary,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null && response['data']['summary'] != null) {
-        return DashboardSummaryData.fromJson(response['data']['summary'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null && response['data']['summary'] != null) {
+          return DashboardSummaryData.fromJson(response['data']['summary'] as Map<String, dynamic>);
+        }
       }
-      return DashboardSummaryData();
     } catch (e) {
-      debugPrint('[DashboardService.fetchSummary] error: $e');
-      return DashboardSummaryData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchSummary] API warning: $e');
+      }
     }
+
+    // Local DB fallback
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final active = _db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
+    double rev = 0;
+    for (final o in settled) {
+      rev += o.totalAmount;
+    }
+    return DashboardSummaryData(
+      period: period,
+      revenue: rev,
+      totalOrders: settled.length,
+      activeOrdersCount: active.length,
+      totalProductsCount: _db.menuItems.length,
+    );
   }
 
   /// 2. Fetch order types breakdown (Dine In, Delivery, Takeaway, Total)
@@ -290,19 +307,50 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardOrderTypes,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardOrderTypes,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null) {
-        return OrderTypeStatsData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return OrderTypeStatsData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return OrderTypeStatsData.empty();
     } catch (e) {
-      debugPrint('[DashboardService.fetchOrderTypes] error: $e');
-      return OrderTypeStatsData.empty();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchOrderTypes] API warning: $e');
+      }
     }
+
+    // Local DB fallback
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    int dineCount = 0, delivCount = 0, takeCount = 0;
+    double dineAmt = 0, delivAmt = 0, takeAmt = 0;
+
+    for (final o in settled) {
+      if (o.orderType == OrderType.dineIn) {
+        dineCount++;
+        dineAmt += o.totalAmount;
+      } else if (o.orderType == OrderType.delivery) {
+        delivCount++;
+        delivAmt += o.totalAmount;
+      } else {
+        takeCount++;
+        takeAmt += o.totalAmount;
+      }
+    }
+
+    final totalCount = dineCount + delivCount + takeCount;
+    final totalAmt = dineAmt + delivAmt + takeAmt;
+
+    return OrderTypeStatsData(
+      dineIn: OrderTypeCountAmount(count: dineCount, amount: dineAmt),
+      delivery: OrderTypeCountAmount(count: delivCount, amount: delivAmt),
+      takeaway: OrderTypeCountAmount(count: takeCount, amount: takeAmt),
+      total: OrderTypeCountAmount(count: totalCount, amount: totalAmt),
+    );
   }
 
   /// 3. Fetch item/product sales report
@@ -313,25 +361,49 @@ class DashboardService {
     String? orderType,
   }) async {
     try {
-      final params = _buildQueryParams(period, startDate, endDate);
-      if (orderType != null && orderType.isNotEmpty && orderType != 'All') {
-        params['orderType'] = orderType;
-      }
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final params = _buildQueryParams(period, startDate, endDate);
+        if (orderType != null && orderType.isNotEmpty && orderType != 'All') {
+          params['orderType'] = orderType;
+        }
 
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardProductSales,
-        queryParameters: params,
-      );
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardProductSales,
+          queryParameters: params,
+        );
 
-      if (response != null && response['data'] != null && response['data']['items'] != null) {
-        final list = response['data']['items'] as List<dynamic>;
-        return list.map((i) => ItemSaleReportItem.fromJson(i as Map<String, dynamic>)).toList();
+        if (response != null && response['data'] != null && response['data']['items'] != null) {
+          final list = response['data']['items'] as List<dynamic>;
+          return list.map((i) => ItemSaleReportItem.fromJson(i as Map<String, dynamic>)).toList();
+        }
       }
-      return [];
     } catch (e) {
-      debugPrint('[DashboardService.fetchProductSales] error: $e');
-      return [];
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchProductSales] API warning: $e');
+      }
     }
+
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final Map<String, ItemSaleReportItem> map = {};
+    int sr = 1;
+    for (final o in settled) {
+      for (final i in o.items) {
+        final key = i.item.name;
+        final existing = map[key];
+        final qty = (existing?.quantity ?? 0) + i.quantity;
+        final tot = (existing?.totalAmount ?? 0.0) + (i.item.effectivePrice * i.quantity);
+        map[key] = ItemSaleReportItem(
+          srNo: existing?.srNo ?? sr++,
+          productId: i.item.id,
+          productName: key,
+          price: i.item.effectivePrice,
+          quantity: qty,
+          totalAmount: tot,
+        );
+      }
+    }
+    return map.values.toList();
   }
 
   /// 4. Fetch customer analytics (New vs Returning)
@@ -341,19 +413,38 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardCustomers,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardCustomers,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null) {
-        return CustomerAnalyticsData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return CustomerAnalyticsData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return CustomerAnalyticsData();
     } catch (e) {
-      debugPrint('[DashboardService.fetchCustomers] error: $e');
-      return CustomerAnalyticsData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchCustomers] API warning: $e');
+      }
     }
+
+    final totalCust = _db.customers;
+    final List<CustomerInsightItem> news = [];
+    final List<CustomerInsightItem> returns = [];
+    for (final c in totalCust) {
+      final item = CustomerInsightItem(name: c.name, phone: c.phone, visitCount: c.totalOrders);
+      if (c.totalOrders > 1) {
+        returns.add(item);
+      } else {
+        news.add(item);
+      }
+    }
+    return CustomerAnalyticsData(
+      newCustomers: news,
+      returningCustomers: returns,
+    );
   }
 
   /// 5. Fetch payment methods breakdown (Cash, Card, UPI, etc.)
@@ -363,19 +454,61 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardPaymentMethods,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardPaymentMethods,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null) {
-        return PaymentMethodsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return PaymentMethodsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return PaymentMethodsSummaryData();
     } catch (e) {
-      debugPrint('[DashboardService.fetchPaymentMethods] error: $e');
-      return PaymentMethodsSummaryData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchPaymentMethods] API warning: $e');
+      }
     }
+
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final Map<String, Map<String, dynamic>> map = {};
+    double total = 0;
+
+    for (final o in settled) {
+      total += o.totalAmount;
+      var pm = o.paymentMethod.toUpperCase().trim();
+      if (pm.startsWith('CASH')) {
+        pm = 'CASH';
+      } else if (pm.startsWith('CARD')) {
+        pm = 'CARD';
+      } else if (pm.startsWith('UPI')) {
+        pm = 'UPI';
+      } else if (pm.startsWith('SPLIT')) {
+        pm = 'SPLIT';
+      }
+      if (pm.isEmpty) pm = 'OTHER';
+
+      if (!map.containsKey(pm)) {
+        map[pm] = {'count': 0, 'amount': 0.0};
+      }
+      map[pm]!['count'] = (map[pm]!['count'] as int) + 1;
+      map[pm]!['amount'] = (map[pm]!['amount'] as double) + o.totalAmount;
+    }
+
+    final payList = map.entries
+        .map((e) => PaymentMethodSaleItem(
+              method: e.key,
+              count: e.value['count'] as int,
+              amount: e.value['amount'] as double,
+            ))
+        .toList()
+      ..sort((a, b) => b.amount.compareTo(a.amount));
+
+    return PaymentMethodsSummaryData(
+      payments: payList,
+      totalAmount: total,
+    );
   }
 
   /// 6. Fetch taxes summary (GST, CGST, SGST, IGST)
@@ -385,19 +518,30 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardTaxes,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardTaxes,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null) {
-        return TaxSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return TaxSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return TaxSummaryData();
     } catch (e) {
-      debugPrint('[DashboardService.fetchTaxes] error: $e');
-      return TaxSummaryData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchTaxes] API warning: $e');
+      }
     }
+
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    double totalTax = 0;
+    for (final o in settled) {
+      totalTax += o.taxAmount;
+    }
+    final half = totalTax / 2;
+    return TaxSummaryData(totalGST: totalTax, cgst: half, sgst: half, igst: 0.0);
   }
 
   /// 7. Fetch order status statistics (Successful, Cancelled, Total)
@@ -407,37 +551,57 @@ class DashboardService {
     String? endDate,
   }) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardOrderStats,
-        queryParameters: _buildQueryParams(period, startDate, endDate),
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardOrderStats,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
 
-      if (response != null && response['data'] != null) {
-        return OrderStatsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return OrderStatsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return OrderStatsSummaryData();
     } catch (e) {
-      debugPrint('[DashboardService.fetchOrderStats] error: $e');
-      return OrderStatsSummaryData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchOrderStats] API warning: $e');
+      }
     }
+
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).length;
+    final cancelled = _db.orders.where((o) => o.status == OrderStatus.cancelled).length;
+    return OrderStatsSummaryData(
+      successfulOrders: settled,
+      cancelledOrders: cancelled,
+      totalOrders: _db.orders.length,
+    );
   }
 
   /// 8. Fetch chart data points
   Future<List<ChartPointData>> fetchChartData({String filter = 'Week'}) async {
     try {
-      final response = await _apiClient.get(
-        ApiEndpoints.dashboardChart,
-        queryParameters: {'filter': filter},
-      );
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardChart,
+          queryParameters: {'filter': filter},
+        );
 
-      if (response != null && response['data'] != null && response['data']['chartPoints'] != null) {
-        final raw = response['data']['chartPoints'] as List<dynamic>;
-        return raw.map((c) => ChartPointData.fromJson(c as Map<String, dynamic>)).toList();
+        if (response != null && response['data'] != null && response['data']['chartPoints'] != null) {
+          final raw = response['data']['chartPoints'] as List<dynamic>;
+          return raw.map((c) => ChartPointData.fromJson(c as Map<String, dynamic>)).toList();
+        }
       }
-      return [];
     } catch (e) {
-      debugPrint('[DashboardService.fetchChartData] error: $e');
-      return [];
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchChartData] API warning: $e');
+      }
     }
+
+    // Default chart data points based on local settled orders
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final avgRev = settled.isNotEmpty ? settled.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
+    return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (settled.length / 7).ceil())).toList();
   }
 }

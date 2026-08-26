@@ -105,3 +105,22 @@ class TableModel {
     );
   }
 }
+
+/// Helper function to match table names across formats (e.g. 'T-1', 'T1', '1', 'Table 1')
+bool isSameTable(String? a, String? b) {
+  if (a == null || b == null) return false;
+  final cleanA = a.trim().toLowerCase();
+  final cleanB = b.trim().toLowerCase();
+  if (cleanA.isEmpty || cleanB.isEmpty) return false;
+  if (cleanA == cleanB) return true;
+
+  final digitsA = cleanA.replaceAll(RegExp(r'[^0-9]'), '');
+  final digitsB = cleanB.replaceAll(RegExp(r'[^0-9]'), '');
+  if (digitsA.isNotEmpty && digitsA == digitsB) return true;
+
+  if (cleanA == 't-$cleanB' || cleanB == 't-$cleanA') return true;
+  if (cleanA == 't$cleanB' || cleanB == 't$cleanA') return true;
+  if (cleanA == 'table $cleanB' || cleanB == 'table $cleanA') return true;
+
+  return false;
+}

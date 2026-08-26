@@ -308,6 +308,10 @@ class ApiEndpoints {
   // Upload endpoints
   static const String uploadImage = '/upload/image';
 
+  // Loyalty endpoints
+  static const String loyaltyPrograms = '/loyalty/programs';
+  static const String loyaltyPerformance = '/loyalty/performance';
+
   /// Show Developer / Admin Server Configuration Sheet
   static void showServerConfigSheet(BuildContext context, {VoidCallback? onUrlChanged}) {
     final controller = TextEditingController(text: baseUrl);

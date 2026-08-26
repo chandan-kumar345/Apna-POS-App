@@ -1197,6 +1197,23 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             accentColor: const Color(0xFF2563EB),
                             onTap: _showOutletInfoModal,
                           ),
+
+                          // 4. PRINT LOGS & INVOICE SNAPSHOTS
+                          _buildSettingGridCard(
+                            title: 'Print Logs',
+                            subtitle: 'Invoices, Snapshots & History',
+                            icon: Icons.receipt_long_rounded,
+                            accentColor: const Color(0xFF6366F1),
+                            badgeText: 'Audit',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const PrintLogsScreen(),
+                                ),
+                              );
+                            },
+                          ),
                         ],
                       );
                     },
@@ -1284,23 +1301,6 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             icon: SoundService.soundEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                             accentColor: const Color(0xFFE11D48),
                             onTap: _showSoundSettingsModal,
-                          ),
-
-                          // 7. PRINT LOGS & INVOICE SNAPSHOTS
-                          _buildSettingGridCard(
-                            title: 'Print Logs',
-                            subtitle: 'Invoices, Snapshots & History',
-                            icon: Icons.receipt_long_rounded,
-                            accentColor: const Color(0xFF6366F1),
-                            badgeText: 'Audit',
-                            onTap: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const PrintLogsScreen(),
-                                ),
-                              );
-                            },
                           ),
                         ],
                       );

@@ -17,23 +17,36 @@ class OrderService {
           order.status == OrderStatus.pending ||
           order.status == OrderStatus.preparing;
 
-      final isPaid = order.status == OrderStatus.completed && !isKotOrUnpaid;
+      final isPaid = order.status == OrderStatus.completed || order.isPaid || (!isKotOrUnpaid && order.paymentStatus == 'paid');
+
+      final itemsPayload = order.items.isNotEmpty
+          ? order.items.map((i) => {
+                'productId': i.item.id.length == 24 ? i.item.id : null,
+                'name': i.item.name,
+                'price': i.item.effectivePrice > 0 ? i.item.effectivePrice : i.item.price,
+                'quantity': i.quantity,
+                'foodType': i.item.itemType.toLowerCase().replaceAll('-', '_'),
+                'note': i.note ?? '',
+              }).toList()
+          : [
+              {
+                'name': 'Custom Order Item',
+                'price': order.totalAmount > 0 ? order.totalAmount : 1.0,
+                'quantity': 1,
+                'foodType': 'veg',
+                'note': '',
+              }
+            ];
+
       final payload = {
         'orderNumber': order.orderNumber,
         'orderType': order.orderType.name,
-        'status': order.status.name,
+        'status': isPaid ? 'completed' : order.status.name,
         'tableNumber': order.orderType == OrderType.dineIn ? (order.tableNumber ?? '') : '',
         'deliveryAddress': order.orderType == OrderType.delivery ? (order.deliveryAddress ?? '') : '',
         'customerName': order.customerName ?? '',
         'customerPhone': order.customerPhone ?? '',
-        'items': order.items.map((i) => {
-              'productId': i.item.id.length == 24 ? i.item.id : null,
-              'name': i.item.name,
-              'price': i.item.price,
-              'quantity': i.quantity,
-              'foodType': i.item.itemType.toLowerCase().replaceAll('-', '_'),
-              'note': i.note ?? '',
-            }).toList(),
+        'items': itemsPayload,
         'subtotal': order.subtotal,
         'discountAmount': order.discountAmount,
         'taxAmount': order.taxAmount,
@@ -41,21 +54,21 @@ class OrderService {
         'deliveryCharge': order.deliveryCharge,
         'roundOff': order.roundOff,
         'totalAmount': order.totalAmount,
-        'paymentMethod': isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod,
+        'paymentMethod': isPaid ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash') : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod),
         'paymentStatus': isPaid ? 'paid' : 'pending',
         'idempotencyKey': 'pos:generatePosOrder:${order.id}',
         'clientSyncId': order.id,
         'localOrderId': order.id,
         'isPaid': isPaid,
         'isDineIn': order.orderType == OrderType.dineIn,
-        'paymentMode': isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod,
+        'paymentMode': isPaid ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash') : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod),
         'paymentDetails': isPaid
             ? [
                 {
-                  'paymentType': order.paymentMethod,
-                  'paymentName': order.paymentMethod,
+                  'paymentType': order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash',
+                  'paymentName': order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash',
                   'amount': order.totalAmount,
-                  'paymentMethod': order.paymentMethod,
+                  'paymentMethod': order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash',
                   'ncReason': '',
                 }
               ]
@@ -67,13 +80,16 @@ class OrderService {
         data: payload,
       );
 
-      if (response != null && response['data'] != null && response['data']['order'] != null) {
-        return OrderModel.fromJson(response['data']['order'] as Map<String, dynamic>);
+      if (response != null && response['data'] != null) {
+        final orderData = (response['data']['order'] ?? response['data']) as Map<String, dynamic>?;
+        if (orderData != null) {
+          return OrderModel.fromJson(orderData).copyWith(isSynced: true);
+        }
       }
-      return order;
+      return order.copyWith(isSynced: true);
     } catch (e) {
       debugPrint('[OrderService.createOrder] error: $e');
-      return order;
+      rethrow;
     }
   }
 
@@ -131,7 +147,7 @@ class OrderService {
   /// Fetch orders list
   Future<List<OrderModel>> fetchOrders({
     int page = 1,
-    int limit = 50,
+    int limit = 500,
     String? status,
     String? orderType,
     String? search,
@@ -160,11 +176,22 @@ class OrderService {
         queryParameters: queryParams,
       );
 
-      if (response != null && response['data'] != null) {
-        final ordersData = response['data']['orders'] as List<dynamic>?;
+      if (response != null) {
+        List<dynamic>? ordersData;
+        if (response is List) {
+          ordersData = response;
+        } else if (response['data'] is List) {
+          ordersData = response['data'] as List<dynamic>;
+        } else if (response['data'] is Map && response['data']['orders'] is List) {
+          ordersData = response['data']['orders'] as List<dynamic>;
+        } else if (response['orders'] is List) {
+          ordersData = response['orders'] as List<dynamic>;
+        }
+
         if (ordersData != null) {
           return ordersData
-              .map((o) => OrderModel.fromJson(o as Map<String, dynamic>))
+              .whereType<Map>()
+              .map((o) => OrderModel.fromJson(Map<String, dynamic>.from(o)))
               .toList();
         }
       }

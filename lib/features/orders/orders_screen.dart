@@ -6,6 +6,7 @@ import '../pos/receipt_dialog.dart';
 import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
+import '../../core/widgets/connection_status_badge.dart';
 
 class OrdersScreen extends StatefulWidget {
   final Function(String tableName)? onOpenPosForTable;

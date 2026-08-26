@@ -59,6 +59,7 @@ class DatabaseService extends ChangeNotifier {
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
+  int get unsyncedOrdersCount => orders.where((o) => !o.isSynced).length;
 
   // In-Memory state for instant sync access
   UserModel? currentUser;
@@ -78,24 +79,134 @@ class DatabaseService extends ChangeNotifier {
   final Map<String, double> _liveCartTotals = {};
   final Map<String, List<CartItemModel>> _liveTableCarts = {};
 
-  double getLiveCartTotal(String tableName) => _liveCartTotals[tableName] ?? 0.0;
+  double getLiveCartTotal(String tableName) {
+    final activeOrder = orders.where((o) =>
+      isSameTable(o.tableNumber, tableName) &&
+      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+    ).firstOrNull;
+
+    if (activeOrder != null && activeOrder.totalAmount > 0) {
+      return activeOrder.totalAmount;
+    }
+
+    if (_liveCartTotals.containsKey(tableName)) {
+      return _liveCartTotals[tableName] ?? 0.0;
+    }
+
+    for (final entry in _liveCartTotals.entries) {
+      if (isSameTable(entry.key, tableName) && entry.value > 0) {
+        return entry.value;
+      }
+    }
+
+    return 0.0;
+  }
+
   void setLiveCartTotal(String tableName, double total) {
     if (total <= 0) {
       _liveCartTotals.remove(tableName);
     } else {
       _liveCartTotals[tableName] = total;
     }
+    _saveLiveTableCartsToPrefs();
     notifyListeners();
   }
 
-  List<CartItemModel> getLiveTableCart(String tableName) => List.from(_liveTableCarts[tableName] ?? []);
+  List<CartItemModel> getLiveTableCart(String tableName) {
+    // 1. First check if there is an active running order in orders list
+    final activeOrder = orders.where((o) =>
+      isSameTable(o.tableNumber, tableName) &&
+      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+    ).firstOrNull;
+
+    if (activeOrder != null && activeOrder.items.isNotEmpty) {
+      return List.from(activeOrder.items);
+    }
+
+    // 2. Direct key match or normalized table match in persistent live table carts
+    if (_liveTableCarts.containsKey(tableName) && _liveTableCarts[tableName]!.isNotEmpty) {
+      return List.from(_liveTableCarts[tableName]!);
+    }
+
+    for (final entry in _liveTableCarts.entries) {
+      if (isSameTable(entry.key, tableName) && entry.value.isNotEmpty) {
+        return List.from(entry.value);
+      }
+    }
+
+    return [];
+  }
+
   void setLiveTableCart(String tableName, List<CartItemModel> items) {
     if (items.isEmpty) {
       _liveTableCarts.remove(tableName);
     } else {
       _liveTableCarts[tableName] = items.map((i) => CartItemModel(item: i.item, quantity: i.quantity, note: i.note)).toList();
     }
+    _saveLiveTableCartsToPrefs();
     notifyListeners();
+  }
+
+  Future<void> _saveLiveTableCartsToPrefs() async {
+    try {
+      final Map<String, dynamic> rawMap = {};
+      _liveTableCarts.forEach((key, list) {
+        rawMap[key] = list.map((i) => i.toJson()).toList();
+      });
+      await _prefs?.setString(_userKey('live_table_carts'), jsonEncode(rawMap));
+      await _prefs?.setString(_userKey('live_cart_totals'), jsonEncode(_liveCartTotals));
+    } catch (_) {}
+  }
+
+  void _loadLiveTableCartsFromPrefs() {
+    try {
+      final cartsJson = _prefs?.getString(_userKey('live_table_carts'));
+      if (cartsJson != null && cartsJson.isNotEmpty) {
+        final Map<String, dynamic> rawMap = jsonDecode(cartsJson);
+        rawMap.forEach((key, val) {
+          if (val is List) {
+            _liveTableCarts[key] = val
+                .whereType<Map<String, dynamic>>()
+                .map((j) => CartItemModel.fromJson(j))
+                .toList();
+          }
+        });
+      }
+      final totalsJson = _prefs?.getString(_userKey('live_cart_totals'));
+      if (totalsJson != null && totalsJson.isNotEmpty) {
+        final Map<String, dynamic> rawTotals = jsonDecode(totalsJson);
+        rawTotals.forEach((key, val) {
+          if (val is num) {
+            _liveCartTotals[key] = val.toDouble();
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  void _reconcileTablesWithRunningOrders() {
+    for (int i = 0; i < tables.length; i++) {
+      final tbl = tables[i];
+      final activeOrder = orders.where((o) =>
+        isSameTable(o.tableNumber, tbl.name) &&
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+      ).firstOrNull;
+
+      if (activeOrder != null) {
+        final mappedStatus = (activeOrder.status == OrderStatus.preparing)
+            ? TableStatus.runningKot
+            : TableStatus.occupied;
+        tables[i] = tbl.copyWith(
+          status: mappedStatus,
+          currentOrderId: activeOrder.id,
+          activeOrderNumber: activeOrder.orderNumber,
+          activeOrderTotal: activeOrder.totalAmount,
+          activeItemCount: activeOrder.items.length,
+        );
+        _liveCartTotals[tbl.name] = activeOrder.totalAmount;
+        _liveTableCarts[tbl.name] = List.from(activeOrder.items);
+      }
+    }
   }
 
   void holdOrder(OrderModel order) {
@@ -248,6 +359,12 @@ class DatabaseService extends ChangeNotifier {
     } else {
       customers = [];
     }
+
+    // 8. Load persistent live table carts
+    _loadLiveTableCartsFromPrefs();
+
+    // 9. Reconcile tables with running orders
+    _reconcileTablesWithRunningOrders();
 
     notifyListeners();
 
@@ -459,11 +576,73 @@ class DatabaseService extends ChangeNotifier {
         debugPrint('[DatabaseService] sync tables error: $e');
       }
 
-      // 4. Fetch Live Orders from Backend
+      // 4. Multi-Device Bidirectional Order Syncing (Push Local Unsynced & Pull Cloud Orders)
       try {
-        final remoteOrders = await _orderService.fetchOrders();
-        orders = remoteOrders;
-        await _saveOrdersToPrefs();
+        // A. Push local unsynced offline orders to cloud backend
+        final unsynced = orders.where((o) => !o.isSynced).toList();
+        if (unsynced.isNotEmpty) {
+          debugPrint('[DatabaseService] Auto-syncing ${unsynced.length} offline orders to cloud...');
+          for (final localOrder in unsynced) {
+            try {
+              final remoteOrder = await _orderService.createOrder(localOrder);
+              final idx = orders.indexWhere((o) => o.id == localOrder.id || o.orderNumber == localOrder.orderNumber);
+              if (idx >= 0) {
+                orders[idx] = remoteOrder.copyWith(
+                  isSynced: true,
+                  items: remoteOrder.items.isNotEmpty ? remoteOrder.items : localOrder.items,
+                );
+              }
+            } catch (err) {
+              debugPrint('[DatabaseService] Error uploading offline order ${localOrder.orderNumber}: $err');
+            }
+          }
+          await _saveOrdersToPrefs();
+          notifyListeners();
+        }
+
+        // B. Fetch Live Orders from Backend (Pull latest orders for multi-device synchronization)
+        final remoteOrders = await _orderService.fetchOrders(limit: 500);
+        if (remoteOrders.isNotEmpty) {
+          final Map<String, OrderModel> orderMap = {};
+
+          // Seed with remote authoritative orders from cloud
+          for (final r in remoteOrders) {
+            final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
+            orderMap[key] = r.copyWith(isSynced: true);
+          }
+
+          // Merge local orders (preserve any local-only unsynced orders or newer local payment statuses)
+          for (final local in orders) {
+            final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
+            final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
+
+            if (existingRemote == null) {
+              orderMap[key] = local;
+            } else {
+              // If local is paid/completed but remote was pending, prioritize completed local state
+              if ((local.status == OrderStatus.completed || local.isPaid) &&
+                  existingRemote.status != OrderStatus.completed &&
+                  !existingRemote.isPaid) {
+                orderMap[key] = local.copyWith(isSynced: false);
+              } else {
+                orderMap[key] = existingRemote.copyWith(
+                  items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
+                );
+              }
+            }
+          }
+
+          final mergedOrders = orderMap.values.toList();
+          mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+          orders = mergedOrders;
+          await _saveOrdersToPrefs();
+
+          // Reconcile and activate running table orders across devices
+          _reconcileTablesWithRunningOrders();
+          await _saveTablesToPrefs();
+          await _saveLiveTableCartsToPrefs();
+          notifyListeners();
+        }
       } catch (e) {
         debugPrint('[DatabaseService] sync orders error: $e');
       }
@@ -1506,7 +1685,7 @@ class DatabaseService extends ChangeNotifier {
         _orderService.createOrder(newOrder).then((remoteOrder) async {
           final idx = orders.indexWhere((o) => o.id == orderId);
           if (idx >= 0) {
-            orders[idx] = remoteOrder;
+            orders[idx] = remoteOrder.copyWith(isSynced: true);
             await _saveOrdersToPrefs();
             notifyListeners();
           }
@@ -1629,6 +1808,7 @@ class DatabaseService extends ChangeNotifier {
       status: OrderStatus.pending,
       paymentStatus: 'pending',
       isPaid: false,
+      isSynced: false,
       items: items,
       subtotal: subtotal,
       taxAmount: taxAmount,
@@ -1674,6 +1854,7 @@ class DatabaseService extends ChangeNotifier {
           final String resolvedQr = qrData?['qrIntentUrl']?.toString() ?? serverOrder.qrIntentUrl ?? fallbackQr;
 
           currentOrder = serverOrder.copyWith(
+            isSynced: true,
             items: serverOrder.items.isNotEmpty ? serverOrder.items : List.from(items),
             qrIntentUrl: resolvedQr,
           );
@@ -1726,6 +1907,7 @@ class DatabaseService extends ChangeNotifier {
       status: OrderStatus.completed,
       paymentStatus: 'paid',
       isPaid: true,
+      isSynced: false,
       paymentMethod: paymentMethod,
       roundOff: roundOff,
       totalAmount: totalAmount,
@@ -1793,7 +1975,7 @@ class DatabaseService extends ChangeNotifier {
           final serverOrder = OrderModel.fromJson(settleResult['order'] as Map<String, dynamic>);
           final idx = orders.indexWhere((o) => o.id == completedOrder.id || o.orderNumber == completedOrder.orderNumber);
           if (idx >= 0) {
-            orders[idx] = serverOrder;
+            orders[idx] = serverOrder.copyWith(isSynced: true);
             await _saveOrdersToPrefs();
             notifyListeners();
           }

@@ -80,6 +80,7 @@ class OrderModel {
   final String paymentMethod; // Cash, Card, UPI
   final String paymentStatus; // pending, paid
   final bool isPaid;
+  final bool isSynced;
   final String? deliveryAddress;
   final String createdAt;
   final String? customerName;
@@ -106,6 +107,7 @@ class OrderModel {
     this.paymentMethod = 'UPI',
     this.paymentStatus = 'pending',
     this.isPaid = false,
+    this.isSynced = false,
     this.deliveryAddress,
     required this.createdAt,
     this.customerName,
@@ -133,6 +135,7 @@ class OrderModel {
         'paymentMethod': paymentMethod,
         'paymentStatus': paymentStatus,
         'isPaid': isPaid,
+        'isSynced': isSynced,
         'deliveryAddress': deliveryAddress,
         'createdAt': createdAt,
         'customerName': customerName,
@@ -147,9 +150,11 @@ class OrderModel {
     final rawPm = (json['paymentMethod'] ?? 'Cash').toString();
     final rawPs = (json['paymentStatus'] ?? '').toString().toLowerCase();
     final bool rawIsPaid = json['isPaid'] == true || rawPs == 'paid' || json['status'] == 'completed';
+    final String rawId = json['id']?.toString() ?? json['_id']?.toString() ?? '';
+    final bool rawIsSynced = json['isSynced'] == true || (rawId.isNotEmpty && rawId.length == 24 && !rawId.startsWith('ORD-') && !rawId.startsWith('LOCAL_'));
 
     return OrderModel(
-      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      id: rawId,
       orderNumber: json['orderNumber']?.toString() ?? '',
       tableNumber: json['tableNumber']?.toString(),
       orderType: OrderType.values.firstWhere(
@@ -175,6 +180,7 @@ class OrderModel {
       paymentMethod: rawPm,
       paymentStatus: rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending'),
       isPaid: rawIsPaid,
+      isSynced: rawIsSynced,
       deliveryAddress: json['deliveryAddress']?.toString(),
       createdAt: json['createdAt']?.toString() ?? '',
       customerName: json['customerName']?.toString(),
@@ -206,11 +212,14 @@ class OrderModel {
   }
 
   OrderModel copyWith({
+    String? id,
+    String? orderNumber,
     String? tableNumber,
     OrderStatus? status,
     String? paymentMethod,
     String? paymentStatus,
     bool? isPaid,
+    bool? isSynced,
     String? deliveryAddress,
     String? customerName,
     String? customerPhone,
@@ -228,8 +237,8 @@ class OrderModel {
     String? qrImageUrl,
   }) {
     return OrderModel(
-      id: id,
-      orderNumber: orderNumber,
+      id: id ?? this.id,
+      orderNumber: orderNumber ?? this.orderNumber,
       tableNumber: tableNumber ?? this.tableNumber,
       orderType: orderType,
       status: status ?? this.status,
@@ -244,6 +253,7 @@ class OrderModel {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       paymentStatus: paymentStatus ?? this.paymentStatus,
       isPaid: isPaid ?? this.isPaid,
+      isSynced: isSynced ?? this.isSynced,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,
       customerName: customerName ?? this.customerName,

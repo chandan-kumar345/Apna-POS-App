@@ -459,7 +459,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                             // Active order cart total amount (confirmed) or live pre-KOT cart total (FREE tables NEVER show amount)
                             final activeOrder = validStatus == TableStatus.free
                                 ? null
-                                : db.orders.where((o) => ((o.tableNumber?.trim().toLowerCase() ?? '') == table.name.trim().toLowerCase() || 'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
+                                : db.orders.where((o) => isSameTable(o.tableNumber, table.name) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
                             final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
                             final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
                             final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);

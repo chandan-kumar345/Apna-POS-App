@@ -74,19 +74,8 @@ class SalesService {
       $or: [
         { status: { $in: ['completed', 'paid'] } },
         { paymentStatus: 'paid' },
+        { isPaid: true },
       ],
-      paymentMethod: {
-        $nin: [
-          'KOT Pending',
-          'kot pending',
-          'kot',
-          'KOT',
-          'unpaid',
-          'UNPAID',
-          'pending',
-          'PENDING',
-        ],
-      },
       ...extraMatch,
     };
   }

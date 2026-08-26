@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import '../models/order_model.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
+import '../database/database_service.dart';
+import 'auth_service.dart';
 
 /// Complete Sales Report Summary Metrics
 class SalesReportSummary {
@@ -201,8 +203,10 @@ class SalesSummaryData {
 
 class ReportService {
   final ApiClient _apiClient = ApiClient();
+  final AuthService _authService = AuthService();
+  final DatabaseService _db = DatabaseService();
 
-  /// Unified Authoritative Sales Report API
+  /// Unified Authoritative Sales Report API (with seamless offline calculation fallback)
   Future<SalesReportData> fetchSalesReport({
     String? period,
     String? startDate,
@@ -212,28 +216,34 @@ class ReportService {
     int limit = 500,
   }) async {
     try {
-      final queryParams = <String, dynamic>{
-        'limit': limit,
-      };
-      if (period != null && period.isNotEmpty) queryParams['period'] = period;
-      if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
-      if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
-      if (fromDate != null && fromDate.isNotEmpty) queryParams['fromDate'] = fromDate;
-      if (toDate != null && toDate.isNotEmpty) queryParams['toDate'] = toDate;
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final queryParams = <String, dynamic>{
+          'limit': limit,
+        };
+        if (period != null && period.isNotEmpty) queryParams['period'] = period;
+        if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
+        if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
+        if (fromDate != null && fromDate.isNotEmpty) queryParams['fromDate'] = fromDate;
+        if (toDate != null && toDate.isNotEmpty) queryParams['toDate'] = toDate;
 
-      final response = await _apiClient.get(
-        ApiEndpoints.salesReport,
-        queryParameters: queryParams,
-      );
+        final response = await _apiClient.get(
+          ApiEndpoints.salesReport,
+          queryParameters: queryParams,
+        );
 
-      if (response != null && response['data'] != null) {
-        return SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null) {
+          return SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
+        }
       }
-      return SalesReportData();
     } catch (e) {
-      debugPrint('[ReportService.fetchSalesReport] error: $e');
-      rethrow;
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[ReportService.fetchSalesReport] API warning: $e');
+      }
     }
+
+    // Graceful offline computation from synchronized local database orders
+    return _buildLocalSalesReport(period: period, startDate: startDate ?? fromDate, endDate: endDate ?? toDate);
   }
 
   /// Fetch sales list
@@ -246,77 +256,244 @@ class ReportService {
     String? search,
   }) async {
     try {
-      final queryParams = <String, dynamic>{
-        'page': page,
-        'limit': limit,
-      };
-      if (paymentMethod != null && paymentMethod.isNotEmpty && paymentMethod != 'All') {
-        queryParams['paymentMethod'] = paymentMethod.toLowerCase();
-      }
-      if (startDate != null) queryParams['startDate'] = startDate;
-      if (endDate != null) queryParams['endDate'] = endDate;
-      if (search != null && search.trim().isNotEmpty) {
-        queryParams['search'] = search.trim();
-      }
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final queryParams = <String, dynamic>{
+          'page': page,
+          'limit': limit,
+        };
+        if (paymentMethod != null && paymentMethod.isNotEmpty && paymentMethod != 'All') {
+          queryParams['paymentMethod'] = paymentMethod.toLowerCase();
+        }
+        if (startDate != null) queryParams['startDate'] = startDate;
+        if (endDate != null) queryParams['endDate'] = endDate;
+        if (search != null && search.trim().isNotEmpty) {
+          queryParams['search'] = search.trim();
+        }
 
-      final response = await _apiClient.get(
-        ApiEndpoints.sales,
-        queryParameters: queryParams,
-      );
+        final response = await _apiClient.get(
+          ApiEndpoints.sales,
+          queryParameters: queryParams,
+        );
 
-      if (response != null && response['data'] != null && response['data']['sales'] != null) {
-        final raw = response['data']['sales'] as List<dynamic>;
-        return raw.map((s) => OrderModel.fromJson(s as Map<String, dynamic>)).toList();
+        if (response != null && response['data'] != null && response['data']['sales'] != null) {
+          final raw = response['data']['sales'] as List<dynamic>;
+          return raw.map((s) => OrderModel.fromJson(s as Map<String, dynamic>)).toList();
+        }
       }
-      return [];
     } catch (e) {
-      debugPrint('[ReportService.fetchSales] error: $e');
-      return [];
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[ReportService.fetchSales] API warning: $e');
+      }
     }
+
+    // Filter local completed orders
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    return settled;
   }
 
   /// Fetch sales summary
   Future<SalesSummaryData> fetchSalesSummary({String? startDate, String? endDate}) async {
     try {
-      final queryParams = <String, dynamic>{};
-      if (startDate != null) queryParams['startDate'] = startDate;
-      if (endDate != null) queryParams['endDate'] = endDate;
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final queryParams = <String, dynamic>{};
+        if (startDate != null) queryParams['startDate'] = startDate;
+        if (endDate != null) queryParams['endDate'] = endDate;
 
-      final response = await _apiClient.get(
-        ApiEndpoints.salesSummary,
-        queryParameters: queryParams,
-      );
+        final response = await _apiClient.get(
+          ApiEndpoints.salesSummary,
+          queryParameters: queryParams,
+        );
 
-      if (response != null && response['data'] != null && response['data']['summary'] != null) {
-        return SalesSummaryData.fromJson(response['data']['summary'] as Map<String, dynamic>);
+        if (response != null && response['data'] != null && response['data']['summary'] != null) {
+          return SalesSummaryData.fromJson(response['data']['summary'] as Map<String, dynamic>);
+        }
       }
-      return SalesSummaryData();
     } catch (e) {
-      debugPrint('[ReportService.fetchSalesSummary] error: $e');
-      return SalesSummaryData();
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[ReportService.fetchSalesSummary] API warning: $e');
+      }
     }
+
+    // Local summary computation
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    double totalRev = 0;
+    double cash = 0;
+    double upi = 0;
+    double card = 0;
+    double tax = 0;
+    double disc = 0;
+
+    for (final o in settled) {
+      totalRev += o.totalAmount;
+      tax += o.taxAmount;
+      disc += o.discountAmount;
+      final pm = o.paymentMethod.toLowerCase();
+      if (pm.contains('cash')) {
+        cash += o.totalAmount;
+      } else if (pm.contains('upi')) {
+        upi += o.totalAmount;
+      } else if (pm.contains('card')) {
+        card += o.totalAmount;
+      } else {
+        upi += o.totalAmount;
+      }
+    }
+
+    return SalesSummaryData(
+      totalRevenue: totalRev,
+      totalSubtotal: totalRev - tax + disc,
+      totalTax: tax,
+      totalDiscount: disc,
+      totalOrders: settled.length,
+      cashSales: cash,
+      upiSales: upi,
+      cardSales: card,
+    );
   }
 
   /// Fetch top products
   Future<List<TopProductData>> fetchTopProducts({int limit = 10, String? startDate, String? endDate}) async {
     try {
-      final queryParams = <String, dynamic>{'limit': limit};
-      if (startDate != null) queryParams['startDate'] = startDate;
-      if (endDate != null) queryParams['endDate'] = endDate;
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final queryParams = <String, dynamic>{'limit': limit};
+        if (startDate != null) queryParams['startDate'] = startDate;
+        if (endDate != null) queryParams['endDate'] = endDate;
 
-      final response = await _apiClient.get(
-        ApiEndpoints.topProducts,
-        queryParameters: queryParams,
-      );
+        final response = await _apiClient.get(
+          ApiEndpoints.topProducts,
+          queryParameters: queryParams,
+        );
 
-      if (response != null && response['data'] != null && response['data']['topProducts'] != null) {
-        final raw = response['data']['topProducts'] as List<dynamic>;
-        return raw.map((p) => TopProductData.fromJson(p as Map<String, dynamic>)).toList();
+        if (response != null && response['data'] != null && response['data']['topProducts'] != null) {
+          final raw = response['data']['topProducts'] as List<dynamic>;
+          return raw.map((p) => TopProductData.fromJson(p as Map<String, dynamic>)).toList();
+        }
       }
-      return [];
     } catch (e) {
-      debugPrint('[ReportService.fetchTopProducts] error: $e');
-      return [];
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[ReportService.fetchTopProducts] API warning: $e');
+      }
     }
+
+    // Local top products calculation
+    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final Map<String, TopProductData> map = {};
+    for (final o in settled) {
+      for (final item in o.items) {
+        final key = item.item.name;
+        final existing = map[key];
+        final qty = (existing?.quantity ?? 0) + item.quantity;
+        final rev = (existing?.revenue ?? 0) + (item.item.effectivePrice * item.quantity);
+        map[key] = TopProductData(
+          name: key,
+          quantity: qty,
+          revenue: rev,
+          foodType: item.item.itemType.toLowerCase().replaceAll('-', '_'),
+        );
+      }
+    }
+    final list = map.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
+    return list.take(limit).toList();
+  }
+
+  /// Local calculation fallback for SalesReportData
+  SalesReportData _buildLocalSalesReport({String? period, String? startDate, String? endDate}) {
+    DateTime? start;
+    DateTime? end;
+    if (startDate != null && startDate.isNotEmpty) start = DateTime.tryParse(startDate);
+    if (endDate != null && endDate.isNotEmpty) end = DateTime.tryParse(endDate);
+
+    final settled = _db.orders.where((o) {
+      if (o.status != OrderStatus.completed && !o.isPaid) return false;
+      if (start != null && o.createdDateTime.isBefore(start)) return false;
+      if (end != null && o.createdDateTime.isAfter(end)) return false;
+      return true;
+    }).toList();
+
+    double totalRev = 0;
+    double totalTax = 0;
+    double totalDisc = 0;
+    int totalItems = 0;
+
+    final Map<String, double> pmMap = {};
+    final Map<String, int> pmCount = {};
+    final Map<String, double> otMap = {};
+    final Map<String, int> otCount = {};
+    final Map<String, TopProductData> prodMap = {};
+
+    for (final o in settled) {
+      totalRev += o.totalAmount;
+      totalTax += o.taxAmount;
+      totalDisc += o.discountAmount;
+
+      for (final i in o.items) {
+        totalItems += i.quantity;
+        final key = i.item.name;
+        final existing = prodMap[key];
+        final q = (existing?.quantity ?? 0) + i.quantity;
+        final r = (existing?.revenue ?? 0) + (i.item.effectivePrice * i.quantity);
+        prodMap[key] = TopProductData(name: key, quantity: q, revenue: r, foodType: i.item.itemType.toLowerCase().replaceAll('-', '_'));
+      }
+
+      final pm = o.paymentMethod.isNotEmpty ? o.paymentMethod : 'Cash';
+      pmMap[pm] = (pmMap[pm] ?? 0.0) + o.totalAmount;
+      pmCount[pm] = (pmCount[pm] ?? 0) + 1;
+
+      final ot = o.orderType == OrderType.dineIn ? 'Dine In' : o.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+      otMap[ot] = (otMap[ot] ?? 0.0) + o.totalAmount;
+      otCount[ot] = (otCount[ot] ?? 0) + 1;
+    }
+
+    final gross = totalRev - totalTax + totalDisc;
+    final halfTax = totalTax / 2;
+
+    final summary = SalesReportSummary(
+      totalRevenue: totalRev,
+      grossSales: gross,
+      netSales: totalRev - totalTax,
+      totalOrders: settled.length,
+      totalItems: totalItems,
+      totalDiscount: totalDisc,
+      totalTax: totalTax,
+      cgst: halfTax,
+      sgst: halfTax,
+      igst: 0.0,
+      avgOrderValue: settled.isNotEmpty ? totalRev / settled.length : 0.0,
+    );
+
+    final paymentModes = pmMap.entries.map((e) {
+      return PaymentModeStat(
+        mode: e.key,
+        rawMode: e.key.toLowerCase(),
+        count: pmCount[e.key] ?? 0,
+        amount: e.value,
+        percentage: totalRev > 0 ? (e.value / totalRev) * 100 : 0.0,
+      );
+    }).toList();
+
+    final salesByOrderType = otMap.entries.map((e) {
+      return OrderTypeStat(
+        type: e.key,
+        rawType: e.key.toLowerCase(),
+        count: otCount[e.key] ?? 0,
+        amount: e.value,
+      );
+    }).toList();
+
+    final topProds = prodMap.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+    return SalesReportData(
+      summary: summary,
+      paymentModes: paymentModes,
+      salesByOrderType: salesByOrderType,
+      topProducts: topProds.take(15).toList(),
+      orders: settled,
+      period: period ?? 'allTime',
+      startDate: startDate ?? '',
+      endDate: endDate ?? '',
+    );
   }
 }

@@ -7,6 +7,7 @@ import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
+import '../../core/widgets/connection_status_badge.dart';
 import '../pos/pos_register_screen.dart';
 import '../tables/table_management_screen.dart';
 import '../orders/orders_screen.dart';
@@ -14,6 +15,7 @@ import '../menu/menu_management_screen.dart';
 import '../inventory/inventory_screen.dart';
 import '../reports/reports_screen.dart';
 import '../settings/business_settings_hub_screen.dart';
+import '../loyalty/screens/loyalty_landing_screen.dart';
 
 import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
@@ -531,7 +533,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true, isSmallScreen: isSmallScreen),
                 _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(7, 'CRM', Icons.people_alt_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
                 _buildNavItem(10, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
               ],
@@ -699,11 +701,14 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                 ],
                               ),
                             ),
+                            const Spacer(),
+                            // ONLINE / OFFLINE BADGE & CLOUD SYNC INDICATOR
+                            const GlassConnectionStatusBadge(isDarkTheme: true),
                           ],
                         ),
                       ),
                       secondChild: const SizedBox.shrink(),
-                      crossFadeState: (_selectedIndex == 1 && _isPosFullScreen)
+                      crossFadeState: ((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8)
                           ? CrossFadeState.showSecond
                           : CrossFadeState.showFirst,
                       duration: const Duration(milliseconds: 250),
@@ -719,12 +724,12 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         decoration: BoxDecoration(
                           color: const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.vertical(
-                            top: Radius.circular((_selectedIndex == 1 && _isPosFullScreen) ? 0 : 28),
+                            top: Radius.circular(((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8) ? 0 : 28),
                           ),
                         ),
                         child: ClipRRect(
                           borderRadius: BorderRadius.vertical(
-                            top: Radius.circular((_selectedIndex == 1 && _isPosFullScreen) ? 0 : 28),
+                            top: Radius.circular(((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8) ? 0 : 28),
                           ),
                           child: Row(
                             children: [
@@ -801,7 +806,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                     const InventoryScreen(),
                                     const ReportsScreen(),
                                     _buildFeatureModalScreen('Customer Relationship Management (CRM)', Icons.people_alt_rounded, 'Manage customer directory, contact details, purchase histories, and relationships.'),
-                                    _buildFeatureModalScreen('Loyalty & Rewards', Icons.card_giftcard_rounded, 'Manage customer loyalty points, rewards program, and VIP memberships.'),
+                                    LoyaltyLandingScreen(onBack: () => _selectTab(0)),
                                     _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.'),
                                     const BusinessSettingsHubScreen(),
                                   ],

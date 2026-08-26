@@ -9,6 +9,7 @@ import '../../core/models/table_model.dart';
 import '../../core/services/cart_api_service.dart';
 import '../../core/services/customer_service.dart';
 import '../../core/widgets/food_type_icon.dart';
+import '../../core/widgets/connection_status_badge.dart';
 import '../menu/add_product_screen.dart';
 import '../tables/table_management_screen.dart';
 import 'payment_modal.dart';
@@ -118,8 +119,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _selectedOrderType = OrderType.dineIn;
       _cartItems.clear();
       _discountAmount = 0.0;
-      final activeOrder = db.orders.where((o) => o.tableNumber == tableName && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
-      if (activeOrder != null) {
+      final activeOrder = db.orders.where((o) =>
+        isSameTable(o.tableNumber, tableName) &&
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+      ).firstOrNull;
+
+      if (activeOrder != null && activeOrder.items.isNotEmpty) {
         _cartItems.addAll(activeOrder.items);
         _discountAmount = activeOrder.discountAmount;
         _activeRunningOrderId = activeOrder.id;
@@ -127,8 +132,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _customerName = activeOrder.customerName ?? '';
         _customerPhone = activeOrder.customerPhone ?? '';
       } else {
-        _activeRunningOrderId = null;
-        _activeRunningOrderNumber = null;
+        _activeRunningOrderId = activeOrder?.id;
+        _activeRunningOrderNumber = activeOrder?.orderNumber;
         final savedCart = db.getLiveTableCart(tableName);
         if (savedCart.isNotEmpty) {
           _cartItems.addAll(savedCart);
@@ -275,13 +280,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         db.setLiveTableCart(targetTable, _cartItems);
         db.setLiveCartTotal(targetTable, cartTotal - _discountAmount.clamp(0, cartTotal));
 
-        final tbl = db.tables.where((t) =>
-            t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
-            t.tableNumber.toString() == targetTable.trim() ||
-            'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
-        ).firstOrNull;
+        final tbl = db.tables.where((t) => isSameTable(t.name, targetTable)).firstOrNull;
         if (tbl != null) {
-          if (_cartItems.isNotEmpty && tbl.status == TableStatus.free) {
+          final activeOrder = db.orders.where((o) =>
+            isSameTable(o.tableNumber, targetTable) &&
+            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+          ).firstOrNull;
+
+          if (activeOrder != null) {
+            final mapped = (activeOrder.status == OrderStatus.preparing) ? TableStatus.runningKot : TableStatus.occupied;
+            if (tbl.status != mapped) {
+              db.updateTableStatus(tbl.id, mapped, orderId: activeOrder.id);
+            }
+          } else if (_cartItems.isNotEmpty && tbl.status == TableStatus.free) {
             db.updateTableStatus(tbl.id, TableStatus.occupied);
           } else if (_cartItems.isEmpty && tbl.status == TableStatus.occupied) {
             db.updateTableStatus(tbl.id, TableStatus.free);

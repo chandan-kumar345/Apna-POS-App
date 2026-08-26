@@ -15,6 +15,7 @@ const paymentMethodRoutes = require('./paymentMethodRoutes');
 const extraRoutes = require('./extraRoutes');
 const paymentRoutes = require('./paymentRoutes');
 const printLogRoutes = require('./printLogRoutes');
+const loyaltyRoutes = require('./loyaltyRoutes');
 
 const router = express.Router();
 
@@ -46,5 +47,6 @@ router.use('/extras', extraRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/print-logs', printLogRoutes);
 router.use('/printlogs', printLogRoutes);
+router.use('/loyalty', loyaltyRoutes);
 
 module.exports = router;

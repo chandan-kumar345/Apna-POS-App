@@ -136,6 +136,11 @@ class AuthService {
       }
     }
 
+    // Auto-fetch all cloud orders, products, tables, and floor status for this user
+    try {
+      await _db.syncWithBackend();
+    } catch (_) {}
+
     return data;
   }
 

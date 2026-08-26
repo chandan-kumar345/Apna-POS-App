@@ -91,60 +91,54 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 vertical: isSmallScreen ? 14 : 20,
               ),
               child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: 520,
-                  maxHeight: isSmallScreen ? (mediaQuery.size.height * 0.70) : 410,
+                constraints: const BoxConstraints(
+                  maxWidth: 500,
                 ),
                 child: Padding(
                   padding: EdgeInsets.all(isSmallScreen ? 14 : 18),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Modal Header (Wrapped & Adaptive)
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF051C48),
-                              shape: BoxShape.circle,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Modal Header (Wrapped & Adaptive)
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF051C48),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 20),
                             ),
-                            child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Import Products via CSV',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                ),
-                                SizedBox(height: 1),
-                                Text(
-                                  'Bulk add products using CSV spreadsheet template',
-                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                ),
-                              ],
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Import Products via CSV',
+                                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                  ),
+                                  SizedBox(height: 1),
+                                  Text(
+                                    'Bulk add products using CSV spreadsheet template',
+                                    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
-                            constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.all(4),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-
-                      Expanded(
-                        child: SingleChildScrollView(
-                          physics: const BouncingScrollPhysics(),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
+                            IconButton(
+                              onPressed: () => Navigator.pop(context),
+                              icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
+                              constraints: const BoxConstraints(),
+                              padding: const EdgeInsets.all(4),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
                               // Error Banner
                               if (modalError != null) ...[
                                 Container(
@@ -507,25 +501,20 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(context),
+                                    child: const Text('Close', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                       ),
-
-                      const SizedBox(height: 12),
-
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(context),
-                            child: const Text('Close', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
               ),
             );
           },

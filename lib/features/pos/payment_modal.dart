@@ -717,9 +717,9 @@ class _PaymentModalState extends State<PaymentModal> {
                     ),
                   ),
                 ] else if (_selectedMethod == 'UPI') ...[
-                  // PRODUCTION DYNAMIC RAZORPAY / GATEWAY UPI SCREEN
+                  // DYNAMIC UPI SCREEN
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
                       borderRadius: BorderRadius.circular(16),
@@ -728,67 +728,6 @@ class _PaymentModalState extends State<PaymentModal> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // Gateway Brand / Header Indicator
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF051C48).withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Icon(Icons.bolt_rounded, color: Color(0xFF051C48), size: 14),
-                                ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _dynamicQrResult?.isDynamicGateway == true
-                                      ? 'Razorpay Dynamic UPI'
-                                      : 'Instant UPI Payment',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            // Countdown Expiry Badge
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: _upiExpirySeconds > 30 ? const Color(0xFFF1F5F9) : const Color(0xFFFEF2F2),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(
-                                  color: _upiExpirySeconds > 30 ? const Color(0xFFCBD5E1) : const Color(0xFFFCA5A5),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.timer_outlined,
-                                    size: 12,
-                                    color: _upiExpirySeconds > 30 ? const Color(0xFF475569) : const Color(0xFFDC2626),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    _formatTimer(_upiExpirySeconds),
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: _upiExpirySeconds > 30 ? const Color(0xFF0F172A) : const Color(0xFFDC2626),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-
                         // Dynamic QR Code Render Box
                         Container(
                           padding: const EdgeInsets.all(12),
@@ -853,139 +792,41 @@ class _PaymentModalState extends State<PaymentModal> {
                                       ),
                                     ),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 12),
 
                         // Amount to pay pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                           decoration: BoxDecoration(
                             color: const Color(0xFF051C48).withValues(alpha: 0.06),
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'Scan with GPay, PhonePe, Paytm, BHIM • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                            'Scan & Pay with Any UPI App • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 16),
 
-                        // Real-Time Auto-Verification Status Badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _isUpiPaymentConfirmed ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: _isUpiPaymentConfirmed ? const Color(0xFF10B981) : const Color(0xFFCBD5E1),
-                              width: 1.2,
+                        // Payment Done Button
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF051C48),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              elevation: 0,
                             ),
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (_isUpiPaymentConfirmed) ...[
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF047857), size: 18),
-                                const SizedBox(width: 8),
-                                Flexible(
-                                  child: Text(
-                                    'Payment Verified! Ref: $_upiTransactionRef',
-                                    style: const TextStyle(
-                                      color: Color(0xFF047857),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ] else ...[
-                                const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
-                                ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Waiting for customer payment...',
-                                  style: TextStyle(
-                                    color: Color(0xFF475569),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                              ],
-                            ],
+                            icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
+                            label: Text(
+                              'Payment Done • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                              style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                            ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-
-                        // Manual UTR Fallback Toggle
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            TextButton.icon(
-                              onPressed: () {
-                                setState(() {
-                                  _showManualUtr = !_showManualUtr;
-                                });
-                              },
-                              icon: Icon(
-                                _showManualUtr ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                                size: 16,
-                                color: const Color(0xFF64748B),
-                              ),
-                              label: Text(
-                                _showManualUtr ? 'Hide Manual Verification' : 'Manual UTR / Bank Ref Entry',
-                                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                            const Text('•', style: TextStyle(color: Color(0xFFCBD5E1))),
-                            TextButton.icon(
-                              onPressed: () => _fetchDynamicUpiQr(roundedTotal),
-                              icon: const Icon(Icons.refresh_rounded, size: 14, color: Color(0xFF051C48)),
-                              label: const Text(
-                                'Regenerate',
-                                style: TextStyle(fontSize: 11, color: Color(0xFF051C48), fontWeight: FontWeight.bold),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        if (_showManualUtr) ...[
-                          const SizedBox(height: 6),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _manualUtrController,
-                                  keyboardType: TextInputType.text,
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                  decoration: InputDecoration(
-                                    hintText: 'Enter 12-digit UTR / Ref ID',
-                                    hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
-                                    filled: true,
-                                    fillColor: Colors.white,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              ElevatedButton(
-                                onPressed: () => _submitManualUtrPayment(roundedTotal, roundOff),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF051C48),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                ),
-                                child: const Text('Confirm', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
-                              ),
-                            ],
-                          ),
-                        ],
                       ],
                     ),
                   ),
