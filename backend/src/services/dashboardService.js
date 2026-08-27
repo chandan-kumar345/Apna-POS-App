@@ -217,100 +217,100 @@ class DashboardService {
       .select('customerName customerPhone createdAt')
       .lean();
 
-    // Map unique customers by phone or name
-    const customerMap = new Map();
+    // Map unique customer phones & names in this period
+    const phoneSet = new Set();
+    const nameSet = new Set();
+    const periodCustomersMap = new Map();
+
     for (const ord of ordersInRange) {
       const phone = (ord.customerPhone || '').trim();
       const name = (ord.customerName || '').trim();
       const key = phone || name;
       if (!key) continue;
 
-      if (!customerMap.has(key)) {
-        customerMap.set(key, { name: name || 'Customer', phone });
+      if (phone) phoneSet.add(phone);
+      if (name && name !== 'Customer') nameSet.add(name);
+
+      if (!periodCustomersMap.has(key)) {
+        periodCustomersMap.set(key, {
+          name: name || 'Customer',
+          phone: phone || '',
+          earliestInPeriod: ord.createdAt,
+          orderCount: 1,
+        });
+      } else {
+        const item = periodCustomersMap.get(key);
+        item.orderCount += 1;
+        if (ord.createdAt < item.earliestInPeriod) {
+          item.earliestInPeriod = ord.createdAt;
+        }
       }
     }
 
-    // Also include any customers in Customer model touched in [start, end]
-    const directCustomers = await Customer.find({
-      businessId: bId,
-      $or: [
-        { firstVisit: { $gte: start, $lte: end } },
-        { createdAt: { $gte: start, $lte: end } },
-        { lastVisit: { $gte: start, $lte: end } },
-      ],
-    })
-      .select('name phone totalOrders firstVisit createdAt')
-      .lean();
+    // Single batch query to Customer collection for all customers touched
+    const phonesList = Array.from(phoneSet);
+    const namesList = Array.from(nameSet);
 
-    for (const c of directCustomers) {
-      const phone = (c.phone || '').trim();
-      const name = (c.name || '').trim();
-      const key = phone || name;
-      if (key && !customerMap.has(key)) {
-        customerMap.set(key, { name: name || 'Customer', phone });
+    const [crmCustomerDocs, directTouched] = await Promise.all([
+      Customer.find({
+        businessId: bId,
+        $or: [
+          ...(phonesList.length > 0 ? [{ phone: { $in: phonesList } }] : []),
+          ...(namesList.length > 0 ? [{ name: { $in: namesList } }] : []),
+        ],
+      })
+        .select('name phone firstVisit createdAt totalOrders')
+        .lean(),
+      Customer.find({
+        businessId: bId,
+        $or: [
+          { firstVisit: { $gte: start, $lte: end } },
+          { createdAt: { $gte: start, $lte: end } },
+          { lastVisit: { $gte: start, $lte: end } },
+        ],
+      })
+        .select('name phone firstVisit createdAt totalOrders')
+        .lean(),
+    ]);
+
+    const crmCustomerMap = new Map();
+    for (const c of crmCustomerDocs) {
+      if (c.phone) crmCustomerMap.set(c.phone, c);
+      if (c.name) crmCustomerMap.set(c.name, c);
+    }
+
+    for (const c of directTouched) {
+      const key = (c.phone || c.name || '').trim();
+      if (key && !periodCustomersMap.has(key)) {
+        periodCustomersMap.set(key, {
+          name: c.name || 'Customer',
+          phone: c.phone || '',
+          earliestInPeriod: c.firstVisit || c.createdAt || start,
+          orderCount: c.totalOrders || 1,
+        });
       }
+      if (c.phone) crmCustomerMap.set(c.phone, c);
+      if (c.name) crmCustomerMap.set(c.name, c);
     }
 
     const newCustomers = [];
     const returningCustomers = [];
 
-    // For each customer, check all-time history
-    for (const [key, info] of customerMap.entries()) {
-      const phone = info.phone;
-      const name = info.name;
+    for (const [key, info] of periodCustomersMap.entries()) {
+      const crmDoc = crmCustomerMap.get(info.phone) || crmCustomerMap.get(info.name);
+      let earliestDate = info.earliestInPeriod;
+      let totalVisits = info.orderCount;
 
-      const queryConds = [];
-      if (phone) queryConds.push({ customerPhone: phone });
-      if (name && name !== 'Customer') queryConds.push({ customerName: name });
-
-      let earliestDate = null;
-      let totalVisits = 1;
-
-      // Check Customer CRM record first
-      if (phone) {
-        const customerDoc = await Customer.findOne({
-          businessId: bId,
-          phone,
-        }).select('firstVisit createdAt totalOrders').lean();
-
-        if (customerDoc) {
-          if (customerDoc.firstVisit) earliestDate = customerDoc.firstVisit;
-          else if (customerDoc.createdAt) earliestDate = customerDoc.createdAt;
-          if (customerDoc.totalOrders) totalVisits = customerDoc.totalOrders;
-        }
+      if (crmDoc) {
+        if (crmDoc.firstVisit) earliestDate = crmDoc.firstVisit;
+        else if (crmDoc.createdAt) earliestDate = crmDoc.createdAt;
+        if (crmDoc.totalOrders) totalVisits = Math.max(totalVisits, crmDoc.totalOrders);
       }
 
-      // If no Customer CRM firstVisit, check earliest Order in Order collection
-      if (!earliestDate && queryConds.length > 0) {
-        const earliestOrder = await Order.findOne({
-          businessId: bId,
-          $or: queryConds,
-        })
-          .sort({ createdAt: 1 })
-          .select('createdAt')
-          .lean();
-
-        if (earliestOrder) {
-          earliestDate = earliestOrder.createdAt;
-        }
-      }
-
-      if (queryConds.length > 0) {
-        const orderCount = await Order.countDocuments({
-          businessId: bId,
-          $or: queryConds,
-          status: { $in: ['completed', 'paid'] },
-          paymentStatus: 'paid',
-        });
-        totalVisits = Math.max(totalVisits, orderCount);
-      }
-
-      const effectiveEarliest = earliestDate || start;
-      const isNew = effectiveEarliest >= start && effectiveEarliest <= end;
-
+      const isNew = earliestDate >= start && earliestDate <= end;
       const customerObj = {
-        name: name || 'Customer',
-        phone: phone || '',
+        name: info.name || 'Customer',
+        phone: info.phone || '',
         visitCount: Math.max(1, totalVisits),
       };
 
@@ -478,6 +478,37 @@ class DashboardService {
     ]);
 
     return chartPoints;
+  }
+
+  // 9. Unified Dashboard Overview Bundle
+  async getOverview(businessId, query = {}) {
+    const [
+      summary,
+      orderTypes,
+      productSales,
+      customers,
+      paymentMethods,
+      taxes,
+      orderStats,
+    ] = await Promise.all([
+      this.getSummary(businessId, query),
+      this.getOrderTypes(businessId, query),
+      this.getProductSales(businessId, query),
+      this.getCustomers(businessId, query),
+      this.getPaymentMethods(businessId, query),
+      this.getTaxes(businessId, query),
+      this.getOrderStats(businessId, query),
+    ]);
+
+    return {
+      summary,
+      orderTypes,
+      productSales: productSales.items || [],
+      customers,
+      paymentMethods,
+      taxes,
+      orderStats,
+    };
   }
 }
 

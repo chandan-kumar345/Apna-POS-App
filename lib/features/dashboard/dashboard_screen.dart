@@ -4,7 +4,6 @@ import 'dart:ui';
 import '../../core/database/database_service.dart';
 import '../../core/services/dashboard_service.dart';
 import '../../core/models/order_model.dart';
-import '../../core/widgets/connection_status_badge.dart';
 
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
 class GlassDashboardScreen extends StatefulWidget {
@@ -165,58 +164,29 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       final sDate = _startDateParam;
       final eDate = _endDateParam;
 
-      final results = await Future.wait([
-        _dashboardService.fetchSummary(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchOrderTypes(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchProductSales(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchCustomers(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchPaymentMethods(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchTaxes(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-        _dashboardService.fetchOrderStats(
-          period: _dashboardFilter,
-          startDate: sDate,
-          endDate: eDate,
-        ),
-      ]);
+      final overview = await _dashboardService.fetchOverview(
+        period: _dashboardFilter,
+        startDate: sDate,
+        endDate: eDate,
+      );
 
       if (mounted) {
-        final summary = results[0] as DashboardSummaryData;
-        final orderTypes = results[1] as OrderTypeStatsData;
-        final productSales = results[2] as List<ItemSaleReportItem>;
-        final customerData = results[3] as CustomerAnalyticsData;
-        final paymentMethodsData = results[4] as PaymentMethodsSummaryData;
-        final taxData = results[5] as TaxSummaryData;
-        final orderStatsData = results[6] as OrderStatsSummaryData;
-
-        // If cloud API returned empty data, fallback to local data
-        if (summary.totalOrders == 0 && summary.revenue == 0 && _db.orders.isNotEmpty) {
+        if (overview != null) {
+          setState(() {
+            _summaryData = overview.summary;
+            _orderTypesData = overview.orderTypes;
+            _productSales = overview.productSales;
+            _customerData = overview.customers;
+            _paymentMethodsData = overview.paymentMethods;
+            _taxData = overview.taxes;
+            _orderStatsData = overview.orderStats;
+            _isLoading = false;
+            _errorMessage = null;
+          });
+        } else {
           final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
-          if (localData != null && (localData.summary.totalOrders > 0 || localData.summary.revenue > 0)) {
-            setState(() {
+          setState(() {
+            if (localData != null) {
               _summaryData = localData.summary;
               _orderTypesData = localData.orderTypes;
               _productSales = localData.productSales;
@@ -224,24 +194,11 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               _paymentMethodsData = localData.payments;
               _taxData = localData.taxes;
               _orderStatsData = localData.orderStats;
-              _isLoading = false;
-              _errorMessage = null;
-            });
-            return;
-          }
+            }
+            _isLoading = false;
+            _errorMessage = null;
+          });
         }
-
-        setState(() {
-          _summaryData = summary;
-          _orderTypesData = orderTypes;
-          _productSales = productSales;
-          _customerData = customerData;
-          _paymentMethodsData = paymentMethodsData;
-          _taxData = taxData;
-          _orderStatsData = orderStatsData;
-          _isLoading = false;
-          _errorMessage = null;
-        });
       }
     } catch (e) {
       debugPrint('[GlassDashboardScreen] Error fetching dashboard data: $e');
@@ -954,93 +911,188 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   ),
                 ),
                 const SizedBox(height: 6),
-                ListView.separated(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: _productSales.length,
-                  separatorBuilder: (context, index) =>
-                      Divider(color: Colors.white.withOpacity(0.5), height: 12),
-                  itemBuilder: (context, index) {
-                    final p = _productSales[index];
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 3,
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            child: Text(
-                              '${p.srNo > 0 ? p.srNo : index + 1}',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                color: Color(0xFF64748B),
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 3,
-                            child: Text(
-                              p.productName,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w600,
-                                color: Color(0xFF0F172A),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.center,
+                if (_productSales.length <= 5)
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    padding: EdgeInsets.zero,
+                    itemCount: _productSales.length,
+                    separatorBuilder: (context, index) =>
+                        Divider(color: Colors.white.withOpacity(0.5), height: 12),
+                    itemBuilder: (context, index) {
+                      final p = _productSales[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 3,
+                        ),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 20,
                               child: Text(
-                                '₹${p.price.toStringAsFixed(0)}',
+                                '${p.srNo > 0 ? p.srNo : index + 1}',
                                 style: const TextStyle(
-                                  fontSize: 10.5,
+                                  fontSize: 10,
                                   color: Color(0xFF64748B),
                                 ),
                               ),
                             ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.center,
+                            Expanded(
+                              flex: 3,
                               child: Text(
-                                '${p.quantity}',
+                                p.productName,
                                 style: const TextStyle(
                                   fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w600,
                                   color: Color(0xFF0F172A),
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                          ),
-                          Expanded(
-                            flex: 1,
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                '₹${p.totalAmount.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF10B981),
+                            Expanded(
+                              flex: 1,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '₹${p.price.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    color: Color(0xFF64748B),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                        ],
+                            Expanded(
+                              flex: 1,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.center,
+                                child: Text(
+                                  '${p.quantity}',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  '₹${p.totalAmount.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF10B981),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  )
+                else
+                  SizedBox(
+                    height: 230,
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      child: ListView.separated(
+                        padding: EdgeInsets.zero,
+                        itemCount: _productSales.length,
+                        separatorBuilder: (context, index) =>
+                            Divider(color: Colors.white.withOpacity(0.5), height: 12),
+                        itemBuilder: (context, index) {
+                          final p = _productSales[index];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 3,
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  child: Text(
+                                    '${p.srNo > 0 ? p.srNo : index + 1}',
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    p.productName,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '₹${p.price.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${p.quantity}',
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 1,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerRight,
+                                    child: Text(
+                                      '₹${p.totalAmount.toStringAsFixed(0)}',
+                                      style: const TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF10B981),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
+                    ),
+                  ),
               ],
             ),
           const SizedBox(height: 6),
@@ -1928,8 +1980,20 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           '${DateFormat('d MMM').format(_customStartDate!)} - ${DateFormat('d MMM').format(_customEndDate!)}';
     }
 
+    final options = [
+      {'value': 'Today', 'label': 'Today'},
+      {'value': 'Yesterday', 'label': 'Yesterday'},
+      {'value': 'Week', 'label': 'This Week'},
+      {'value': 'Month', 'label': 'This Month'},
+      {'value': 'Year', 'label': 'This Year'},
+      {'value': 'All Time', 'label': 'All Time'},
+      {'value': 'Custom Date', 'label': 'Custom Date Range'},
+    ];
+
     return PopupMenuButton<String>(
       initialValue: value,
+      color: Colors.white,
+      elevation: 6,
       onSelected: (val) async {
         if (val == 'Custom Date') {
           await _showCustomDateRangeDialog();
@@ -1937,27 +2001,48 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           onChanged(val);
         }
       },
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      itemBuilder: (context) => const [
-        PopupMenuItem(value: 'Today', child: Text('Today')),
-        PopupMenuItem(value: 'Yesterday', child: Text('Yesterday')),
-        PopupMenuItem(value: 'Week', child: Text('This Week')),
-        PopupMenuItem(value: 'Month', child: Text('This Month')),
-        PopupMenuItem(value: 'Year', child: Text('This Year')),
-        PopupMenuItem(value: 'All Time', child: Text('All Time')),
-        PopupMenuItem(value: 'Custom Date', child: Text('Custom Date Range')),
-      ],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      itemBuilder: (context) => options.map((opt) {
+        final optVal = opt['value'] as String;
+        final optLabel = opt['label'] as String;
+        final isSelected = value == optVal;
+
+        return PopupMenuItem<String>(
+          value: optVal,
+          child: Row(
+            children: [
+              Icon(
+                isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 15,
+                color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                optLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.85),
+          color: Colors.white.withOpacity(0.92),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
           boxShadow: const [
             BoxShadow(
               color: Color(0x0A0052FF),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+              blurRadius: 8,
+              offset: Offset(0, 2),
             ),
           ],
         ),
@@ -1966,22 +2051,22 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           children: [
             const Icon(
               Icons.date_range_rounded,
-              size: 13,
+              size: 14,
               color: Color(0xFF0284C7),
             ),
             const SizedBox(width: 5),
             Text(
               displayValue,
               style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
               ),
             ),
             const SizedBox(width: 3),
             const Icon(
               Icons.keyboard_arrow_down_rounded,
-              size: 13,
+              size: 14,
               color: Color(0xFF64748B),
             ),
           ],

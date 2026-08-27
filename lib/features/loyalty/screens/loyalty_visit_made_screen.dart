@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/services/loyalty_service.dart';
 
@@ -12,7 +12,7 @@ class LoyaltyVisitMadeScreen extends StatefulWidget {
 
   const LoyaltyVisitMadeScreen({
     super.key,
-    this.companyName = 'THE ROYAL GARDENIA',
+    this.companyName = '',
     this.companyLogo = '',
     this.program,
     this.onCompleted,
@@ -24,30 +24,69 @@ class LoyaltyVisitMadeScreen extends StatefulWidget {
 
 class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
   final LoyaltyService _loyaltyService = LoyaltyService();
+  final ImagePicker _imagePicker = ImagePicker();
   final ScrollController _mainScrollController = ScrollController();
 
-  // Form Controllers
+  // App Theme Primary Color (Deep Navy Blue from App Theme)
+  static const Color _primaryThemeColor = Color(0xFF082559);
+  static const Color _tealAccentColor = Color(0xFF00A884);
+
+  // Form Controllers - Theme Section
   late TextEditingController _programNameCtrl;
   late TextEditingController _sloganCtrl;
-  late TextEditingController _rewardValueCtrl;
   late TextEditingController _minPurchaseCtrl;
-  late TextEditingController _triggerMinSpendCtrl;
-  late TextEditingController _freeItemNameCtrl;
 
-  // State Variables
-  String _visitTrigger = 'Every Visit'; // 'Every Visit', 'Minimum Spend', 'Specific Purchase'
-  int _visitCount = 3;
-  String _rewardType = '₹ Discount'; // '₹ Discount', '% Discount', 'Free Item', 'Cashback', 'Coupon'
-  String _selectedOrderType = 'Dine-In';
-  String _specificCategory = 'All Items';
+  // Form Controllers - Points Section (from user screenshot)
+  late TextEditingController _timesCustomerVisitCtrl;
+  late TextEditingController _customerEarnsPointsCtrl;
+  late TextEditingController _pointsNameCtrl;
+  late TextEditingController _minSpendConditionCtrl;
+  late TextEditingController _pointEarningGapCtrl;
+  late TextEditingController _maxCashbackLimitCtrl;
+
+  // Points Settings State & Toggles
+  bool _isRewardPointSettingsExpanded = false;
+  bool _pointBrandingEnabled = true;
+  int _selectedPointPresetIndex = 0; // 0: Cookie, 1: Chilly, 2: Star, 3: Coin
+  bool _minSpendConditionEnabled = false;
+  bool _pointEarningGapEnabled = false;
+  bool _maxCashbackLimitEnabled = false;
+
+  // Active Navigation States
+  int _activeStep = 0; // 0: Edit Theme, 1: Edit Rules, 2: Edit Channels, 3: Edit Earns, 4: Done
+  int _activeBottomTab = 0; // 0: Theme, 1: Points, 2: Rewards, 3: Settings
+
+  // Theme & Colors
+  Color _bgGradientStart = const Color(0xFF4A082F); // Dark Burgundy
+  Color _bgGradientEnd = const Color(0xFF8E1449); // Ruby / Magenta
+  Color _rewardColorStart = const Color(0xFF4A082F);
+  Color _rewardColorEnd = const Color(0xFF8E1449);
+
+  // Multi-select Order Types (Delivery, Take-Away, Dine-In)
+  Set<String> _selectedOrderTypes = {'Delivery', 'Take-Away', 'Dine-In'};
+
+  // Media
+  String _bannerImagePath = 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800';
+  String _logoUrl = '';
+
+  String get _currentPointsName =>
+      _pointsNameCtrl.text.trim().isNotEmpty ? _pointsNameCtrl.text.trim() : 'Cookie';
+
+  // Stages
   List<RewardStageModel> _rewardStages = [];
   bool _isLoading = true;
   bool _isSaving = false;
 
-  // Validation Error Messages
-  String? _rewardValueError;
-  String? _minPurchaseError;
+  // Validation
   String? _programNameError;
+
+  final List<String> _stepTitles = [
+    'Edit Theme',
+    'Edit Points',
+    'Edit Rewards',
+    'Edit Channels',
+    'Done',
+  ];
 
   @override
   void initState() {
@@ -56,10 +95,16 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       text: widget.companyName.isNotEmpty ? widget.companyName : 'THE ROYAL GARDENIA',
     );
     _sloganCtrl = TextEditingController(text: 'Get rewarded on every purchase');
-    _rewardValueCtrl = TextEditingController(text: '100');
     _minPurchaseCtrl = TextEditingController(text: '100');
-    _triggerMinSpendCtrl = TextEditingController(text: '200');
-    _freeItemNameCtrl = TextEditingController(text: 'Dessert / Beverage');
+    _logoUrl = widget.companyLogo;
+
+    // Points tab controllers
+    _timesCustomerVisitCtrl = TextEditingController(text: '1');
+    _customerEarnsPointsCtrl = TextEditingController(text: '10');
+    _pointsNameCtrl = TextEditingController(text: 'Cookie');
+    _minSpendConditionCtrl = TextEditingController(text: '0');
+    _pointEarningGapCtrl = TextEditingController(text: '24');
+    _maxCashbackLimitCtrl = TextEditingController(text: '0');
 
     _loadExistingConfig();
   }
@@ -69,10 +114,13 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     _mainScrollController.dispose();
     _programNameCtrl.dispose();
     _sloganCtrl.dispose();
-    _rewardValueCtrl.dispose();
     _minPurchaseCtrl.dispose();
-    _triggerMinSpendCtrl.dispose();
-    _freeItemNameCtrl.dispose();
+    _timesCustomerVisitCtrl.dispose();
+    _customerEarnsPointsCtrl.dispose();
+    _pointsNameCtrl.dispose();
+    _minSpendConditionCtrl.dispose();
+    _pointEarningGapCtrl.dispose();
+    _maxCashbackLimitCtrl.dispose();
     super.dispose();
   }
 
@@ -85,38 +133,49 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
     if (mounted) {
       setState(() {
-        _programNameCtrl.text = config.programName;
-        _sloganCtrl.text = config.slogan;
-        _visitTrigger = config.visitTrigger;
-        _triggerMinSpendCtrl.text = config.triggerMinSpend.toInt().toString();
-        _visitCount = config.visitCount;
-        _rewardType = config.rewardType;
-        _rewardValueCtrl.text = config.rewardValue.toInt().toString();
-        _minPurchaseCtrl.text = config.minimumPurchase.toInt().toString();
-        _selectedOrderType = config.orderType;
+        if (config.programName.isNotEmpty) _programNameCtrl.text = config.programName;
+        if (config.slogan.isNotEmpty) _sloganCtrl.text = config.slogan;
+        if (config.minimumPurchase > 0) {
+          _minPurchaseCtrl.text = config.minimumPurchase.toInt().toString();
+          _minSpendConditionCtrl.text = config.minimumPurchase.toInt().toString();
+        }
+        if (config.orderType.isNotEmpty) {
+          final types = config.orderType
+              .split(',')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toSet();
+          if (types.isNotEmpty) _selectedOrderTypes = types;
+        }
+        if (config.logoUrl.isNotEmpty) _logoUrl = config.logoUrl;
+        if (config.bannerImageUrl.isNotEmpty) _bannerImagePath = config.bannerImageUrl;
+
         _rewardStages = List.from(config.rewardStages);
         if (_rewardStages.isEmpty) {
           _rewardStages = [
             RewardStageModel(
               id: 'stage_1',
-              visitCount: 3,
+              visitCount: 300,
               rewardType: '₹ Discount',
               rewardValue: 100.0,
               minimumPurchase: 100.0,
+              freeItemName: 'Cheers ! Rs 100 off on your purchase.',
             ),
             RewardStageModel(
               id: 'stage_2',
-              visitCount: 5,
+              visitCount: 500,
               rewardType: '₹ Discount',
               rewardValue: 200.0,
               minimumPurchase: 100.0,
+              freeItemName: 'Cheers ! Rs 200 off on your purchase.',
             ),
             RewardStageModel(
               id: 'stage_3',
-              visitCount: 8,
+              visitCount: 800,
               rewardType: '₹ Discount',
               rewardValue: 300.0,
               minimumPurchase: 100.0,
+              freeItemName: 'Cheers ! Rs 300 off on your purchase.',
             ),
           ];
         }
@@ -125,75 +184,68 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     }
   }
 
-  bool _validateForm() {
-    bool isValid = true;
-    setState(() {
-      _programNameError = null;
-      _rewardValueError = null;
-      _minPurchaseError = null;
-
-      if (_programNameCtrl.text.trim().isEmpty) {
-        _programNameError = 'Program name cannot be empty';
-        isValid = false;
-      }
-
-      final rewardVal = double.tryParse(_rewardValueCtrl.text.trim());
-      if (_rewardType != 'Free Item') {
-        if (rewardVal == null || rewardVal <= 0) {
-          _rewardValueError = 'Please enter a valid positive reward value';
-          isValid = false;
-        } else if (_rewardType == '% Discount' && rewardVal > 100) {
-          _rewardValueError = 'Percentage discount cannot exceed 100%';
-          isValid = false;
-        }
-      } else {
-        if (_freeItemNameCtrl.text.trim().isEmpty) {
-          _rewardValueError = 'Please enter free item name';
-          isValid = false;
-        }
-      }
-
-      final minPurchase = double.tryParse(_minPurchaseCtrl.text.trim());
-      if (minPurchase == null || minPurchase < 0) {
-        _minPurchaseError = 'Please enter a valid minimum purchase amount';
-        isValid = false;
-      }
-
-      if (_rewardStages.isEmpty) {
-        isValid = false;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please configure at least one reward stage.'),
-            backgroundColor: Color(0xFFDC2626),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    });
-
-    return isValid;
-  }
-
-  Future<void> _handleNext() async {
-    if (!_validateForm()) {
+  // --- Step Forward when Next clicked ---
+  void _handleNext() {
+    if (_programNameCtrl.text.trim().isEmpty) {
+      setState(() => _programNameError = 'Program name cannot be empty');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a program name.',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          backgroundColor: Color(0xFFEF4444),
+          duration: Duration(seconds: 2),
+        ),
+      );
       return;
     }
 
+    setState(() => _programNameError = null);
+
+    if (_activeStep < _stepTitles.length - 1) {
+      setState(() {
+        _activeStep++;
+        if (_activeStep == 1) _activeBottomTab = 1;
+        if (_activeStep == 2) _activeBottomTab = 2;
+        if (_activeStep == 3) _activeBottomTab = 3;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Step moved to ${_stepTitles[_activeStep]}',
+            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+          ),
+          backgroundColor: _primaryThemeColor,
+          duration: const Duration(milliseconds: 1200),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      _saveAndComplete();
+    }
+  }
+
+  Future<void> _saveAndComplete() async {
     setState(() => _isSaving = true);
+
+    final minSpend = _minSpendConditionEnabled
+        ? (double.tryParse(_minSpendConditionCtrl.text.trim()) ?? 0.0)
+        : (double.tryParse(_minPurchaseCtrl.text.trim()) ?? 100.0);
 
     final config = VisitRewardConfig(
       programName: _programNameCtrl.text.trim(),
       slogan: _sloganCtrl.text.trim(),
-      visitTrigger: _visitTrigger,
-      triggerMinSpend: double.tryParse(_triggerMinSpendCtrl.text.trim()) ?? 100.0,
-      visitCount: _visitCount,
-      rewardType: _rewardType,
-      rewardValue: double.tryParse(_rewardValueCtrl.text.trim()) ?? 100.0,
-      minimumPurchase: double.tryParse(_minPurchaseCtrl.text.trim()) ?? 100.0,
+      visitTrigger: 'Every Visit',
+      triggerMinSpend: minSpend,
+      visitCount: _rewardStages.isNotEmpty ? _rewardStages.first.visitCount : 300,
+      rewardType: '₹ Discount',
+      rewardValue: 100.0,
+      minimumPurchase: minSpend,
       rewardStages: _rewardStages,
-      logoUrl: widget.companyLogo,
-      orderType: _selectedOrderType,
-      termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹${_minPurchaseCtrl.text.trim()} required.\nOffers cannot be clubbed.',
+      bannerImageUrl: _bannerImagePath,
+      logoUrl: _logoUrl,
+      orderType: _selectedOrderTypes.join(', '),
+      termsNote:
+          'Terms and conditions apply.\nMinimum purchase of ₹${minSpend.toInt()} required.\n3 offers cannot be clubbed.',
     );
 
     await _loyaltyService.saveVisitRewardConfig(config);
@@ -209,47 +261,47 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
+                width: 56,
+                height: 56,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFDCFCE7),
                   shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF86EFAC), width: 2),
                 ),
-                child: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 40),
+                child: const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 36),
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               const Text(
-                'Visit Made Program Configured!',
+                'Loyalty Program Saved!',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w900,
                   color: Color(0xFF0F172A),
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
               Text(
-                'Your visit-based loyalty program for "${_programNameCtrl.text}" is ready. Customers will earn rewards for their visits.',
-                style: const TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+                'Your loyalty program settings for "${_programNameCtrl.text}" are saved and active.',
+                style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.35),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 18),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF0D9488),
+                    backgroundColor: _primaryThemeColor,
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
                     elevation: 0,
                   ),
                   onPressed: () {
@@ -257,7 +309,8 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     widget.onCompleted?.call();
                     Navigator.pop(context);
                   },
-                  child: const Text('Go to Loyalty Hub', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  child: const Text('Go to Loyalty Hub',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
@@ -267,20 +320,87 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
+  // --- Pick Image From Gallery ---
+  Future<void> _pickImageFromGallery({required bool isBanner}) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: isBanner ? 1920 : 512,
+        maxHeight: isBanner ? 1080 : 512,
+        imageQuality: 85,
+      );
+
+      if (picked != null && mounted) {
+        setState(() {
+          if (isBanner) {
+            _bannerImagePath = picked.path;
+          } else {
+            _logoUrl = picked.path;
+          }
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isBanner ? 'Banner image selected from gallery!' : 'Logo selected from gallery!',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+            ),
+            backgroundColor: _primaryThemeColor,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open gallery: $e',
+                style: const TextStyle(color: Colors.white, fontSize: 12)),
+            backgroundColor: const Color(0xFFEF4444),
+          ),
+        );
+      }
+    }
+  }
+
+  // --- Multi-select Toggle ---
+  void _toggleOrderType(String type) {
+    setState(() {
+      if (_selectedOrderTypes.contains(type)) {
+        if (_selectedOrderTypes.length > 1) {
+          _selectedOrderTypes.remove(type);
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('At least one order type must be selected.',
+                  style: TextStyle(color: Colors.white, fontSize: 12)),
+              backgroundColor: _primaryThemeColor,
+              duration: Duration(seconds: 1),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } else {
+        _selectedOrderTypes.add(type);
+      }
+    });
+  }
+
   void _openAddEditStageModal({RewardStageModel? existingStage, int? index}) {
-    int stageVisits = existingStage?.visitCount ?? (_rewardStages.isNotEmpty ? _rewardStages.last.visitCount + 2 : 3);
-    String stageRewardType = existingStage?.rewardType ?? _rewardType;
+    int stageVisits = existingStage?.visitCount ??
+        (_rewardStages.isNotEmpty ? _rewardStages.last.visitCount + 200 : 300);
     final stageValueCtrl = TextEditingController(
-      text: existingStage != null ? existingStage.rewardValue.toInt().toString() : '150',
+      text: existingStage != null ? existingStage.rewardValue.toInt().toString() : '100',
     );
     final stageMinSpendCtrl = TextEditingController(
-      text: existingStage != null ? existingStage.minimumPurchase.toInt().toString() : _minPurchaseCtrl.text,
+      text: existingStage != null
+          ? existingStage.minimumPurchase.toInt().toString()
+          : _minPurchaseCtrl.text,
     );
-    final stageFreeItemCtrl = TextEditingController(
-      text: existingStage?.freeItemName ?? 'Dessert / Beverage',
+    final stageDescCtrl = TextEditingController(
+      text: existingStage?.freeItemName ?? 'Cheers ! Rs 100 off on your purchase.',
     );
-    int stageExpiry = existingStage?.expiryDays ?? 30;
-    String? modalValueError;
 
     showModalBottomSheet(
       context: context,
@@ -289,10 +409,11 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       builder: (modalCtx) => StatefulBuilder(
         builder: (context, setModalState) {
           return Container(
-            padding: EdgeInsets.fromLTRB(20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 24),
+            padding:
+                EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 20),
             decoration: const BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: SingleChildScrollView(
               child: Column(
@@ -301,7 +422,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 children: [
                   Center(
                     child: Container(
-                      width: 40,
+                      width: 36,
                       height: 4,
                       decoration: BoxDecoration(
                         color: Colors.grey.shade300,
@@ -309,235 +430,188 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 12),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         existingStage != null ? 'Edit Reward Stage' : 'Add Reward Stage',
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 15,
                           fontWeight: FontWeight.w900,
                           color: Color(0xFF0F172A),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                        icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
                         onPressed: () => Navigator.pop(modalCtx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
                       ),
                     ],
                   ),
-                  const Divider(color: Color(0xFFE2E8F0)),
-                  const SizedBox(height: 12),
+                  const Divider(color: Color(0xFFE2E8F0), height: 16),
 
-                  // Required Visits Stepper
-                  const Text('Required Visits', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 8),
+                  // Required Cookies / Visits
+                  Text('Required $_currentPointsName / Visits',
+                      style: const TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(16),
                       border: Border.all(color: const Color(0xFFCBD5E1)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        InkWell(
-                          onTap: () {
-                            if (stageVisits > 1) {
-                              setModalState(() => stageVisits--);
-                            }
+                        IconButton(
+                          icon: const Icon(Icons.remove, size: 16),
+                          onPressed: () {
+                            if (stageVisits > 50) setModalState(() => stageVisits -= 50);
                           },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: const Icon(Icons.remove, size: 16, color: Color(0xFF0F172A)),
-                          ),
                         ),
                         Text(
-                          '$stageVisits ${stageVisits == 1 ? "Visit" : "Visits"}',
-                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF0D9488)),
+                          '$stageVisits $_currentPointsName',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w900, color: _primaryThemeColor),
                         ),
-                        InkWell(
-                          onTap: () => setModalState(() => stageVisits++),
-                          borderRadius: BorderRadius.circular(16),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              shape: BoxShape.circle,
-                              border: Border.all(color: const Color(0xFFE2E8F0)),
-                            ),
-                            child: const Icon(Icons.add, size: 16, color: Color(0xFF0F172A)),
-                          ),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 16),
+                          onPressed: () {
+                            setModalState(() => stageVisits += 50);
+                          },
                         ),
                       ],
                     ),
                   ),
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
-
-                  // Reward Type Pills
-                  const Text('Reward Type', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: ['₹ Discount', '% Discount', 'Free Item', 'Cashback', 'Coupon'].map((type) {
-                      final isSelected = stageRewardType == type;
-                      return ChoiceChip(
-                        label: Text(type),
-                        selected: isSelected,
-                        selectedColor: const Color(0xFF0D9488),
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.white : const Color(0xFF334155),
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 12.5,
-                        ),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        onSelected: (selected) {
-                          if (selected) {
-                            setModalState(() => stageRewardType = type);
-                          }
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Reward Value Input
-                  Text(
-                    stageRewardType == 'Free Item' ? 'Free Item Name' : 'Reward Value',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                  ),
-                  const SizedBox(height: 8),
-                  if (stageRewardType == 'Free Item') ...[
-                    TextField(
-                      controller: stageFreeItemCtrl,
-                      decoration: InputDecoration(
-                        hintText: 'e.g. Free Brownie / Mocktail',
-                        prefixIcon: const Icon(Icons.card_giftcard_rounded, color: Color(0xFF0D9488), size: 20),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                      ),
+                  // Reward Value
+                  const Text('Reward Discount Value (₹)',
+                      style: TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: stageValueCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(
+                        color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w600),
+                    cursorColor: _primaryThemeColor,
+                    onChanged: (val) {
+                      setModalState(() {
+                        stageDescCtrl.text = 'Cheers ! Rs $val off on your purchase.';
+                      });
+                    },
+                    decoration: InputDecoration(
+                      prefixText: '₹ ',
+                      prefixStyle: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 12.5),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
                     ),
-                  ] else ...[
-                    TextField(
-                      controller: stageValueCtrl,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                      decoration: InputDecoration(
-                        prefixText: stageRewardType.contains('%') ? '' : '₹ ',
-                        suffixText: stageRewardType.contains('%') ? '%' : '',
-                        prefixStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                        suffixStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                        errorText: modalValueError,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                        filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                      ),
-                    ),
-                  ],
+                  ),
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
-
-                  // Min Purchase Input
-                  const Text('Minimum Purchase Required (₹)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 8),
+                  // Min Purchase Spend
+                  const Text('Minimum Purchase Required (₹)',
+                      style: TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 5),
                   TextField(
                     controller: stageMinSpendCtrl,
                     keyboardType: TextInputType.number,
+                    style: const TextStyle(
+                        color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w600),
+                    cursorColor: _primaryThemeColor,
                     decoration: InputDecoration(
                       prefixText: '₹ ',
-                      prefixStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                      prefixStyle: const TextStyle(
+                          fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 12.5),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
                     ),
                   ),
+                  const SizedBox(height: 12),
 
+                  // Preview Subtitle
+                  const Text('Preview Subtitle',
+                      style: TextStyle(
+                          fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: stageDescCtrl,
+                    style: const TextStyle(
+                        color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w600),
+                    cursorColor: _primaryThemeColor,
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                      focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
-                  // Expiry Days Selector
-                  const Text('Reward Validity', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    children: [15, 30, 60, 90].map((days) {
-                      final isSelected = stageExpiry == days;
-                      return ChoiceChip(
-                        label: Text('$days Days'),
-                        selected: isSelected,
-                        selectedColor: const Color(0xFF0D9488),
-                        backgroundColor: const Color(0xFFF1F5F9),
-                        labelStyle: TextStyle(
-                          color: isSelected ? Colors.white : const Color(0xFF334155),
-                          fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                          fontSize: 12,
-                        ),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        onSelected: (selected) {
-                          if (selected) {
-                            setModalState(() => stageExpiry = days);
-                          }
-                        },
-                      );
-                    }).toList(),
-                  ),
-
-                  const SizedBox(height: 24),
-
-                  // Submit Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF0D9488),
+                        backgroundColor: _primaryThemeColor,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 11),
                         elevation: 0,
                       ),
                       onPressed: () {
-                        final val = double.tryParse(stageValueCtrl.text.trim()) ?? 0.0;
-                        if (stageRewardType != 'Free Item' && val <= 0) {
-                          setModalState(() => modalValueError = 'Enter a valid reward value');
-                          return;
-                        }
+                        final val = double.tryParse(stageValueCtrl.text.trim()) ?? 100.0;
+                        final minSpend = double.tryParse(stageMinSpendCtrl.text.trim()) ?? 100.0;
 
-                        final updatedStage = RewardStageModel(
-                          id: existingStage?.id ?? 'stage_${DateTime.now().millisecondsSinceEpoch}',
+                        final newStage = RewardStageModel(
+                          id: existingStage?.id ??
+                              'stage_${DateTime.now().millisecondsSinceEpoch}',
                           visitCount: stageVisits,
-                          rewardType: stageRewardType,
+                          rewardType: '₹ Discount',
                           rewardValue: val,
-                          minimumPurchase: double.tryParse(stageMinSpendCtrl.text.trim()) ?? 100.0,
-                          expiryDays: stageExpiry,
-                          freeItemName: stageFreeItemCtrl.text.trim(),
+                          minimumPurchase: minSpend,
+                          freeItemName: stageDescCtrl.text.trim(),
                         );
 
                         setState(() {
                           if (index != null && index >= 0 && index < _rewardStages.length) {
-                            _rewardStages[index] = updatedStage;
+                            _rewardStages[index] = newStage;
                           } else {
-                            _rewardStages.add(updatedStage);
+                            _rewardStages.add(newStage);
                           }
                           _rewardStages.sort((a, b) => a.visitCount.compareTo(b.visitCount));
                         });
@@ -546,7 +620,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                       },
                       child: Text(
                         existingStage != null ? 'Update Stage' : 'Add Stage',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                     ),
                   ),
@@ -555,6 +629,169 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
             ),
           );
         },
+      ),
+    );
+  }
+
+  void _openUnsplashPicker() {
+    final List<Map<String, String>> photos = [
+      {
+        'title': 'Restaurant Food Table',
+        'url': 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800',
+      },
+      {
+        'title': 'Delicious Burger & Fries',
+        'url': 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?q=80&w=800',
+      },
+      {
+        'title': 'Italian Pizza Slices',
+        'url': 'https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=800',
+      },
+      {
+        'title': 'Dessert & Bakery',
+        'url': 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?q=80&w=800',
+      },
+      {
+        'title': 'Cafe Coffee & Drinks',
+        'url': 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?q=80&w=800',
+      },
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.white,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Select Banner from Unsplash',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 120,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: photos.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, idx) {
+                  final photo = photos[idx];
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        _bannerImagePath = photo['url']!;
+                      });
+                      Navigator.pop(ctx);
+                    },
+                    borderRadius: BorderRadius.circular(10),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: Stack(
+                        children: [
+                          Image.network(
+                            photo['url']!,
+                            width: 140,
+                            height: 120,
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              color: Colors.black.withOpacity(0.65),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                              child: Text(
+                                photo['title']!,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openColorPresetPicker({required String target}) {
+    final List<Map<String, dynamic>> presets = [
+      {
+        'name': 'Burgundy & Magenta',
+        'start': const Color(0xFF4A082F),
+        'end': const Color(0xFF8E1449)
+      },
+      {'name': 'Deep Navy & Blue', 'start': const Color(0xFF082559), 'end': const Color(0xFF1E3A8A)},
+      {'name': 'Emerald & Mint', 'start': const Color(0xFF064E3B), 'end': const Color(0xFF059669)},
+      {'name': 'Golden & Bronze', 'start': const Color(0xFF78350F), 'end': const Color(0xFFD97706)},
+      {'name': 'Ruby Red & Coral', 'start': const Color(0xFF881337), 'end': const Color(0xFFE11D48)},
+      {'name': 'Dark Slate & Grey', 'start': const Color(0xFF0F172A), 'end': const Color(0xFF334155)},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: Colors.white,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select $target Colors',
+              style:
+                  const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 10),
+            ...presets.map((preset) {
+              return ListTile(
+                dense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                leading: Container(
+                  width: 40,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    gradient: LinearGradient(
+                        colors: [preset['start'] as Color, preset['end'] as Color]),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                ),
+                title: Text(preset['name'] as String,
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                onTap: () {
+                  setState(() {
+                    if (target == 'Background') {
+                      _bgGradientStart = preset['start'] as Color;
+                      _bgGradientEnd = preset['end'] as Color;
+                    } else {
+                      _rewardColorStart = preset['start'] as Color;
+                      _rewardColorEnd = preset['end'] as Color;
+                    }
+                  });
+                  Navigator.pop(ctx);
+                },
+              );
+            }),
+          ],
+        ),
       ),
     );
   }
@@ -569,64 +806,55 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       body: SafeArea(
         child: _isLoading
             ? const Center(
-                child: CircularProgressIndicator(color: Color(0xFF0D9488)),
+                child: CircularProgressIndicator(color: _primaryThemeColor, strokeWidth: 2.5),
               )
             : Column(
                 children: [
                   // Top Navigation Header
                   _buildTopHeader(),
 
-                  // Horizontal Stepper
+                  // Horizontal Stepper (Visual Only, advances via Next button)
                   _buildProgressStepper(),
 
-                  // Main Content Area
+                  // Main Content Area (Wrapped & Compact)
                   Expanded(
                     child: SingleChildScrollView(
                       controller: _mainScrollController,
                       physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       child: Center(
                         child: ConstrainedBox(
                           constraints: BoxConstraints(
-                            maxWidth: isTabletLandscape ? 1150 : 680,
+                            maxWidth: isTabletLandscape ? 1150 : 640,
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              // Intro Section
-                              _buildIntroSection(),
-
-                              const SizedBox(height: 18),
+                              // Subtitle / Intro
+                              _buildIntroSubtitle(),
+                              const SizedBox(height: 12),
 
                               if (isTabletLandscape)
-                                // Tablet / Desktop Two-Column Layout
+                                // Tablet / Desktop: Two columns (Side-by-Side)
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    // Left: Sticky Live Loyalty Preview
-                                    Expanded(
-                                      flex: 5,
-                                      child: _buildLiveLoyaltyPreview(),
-                                    ),
-                                    const SizedBox(width: 24),
-                                    // Right: Configuration Cards
-                                    Expanded(
-                                      flex: 6,
-                                      child: _buildConfigurationCards(),
-                                    ),
+                                    Expanded(flex: 5, child: _buildLiveLoyaltyPreview()),
+                                    const SizedBox(width: 20),
+                                    Expanded(flex: 6, child: _buildActiveConfigurationFields()),
                                   ],
                                 )
                               else
-                                // Mobile Single-Column Layout
+                                // Mobile: Active Configuration Fields on TOP first, then Live Preview DOWNSIDE (sticks & scrolls smoothly!)
                                 Column(
                                   children: [
-                                    _buildLiveLoyaltyPreview(),
+                                    _buildActiveConfigurationFields(),
                                     const SizedBox(height: 20),
-                                    _buildConfigurationCards(),
+                                    _buildLiveLoyaltyPreview(),
                                   ],
                                 ),
 
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 24),
                             ],
                           ),
                         ),
@@ -634,7 +862,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     ),
                   ),
 
-                  // Bottom Navigation Bar (Mobile / Tablet Sticky Footer)
+                  // Bottom 4-Icon Navigation Bar (with semi-circle top curved border)
                   _buildBottomNavBar(),
                 ],
               ),
@@ -642,81 +870,94 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  // --- TOP HEADER WIDGET ---
+  // --- 1. TOP HEADER (Edit Theme & Next > button in App Theme Navy Color) ---
   Widget _buildTopHeader() {
+    final currentTitle = _stepTitles[_activeStep];
+    final isLastStep = _activeStep == _stepTitles.length - 1;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
-      ),
+      color: _primaryThemeColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             children: [
-              InkWell(
-                onTap: () => Navigator.pop(context),
-                borderRadius: BorderRadius.circular(20),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: const Icon(Icons.arrow_back_rounded, color: Color(0xFF0F172A), size: 20),
-                ),
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                onPressed: () => Navigator.pop(context),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Visit Made',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.2,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    currentTitle,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    'Step ${_activeStep + 1} of ${_stepTitles.length}',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withOpacity(0.75),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D9488),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-              elevation: 0,
-            ),
+          ElevatedButton(
             onPressed: _isSaving ? null : _handleNext,
-            icon: _isSaving
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: _primaryThemeColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              elevation: 0,
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: _isSaving
                 ? const SizedBox(
                     width: 14,
                     height: 14,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    child: CircularProgressIndicator(color: _primaryThemeColor, strokeWidth: 2),
                   )
-                : const Text('Next', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
-            label: const Icon(Icons.arrow_forward_ios_rounded, size: 12),
+                : Text(
+                    isLastStep ? 'Done ✓' : 'Next >',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: _primaryThemeColor,
+                    ),
+                  ),
           ),
         ],
       ),
     );
   }
 
-  // --- PROGRESS STEPPER WIDGET ---
+  // --- 2. PROGRESS STEPPER (Visual Stepper only, step forward via Next) ---
   Widget _buildProgressStepper() {
     final steps = [
-      {'title': 'Theme', 'icon': Icons.palette_outlined, 'status': 'completed'},
-      {'title': 'Rules', 'icon': Icons.rule_folder_outlined, 'status': 'completed'},
-      {'title': 'Channels', 'icon': Icons.hub_outlined, 'status': 'completed'},
-      {'title': 'Visit Made', 'icon': Icons.card_giftcard_rounded, 'status': 'active'},
-      {'title': 'Done', 'icon': Icons.check_circle_outline_rounded, 'status': 'upcoming'},
+      {'title': 'Theme', 'icon': Icons.palette_outlined},
+      {'title': 'Points', 'icon': Icons.toll_rounded},
+      {'title': 'Rewards', 'icon': Icons.card_giftcard_rounded},
+      {'title': 'Channels', 'icon': Icons.alt_route_rounded},
+      {'title': 'Done', 'icon': Icons.adjust_rounded},
     ];
 
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
@@ -724,9 +965,8 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: List.generate(steps.length, (index) {
             final step = steps[index];
-            final status = step['status'] as String;
-            final isCompleted = status == 'completed';
-            final isActive = status == 'active';
+            final isActive = _activeStep == index;
+            final isCompleted = _activeStep > index;
 
             return Row(
               mainAxisSize: MainAxisSize.min,
@@ -735,55 +975,45 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 32,
-                      height: 32,
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: isActive
-                            ? const Color(0xFF0D9488)
-                            : isCompleted
-                                ? const Color(0xFFDCFCE7)
-                                : const Color(0xFFF1F5F9),
+                        color: (isActive || isCompleted)
+                            ? _primaryThemeColor
+                            : const Color(0xFFF1F5F9),
                         border: Border.all(
-                          color: isActive
-                              ? const Color(0xFF0D9488)
-                              : isCompleted
-                                  ? const Color(0xFF16A34A)
-                                  : const Color(0xFFCBD5E1),
+                          color: (isActive || isCompleted)
+                              ? _primaryThemeColor
+                              : const Color(0xFFCBD5E1),
                           width: 1.5,
                         ),
                       ),
                       child: Icon(
                         isCompleted ? Icons.check_rounded : (step['icon'] as IconData),
-                        size: 16,
-                        color: isActive
-                            ? Colors.white
-                            : isCompleted
-                                ? const Color(0xFF16A34A)
-                                : const Color(0xFF94A3B8),
+                        size: 14,
+                        color: (isActive || isCompleted) ? Colors.white : const Color(0xFF94A3B8),
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     Text(
                       step['title'] as String,
                       style: TextStyle(
-                        fontSize: 11,
+                        fontSize: 9.5,
                         fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                        color: isActive
-                            ? const Color(0xFF0D9488)
-                            : isCompleted
-                                ? const Color(0xFF16A34A)
-                                : const Color(0xFF94A3B8),
+                        color: (isActive || isCompleted)
+                            ? _primaryThemeColor
+                            : const Color(0xFF64748B),
                       ),
                     ),
                   ],
                 ),
                 if (index < steps.length - 1)
                   Container(
-                    width: 36,
-                    height: 2,
-                    margin: const EdgeInsets.only(bottom: 16, left: 4, right: 4),
-                    color: isCompleted ? const Color(0xFF16A34A) : const Color(0xFFE2E8F0),
+                    width: 24,
+                    height: 1.5,
+                    margin: const EdgeInsets.only(bottom: 12, left: 3, right: 3),
+                    color: isCompleted ? _primaryThemeColor : const Color(0xFFE2E8F0),
                   ),
               ],
             );
@@ -793,136 +1023,1219 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  // --- INTRO SECTION WIDGET ---
-  Widget _buildIntroSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        const SizedBox(height: 6),
-        const Text(
-          'Reward customers for every visit',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF0F172A),
-            letterSpacing: -0.3,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 6),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Create visit-based rewards that encourage customers to come back again and again.',
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w500,
-              color: Color(0xFF64748B),
-              height: 1.35,
+  // --- 3. SUBTITLE TEXT BANNER ---
+  Widget _buildIntroSubtitle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: const TextSpan(
+          style: TextStyle(fontSize: 11.5, color: Color(0xFF334155), height: 1.35),
+          children: [
+            TextSpan(text: "We've designed a loyalty program just for you! "),
+            TextSpan(
+              text: "Feel free to review and make any changes",
+              style: TextStyle(fontWeight: FontWeight.w900, color: _primaryThemeColor),
             ),
-            textAlign: TextAlign.center,
+            TextSpan(text: " to suit your needs."),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- 4. DYNAMIC CONFIGURATION SWITCHER (Theme vs Points vs Rewards vs Settings) ---
+  Widget _buildActiveConfigurationFields() {
+    switch (_activeBottomTab) {
+      case 1:
+        return _buildPointsConfigurationFields();
+      case 2:
+        return _buildRewardsConfigurationFields();
+      case 3:
+        return _buildSettingsConfigurationFields();
+      case 0:
+      default:
+        return _buildThemeConfigurationFields();
+    }
+  }
+
+  // --- TAB 1: POINTS SECTION (Matching Screenshot exactly) ---
+  Widget _buildPointsConfigurationFields() {
+    final timesVisit = _timesCustomerVisitCtrl.text.trim().isNotEmpty
+        ? _timesCustomerVisitCtrl.text.trim()
+        : '1';
+    final earnsCookies = _customerEarnsPointsCtrl.text.trim().isNotEmpty
+        ? _customerEarnsPointsCtrl.text.trim()
+        : '10';
+    final pointsName = _currentPointsName;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Visit & Cookie Ratio Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF4FAFD),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Field 1: Number of times customer Visit*
+              const Text(
+                'Number of times customer Visit*',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: TextField(
+                  controller: _timesCustomerVisitCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                  cursorColor: _tealAccentColor,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Field 2: Number of customer earns Cookie*
+              Text(
+                'Number of customer earns $pointsName*',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: TextField(
+                  controller: _customerEarnsPointsCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                  cursorColor: _tealAccentColor,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Reward Point Settings Dropdown
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _isRewardPointSettingsExpanded = !_isRewardPointSettingsExpanded;
+                  });
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Reward Point Settings',
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        Icon(
+                          _isRewardPointSettingsExpanded
+                              ? Icons.keyboard_arrow_up_rounded
+                              : Icons.keyboard_arrow_down_rounded,
+                          color: const Color(0xFF64748B),
+                          size: 20,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    const Text(
+                      'Points are calculated on the final payable amount (after tax & charges). Tap here to view or modify.',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: Color(0xFF64748B),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // 2. Customers Earn Banner Pill
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F8F5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFC4EFE6)),
+          ),
+          child: Center(
+            child: RichText(
+              textAlign: TextAlign.center,
+              text: TextSpan(
+                style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A)),
+                children: [
+                  const TextSpan(text: 'Customers '),
+                  TextSpan(
+                    text: 'Earn $timesVisit Visit',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: _tealAccentColor,
+                    ),
+                  ),
+                  const TextSpan(text: ' for every '),
+                  TextSpan(
+                    text: '$earnsCookies $pointsName',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: _tealAccentColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 3. Point Branding Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _pointBrandingEnabled ? const Color(0xFF00BFA5) : const Color(0xFFE2E8F0),
+              width: _pointBrandingEnabled ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Point Branding',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: _pointBrandingEnabled,
+                      activeColor: const Color(0xFF00BFA5),
+                      activeTrackColor: const Color(0xFF00BFA5).withOpacity(0.4),
+                      onChanged: (val) {
+                        setState(() => _pointBrandingEnabled = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const Text(
+                'Choose a plural name for your points',
+                style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 10),
+
+              Container(
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: TextField(
+                  controller: _pointsNameCtrl,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                  cursorColor: _tealAccentColor,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // 4 Preset Chips (Cookie, Chilly, Star, Coin)
+              Row(
+                children: [
+                  _buildPointPresetChip(0, '🍪', 'Cookie'),
+                  const SizedBox(width: 8),
+                  _buildPointPresetChip(1, '🌶️', 'Chilly'),
+                  const SizedBox(width: 8),
+                  _buildPointPresetChip(2, '⭐', 'Star'),
+                  const SizedBox(width: 8),
+                  _buildPointPresetChip(3, '🪙', 'Coin'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 4. Minimum Spend Condition Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _minSpendConditionEnabled
+                  ? const Color(0xFF00BFA5)
+                  : const Color(0xFFE2E8F0),
+              width: _minSpendConditionEnabled ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Minimum Spend Condition',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: _minSpendConditionEnabled,
+                      activeColor: const Color(0xFF00BFA5),
+                      activeTrackColor: const Color(0xFF00BFA5).withOpacity(0.4),
+                      onChanged: (val) {
+                        setState(() => _minSpendConditionEnabled = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const Text(
+                'Define the minimum bill amount required for a customer to earn points.',
+                style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 10),
+
+              Container(
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: TextField(
+                  controller: _minSpendConditionCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                  cursorColor: _tealAccentColor,
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 5. Point Earning Gap Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _pointEarningGapEnabled
+                  ? const Color(0xFF00BFA5)
+                  : const Color(0xFFE2E8F0),
+              width: _pointEarningGapEnabled ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Point Earning Gap',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: _pointEarningGapEnabled,
+                      activeColor: const Color(0xFF00BFA5),
+                      activeTrackColor: const Color(0xFF00BFA5).withOpacity(0.4),
+                      onChanged: (val) {
+                        setState(() => _pointEarningGapEnabled = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const Text(
+                'Set a countdown period before customers can earn points on their next purchase.',
+                style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 14),
+
+        // 6. Maximum Cashback Limit Card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: _maxCashbackLimitEnabled
+                  ? const Color(0xFF00BFA5)
+                  : const Color(0xFFE2E8F0),
+              width: _maxCashbackLimitEnabled ? 1.5 : 1,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Maximum Cashback Limit',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                  Transform.scale(
+                    scale: 0.8,
+                    child: Switch(
+                      value: _maxCashbackLimitEnabled,
+                      activeColor: const Color(0xFF00BFA5),
+                      activeTrackColor: const Color(0xFF00BFA5).withOpacity(0.4),
+                      onChanged: (val) {
+                        setState(() => _maxCashbackLimitEnabled = val);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+
+              Container(
+                height: 42,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: TextField(
+                  controller: _maxCashbackLimitCtrl,
+                  keyboardType: TextInputType.number,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                  cursorColor: _tealAccentColor,
+                  decoration: const InputDecoration(
+                    prefixText: '₹ ',
+                    prefixStyle: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF64748B),
+                    ),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: InputBorder.none,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ],
     );
   }
 
-  // --- LIVE LOYALTY PREVIEW CARD (LEFT SIDE / TOP ON MOBILE) ---
-  Widget _buildLiveLoyaltyPreview() {
-    final programName = _programNameCtrl.text.trim().isNotEmpty ? _programNameCtrl.text.trim().toUpperCase() : 'THE ROYAL GARDENIA';
-    final slogan = _sloganCtrl.text.trim().isNotEmpty ? _sloganCtrl.text.trim() : 'Get rewarded on every purchase';
-    final minPurchase = _minPurchaseCtrl.text.trim().isNotEmpty ? _minPurchaseCtrl.text.trim() : '100';
-
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(28),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF4A082F), Color(0xFF8E1449)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF4A082F).withValues(alpha: 0.35),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+  Widget _buildPointPresetChip(int index, String emoji, String name) {
+    final isSelected = _selectedPointPresetIndex == index;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _selectedPointPresetIndex = index;
+            _pointsNameCtrl.text = name;
+          });
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 4),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF00BFA5) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF00BFA5) : const Color(0xFFE2E8F0),
+            ),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Top Food Banner with Theme badge
-          Stack(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-                child: Container(
-                  height: 140,
-                  width: double.infinity,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2D051C),
-                    image: DecorationImage(
-                      image: AssetImage('assets/images/food_banner.png'),
-                      fit: BoxFit.cover,
-                      onError: null,
-                    ),
+              Text(emoji, style: const TextStyle(fontSize: 11)),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  name,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: isSelected ? Colors.white : const Color(0xFF334155),
                   ),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.transparent,
-                          const Color(0xFF4A082F).withValues(alpha: 0.9),
-                        ],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- TAB 0: THEME CONFIGURATION FIELDS ---
+  Widget _buildThemeConfigurationFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 1. Order Type Card (Multi-select segment tabs)
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Order Type',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                  Text(
+                    '${_selectedOrderTypes.length} selected',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Row(
+                  children: [
+                    _buildOrderTypeSegment('Delivery'),
+                    Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
+                    _buildOrderTypeSegment('Take-Away'),
+                    Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
+                    _buildOrderTypeSegment('Dine-In'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 2. Explore Stunning Free Photos on Unsplash Card
+        _buildBoxContainer(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: RichText(
+                  text: const TextSpan(
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                    children: [
+                      TextSpan(text: 'Explore Stunning Free Photos\non Unsplash '),
+                      TextSpan(
+                        text: 'NEW',
+                        style: TextStyle(color: Color(0xFF10B981), fontWeight: FontWeight.w900),
                       ),
-                    ),
+                    ],
                   ),
                 ),
               ),
-              Positioned(
-                top: 14,
-                left: 14,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF0D9488),
-                    borderRadius: BorderRadius.circular(16),
+              ElevatedButton(
+                onPressed: _openUnsplashPicker,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primaryThemeColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  elevation: 0,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text('Try Now', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 3. Banner Image Upload Box (Gallery Support)
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Banner Image',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                  TextButton.icon(
+                    onPressed: () => _pickImageFromGallery(isBanner: true),
+                    icon: const Icon(Icons.photo_library_outlined, size: 14, color: _primaryThemeColor),
+                    label: const Text('Gallery',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.bold, color: _primaryThemeColor)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () => _pickImageFromGallery(isBanner: true),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _primaryThemeColor.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: _primaryThemeColor.withOpacity(0.3), style: BorderStyle.solid),
+                  ),
+                  child: Row(
                     children: [
-                      Text('Theme', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                      SizedBox(width: 4),
-                      Icon(Icons.edit, size: 10, color: Colors.white),
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: _primaryThemeColor.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.image_outlined, color: _primaryThemeColor, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Tap to pick from gallery (16:9, 9:16, or PNG up to 10MB)',
+                          style: TextStyle(fontSize: 10.5, color: Color(0xFF475569), height: 1.25),
+                        ),
+                      ),
                     ],
                   ),
                 ),
               ),
             ],
           ),
+        ),
+        const SizedBox(height: 10),
 
-          // Brand Logo Badge
+        // 4. Logo Upload Box (Gallery Support)
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Logo',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _pickImageFromGallery(isBanner: false),
+                    icon: const Icon(Icons.photo_library_outlined, size: 14, color: _primaryThemeColor),
+                    label: const Text('Gallery',
+                        style: TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.bold, color: _primaryThemeColor)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              InkWell(
+                onTap: () => _pickImageFromGallery(isBanner: false),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _primaryThemeColor.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: _primaryThemeColor.withOpacity(0.3), style: BorderStyle.solid),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: _primaryThemeColor.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.spa_outlined, color: _primaryThemeColor, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          'Tap to pick brand logo from gallery (JPG or PNG up to 10MB)',
+                          style: TextStyle(fontSize: 10.5, color: Color(0xFF475569), height: 1.25),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 5. Program Name & Slogan
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Program Name *',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              const SizedBox(height: 5),
+              TextField(
+                controller: _programNameCtrl,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                cursorColor: _primaryThemeColor,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  errorText: _programNameError,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text('Slogan',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              const SizedBox(height: 5),
+              TextField(
+                controller: _sloganCtrl,
+                style: const TextStyle(
+                  color: Color(0xFF0F172A),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                ),
+                cursorColor: _primaryThemeColor,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+
+        // 6. Theme Color Palettes (Background & Reward Palettes)
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Customize Colors',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 8),
+
+              // Background Gradient Palette Selector
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Background Palette',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: () => _openColorPresetPicker(target: 'Background'),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            height: 34,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              gradient: LinearGradient(colors: [_bgGradientStart, _bgGradientEnd]),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+
+                  // Reward Color Palette Selector
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Reward Palette',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF334155))),
+                        const SizedBox(height: 4),
+                        InkWell(
+                          onTap: () => _openColorPresetPicker(target: 'Reward'),
+                          borderRadius: BorderRadius.circular(8),
+                          child: Container(
+                            height: 34,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              gradient: LinearGradient(colors: [_rewardColorStart, _rewardColorEnd]),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- TAB 2: REWARDS CONFIGURATION ---
+  Widget _buildRewardsConfigurationFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Configured Reward Stages (${_rewardStages.length})',
+                    style: const TextStyle(
+                        fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  ),
+                  ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _primaryThemeColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      elevation: 0,
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () => _openAddEditStageModal(),
+                    icon: const Icon(Icons.add, size: 13),
+                    label: const Text('Add Stage',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              ..._rewardStages.map((stage) {
+                final idx = _rewardStages.indexOf(stage);
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: _primaryThemeColor.withOpacity(0.08),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.card_giftcard_rounded,
+                            color: _primaryThemeColor, size: 16),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${stage.visitCount} $_currentPointsName  •  ₹${stage.rewardValue.toInt()} OFF',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A)),
+                            ),
+                            Text(
+                              stage.freeItemName,
+                              style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 16, color: _primaryThemeColor),
+                        onPressed: () =>
+                            _openAddEditStageModal(existingStage: stage, index: idx),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline_rounded,
+                            size: 16, color: Color(0xFFEF4444)),
+                        onPressed: () {
+                          if (_rewardStages.length > 1) {
+                            setState(() => _rewardStages.removeAt(idx));
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('At least one reward stage must be kept.'),
+                                backgroundColor: Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+                        },
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                      ),
+                    ],
+                  ),
+                );
+              }),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- TAB 3: SETTINGS CONFIGURATION ---
+  Widget _buildSettingsConfigurationFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBoxContainer(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Minimum Purchase Required (₹)',
+                  style: TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              const SizedBox(height: 5),
+              TextField(
+                controller: _minPurchaseCtrl,
+                keyboardType: TextInputType.number,
+                style: const TextStyle(
+                    color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w600),
+                cursorColor: _primaryThemeColor,
+                onChanged: (_) => setState(() {}),
+                decoration: InputDecoration(
+                  prefixText: '₹ ',
+                  prefixStyle: const TextStyle(
+                      fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 12.5),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                  focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: _primaryThemeColor, width: 1.5)),
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text('Terms & Conditions Note',
+                  style: TextStyle(
+                      fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+              const SizedBox(height: 5),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  'Terms and conditions apply.\nMinimum purchase of ₹${_minPurchaseCtrl.text.trim()} required.\n3 offers cannot be clubbed.',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), height: 1.3),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // --- 5. LIVE LOYALTY CARD PREVIEW (Downside stick container) ---
+  Widget _buildLiveLoyaltyPreview() {
+    final programName = _programNameCtrl.text.trim().isNotEmpty
+        ? _programNameCtrl.text.trim()
+        : 'THE ROYAL GARDENIA';
+    final slogan =
+        _sloganCtrl.text.trim().isNotEmpty ? _sloganCtrl.text.trim() : 'Get rewarded on every purchase';
+    final minPurchase =
+        _minPurchaseCtrl.text.trim().isNotEmpty ? _minPurchaseCtrl.text.trim() : '100';
+
+    final timesVisit = _timesCustomerVisitCtrl.text.trim().isNotEmpty
+        ? _timesCustomerVisitCtrl.text.trim()
+        : '1';
+    final earnsCookies = _customerEarnsPointsCtrl.text.trim().isNotEmpty
+        ? _customerEarnsPointsCtrl.text.trim()
+        : '10';
+    final pointsName = _currentPointsName;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_bgGradientStart, _bgGradientEnd],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Banner Image with Edit Button
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                child: Container(
+                  height: 135,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2D051C),
+                  ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (_bannerImagePath.startsWith('http'))
+                        Image.network(
+                          _bannerImagePath,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => const Center(
+                              child: Icon(Icons.restaurant_rounded, color: Colors.white30, size: 40)),
+                        )
+                      else if (File(_bannerImagePath).existsSync())
+                        Image.file(
+                          File(_bannerImagePath),
+                          fit: BoxFit.cover,
+                        )
+                      else
+                        const Center(
+                            child: Icon(Icons.restaurant_rounded, color: Colors.white30, size: 40)),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.transparent,
+                              _bgGradientStart.withOpacity(0.9),
+                            ],
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 10,
+                left: 10,
+                child: InkWell(
+                  onTap: () => _pickImageFromGallery(isBanner: true),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _primaryThemeColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('Theme',
+                            style: TextStyle(
+                                color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                        SizedBox(width: 3),
+                        Icon(Icons.edit, size: 10, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          // Floating Brand Logo Badge
           Transform.translate(
-            offset: const Offset(0, -32),
+            offset: const Offset(0, -28),
             child: Container(
               width: 64,
               height: 64,
               decoration: BoxDecoration(
-                color: const Color(0xFF200313),
+                color: const Color(0xFF1E0213),
                 shape: BoxShape.circle,
                 border: Border.all(color: const Color(0xFFD4AF37), width: 2),
                 boxShadow: const [
-                  BoxShadow(color: Colors.black38, blurRadius: 10, offset: Offset(0, 4)),
+                  BoxShadow(color: Colors.black45, blurRadius: 8, offset: Offset(0, 3)),
                 ],
               ),
               child: ClipOval(
-                child: widget.companyLogo.isNotEmpty && File(widget.companyLogo).existsSync()
-                    ? Image.file(File(widget.companyLogo), fit: BoxFit.cover)
+                child: _logoUrl.isNotEmpty && File(_logoUrl).existsSync()
+                    ? Image.file(File(_logoUrl), fit: BoxFit.cover)
                     : const Center(
-                        child: Icon(Icons.workspace_premium_rounded, color: Color(0xFFD4AF37), size: 34),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.spa_rounded, color: Color(0xFFD4AF37), size: 20),
+                            Text(
+                              'ROYAL\nGARDENIA',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFFD4AF37),
+                                fontSize: 6,
+                                fontWeight: FontWeight.w900,
+                                height: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
               ),
             ),
@@ -930,99 +2243,85 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
           // Program Title & Slogan
           Transform.translate(
-            offset: const Offset(0, -20),
+            offset: const Offset(0, -18),
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 18),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
                   Text(
                     programName,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
+                      letterSpacing: 0.4,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 3),
                   Text(
                     slogan,
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 11.5,
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 11,
                       fontWeight: FontWeight.w500,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
 
-                  // Rule Highlight Pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-                    ),
-                    child: Text(
-                      _visitTrigger == 'Minimum Spend'
-                          ? '1 Visit = Min. Spend ₹${_triggerMinSpendCtrl.text}'
-                          : _visitTrigger == 'Specific Purchase'
-                              ? '1 Visit = Buy $_specificCategory'
-                              : '1 Visit = 10 Cookie / Points',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  // Dynamic Conversion text: "1 Visit = 10 Cookie"
+                  Text(
+                    '$timesVisit Visit = $earnsCookies $pointsName',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.2,
                     ),
                   ),
-
-                  const SizedBox(height: 18),
-
-                  // Milestone Journey Progress Indicator
-                  _buildMilestoneJourney(),
-
-                  const SizedBox(height: 18),
-
-                  // Configured Stages Cards in Preview
-                  ..._rewardStages.map((stage) => _buildPreviewStageCard(stage)),
-
                   const SizedBox(height: 14),
 
-                  // ADD REWARD STAGE Button inside Preview
+                  // Milestone Cookie Progress Line
+                  _buildMilestoneCookieBar(),
+                  const SizedBox(height: 14),
+
+                  // Configured Stages Cards
+                  ..._rewardStages.map((stage) => _buildPreviewStageCard(stage)),
+                  const SizedBox(height: 12),
+
+                  // ADD REWARD STAGE Button (Dynamically matched to selected Reward Color!)
                   SizedBox(
                     width: double.infinity,
-                    child: ElevatedButton.icon(
+                    child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF9E1B4F),
+                        backgroundColor: _rewardColorEnd,
                         foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(vertical: 10),
                         elevation: 0,
                       ),
                       onPressed: () => _openAddEditStageModal(),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: const Text(
+                      child: const Text(
                         'ADD REWARD STAGE',
-                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: 0.5),
+                        style: TextStyle(
+                            fontSize: 11.5, fontWeight: FontWeight.w900, letterSpacing: 0.5),
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
-
-                  // Terms and conditions footer
+                  // Terms & conditions note
                   Text(
                     'Terms and conditions apply.\nMinimum purchase of ₹$minPurchase required.\n3 offers cannot be clubbed.',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.7),
-                      fontSize: 10.5,
-                      height: 1.4,
+                      color: Colors.white.withOpacity(0.8),
+                      fontSize: 10,
+                      height: 1.35,
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 6),
                 ],
               ),
             ),
@@ -1032,38 +2331,41 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  Widget _buildMilestoneJourney() {
-    final stagesToShow = _rewardStages.take(3).toList();
-    if (stagesToShow.isEmpty) return const SizedBox.shrink();
+  // --- Cookie Milestone Journey Progress Bar ---
+  Widget _buildMilestoneCookieBar() {
+    final stages = _rewardStages.take(3).toList();
+    if (stages.isEmpty) return const SizedBox.shrink();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
       child: Column(
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(stagesToShow.length, (idx) {
-              final stage = stagesToShow[idx];
+            children: List.generate(stages.length, (idx) {
+              final isLast = idx == stages.length - 1;
+
               return Expanded(
+                flex: isLast ? 0 : 1,
                 child: Row(
+                  mainAxisSize: isLast ? MainAxisSize.min : MainAxisSize.max,
                   children: [
                     Container(
-                      width: 32,
-                      height: 32,
+                      width: 28,
+                      height: 28,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD4AF37),
+                        color: const Color(0xFFD4A373),
                         shape: BoxShape.circle,
                         border: Border.all(color: Colors.white, width: 2),
                       ),
                       child: const Center(
-                        child: Icon(Icons.cookie, color: Color(0xFF4A082F), size: 16),
+                        child: Icon(Icons.cookie_outlined, color: Color(0xFF3F1D0B), size: 14),
                       ),
                     ),
-                    if (idx < stagesToShow.length - 1)
+                    if (!isLast)
                       Expanded(
                         child: Container(
                           height: 2,
-                          color: Colors.white.withValues(alpha: 0.4),
+                          color: Colors.white.withOpacity(0.5),
                         ),
                       ),
                   ],
@@ -1071,15 +2373,15 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
               );
             }),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: stagesToShow.map((stage) {
+            children: stages.map((stage) {
               return Text(
-                '${stage.visitCount} Visits',
+                '${stage.visitCount} $_currentPointsName',
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 10.5,
+                  fontSize: 9.5,
                   fontWeight: FontWeight.bold,
                 ),
               );
@@ -1090,589 +2392,178 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
+  // --- Stage Card in Preview ---
   Widget _buildPreviewStageCard(RewardStageModel stage) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: const EdgeInsets.only(bottom: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+        color: Colors.white.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withOpacity(0.2)),
       ),
       child: Row(
         children: [
+          const Icon(Icons.confirmation_num_outlined, color: Colors.white70, size: 16),
+          const SizedBox(width: 6),
           Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+            width: 24,
+            height: 24,
+            decoration: const BoxDecoration(
+              color: Color(0xFFD4A373),
+              shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.confirmation_num_outlined, color: Colors.white, size: 18),
+            child: const Icon(Icons.cookie_outlined, color: Color(0xFF3F1D0B), size: 12),
           ),
-          const SizedBox(width: 10),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${stage.visitCount} Visits • ${stage.rewardDisplayTitle}',
+                  '${stage.visitCount} $_currentPointsName',
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 12.5,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 1),
                 Text(
-                  stage.previewSubtitle,
+                  stage.freeItemName.isNotEmpty
+                      ? stage.freeItemName
+                      : 'Cheers ! Rs ${stage.rewardValue.toInt()} off on your purchase.',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.8),
-                    fontSize: 10.5,
+                    color: Colors.white.withOpacity(0.85),
+                    fontSize: 10,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.lock_outline_rounded, color: Colors.white.withValues(alpha: 0.7), size: 16),
+          InkWell(
+            onTap: () =>
+                _openAddEditStageModal(existingStage: stage, index: _rewardStages.indexOf(stage)),
+            child:
+                Icon(Icons.lock_outline_rounded, color: Colors.white.withOpacity(0.7), size: 15),
+          ),
         ],
       ),
     );
   }
 
-  // --- CONFIGURATION CARDS (RIGHT SIDE) ---
-  Widget _buildConfigurationCards() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Section 1: How should visits be counted?
-        _buildSectionCard(
-          title: 'How should visits be counted?',
-          subtitle: 'Choose what qualifies as a customer visit',
-          icon: Icons.alt_route_rounded,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: ['Every Visit', 'Minimum Spend', 'Specific Purchase'].map((trigger) {
-                  final isSelected = _visitTrigger == trigger;
-                  return ChoiceChip(
-                    label: Text(trigger),
-                    selected: isSelected,
-                    selectedColor: const Color(0xFF0D9488),
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    labelStyle: TextStyle(
-                      color: isSelected ? Colors.white : const Color(0xFF334155),
-                      fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                      fontSize: 13,
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                    onSelected: (selected) {
-                      if (selected) {
-                        setState(() => _visitTrigger = trigger);
-                      }
-                    },
-                  );
-                }).toList(),
-              ),
-              if (_visitTrigger == 'Minimum Spend') ...[
-                const SizedBox(height: 14),
-                const Text('Trigger Minimum Spend (₹)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _triggerMinSpendCtrl,
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    prefixText: '₹ ',
-                    prefixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                  ),
-                ),
-              ],
-              if (_visitTrigger == 'Specific Purchase') ...[
-                const SizedBox(height: 14),
-                const Text('Required Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-                const SizedBox(height: 6),
-                Wrap(
-                  spacing: 6,
-                  children: ['All Items', 'Main Course', 'Beverages', 'Combos'].map((cat) {
-                    final isSel = _specificCategory == cat;
-                    return ChoiceChip(
-                      label: Text(cat),
-                      selected: isSel,
-                      selectedColor: const Color(0xFF0D9488),
-                      backgroundColor: const Color(0xFFF1F5F9),
-                      labelStyle: TextStyle(
-                        color: isSel ? Colors.white : const Color(0xFF334155),
-                        fontWeight: isSel ? FontWeight.bold : FontWeight.w500,
-                        fontSize: 12,
-                      ),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                      onSelected: (val) {
-                        if (val) setState(() => _specificCategory = cat);
-                      },
-                    );
-                  }).toList(),
-                ),
-              ],
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 2: Number of visits
-        _buildSectionCard(
-          title: 'Number of visits',
-          subtitle: 'Target visits required for unlocking default milestone',
-          icon: Icons.repeat_rounded,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFCBD5E1)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                InkWell(
-                  onTap: () {
-                    if (_visitCount > 1) {
-                      setState(() => _visitCount--);
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: const Icon(Icons.remove, size: 18, color: Color(0xFF0F172A)),
-                  ),
-                ),
-                Text(
-                  '$_visitCount Visits',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0D9488)),
-                ),
-                InkWell(
-                  onTap: () => setState(() => _visitCount++),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: const Icon(Icons.add, size: 18, color: Color(0xFF0F172A)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 3: Reward Type
-        _buildSectionCard(
-          title: 'Reward type',
-          subtitle: 'Select reward method to give when visits are reached',
-          icon: Icons.card_giftcard_rounded,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: ['₹ Discount', '% Discount', 'Free Item', 'Cashback', 'Coupon'].map((type) {
-              final isSelected = _rewardType == type;
-              return ChoiceChip(
-                label: Text(type),
-                selected: isSelected,
-                selectedColor: const Color(0xFF0D9488),
-                backgroundColor: const Color(0xFFF1F5F9),
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF334155),
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                  fontSize: 13,
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                onSelected: (selected) {
-                  if (selected) {
-                    setState(() {
-                      _rewardType = type;
-                      if (_rewardType == '% Discount') {
-                        _rewardValueCtrl.text = '15';
-                      } else if (_rewardType == '₹ Discount') {
-                        _rewardValueCtrl.text = '100';
-                      }
-                    });
-                  }
-                },
-              );
-            }).toList(),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 4: Reward Value
-        _buildSectionCard(
-          title: _rewardType == 'Free Item' ? 'Free Item Name' : 'Reward value',
-          subtitle: _rewardType == 'Free Item' ? 'Specify the gift item' : 'Amount or discount percentage',
-          icon: Icons.confirmation_num_outlined,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (_rewardType == 'Free Item') ...[
-                TextField(
-                  controller: _freeItemNameCtrl,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'e.g. Free Dessert / Cold Coffee',
-                    prefixIcon: const Icon(Icons.redeem_rounded, color: Color(0xFF0D9488), size: 20),
-                    errorText: _rewardValueError,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                  ),
-                ),
-              ] else ...[
-                TextField(
-                  controller: _rewardValueCtrl,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))],
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    prefixText: _rewardType.contains('%') ? '' : '₹ ',
-                    suffixText: _rewardType.contains('%') ? '%' : '',
-                    prefixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 15),
-                    suffixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 15),
-                    errorText: _rewardValueError,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 5: Minimum Purchase
-        _buildSectionCard(
-          title: 'Minimum purchase',
-          subtitle: 'Customers must spend at least this amount to unlock the reward.',
-          icon: Icons.currency_rupee_rounded,
-          child: TextField(
-            controller: _minPurchaseCtrl,
-            keyboardType: TextInputType.number,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              prefixText: '₹ ',
-              prefixStyle: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 15),
-              errorText: _minPurchaseError,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              filled: true,
-              fillColor: const Color(0xFFF8FAFC),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-            ),
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 6: Reward Stages
-        _buildSectionCard(
-          title: 'Reward Stages',
-          subtitle: 'Multi-milestone visit progression rewards',
-          icon: Icons.stairs_rounded,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ...List.generate(_rewardStages.length, (idx) {
-                final stage = _rewardStages[idx];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF0D9488).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          'Stage ${idx + 1}',
-                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0D9488)),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${stage.visitCount} Visits • ${stage.rewardDisplayTitle}',
-                              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                            ),
-                            Text(
-                              'Min. spend ₹${stage.minimumPurchase.toInt()} • Valid ${stage.expiryDays}d',
-                              style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF0D9488)),
-                        onPressed: () => _openAddEditStageModal(existingStage: stage, index: idx),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFEF4444)),
-                        onPressed: () {
-                          setState(() {
-                            _rewardStages.removeAt(idx);
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                );
-              }),
-              const SizedBox(height: 6),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0D9488),
-                    side: const BorderSide(color: Color(0xFF0D9488), width: 1.5),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  onPressed: () => _openAddEditStageModal(),
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('+ Add Reward Stage', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
-                ),
-              ),
-            ],
-          ),
-        ),
-
-        const SizedBox(height: 16),
-
-        // Section 7: Program Name & Slogan (Mockup Customization)
-        _buildSectionCard(
-          title: 'Program Branding',
-          subtitle: 'Customize program name and display text',
-          icon: Icons.storefront_rounded,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('What would you name your loyalty program?', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _programNameCtrl,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  errorText: _programNameError,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                ),
-              ),
-              const SizedBox(height: 12),
-              const Text('Slogan', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _sloganCtrl,
-                onChanged: (_) => setState(() {}),
-                decoration: InputDecoration(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(24), borderSide: const BorderSide(color: Color(0xFF0D9488), width: 1.8)),
-                ),
-              ),
-              const SizedBox(height: 14),
-              const Text('Applicable Order Types', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
-              const SizedBox(height: 6),
-              Wrap(
-                spacing: 8,
-                children: ['Dine-In', 'Take-Away', 'Delivery'].map((type) {
-                  final isSel = _selectedOrderType == type;
-                  return ChoiceChip(
-                    label: Text(type),
-                    selected: isSel,
-                    selectedColor: const Color(0xFF0D9488),
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    labelStyle: TextStyle(
-                      color: isSel ? Colors.white : const Color(0xFF334155),
-                      fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    onSelected: (val) {
-                      if (val) setState(() => _selectedOrderType = type);
-                    },
-                  );
-                }).toList(),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  // --- REUSABLE SECTION CARD TEMPLATE ---
-  Widget _buildSectionCard({
-    required String title,
-    String? subtitle,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.02),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0D9488).withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: const Color(0xFF0D9488), size: 18),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          child,
-        ],
-      ),
-    );
-  }
-
-  // --- STICKY BOTTOM ACTION BAR (MOBILE / TABLET) ---
+  // --- 6. BOTTOM NAVIGATION BAR (with Semi-Circle / Curved Top Border) ---
   Widget _buildBottomNavBar() {
+    final navItems = [
+      {'label': 'Theme', 'icon': Icons.palette_outlined},
+      {'label': 'Points', 'icon': Icons.toll_rounded},
+      {'label': 'Rewards', 'icon': Icons.card_giftcard_rounded},
+      {'label': 'Settings', 'icon': Icons.settings_outlined},
+    ];
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 10,
+            offset: const Offset(0, -3),
+          ),
+        ],
+        border: const Border(top: BorderSide(color: Color(0xFFE2E8F0))),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(navItems.length, (idx) {
+            final item = navItems[idx];
+            final isSel = _activeBottomTab == idx;
+            const activeColor = _tealAccentColor;
+
+            return InkWell(
+              onTap: () {
+                setState(() => _activeBottomTab = idx);
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isSel ? activeColor : activeColor.withOpacity(0.08),
+                    ),
+                    child: Icon(
+                      item['icon'] as IconData,
+                      size: 20,
+                      color: isSel ? Colors.white : activeColor,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    item['label'] as String,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: isSel ? FontWeight.w800 : FontWeight.w600,
+                      color: isSel ? activeColor : const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ),
+      ),
+    );
+  }
+
+  // --- Helper: Order Type Segment Button ---
+  Widget _buildOrderTypeSegment(String type) {
+    final isSel = _selectedOrderTypes.contains(type);
+
+    return Expanded(
+      child: InkWell(
+        onTap: () => _toggleOrderType(type),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 7),
+          color: isSel ? _primaryThemeColor : Colors.white,
+          child: Text(
+            type,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: isSel ? Colors.white : const Color(0xFF334155),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Helper: White Rounded Container Box ---
+  Widget _buildBoxContainer({required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 6,
+            offset: Offset(0, 2),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 2,
-            child: OutlinedButton(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF475569),
-                side: const BorderSide(color: Color(0xFFCBD5E1)),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-              ),
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Back', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 3,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0D9488),
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                elevation: 0,
-              ),
-              onPressed: _isSaving ? null : _handleNext,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                    )
-                  : const Text('Next Step', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
-              label: const Icon(Icons.arrow_forward_rounded, size: 16),
-            ),
-          ),
-        ],
-      ),
+      child: child,
     );
   }
 }

@@ -3,6 +3,7 @@ import '../../core/database/database_service.dart';
 import '../../core/services/network_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/network/api_endpoints.dart';
+import '../notifications/services/notification_permission_helper.dart';
 
 import '../dashboard/main_layout.dart';
 import 'get_started_screen.dart';
@@ -28,6 +29,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   void initState() {
     super.initState();
+
+    // Trigger native Android/iOS system permission popups directly on app launch
+    NotificationPermissionHelper.requestAllAppPermissionsOnStartup();
 
     _animController = AnimationController(
       vsync: this,

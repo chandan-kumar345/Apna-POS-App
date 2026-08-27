@@ -248,6 +248,49 @@ class ChartPointData {
       );
 }
 
+class DashboardOverviewData {
+  final DashboardSummaryData summary;
+  final OrderTypeStatsData orderTypes;
+  final List<ItemSaleReportItem> productSales;
+  final CustomerAnalyticsData customers;
+  final PaymentMethodsSummaryData paymentMethods;
+  final TaxSummaryData taxes;
+  final OrderStatsSummaryData orderStats;
+
+  DashboardOverviewData({
+    required this.summary,
+    required this.orderTypes,
+    required this.productSales,
+    required this.customers,
+    required this.paymentMethods,
+    required this.taxes,
+    required this.orderStats,
+  });
+
+  factory DashboardOverviewData.fromJson(Map<String, dynamic> json) {
+    final rawSummary = json['summary'] as Map<String, dynamic>? ?? {};
+    final rawOrderTypes = json['orderTypes'] as Map<String, dynamic>? ?? {};
+    final rawProducts = json['productSales'] as List<dynamic>? ?? [];
+    final rawCustomers = json['customers'] as Map<String, dynamic>? ?? {};
+    final rawPayments = json['paymentMethods'] as Map<String, dynamic>? ?? {};
+    final rawTaxes = json['taxes'] as Map<String, dynamic>? ?? {};
+    final rawOrderStats = json['orderStats'] as Map<String, dynamic>? ?? {};
+
+    return DashboardOverviewData(
+      summary: DashboardSummaryData.fromJson(rawSummary),
+      orderTypes: OrderTypeStatsData.fromJson(rawOrderTypes),
+      productSales: rawProducts
+          .whereType<Map<String, dynamic>>()
+          .map((p) => ItemSaleReportItem.fromJson(p))
+          .toList(),
+      customers: CustomerAnalyticsData.fromJson(rawCustomers),
+      paymentMethods: PaymentMethodsSummaryData.fromJson(rawPayments),
+      taxes: TaxSummaryData.fromJson(rawTaxes),
+      orderStats: OrderStatsSummaryData.fromJson(rawOrderStats),
+    );
+  }
+}
+
 class DashboardService {
   final ApiClient _apiClient = ApiClient();
   final AuthService _authService = AuthService();
@@ -258,6 +301,32 @@ class DashboardService {
     if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
     if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
     return queryParams;
+  }
+
+  /// Single unified request fetching complete dashboard overview bundle
+  Future<DashboardOverviewData?> fetchOverview({
+    String period = 'Today',
+    String? startDate,
+    String? endDate,
+  }) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(
+          ApiEndpoints.dashboardOverview,
+          queryParameters: _buildQueryParams(period, startDate, endDate),
+        );
+
+        if (response != null && response['data'] != null && response['data'] is Map<String, dynamic>) {
+          return DashboardOverviewData.fromJson(response['data'] as Map<String, dynamic>);
+        }
+      }
+    } catch (e) {
+      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
+        debugPrint('[DashboardService.fetchOverview] API warning: $e');
+      }
+    }
+    return null;
   }
 
   /// 1. Fetch dashboard order & revenue summary metrics

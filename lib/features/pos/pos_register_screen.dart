@@ -9,13 +9,15 @@ import '../../core/models/table_model.dart';
 import '../../core/services/cart_api_service.dart';
 import '../../core/services/customer_service.dart';
 import '../../core/widgets/food_type_icon.dart';
-import '../../core/widgets/connection_status_badge.dart';
 import '../menu/add_product_screen.dart';
 import '../tables/table_management_screen.dart';
 import 'payment_modal.dart';
 import 'receipt_dialog.dart';
 import 'kot_dialog.dart';
 import '../../core/utils/order_calculator.dart';
+import '../../core/models/loyalty_program_model.dart';
+import '../../core/services/loyalty_service.dart';
+import '../loyalty/widgets/loyalty_redemption_dialog.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
@@ -57,6 +59,32 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   String? _selectedDiscountProductType;
   String _customerPhone = '';
   String _customerName = '';
+
+  // Loyalty Program & Points State
+  final LoyaltyService _loyaltyService = LoyaltyService();
+  CustomerLoyaltyModel? _currentCustomerLoyalty;
+  String? _redeemedLoyaltyStageId;
+  int _redeemedLoyaltyPoints = 0;
+  double _loyaltyDiscountAmount = 0.0;
+
+  Future<void> _checkCustomerLoyalty() async {
+    if (_customerPhone.trim().isEmpty) {
+      if (mounted) setState(() => _currentCustomerLoyalty = null);
+      return;
+    }
+    try {
+      final loyalty = await _loyaltyService.getCustomerLoyalty(
+        _customerPhone.trim(),
+        name: _customerName,
+      );
+      if (mounted) {
+        setState(() {
+          _currentCustomerLoyalty = loyalty;
+        });
+      }
+    } catch (_) {}
+  }
+
   String _deliveryAddress = '';
   String _deliveryLandmark = '';
   String _deliveryCity = '';
@@ -1690,6 +1718,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               }
             });
             setStateModal(() {});
+            _checkCustomerLoyalty();
           },
         );
       },
@@ -1761,6 +1790,89 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+                            // 0. Loyalty Reward Program Section
+                            if (_customerPhone.isNotEmpty) ...[
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.only(bottom: 16),
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF082559), Color(0xFF1E3A8A)],
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withOpacity(0.18),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.cookie_outlined, color: Color(0xFFFDE68A), size: 20),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Loyalty: ${_currentCustomerLoyalty?.pointsBalance ?? 0} ${_currentCustomerLoyalty?.pointsName ?? 'Cookies'}',
+                                            style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                                          ),
+                                          Text(
+                                            _redeemedLoyaltyStageId != null
+                                                ? '₹${_loyaltyDiscountAmount.toInt()} Stage Discount Applied ✓'
+                                                : (_currentCustomerLoyalty?.hasUnlockedStages == true
+                                                    ? '⭐ Rewards unlocked and ready!'
+                                                    : 'Earn points on this completed order'),
+                                            style: TextStyle(color: Colors.white.withOpacity(0.85), fontSize: 10.5),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    ElevatedButton(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.white,
+                                        foregroundColor: const Color(0xFF082559),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        elevation: 0,
+                                        minimumSize: Size.zero,
+                                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      onPressed: () {
+                                        LoyaltyRedemptionDialog.show(
+                                          context,
+                                          customerPhone: _customerPhone,
+                                          customerName: _customerName,
+                                          currentOrderTotal: cartSubtotal,
+                                          onDiscountApplied: (discount, stageId, points) {
+                                            setDialogState(() {
+                                              tempDiscountMode = '₹';
+                                              tempDiscountVal = discount;
+                                              discCtrl.text = discount.toStringAsFixed(0);
+                                              _discountMode = '₹';
+                                              _discountInputValue = discount;
+                                              _loyaltyDiscountAmount = discount;
+                                              _redeemedLoyaltyStageId = stageId;
+                                              _redeemedLoyaltyPoints = points;
+                                            });
+                                            setState(() {});
+                                            setStateModal(() {});
+                                          },
+                                        );
+                                      },
+                                      child: const Text('Redeem (OTP)', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+
                             // 1. Coupon Section
                             const Text(
                               'Coupon',
@@ -3124,6 +3236,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           db.setLiveCartTotal(targetTableStr, 0);
         }
 
+        // Deduct redeemed loyalty points if loyalty stage was applied
+        if (_redeemedLoyaltyStageId != null && _redeemedLoyaltyPoints > 0 && _customerPhone.isNotEmpty) {
+          _loyaltyService.redeemLoyaltyPoints(
+            phone: _customerPhone,
+            stageId: _redeemedLoyaltyStageId!,
+            discountAmount: _loyaltyDiscountAmount,
+            pointsToRedeem: _redeemedLoyaltyPoints,
+            orderId: completedOrder.id,
+            orderNumber: completedOrder.orderNumber,
+          );
+        }
+
         // Close the cart screen modal ONLY when payment is successfully done
         if (cartContext != null && cartContext.mounted) {
           Navigator.pop(cartContext);
@@ -3143,6 +3267,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           _tipAmount = 0.0;
           _appliedCoupon = '';
           _discountInputValue = 0.0;
+          _redeemedLoyaltyStageId = null;
+          _redeemedLoyaltyPoints = 0;
+          _loyaltyDiscountAmount = 0.0;
+          _currentCustomerLoyalty = null;
           _selectedTable = null;
           _customerName = '';
           _customerPhone = '';

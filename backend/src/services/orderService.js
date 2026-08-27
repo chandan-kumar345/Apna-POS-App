@@ -7,6 +7,8 @@ const Cart = require('../models/Cart');
 const Product = require('../models/Product');
 const Business = require('../models/Business');
 const PrintLog = require('../models/PrintLog');
+const notificationService = require('./notificationService');
+const loyaltyService = require('./loyaltyService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
@@ -121,6 +123,11 @@ class OrderService {
             { businessId, name: existingOrder.tableNumber },
             { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
           );
+        }
+
+        // Award Loyalty points if customer phone is present
+        if (existingOrder.customerPhone) {
+          loyaltyService.awardPointsForCompletedOrder(businessId, existingOrder).catch(() => {});
         }
 
         return {
@@ -269,7 +276,7 @@ class OrderService {
     if (paymentDetails.length > 0) {
       const totalPaidAmount = paymentDetails.reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
       if (isPaid && !ncReason && totalPaidAmount < totalAmount - 0.01) {
-        paymentDetails[0].amount = totalAmount;
+        throw ApiError.badRequest(`Payment amount (${totalPaidAmount}) does not match or cover total order amount (${totalAmount})`);
       }
     }
 
@@ -483,6 +490,41 @@ class OrderService {
       } catch (err) {
         console.error('[generatePosOrder] PrintLog creation error:', err);
       }
+
+      // Award Loyalty points if customer phone is present
+      if (order.customerPhone) {
+        loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(() => {});
+      }
+    }
+
+    // Trigger New Order Notification with idempotency
+    try {
+      const displayOrderType = order.orderType
+        ? order.orderType.charAt(0).toUpperCase() + order.orderType.slice(1)
+        : 'POS';
+      const itemsCount = (order.items || []).length || 1;
+      const formattedAmount = Number(order.totalAmount || 0).toLocaleString('en-IN');
+
+      await notificationService.createNotification({
+        businessId,
+        type: 'new_order',
+        title: 'New Order Received 🛍️',
+        message: `New ${displayOrderType} order received. Order #${order.orderNumber} | ₹${formattedAmount} | ${itemsCount} item${itemsCount > 1 ? 's' : ''}. Tap to view order details.`,
+        entityType: 'order',
+        entityId: order._id.toString(),
+        metadata: {
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          orderType: displayOrderType,
+          totalAmount: order.totalAmount,
+          itemsCount,
+          customerName: order.customerName || '',
+          tableNumber: order.tableNumber || '',
+        },
+        idempotencyKey: `new_order_${order._id.toString()}`,
+      });
+    } catch (err) {
+      console.warn(`[Order Notification Notice] ${err.message}`);
     }
 
     return {
@@ -713,6 +755,9 @@ class OrderService {
           $set: { lastVisit: new Date() },
         }
       );
+
+      // Award Loyalty points
+      loyaltyService.awardPointsForCompletedOrder(businessId, order).catch(() => {});
     }
 
     return { order, sale };

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
 import 'core/services/sound_service.dart';
+import 'core/services/local_notification_service.dart';
 import 'core/network/api_endpoints.dart';
 import 'core/widgets/sound_feedback_wrapper.dart';
 import 'features/auth/splash_screen.dart';
@@ -25,7 +26,6 @@ void main() async {
     debugPrint('ApiEndpoints init error: $e');
   }
 
-
   try {
     final db = DatabaseService();
     await db.init();
@@ -37,6 +37,12 @@ void main() async {
     await SoundService().init();
   } catch (e) {
     debugPrint('SoundService init error: $e');
+  }
+
+  try {
+    await LocalNotificationService().init();
+  } catch (e) {
+    debugPrint('LocalNotificationService init error: $e');
   }
 
   runApp(

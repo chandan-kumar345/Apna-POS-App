@@ -73,6 +73,15 @@ class DashboardController {
       next(error);
     }
   }
+
+  async getOverview(req, res, next) {
+    try {
+      const overview = await dashboardService.getOverview(req.businessId, req.query);
+      return ApiResponse.success(res, overview, 'Dashboard overview fetched');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new DashboardController();

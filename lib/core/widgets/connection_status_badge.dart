@@ -234,122 +234,69 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
         final unsynced = _db.unsyncedOrdersCount;
         final isSyncing = _db.isSyncing;
 
-        final Color badgeBg = isOnline
-            ? (widget.isDarkTheme ? const Color(0xFF064E3B).withOpacity(0.4) : const Color(0xFFECFDF5))
-            : (widget.isDarkTheme ? const Color(0xFF78350F).withOpacity(0.4) : const Color(0xFFFFFBEB));
+        final Color dotColor = isOnline ? const Color(0xFF22C55E) : const Color(0xFFEF4444);
+        final String tooltipText = isOnline
+            ? (unsynced > 0 ? 'Online • $unsynced orders syncing' : 'Online • Connected to Cloud')
+            : 'Offline • $unsynced pending sync';
 
-        final Color badgeBorder = isOnline
-            ? (widget.isDarkTheme ? const Color(0xFF059669).withOpacity(0.6) : const Color(0xFFA7F3D0))
-            : (widget.isDarkTheme ? const Color(0xFFD97706).withOpacity(0.6) : const Color(0xFFFDE68A));
-
-        final Color textColor = isOnline
-            ? (widget.isDarkTheme ? const Color(0xFF34D399) : const Color(0xFF065F46))
-            : (widget.isDarkTheme ? const Color(0xFFFBBF24) : const Color(0xFF92400E));
-
-        final Color dotColor = isOnline ? const Color(0xFF10B981) : const Color(0xFFF59E0B);
-
-        return Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: _showSyncSheet,
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.compact ? 8 : 10,
-                vertical: widget.compact ? 4 : 5.5,
-              ),
-              decoration: BoxDecoration(
-                color: badgeBg,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: badgeBorder, width: 1.1),
-                boxShadow: [
-                  if (isOnline)
-                    BoxShadow(
-                      color: dotColor.withOpacity(0.15),
-                      blurRadius: 6,
-                      spreadRadius: 1,
-                    ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Animated pulsing dot
-                  AnimatedBuilder(
-                    animation: _pulseController,
-                    builder: (context, child) {
-                      return Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          color: dotColor,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: dotColor.withOpacity(0.4 + (_pulseController.value * 0.4)),
-                              blurRadius: 4 + (_pulseController.value * 3),
-                              spreadRadius: _pulseController.value * 1.5,
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+        return Tooltip(
+          message: tooltipText,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _showSyncSheet,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isOnline
+                        ? const Color(0xFF22C55E).withOpacity(0.4)
+                        : const Color(0xFFEF4444).withOpacity(0.4),
+                    width: 1.2,
                   ),
-                  const SizedBox(width: 6),
-
-                  // Online / Offline Text
-                  Text(
-                    isOnline ? 'Online' : 'Offline',
-                    style: TextStyle(
-                      fontSize: widget.compact ? 11 : 12,
-                      fontWeight: FontWeight.w800,
-                      color: textColor,
-                      letterSpacing: 0.2,
+                ),
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Animated pulsing dot
+                    AnimatedBuilder(
+                      animation: _pulseController,
+                      builder: (context, child) {
+                        return Container(
+                          width: 10,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: dotColor,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: dotColor.withOpacity(0.4 + (_pulseController.value * 0.4)),
+                                blurRadius: 6 + (_pulseController.value * 4),
+                                spreadRadius: _pulseController.value * 2,
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  ),
 
-                  if (!widget.compact) ...[
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 1,
-                      height: 11,
-                      color: badgeBorder,
-                    ),
-                    const SizedBox(width: 6),
-                    if (isSyncing) ...[
+                    // Sync spinner if actively syncing
+                    if (isSyncing)
                       SizedBox(
-                        width: 11,
-                        height: 11,
+                        width: 24,
+                        height: 24,
                         child: CircularProgressIndicator(
-                          strokeWidth: 1.5,
-                          color: textColor,
+                          strokeWidth: 1.8,
+                          color: dotColor,
                         ),
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Syncing',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w600,
-                          color: textColor,
-                        ),
-                      ),
-                    ] else if (unsynced > 0) ...[
-                      Icon(Icons.cloud_upload_outlined, size: 12, color: textColor),
-                      const SizedBox(width: 3),
-                      Text(
-                        '$unsynced',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          color: textColor,
-                        ),
-                      ),
-                    ] else ...[
-                      Icon(Icons.cloud_done_rounded, size: 12, color: textColor),
-                    ],
                   ],
-                ],
+                ),
               ),
             ),
           ),

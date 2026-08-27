@@ -16,6 +16,8 @@ const extraRoutes = require('./extraRoutes');
 const paymentRoutes = require('./paymentRoutes');
 const printLogRoutes = require('./printLogRoutes');
 const loyaltyRoutes = require('./loyaltyRoutes');
+const crmRoutes = require('./crmRoutes');
+const notificationRoutes = require('./notificationRoutes');
 
 const router = express.Router();
 
@@ -39,6 +41,7 @@ router.use('/sales', salesRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/tables', tableRoutes);
 router.use('/customers', customerRoutes);
+router.use('/crm', crmRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/upload', uploadRoutes);
 router.use('/cart', cartRoutes);
@@ -48,5 +51,6 @@ router.use('/payments', paymentRoutes);
 router.use('/print-logs', printLogRoutes);
 router.use('/printlogs', printLogRoutes);
 router.use('/loyalty', loyaltyRoutes);
+router.use('/notifications', notificationRoutes);
 
 module.exports = router;

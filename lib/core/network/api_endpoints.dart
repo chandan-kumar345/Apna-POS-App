@@ -270,6 +270,7 @@ class ApiEndpoints {
   static const String topProducts = '/sales/top-products';
 
   // Dashboard endpoints
+  static const String dashboardOverview = '/dashboard/overview';
   static const String dashboardSummary = '/dashboard/summary';
   static const String dashboardOrderTypes = '/dashboard/order-types';
   static const String dashboardProductSales = '/dashboard/product-sales';
@@ -278,6 +279,12 @@ class ApiEndpoints {
   static const String dashboardTaxes = '/dashboard/taxes';
   static const String dashboardOrderStats = '/dashboard/order-stats';
   static const String dashboardChart = '/dashboard/chart';
+
+  // CRM endpoints
+  static const String crmLeads = '/crm/leads';
+  static const String crmStats = '/crm/stats';
+  static const String crmExport = '/crm/export';
+  static const String crmImport = '/crm/import';
 
   // Tables endpoints
   static const String tables = '/tables';
@@ -310,7 +317,22 @@ class ApiEndpoints {
 
   // Loyalty endpoints
   static const String loyaltyPrograms = '/loyalty/programs';
+  static const String loyaltyConfig = '/loyalty/config';
   static const String loyaltyPerformance = '/loyalty/performance';
+  static const String loyaltyCustomer = '/loyalty/customer';
+  static const String loyaltySendOtp = '/loyalty/send-otp';
+  static const String loyaltyVerifyOtp = '/loyalty/verify-otp';
+  static const String loyaltyRedeem = '/loyalty/redeem';
+
+  // Notification endpoints
+  static const String notifications = '/notifications';
+  static const String notificationsUnreadCount = '/notifications/unread-count';
+  static String notificationRead(String id) => '/notifications/$id/read';
+  static const String notificationsReadAll = '/notifications/read-all';
+  static String notificationDelete(String id) => '/notifications/$id';
+  static const String notificationsClearAll = '/notifications/clear-all';
+  static const String registerDeviceToken = '/notifications/device-token';
+  static const String triggerDailySummary = '/notifications/trigger-daily-summary';
 
   /// Show Developer / Admin Server Configuration Sheet
   static void showServerConfigSheet(BuildContext context, {VoidCallback? onUrlChanged}) {

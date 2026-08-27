@@ -7,6 +7,7 @@ import '../models/business_model.dart';
 import '../models/restaurant_model.dart';
 import '../database/database_service.dart';
 import 'product_service.dart';
+import 'local_notification_service.dart';
 
 import 'session_manager.dart';
 
@@ -49,6 +50,9 @@ class AuthService {
     await _db.saveActiveUser(user);
     await _db.clearUserDataForNewAccount();
     ProductService.clearPosCache();
+
+    // Deliver welcome push notification upon register
+    LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name);
 
     return data;
   }
@@ -140,6 +144,9 @@ class AuthService {
     try {
       await _db.syncWithBackend();
     } catch (_) {}
+
+    // Deliver welcome push notification upon login
+    LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name);
 
     return data;
   }

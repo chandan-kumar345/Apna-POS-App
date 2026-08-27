@@ -2,6 +2,7 @@
 const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');
+const cronService = require('./services/cronService');
 
 const startServer = async () => {
   try {
@@ -16,9 +17,14 @@ const startServer = async () => {
     });
 
     // Connect to Database asynchronously
-    connectDB().catch((err) => {
-      console.error(`[MongoDB Connection Error] ${err.message}`);
-    });
+    connectDB()
+      .then(() => {
+        // Initialize daily summary cron jobs after DB is connected
+        cronService.initSchedulers();
+      })
+      .catch((err) => {
+        console.error(`[MongoDB Connection Error] ${err.message}`);
+      });
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
@@ -31,6 +37,7 @@ const startServer = async () => {
 
     // Graceful Shutdown
     const exitHandler = () => {
+      cronService.stopSchedulers();
       if (server) {
         server.close(() => {
           console.log('[Server] Process closed gracefully');

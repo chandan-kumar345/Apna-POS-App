@@ -16,6 +16,9 @@ import '../inventory/inventory_screen.dart';
 import '../reports/reports_screen.dart';
 import '../settings/business_settings_hub_screen.dart';
 import '../loyalty/screens/loyalty_landing_screen.dart';
+import '../crm/screens/crm_leads_screen.dart';
+import '../notifications/screens/notifications_screen.dart';
+import '../notifications/services/notification_service.dart';
 
 import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
@@ -88,6 +91,9 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       begin: const Offset(-1.0, 0.0),
       end: Offset.zero,
     ).animate(_sidebarAnimation);
+
+    // Initial fetch of unread notifications count
+    NotificationService().fetchUnreadCount();
   }
 
   @override
@@ -122,18 +128,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     }
   }
 
-  final List<String> _titles = [
-    'Dashboard Overview',
-    'POS Billing System',
-    'Tables & Floor Management',
-    'My Orders & Kitchen',
-    'Menu & Categories Manager',
-    'Inventory & Stock Control',
-    'Sales & Analytics Report',
-    'Loyalty & Rewards',
-    'Marketing Campaign',
-    'Business Setting',
-  ];
+
 
 
 
@@ -601,6 +596,80 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     );
   }
 
+  void _openNotificationScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const NotificationsScreen(),
+      ),
+    );
+  }
+
+  Widget _buildNotificationBellButton() {
+    return AnimatedBuilder(
+      animation: NotificationService(),
+      builder: (context, _) {
+        final unreadCount = NotificationService().unreadCount;
+
+        return Tooltip(
+          message: 'Notifications ($unreadCount unread)',
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _openNotificationScreen,
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.25),
+                    width: 1.1,
+                  ),
+                ),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(
+                      Icons.notifications_none_rounded,
+                      color: Colors.white,
+                      size: 19,
+                    ),
+                    if (unreadCount > 0)
+                      Positioned(
+                        top: -2,
+                        right: -2,
+                        child: Container(
+                          padding: const EdgeInsets.all(3.5),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                          ),
+                          constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                          alignment: Alignment.center,
+                          child: Text(
+                            unreadCount > 9 ? '9+' : '$unreadCount',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              height: 1,
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -702,8 +771,11 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                               ),
                             ),
                             const Spacer(),
-                            // ONLINE / OFFLINE BADGE & CLOUD SYNC INDICATOR
+                            // ONLINE / OFFLINE STATUS DOT INDICATOR
                             const GlassConnectionStatusBadge(isDarkTheme: true),
+                            const SizedBox(width: 8),
+                            // NOTIFICATION BELL BUTTON
+                            _buildNotificationBellButton(),
                           ],
                         ),
                       ),
@@ -805,7 +877,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                     const MenuManagementScreen(),
                                     const InventoryScreen(),
                                     const ReportsScreen(),
-                                    _buildFeatureModalScreen('Customer Relationship Management (CRM)', Icons.people_alt_rounded, 'Manage customer directory, contact details, purchase histories, and relationships.'),
+                                    CrmLeadsScreen(
+                                      onOpenDrawer: _toggleSidebar,
+                                      onNavigateToDashboard: () => _selectTab(0),
+                                    ),
                                     LoyaltyLandingScreen(onBack: () => _selectTab(0)),
                                     _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.'),
                                     const BusinessSettingsHubScreen(),

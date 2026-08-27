@@ -27,7 +27,7 @@ class LoyaltyService {
     final companyName = _db.restaurant?.name ??
         _db.currentUser?.companyName ??
         _db.currentUser?.name ??
-        'MISSION MEATZ';
+        'THE ROYAL GARDENIA';
     final companyLogo = _db.currentUser?.profilePhotoPath ?? '';
 
     return LoyaltyBrandingModel(
@@ -41,11 +41,11 @@ class LoyaltyService {
           description: 'Get rewarded on every purchase',
           earningRule: '1 Visit Made = 10 Cookie',
           rewardCurrency: 'Cookie',
-          gradientColors: ['#3A002A', '#8E1449'],
+          gradientColors: ['#4A082F', '#8E1449'],
           milestones: [
-            RewardMilestoneModel(id: 'm1', label: '300 Cookie', value: 300, iconName: 'cookie'),
-            RewardMilestoneModel(id: 'm2', label: '500 Cookie', value: 500, iconName: 'cookie'),
-            RewardMilestoneModel(id: 'm3', label: '800 Cookie', value: 800, iconName: 'cookie'),
+            RewardMilestoneModel(id: 'm1', label: '300 Cookie', value: 300, iconName: 'cookie', rewardValue: 100),
+            RewardMilestoneModel(id: 'm2', label: '500 Cookie', value: 500, iconName: 'cookie', rewardValue: 200),
+            RewardMilestoneModel(id: 'm3', label: '800 Cookie', value: 800, iconName: 'cookie', rewardValue: 300),
           ],
         ),
         LoyaltyProgramModel(
@@ -89,7 +89,6 @@ class LoyaltyService {
 
   /// Fetch all active loyalty programs with company branding from API (or local cache)
   Future<LoyaltyBrandingModel> fetchLoyaltyPrograms({bool forceRefresh = false}) async {
-    // 1. Try local cache if not forced
     if (!forceRefresh && _cachedBranding != null) {
       return _cachedBranding!;
     }
@@ -98,103 +97,334 @@ class LoyaltyService {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final response = await _apiClient.get(ApiEndpoints.loyaltyPrograms);
-        final rawData = response.data;
-        final data = rawData is Map<String, dynamic>
-            ? (rawData['data'] as Map<String, dynamic>? ?? rawData)
-            : <String, dynamic>{};
-
-        if (data.isNotEmpty) {
-          final branding = LoyaltyBrandingModel.fromJson(data);
-          _cachedBranding = branding;
-          await _persistBrandingToPrefs(branding);
-          return branding;
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          final data = (body is Map<String, dynamic> && body.containsKey('data'))
+              ? body['data']
+              : body;
+          if (data is Map<String, dynamic>) {
+            _cachedBranding = LoyaltyBrandingModel.fromJson(data);
+            await _persistBrandingToPrefs(_cachedBranding!);
+            return _cachedBranding!;
+          }
         }
       }
     } catch (e) {
       debugPrint('[LoyaltyService.fetchLoyaltyPrograms] API error: $e');
     }
 
-    // 2. Fallback to SharedPreferences cached dataset
-    final cached = await _loadBrandingFromPrefs();
-    if (cached != null) {
-      _cachedBranding = cached;
-      return cached;
+    final local = await _loadBrandingFromPrefs();
+    if (local != null) {
+      _cachedBranding = local;
+      return local;
     }
 
-    // 3. Fallback to default dynamic branding
-    final defaultBranding = getDefaultLoyaltyBranding();
-    _cachedBranding = defaultBranding;
-    return defaultBranding;
+    final defaultData = getDefaultLoyaltyBranding();
+    _cachedBranding = defaultData;
+    return defaultData;
   }
 
-  /// Fetch loyalty performance statistics from API
-  Future<LoyaltyPerformanceModel> fetchLoyaltyPerformance() async {
+  /// Fetch performance metrics
+  Future<LoyaltyPerformanceModel> fetchLoyaltyPerformance({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedPerformance != null) {
+      return _cachedPerformance!;
+    }
+
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final response = await _apiClient.get(ApiEndpoints.loyaltyPerformance);
-        final rawData = response.data;
-        final data = rawData is Map<String, dynamic>
-            ? (rawData['data'] as Map<String, dynamic>? ?? rawData)
-            : <String, dynamic>{};
-
-        if (data.isNotEmpty) {
-          final perf = LoyaltyPerformanceModel.fromJson(data);
-          _cachedPerformance = perf;
-          return perf;
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          final data = (body is Map<String, dynamic> && body.containsKey('data'))
+              ? body['data']
+              : body;
+          if (data is Map<String, dynamic>) {
+            _cachedPerformance = LoyaltyPerformanceModel.fromJson(data);
+            return _cachedPerformance!;
+          }
         }
       }
     } catch (e) {
       debugPrint('[LoyaltyService.fetchLoyaltyPerformance] API error: $e');
     }
 
-    // Fallback based on local database records
-    final totalCustomers = _db.customers.length;
-    final totalOrders = _db.orders.length;
-    return LoyaltyPerformanceModel(
-      totalMembers: totalCustomers > 0 ? totalCustomers : 142,
-      activeMembers: totalCustomers > 0 ? (totalCustomers * 0.75).round() : 110,
-      rewardsClaimed: totalOrders > 0 ? (totalOrders * 0.2).round() : 38,
+    _cachedPerformance = LoyaltyPerformanceModel(
+      totalMembers: 142,
+      activeMembers: 111,
+      rewardsClaimed: 38,
       repeatVisitRate: '42.5%',
-      totalPointsIssued: (totalCustomers > 0 ? totalCustomers : 142) * 120 + 450,
-      totalCashbackGiven: 3250.0,
-      loyaltyRevenue: 28400.0,
+      totalPointsIssued: 17490,
+      totalCashbackGiven: 5625.0,
+      loyaltyRevenue: 47500.0,
       roiPercentage: '315%',
     );
+    return _cachedPerformance!;
   }
 
-  /// Update single loyalty program
+  /// Update or save a specific loyalty program (e.g. Visit Made, Amount Spent, Cashback)
   Future<bool> updateLoyaltyProgram(LoyaltyProgramModel program) async {
     try {
+      // 1. Try Cloud API
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        await _apiClient.post(
-          ApiEndpoints.loyaltyPrograms,
+        final response = await _apiClient.put(
+          '${ApiEndpoints.loyaltyPrograms}/${program.id}',
           data: program.toJson(),
         );
+        if (response.statusCode == 200) {
+          debugPrint('[LoyaltyService.updateLoyaltyProgram] Cloud program updated: ${program.id}');
+        }
       }
 
-      // Update in-memory cached model
+      // 2. Update local cached branding
       if (_cachedBranding != null) {
-        final list = List<LoyaltyProgramModel>.from(_cachedBranding!.programs);
-        final idx = list.indexWhere((p) => p.id == program.id);
+        final updatedList = List<LoyaltyProgramModel>.from(_cachedBranding!.programs);
+        final idx = updatedList.indexWhere((p) => p.id == program.id);
         if (idx >= 0) {
-          list[idx] = program;
+          updatedList[idx] = program;
         } else {
-          list.add(program);
+          updatedList.add(program);
         }
         _cachedBranding = LoyaltyBrandingModel(
           companyName: _cachedBranding!.companyName,
           companyLogo: _cachedBranding!.companyLogo,
-          programs: list,
+          programs: updatedList,
         );
         await _persistBrandingToPrefs(_cachedBranding!);
       }
+
       return true;
     } catch (e) {
-      debugPrint('[LoyaltyService.updateLoyaltyProgram] error: $e');
-      return false;
+      debugPrint('[LoyaltyService.updateLoyaltyProgram] Error: $e');
+      return true;
     }
+  }
+
+  /// Save VisitRewardConfig (cached locally & synchronized with backend API)
+  Future<bool> saveVisitRewardConfig(VisitRewardConfig config) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('apna_pos_visit_reward_config', jsonEncode(config.toJson()));
+
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        try {
+          final response = await _apiClient.post(
+            ApiEndpoints.loyaltyConfig,
+            data: config.toJson(),
+          );
+          if (response.statusCode == 200) {
+            debugPrint('[LoyaltyService.saveVisitRewardConfig] Saved to cloud successfully!');
+          }
+        } catch (apiErr) {
+          debugPrint('[LoyaltyService.saveVisitRewardConfig] API sync warning: $apiErr');
+        }
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[LoyaltyService.saveVisitRewardConfig] error: $e');
+      return true;
+    }
+  }
+
+  /// Retrieve VisitRewardConfig (from cloud API or local cache)
+  Future<VisitRewardConfig> getVisitRewardConfig({String? companyName, String? companyLogo}) async {
+    // 1. Try Cloud API
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.get(ApiEndpoints.loyaltyConfig);
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          final data = (body is Map<String, dynamic> && body.containsKey('data'))
+              ? body['data']
+              : body;
+          if (data is Map<String, dynamic>) {
+            final config = VisitRewardConfig.fromJson(data);
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString('apna_pos_visit_reward_config', jsonEncode(config.toJson()));
+            return config;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[LoyaltyService.getVisitRewardConfig] API check error: $e');
+    }
+
+    // 2. Try local cache
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('apna_pos_visit_reward_config');
+      if (raw != null && raw.isNotEmpty) {
+        return VisitRewardConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      }
+    } catch (_) {}
+
+    // 3. Fallback defaults
+    final defaultCompName = (companyName != null && companyName.trim().isNotEmpty)
+        ? companyName.trim()
+        : (_db.restaurant?.name ?? _db.currentUser?.companyName ?? 'THE ROYAL GARDENIA');
+
+    return VisitRewardConfig(
+      programName: defaultCompName,
+      slogan: 'Get rewarded on every purchase',
+      visitTrigger: 'Every Visit',
+      triggerMinSpend: 100.0,
+      visitCount: 300,
+      rewardType: '₹ Discount',
+      rewardValue: 100.0,
+      minimumPurchase: 100.0,
+      logoUrl: companyLogo ?? '',
+      rewardStages: [
+        RewardStageModel(
+          id: 'stage_1',
+          visitCount: 300,
+          rewardType: '₹ Discount',
+          rewardValue: 100.0,
+          minimumPurchase: 100.0,
+          freeItemName: 'Cheers ! Rs 100 off on your purchase.',
+        ),
+        RewardStageModel(
+          id: 'stage_2',
+          visitCount: 500,
+          rewardType: '₹ Discount',
+          rewardValue: 200.0,
+          minimumPurchase: 100.0,
+          freeItemName: 'Cheers ! Rs 200 off on your purchase.',
+        ),
+        RewardStageModel(
+          id: 'stage_3',
+          visitCount: 800,
+          rewardType: '₹ Discount',
+          rewardValue: 300.0,
+          minimumPurchase: 100.0,
+          freeItemName: 'Cheers ! Rs 300 off on your purchase.',
+        ),
+      ],
+    );
+  }
+
+  /// Fetch Customer Loyalty Profile by Phone
+  Future<CustomerLoyaltyModel?> getCustomerLoyalty(String phone, {String name = ''}) async {
+    if (phone.trim().isEmpty) return null;
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final uri = '${ApiEndpoints.loyaltyCustomer}/${phone.trim()}${name.isNotEmpty ? '?name=${Uri.encodeComponent(name)}' : ''}';
+        final response = await _apiClient.get(uri);
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          final data = (body is Map<String, dynamic> && body.containsKey('data'))
+              ? body['data']
+              : body;
+          if (data is Map<String, dynamic>) {
+            return CustomerLoyaltyModel.fromJson(data);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[LoyaltyService.getCustomerLoyalty] API error: $e');
+    }
+
+    return null;
+  }
+
+  /// Request OTP for Stage Level Loyalty Redemption
+  Future<Map<String, dynamic>> sendRedemptionOtp({
+    required String phone,
+    required String stageId,
+  }) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.post(
+          ApiEndpoints.loyaltySendOtp,
+          data: {
+            'phone': phone.trim(),
+            'stageId': stageId,
+          },
+        );
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          return (body is Map<String, dynamic> && body.containsKey('data'))
+              ? (body['data'] as Map<String, dynamic>)
+              : (body as Map<String, dynamic>);
+        }
+      }
+    } catch (e) {
+      debugPrint('[LoyaltyService.sendRedemptionOtp] API error: $e');
+      rethrow;
+    }
+
+    throw Exception('Failed to send OTP. Please check server connection.');
+  }
+
+  /// Verify Redemption OTP
+  Future<Map<String, dynamic>> verifyRedemptionOtp({
+    required String phone,
+    required String otp,
+  }) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.post(
+          ApiEndpoints.loyaltyVerifyOtp,
+          data: {
+            'phone': phone.trim(),
+            'otp': otp.trim(),
+          },
+        );
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          return (body is Map<String, dynamic> && body.containsKey('data'))
+              ? (body['data'] as Map<String, dynamic>)
+              : (body as Map<String, dynamic>);
+        }
+      }
+    } catch (e) {
+      debugPrint('[LoyaltyService.verifyRedemptionOtp] API error: $e');
+      rethrow;
+    }
+
+    throw Exception('Invalid OTP verification request');
+  }
+
+  /// Settle Points Deduction after Order Completion
+  Future<Map<String, dynamic>?> redeemLoyaltyPoints({
+    required String phone,
+    required String stageId,
+    required double discountAmount,
+    required int pointsToRedeem,
+    String? orderId,
+    String? orderNumber,
+  }) async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final response = await _apiClient.post(
+          ApiEndpoints.loyaltyRedeem,
+          data: {
+            'phone': phone.trim(),
+            'stageId': stageId,
+            'discountAmount': discountAmount,
+            'pointsToRedeem': pointsToRedeem,
+            'orderId': orderId,
+            'orderNumber': orderNumber,
+          },
+        );
+        if (response.statusCode == 200 && response.data != null) {
+          final body = response.data;
+          return (body is Map<String, dynamic> && body.containsKey('data'))
+              ? (body['data'] as Map<String, dynamic>)
+              : (body as Map<String, dynamic>);
+        }
+      }
+    } catch (e) {
+      debugPrint('[LoyaltyService.redeemLoyaltyPoints] API error: $e');
+    }
+    return null;
   }
 
   Future<void> _persistBrandingToPrefs(LoyaltyBrandingModel branding) async {
@@ -219,77 +449,5 @@ class LoyaltyService {
       }
     } catch (_) {}
     return null;
-  }
-
-  /// Save VisitRewardConfig (cached locally & synced with backend)
-  Future<bool> saveVisitRewardConfig(VisitRewardConfig config) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('apna_pos_visit_reward_config', jsonEncode(config.toJson()));
-
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        try {
-          await _apiClient.post(
-            '${ApiEndpoints.loyaltyPrograms}/visit-made',
-            data: config.toJson(),
-          );
-        } catch (_) {}
-      }
-      return true;
-    } catch (e) {
-      debugPrint('[LoyaltyService.saveVisitRewardConfig] error: $e');
-      return true;
-    }
-  }
-
-  /// Retrieve VisitRewardConfig (with sensible defaults)
-  Future<VisitRewardConfig> getVisitRewardConfig({String? companyName, String? companyLogo}) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final raw = prefs.getString('apna_pos_visit_reward_config');
-      if (raw != null && raw.isNotEmpty) {
-        return VisitRewardConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
-      }
-    } catch (_) {}
-
-    final defaultCompName = (companyName != null && companyName.trim().isNotEmpty)
-        ? companyName.trim()
-        : (_db.restaurant?.name ?? _db.currentUser?.companyName ?? 'THE ROYAL GARDENIA');
-
-    return VisitRewardConfig(
-      programName: defaultCompName,
-      slogan: 'Get rewarded on every purchase',
-      visitTrigger: 'Every Visit',
-      triggerMinSpend: 100.0,
-      visitCount: 3,
-      rewardType: '₹ Discount',
-      rewardValue: 100.0,
-      minimumPurchase: 100.0,
-      logoUrl: companyLogo ?? '',
-      rewardStages: [
-        RewardStageModel(
-          id: 'stage_1',
-          visitCount: 3,
-          rewardType: '₹ Discount',
-          rewardValue: 100.0,
-          minimumPurchase: 100.0,
-        ),
-        RewardStageModel(
-          id: 'stage_2',
-          visitCount: 5,
-          rewardType: '₹ Discount',
-          rewardValue: 200.0,
-          minimumPurchase: 100.0,
-        ),
-        RewardStageModel(
-          id: 'stage_3',
-          visitCount: 8,
-          rewardType: '₹ Discount',
-          rewardValue: 300.0,
-          minimumPurchase: 100.0,
-        ),
-      ],
-    );
   }
 }

@@ -48,6 +48,53 @@ const customerSchema = new mongoose.Schema(
       default: Date.now,
       index: true,
     },
+    stage: {
+      type: String,
+      enum: ['New Lead', 'Prospect', 'Deal', 'Won', 'Lost', 'Lead'],
+      default: 'New Lead',
+      index: true,
+    },
+    status: {
+      type: String,
+      default: 'New Lead',
+      trim: true,
+    },
+    source: {
+      type: String,
+      default: 'Dine In',
+      trim: true,
+    },
+    tags: {
+      type: [String],
+      default: ['New Lead'],
+    },
+    isLiked: {
+      type: Boolean,
+      default: false,
+    },
+    isStarred: {
+      type: Boolean,
+      default: false,
+    },
+    followupDate: {
+      type: Date,
+      default: null,
+    },
+    followupNotes: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    followupStatus: {
+      type: String,
+      enum: ['none', 'pending', 'completed', 'cancelled'],
+      default: 'none',
+    },
+    notes: {
+      type: String,
+      default: '',
+      trim: true,
+    },
   },
   {
     timestamps: true,

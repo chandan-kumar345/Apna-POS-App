@@ -2,16 +2,25 @@ import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
+import 'order_detail_sheet.dart';
 import '../pos/receipt_dialog.dart';
 import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
-import '../../core/widgets/connection_status_badge.dart';
 
 class OrdersScreen extends StatefulWidget {
   final Function(String tableName)? onOpenPosForTable;
+  final String? initialOrderId;
+  final String? initialOrderNumber;
+  final bool showBackButton;
 
-  const OrdersScreen({super.key, this.onOpenPosForTable});
+  const OrdersScreen({
+    super.key,
+    this.onOpenPosForTable,
+    this.initialOrderId,
+    this.initialOrderNumber,
+    this.showBackButton = false,
+  });
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -25,12 +34,77 @@ class _OrdersScreenState extends State<OrdersScreen> {
   String _selectedStatusFilter = 'Preparing'; // 'Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'
   String _searchQuery = '';
   bool _isManualRefreshing = false;
+  bool _hasCheckedInitialOrder = false;
 
   @override
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
-    db.syncWithBackend();
+    db.syncWithBackend().then((_) {
+      if (mounted) _checkInitialOrder();
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkInitialOrder();
+    });
+  }
+
+  void _checkInitialOrder() {
+    if (_hasCheckedInitialOrder) return;
+    if (widget.initialOrderId == null && widget.initialOrderNumber == null) return;
+
+    final targetId = widget.initialOrderId?.trim().toLowerCase();
+    final targetNum = widget.initialOrderNumber?.trim().toLowerCase();
+
+    final matched = db.orders.firstWhere(
+      (o) =>
+          (targetId != null &&
+              (o.id.toLowerCase() == targetId || o.orderNumber.toLowerCase() == targetId)) ||
+          (targetNum != null && o.orderNumber.toLowerCase() == targetNum),
+      orElse: () => OrderModel(
+        id: '',
+        orderNumber: '',
+        items: const [],
+        subtotal: 0,
+        taxAmount: 0,
+        totalAmount: 0,
+        createdAt: '',
+      ),
+    );
+
+    if (matched.id.isNotEmpty && mounted) {
+      _hasCheckedInitialOrder = true;
+      setState(() {
+        if (matched.orderType == OrderType.takeaway) {
+          _selectedOrderTypeFilter = 'TakeAway';
+        } else if (matched.orderType == OrderType.delivery) {
+          _selectedOrderTypeFilter = 'Delivery';
+        } else {
+          _selectedOrderTypeFilter = 'DineIn';
+        }
+
+        if (matched.status == OrderStatus.completed) {
+          _selectedStatusFilter = 'Completed';
+        } else if (matched.status == OrderStatus.ready) {
+          _selectedStatusFilter = 'Ready';
+        } else if (matched.status == OrderStatus.cancelled) {
+          _selectedStatusFilter = 'Cancelled';
+        } else if (matched.status == OrderStatus.pending) {
+          _selectedStatusFilter = 'Pending';
+        } else {
+          _selectedStatusFilter = 'Preparing';
+        }
+
+        _searchQuery = matched.orderNumber;
+      });
+
+      // Automatically open the detailed order bottom sheet dialog
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (mounted) {
+          OrderDetailSheet.show(context, initialOrder: matched);
+        }
+      });
+    }
   }
 
   Future<void> _refreshOrders() async {
@@ -196,19 +270,30 @@ class _OrdersScreenState extends State<OrdersScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Top Bar: Clean Title with Refresh Action
+                // Top Bar: Clean Title with Back & Refresh Action
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text(
-                        'All Received Orders',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                          letterSpacing: 0.3,
+                      if (Navigator.of(context).canPop() || widget.showBackButton) ...[
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF051C48), size: 20),
+                          tooltip: 'Back',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      const Expanded(
+                        child: Text(
+                          'All Received Orders',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF0F172A),
+                            letterSpacing: 0.3,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -362,20 +447,23 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                   final effectiveStatus = (isRunningKot && order.status == OrderStatus.pending) ? OrderStatus.preparing : order.status;
                                   final statusColor = _getStatusColor(effectiveStatus);
 
-                                  return Container(
-                                    margin: const EdgeInsets.only(bottom: 0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: Colors.black.withOpacity(0.04),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ],
-                                    ),
+                                  return InkWell(
+                                    onTap: () => OrderDetailSheet.show(context, initialOrder: order),
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: Container(
+                                      margin: const EdgeInsets.only(bottom: 0),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black.withOpacity(0.04),
+                                            blurRadius: 8,
+                                            offset: const Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
                                     padding: const EdgeInsets.all(11),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -697,8 +785,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                         ),
                                       ],
                                     ),
-                                  );
-                                }
+                                  ),
+                                );
+                              }
 
                                 if (isWide) {
                                   final leftIdx = rowIdx * 2;

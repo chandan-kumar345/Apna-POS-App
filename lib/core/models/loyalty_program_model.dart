@@ -13,6 +13,7 @@ class RewardMilestoneModel {
   final double value;
   final String iconName;
   final String rewardText;
+  final double rewardValue;
 
   RewardMilestoneModel({
     required this.id,
@@ -20,6 +21,7 @@ class RewardMilestoneModel {
     required this.value,
     this.iconName = 'cookie',
     this.rewardText = '',
+    this.rewardValue = 0.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -28,6 +30,7 @@ class RewardMilestoneModel {
         'value': value,
         'iconName': iconName,
         'rewardText': rewardText,
+        'rewardValue': rewardValue,
       };
 
   factory RewardMilestoneModel.fromJson(Map<String, dynamic> json) {
@@ -37,6 +40,7 @@ class RewardMilestoneModel {
       value: (json['value'] as num?)?.toDouble() ?? 0.0,
       iconName: json['iconName']?.toString() ?? 'cookie',
       rewardText: json['rewardText']?.toString() ?? '',
+      rewardValue: (json['rewardValue'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }
@@ -470,3 +474,95 @@ class VisitRewardConfig {
     );
   }
 }
+
+class AvailableRewardStageModel {
+  final String id;
+  final int requiredPoints;
+  final String rewardType;
+  final double rewardValue;
+  final double minimumPurchase;
+  final String freeItemName;
+  final bool isUnlocked;
+
+  AvailableRewardStageModel({
+    required this.id,
+    required this.requiredPoints,
+    this.rewardType = '₹ Discount',
+    required this.rewardValue,
+    this.minimumPurchase = 100.0,
+    required this.freeItemName,
+    required this.isUnlocked,
+  });
+
+  factory AvailableRewardStageModel.fromJson(Map<String, dynamic> json) {
+    return AvailableRewardStageModel(
+      id: json['id']?.toString() ?? '',
+      requiredPoints: (json['requiredPoints'] as num?)?.toInt() ?? 0,
+      rewardType: json['rewardType']?.toString() ?? '₹ Discount',
+      rewardValue: (json['rewardValue'] as num?)?.toDouble() ?? 100.0,
+      minimumPurchase: (json['minimumPurchase'] as num?)?.toDouble() ?? 100.0,
+      freeItemName: json['freeItemName']?.toString() ?? '',
+      isUnlocked: json['isUnlocked'] == true,
+    );
+  }
+}
+
+class CustomerLoyaltyModel {
+  final String customerPhone;
+  final String customerName;
+  final int pointsBalance;
+  final int totalVisits;
+  final int totalPointsEarned;
+  final int totalPointsRedeemed;
+  final String pointsName;
+  final String programName;
+  final List<String> unlockedStages;
+  final List<AvailableRewardStageModel> availableStages;
+
+  CustomerLoyaltyModel({
+    required this.customerPhone,
+    this.customerName = '',
+    this.pointsBalance = 0,
+    this.totalVisits = 0,
+    this.totalPointsEarned = 0,
+    this.totalPointsRedeemed = 0,
+    this.pointsName = 'Cookie',
+    this.programName = 'THE ROYAL GARDENIA',
+    this.unlockedStages = const [],
+    this.availableStages = const [],
+  });
+
+  bool get hasUnlockedStages => availableStages.any((s) => s.isUnlocked);
+
+  List<AvailableRewardStageModel> get claimableStages =>
+      availableStages.where((s) => s.isUnlocked).toList();
+
+  factory CustomerLoyaltyModel.fromJson(Map<String, dynamic> json) {
+    final rawStages = json['availableStages'] as List?;
+    final stages = rawStages != null
+        ? rawStages
+            .whereType<Map<String, dynamic>>()
+            .map((s) => AvailableRewardStageModel.fromJson(s))
+            .toList()
+        : <AvailableRewardStageModel>[];
+
+    final rawUnlocked = json['unlockedStages'] as List?;
+    final unlocked = rawUnlocked != null
+        ? rawUnlocked.map((e) => e.toString()).toList()
+        : <String>[];
+
+    return CustomerLoyaltyModel(
+      customerPhone: json['customerPhone']?.toString() ?? '',
+      customerName: json['customerName']?.toString() ?? '',
+      pointsBalance: (json['pointsBalance'] as num?)?.toInt() ?? 0,
+      totalVisits: (json['totalVisits'] as num?)?.toInt() ?? 0,
+      totalPointsEarned: (json['totalPointsEarned'] as num?)?.toInt() ?? 0,
+      totalPointsRedeemed: (json['totalPointsRedeemed'] as num?)?.toInt() ?? 0,
+      pointsName: json['pointsName']?.toString() ?? 'Cookie',
+      programName: json['programName']?.toString() ?? 'THE ROYAL GARDENIA',
+      unlockedStages: unlocked,
+      availableStages: stages,
+    );
+  }
+}
+

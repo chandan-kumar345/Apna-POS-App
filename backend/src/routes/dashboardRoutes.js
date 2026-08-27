@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.use(authMiddleware);
 
+router.get('/overview', (req, res, next) => dashboardController.getOverview(req, res, next));
 router.get('/summary', (req, res, next) => dashboardController.getSummary(req, res, next));
 router.get('/order-types', (req, res, next) => dashboardController.getOrderTypes(req, res, next));
 router.get('/product-sales', (req, res, next) => dashboardController.getProductSales(req, res, next));

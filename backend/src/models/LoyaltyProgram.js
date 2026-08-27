@@ -3,10 +3,15 @@ const mongoose = require('mongoose');
 const rewardMilestoneSchema = new mongoose.Schema(
   {
     id: { type: String, required: true },
-    label: { type: String, required: true },
-    value: { type: Number, required: true },
+    label: { type: String, default: '' },
+    value: { type: Number, default: 0 },
+    visitCount: { type: Number, default: 0 },
     iconName: { type: String, default: 'cookie' },
     rewardText: { type: String, default: '' },
+    rewardType: { type: String, default: '₹ Discount' },
+    rewardValue: { type: Number, default: 100 },
+    minimumPurchase: { type: Number, default: 100 },
+    freeItemName: { type: String, default: '' },
   },
   { _id: false }
 );
@@ -40,16 +45,37 @@ const singleProgramSchema = new mongoose.Schema(
     },
     title: { type: String, required: true },
     description: { type: String, default: 'Get rewarded on every purchase' },
-    earningRule: { type: String, required: true },
+    earningRule: { type: String, default: '' },
     rewardCurrency: { type: String, default: 'Cookie' },
     milestones: [rewardMilestoneSchema],
     cashbackDetails: cashbackDetailsSchema,
     gradientColors: {
       type: [String],
-      default: ['#580B3B', '#8E1449'],
+      default: ['#4A082F', '#8E1449'],
     },
     isActive: { type: Boolean, default: true },
     orderIndex: { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const visitRewardConfigSchema = new mongoose.Schema(
+  {
+    programName: { type: String, default: 'THE ROYAL GARDENIA' },
+    slogan: { type: String, default: 'Get rewarded on every purchase' },
+    orderType: { type: String, default: 'Dine-In' },
+    bannerImageUrl: { type: String, default: 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800' },
+    logoUrl: { type: String, default: '' },
+    bgGradientStart: { type: String, default: '#4A082F' },
+    bgGradientEnd: { type: String, default: '#8E1449' },
+    rewardColorStart: { type: String, default: '#4A082F' },
+    rewardColorEnd: { type: String, default: '#8E1449' },
+    pointsName: { type: String, default: 'Cookie' },
+    pointsPerVisit: { type: Number, default: 10 },
+    minimumPurchase: { type: Number, default: 100 },
+    rewardStages: [rewardMilestoneSchema],
+    termsNote: { type: String, default: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.' },
+    isActive: { type: Boolean, default: true },
   },
   { _id: false }
 );
@@ -65,6 +91,7 @@ const loyaltyProgramSchema = new mongoose.Schema(
     },
     companyName: { type: String, default: '' },
     companyLogo: { type: String, default: '' },
+    visitConfig: { type: visitRewardConfigSchema, default: () => ({}) },
     programs: [singleProgramSchema],
   },
   {
