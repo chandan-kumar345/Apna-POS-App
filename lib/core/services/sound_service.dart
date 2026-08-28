@@ -12,10 +12,12 @@ class SoundService {
 
   final AudioPlayer _buttonPlayer = AudioPlayer();
   final AudioPlayer _keyPlayer = AudioPlayer();
-  
+  final AudioPlayer _notificationPlayer = AudioPlayer();
+
   bool _isInitialized = false;
   int _lastButtonClickTime = 0;
   int _lastKeyPressTime = 0;
+  int _lastNotificationSoundTime = 0;
 
   /// Initialize sound service and preload audio sources
   Future<void> init() async {
@@ -26,16 +28,20 @@ class SoundService {
 
       await _buttonPlayer.setPlayerMode(PlayerMode.lowLatency);
       await _keyPlayer.setPlayerMode(PlayerMode.lowLatency);
+      await _notificationPlayer.setPlayerMode(PlayerMode.lowLatency);
 
       await _buttonPlayer.setReleaseMode(ReleaseMode.stop);
       await _keyPlayer.setReleaseMode(ReleaseMode.stop);
+      await _notificationPlayer.setReleaseMode(ReleaseMode.stop);
 
       await _buttonPlayer.setSource(AssetSource('sounds/ios_click.wav'));
       await _keyPlayer.setSource(AssetSource('sounds/ios_keypress.wav'));
+      await _notificationPlayer.setSource(AssetSource('sounds/Notification_sound.mp3'));
 
-      // Clean, crisp acoustic volume
+      // Clean, crisp acoustic volumes
       await _buttonPlayer.setVolume(0.40);
       await _keyPlayer.setVolume(0.30);
+      await _notificationPlayer.setVolume(0.95);
 
       _isInitialized = true;
     } catch (_) {
@@ -48,6 +54,34 @@ class SoundService {
     soundEnabled = enabled;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefKeySoundEnabled, enabled);
+  }
+
+  /// Play notification mp3 sound whenever a push or notification arrives
+  static void playNotificationSound() {
+    if (!soundEnabled) return;
+
+    // Debounce within 300ms to avoid overlapping audio
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _instance._lastNotificationSoundTime < 300) {
+      return;
+    }
+    _instance._lastNotificationSoundTime = now;
+
+    // Trigger haptic notification feedback
+    HapticFeedback.heavyImpact();
+
+    if (_instance._isInitialized) {
+      _instance._playNotificationAsset();
+    } else {
+      _instance.init().then((_) => _instance._playNotificationAsset());
+    }
+  }
+
+  void _playNotificationAsset() async {
+    try {
+      await _notificationPlayer.stop();
+      await _notificationPlayer.play(AssetSource('sounds/Notification_sound.mp3'));
+    } catch (_) {}
   }
 
   /// Play light button click sound on button/interactive tap immediately with 0 delay
@@ -104,4 +138,3 @@ class SoundService {
     } catch (_) {}
   }
 }
-

@@ -58,6 +58,34 @@ describe('Customer APIs (/api/v1/customers)', () => {
       expect(updateRes.status).toBe(200);
       expect(updateRes.body.data.customer.name).toBe('Chandan K.');
     });
+
+    it('should award bonus coins when customer provides name, phone, gender, birthday, anniversary', async () => {
+      const res = await request(app)
+        .post('/api/v1/customers')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Vikas Sharma',
+          phone: '9898989898',
+          gender: 'Male',
+          birthday: '1995-05-15',
+          anniversary: '2020-11-20',
+          email: 'vikas@example.com',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.customer.bonusPointsAwarded).toBe(true);
+      expect(res.body.data.customer.bonusAwarded).toBeDefined();
+      expect(res.body.data.customer.bonusAwarded.amount).toBe(100);
+
+      // Verify CustomerLoyalty balance
+      const loyaltyRes = await request(app)
+        .get('/api/v1/loyalty/customer/9898989898')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(loyaltyRes.status).toBe(200);
+      expect(loyaltyRes.body.data.pointsBalance).toBe(100);
+      expect(loyaltyRes.body.data.bonusPointsAwarded).toBe(true);
+    });
   });
 
   describe('GET /api/v1/customers/suggest', () => {

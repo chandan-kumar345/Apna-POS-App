@@ -8,10 +8,13 @@ const rewardMilestoneSchema = new mongoose.Schema(
     visitCount: { type: Number, default: 0 },
     iconName: { type: String, default: 'cookie' },
     rewardText: { type: String, default: '' },
-    rewardType: { type: String, default: '₹ Discount' },
+    rewardType: { type: String, default: 'Redeem cash discount' },
     rewardValue: { type: Number, default: 100 },
     minimumPurchase: { type: Number, default: 100 },
     freeItemName: { type: String, default: '' },
+    discountScope: { type: String, default: 'Whole bill' },
+    minSpendRedemptionEnabled: { type: Boolean, default: false },
+    applicableProductIds: [{ type: String }],
   },
   { _id: false }
 );
@@ -75,6 +78,18 @@ const visitRewardConfigSchema = new mongoose.Schema(
     minimumPurchase: { type: Number, default: 100 },
     rewardStages: [rewardMilestoneSchema],
     termsNote: { type: String, default: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.' },
+    minSpendConditionEnabled: { type: Boolean, default: false },
+    minSpendCondition: { type: Number, default: 0 },
+    pointEarningGapEnabled: { type: Boolean, default: false },
+    pointEarningGap: { type: Number, default: 24 },
+    maxCashbackLimitEnabled: { type: Boolean, default: false },
+    maxCashbackLimit: { type: Number, default: 0 },
+    bonusPointsEnabled: { type: Boolean, default: true },
+    bonusPointsAmount: { type: Number, default: 100 },
+    bonusRequiredFields: {
+      type: [String],
+      default: ['name', 'phone', 'gender', 'birthday', 'anniversary'],
+    },
     isActive: { type: Boolean, default: true },
   },
   { _id: false }

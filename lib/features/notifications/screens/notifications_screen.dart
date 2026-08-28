@@ -5,9 +5,9 @@ import '../services/notification_service.dart';
 import '../services/notification_permission_helper.dart';
 import '../../orders/order_detail_sheet.dart';
 import '../../crm/screens/crm_leads_screen.dart';
-import '../../reports/reports_screen.dart';
 import '../../inventory/inventory_screen.dart';
 import '../../dashboard/main_layout.dart';
+import '../widgets/daily_business_summary_dialog.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -134,8 +134,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         break;
 
       case NotificationTarget.salesReport:
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ReportsScreen()),
+        DailyBusinessSummaryDialog.show(
+          context,
+          metadata: {
+            ...notif.metadata,
+            'entityId': notif.entityId,
+            'timestamp': notif.timestamp.toIso8601String(),
+          },
+          title: notif.title,
+          message: notif.message,
         );
         break;
 

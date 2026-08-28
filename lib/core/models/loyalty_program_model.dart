@@ -285,27 +285,33 @@ class RewardStageModel {
   final double minimumPurchase;
   final int expiryDays;
   final String freeItemName;
+  final String discountScope;
+  final bool minSpendRedemptionEnabled;
+  final List<String> applicableProductIds;
 
   RewardStageModel({
     required this.id,
     required this.visitCount,
-    this.rewardType = '₹ Discount',
+    this.rewardType = 'Redeem cash discount',
     required this.rewardValue,
     this.minimumPurchase = 100.0,
     this.expiryDays = 30,
     this.freeItemName = '',
+    this.discountScope = 'Whole bill',
+    this.minSpendRedemptionEnabled = false,
+    this.applicableProductIds = const [],
   });
 
   String get rewardDisplayTitle {
-    if (rewardType.contains('Free')) {
-      return freeItemName.isNotEmpty ? 'Free $freeItemName' : 'Free Item';
-    } else if (rewardType.contains('%')) {
+    if (rewardType.contains('Free') || rewardType.toLowerCase().contains('free item')) {
+      return freeItemName.isNotEmpty ? freeItemName : 'Free Item';
+    } else if (rewardType.contains('%') || rewardType.toLowerCase().contains('percent')) {
       final valStr = rewardValue.truncateToDouble() == rewardValue ? rewardValue.toInt().toString() : rewardValue.toStringAsFixed(1);
       return '$valStr% OFF';
     } else if (rewardType.contains('Cashback')) {
       final valStr = rewardValue.truncateToDouble() == rewardValue ? rewardValue.toInt().toString() : rewardValue.toStringAsFixed(2);
       return '₹$valStr Cashback';
-    } else if (rewardType.contains('Coupon')) {
+    } else if (rewardType.contains('Coupon') || rewardType.contains('Voucher')) {
       final valStr = rewardValue.truncateToDouble() == rewardValue ? rewardValue.toInt().toString() : rewardValue.toStringAsFixed(2);
       return '₹$valStr Voucher';
     } else {
@@ -315,11 +321,12 @@ class RewardStageModel {
   }
 
   String get previewSubtitle {
+    if (freeItemName.isNotEmpty) return freeItemName;
     final valStr = rewardValue.truncateToDouble() == rewardValue ? rewardValue.toInt().toString() : rewardValue.toStringAsFixed(2);
-    if (rewardType.contains('%')) {
+    if (rewardType.contains('%') || rewardType.toLowerCase().contains('percent')) {
       return 'Cheers ! $valStr% off on your purchase.';
-    } else if (rewardType.contains('Free')) {
-      return 'Cheers ! Enjoy a free $freeItemName.';
+    } else if (rewardType.contains('Free') || rewardType.toLowerCase().contains('free item')) {
+      return 'Cheers ! Enjoy a free item.';
     } else {
       return 'Cheers ! Rs $valStr off on your purchase.';
     }
@@ -333,17 +340,23 @@ class RewardStageModel {
         'minimumPurchase': minimumPurchase,
         'expiryDays': expiryDays,
         'freeItemName': freeItemName,
+        'discountScope': discountScope,
+        'minSpendRedemptionEnabled': minSpendRedemptionEnabled,
+        'applicableProductIds': applicableProductIds,
       };
 
   factory RewardStageModel.fromJson(Map<String, dynamic> json) {
     return RewardStageModel(
       id: json['id']?.toString() ?? '',
       visitCount: (json['visitCount'] as num?)?.toInt() ?? 1,
-      rewardType: json['rewardType']?.toString() ?? '₹ Discount',
+      rewardType: json['rewardType']?.toString() ?? 'Redeem cash discount',
       rewardValue: (json['rewardValue'] as num?)?.toDouble() ?? 100.0,
       minimumPurchase: (json['minimumPurchase'] as num?)?.toDouble() ?? 100.0,
       expiryDays: (json['expiryDays'] as num?)?.toInt() ?? 30,
       freeItemName: json['freeItemName']?.toString() ?? '',
+      discountScope: json['discountScope']?.toString() ?? 'Whole bill',
+      minSpendRedemptionEnabled: json['minSpendRedemptionEnabled'] == true,
+      applicableProductIds: (json['applicableProductIds'] as List?)?.map((e) => e.toString()).toList() ?? const [],
     );
   }
 
@@ -355,6 +368,9 @@ class RewardStageModel {
     double? minimumPurchase,
     int? expiryDays,
     String? freeItemName,
+    String? discountScope,
+    bool? minSpendRedemptionEnabled,
+    List<String>? applicableProductIds,
   }) {
     return RewardStageModel(
       id: id ?? this.id,
@@ -364,6 +380,9 @@ class RewardStageModel {
       minimumPurchase: minimumPurchase ?? this.minimumPurchase,
       expiryDays: expiryDays ?? this.expiryDays,
       freeItemName: freeItemName ?? this.freeItemName,
+      discountScope: discountScope ?? this.discountScope,
+      minSpendRedemptionEnabled: minSpendRedemptionEnabled ?? this.minSpendRedemptionEnabled,
+      applicableProductIds: applicableProductIds ?? this.applicableProductIds,
     );
   }
 }
@@ -382,6 +401,15 @@ class VisitRewardConfig {
   final String logoUrl;
   final String orderType;
   final String termsNote;
+  final bool minSpendConditionEnabled;
+  final double minSpendCondition;
+  final bool pointEarningGapEnabled;
+  final int pointEarningGap;
+  final bool maxCashbackLimitEnabled;
+  final double maxCashbackLimit;
+  final bool bonusPointsEnabled;
+  final double bonusPointsAmount;
+  final List<String> bonusRequiredFields;
 
   VisitRewardConfig({
     this.programName = 'THE ROYAL GARDENIA',
@@ -397,6 +425,15 @@ class VisitRewardConfig {
     this.logoUrl = '',
     this.orderType = 'Dine-In',
     this.termsNote = 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
+    this.minSpendConditionEnabled = false,
+    this.minSpendCondition = 0.0,
+    this.pointEarningGapEnabled = false,
+    this.pointEarningGap = 24,
+    this.maxCashbackLimitEnabled = false,
+    this.maxCashbackLimit = 0.0,
+    this.bonusPointsEnabled = true,
+    this.bonusPointsAmount = 100.0,
+    this.bonusRequiredFields = const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
   });
 
   Map<String, dynamic> toJson() => {
@@ -413,6 +450,15 @@ class VisitRewardConfig {
         'logoUrl': logoUrl,
         'orderType': orderType,
         'termsNote': termsNote,
+        'minSpendConditionEnabled': minSpendConditionEnabled,
+        'minSpendCondition': minSpendCondition,
+        'pointEarningGapEnabled': pointEarningGapEnabled,
+        'pointEarningGap': pointEarningGap,
+        'maxCashbackLimitEnabled': maxCashbackLimitEnabled,
+        'maxCashbackLimit': maxCashbackLimit,
+        'bonusPointsEnabled': bonusPointsEnabled,
+        'bonusPointsAmount': bonusPointsAmount,
+        'bonusRequiredFields': bonusRequiredFields,
       };
 
   factory VisitRewardConfig.fromJson(Map<String, dynamic> json) {
@@ -439,6 +485,16 @@ class VisitRewardConfig {
       orderType: json['orderType']?.toString() ?? 'Dine-In',
       termsNote: json['termsNote']?.toString() ??
           'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
+      minSpendConditionEnabled: json['minSpendConditionEnabled'] == true,
+      minSpendCondition: (json['minSpendCondition'] as num?)?.toDouble() ?? 0.0,
+      pointEarningGapEnabled: json['pointEarningGapEnabled'] == true,
+      pointEarningGap: (json['pointEarningGap'] as num?)?.toInt() ?? 24,
+      maxCashbackLimitEnabled: json['maxCashbackLimitEnabled'] == true,
+      maxCashbackLimit: (json['maxCashbackLimit'] as num?)?.toDouble() ?? 0.0,
+      bonusPointsEnabled: json['bonusPointsEnabled'] != false,
+      bonusPointsAmount: (json['bonusPointsAmount'] as num?)?.toDouble() ?? 100.0,
+      bonusRequiredFields: (json['bonusRequiredFields'] as List?)?.map((e) => e.toString()).toList() ??
+          const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
     );
   }
 
@@ -456,6 +512,15 @@ class VisitRewardConfig {
     String? logoUrl,
     String? orderType,
     String? termsNote,
+    bool? minSpendConditionEnabled,
+    double? minSpendCondition,
+    bool? pointEarningGapEnabled,
+    int? pointEarningGap,
+    bool? maxCashbackLimitEnabled,
+    double? maxCashbackLimit,
+    bool? bonusPointsEnabled,
+    double? bonusPointsAmount,
+    List<String>? bonusRequiredFields,
   }) {
     return VisitRewardConfig(
       programName: programName ?? this.programName,
@@ -471,6 +536,12 @@ class VisitRewardConfig {
       logoUrl: logoUrl ?? this.logoUrl,
       orderType: orderType ?? this.orderType,
       termsNote: termsNote ?? this.termsNote,
+      minSpendConditionEnabled: minSpendConditionEnabled ?? this.minSpendConditionEnabled,
+      minSpendCondition: minSpendCondition ?? this.minSpendCondition,
+      pointEarningGapEnabled: pointEarningGapEnabled ?? this.pointEarningGapEnabled,
+      pointEarningGap: pointEarningGap ?? this.pointEarningGap,
+      maxCashbackLimitEnabled: maxCashbackLimitEnabled ?? this.maxCashbackLimitEnabled,
+      maxCashbackLimit: maxCashbackLimit ?? this.maxCashbackLimit,
     );
   }
 }

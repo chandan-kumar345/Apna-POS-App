@@ -1,15 +1,23 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/services/sound_service.dart';
+import '../../../core/services/local_notification_service.dart';
 import '../models/notification_model.dart';
 
 class NotificationService extends ChangeNotifier {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
   NotificationService._internal() {
+    _loadCachedNotifications();
     _startPolling();
   }
+
+  static const String _cacheKey = 'apna_pos_notifications_cache_v2';
+  static const String _unreadCacheKey = 'apna_pos_notifications_unread_count_v2';
 
   final ApiClient _apiClient = ApiClient();
 
@@ -32,11 +40,47 @@ class NotificationService extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   String get activeFilter => _activeFilter;
 
+  /// Load cached notifications instantly on startup for zero-latency UI rendering
+  Future<void> _loadCachedNotifications() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final rawJson = prefs.getString(_cacheKey);
+      _unreadCount = prefs.getInt(_unreadCacheKey) ?? 0;
+
+      if (rawJson != null && rawJson.isNotEmpty) {
+        final List decoded = jsonDecode(rawJson);
+        final cachedItems = decoded
+            .whereType<Map<String, dynamic>>()
+            .map((item) => NotificationItem.fromJson(item))
+            .toList();
+
+        if (cachedItems.isNotEmpty && _notifications.isEmpty) {
+          _notifications.addAll(cachedItems);
+          _unreadCount = _notifications.where((n) => !n.isRead).length;
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      debugPrint('[NotificationService] Error loading cached notifications: $e');
+    }
+  }
+
+  /// Persist current notifications list into local storage asynchronously
+  Future<void> _persistNotificationsToCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final listJson = jsonEncode(_notifications.take(50).map((n) => n.toJson()).toList());
+      await prefs.setString(_cacheKey, listJson);
+      await prefs.setInt(_unreadCacheKey, _unreadCount);
+    } catch (_) {}
+  }
+
   void _startPolling() {
     _pollingTimer?.cancel();
-    // Poll unread count every 30 seconds
-    _pollingTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // Poll unread count and new notifications every 25 seconds
+    _pollingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
       fetchUnreadCount();
+      fetchNotifications(refresh: false, silent: true);
     });
   }
 
@@ -52,6 +96,7 @@ class NotificationService extends ChangeNotifier {
     int limit = 20,
     String? filterType,
     bool refresh = false,
+    bool silent = false,
   }) async {
     if (_isLoading) return;
 
@@ -59,12 +104,15 @@ class NotificationService extends ChangeNotifier {
       _activeFilter = filterType;
     }
 
-    _isLoading = true;
+    if (!silent && _notifications.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
+
     _errorMessage = null;
     if (page == 1 || refresh) {
       _currentPage = 1;
     }
-    notifyListeners();
 
     try {
       final queryParams = <String, String>{
@@ -85,9 +133,40 @@ class NotificationService extends ChangeNotifier {
       final notifsList = (data['notifications'] as List?) ?? [];
       final pagination = (data['pagination'] as Map<String, dynamic>?) ?? {};
 
-      final items = notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
+      final items =
+          notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
 
-      if (page == 1 || refresh) {
+      // Check for newly arrived unread notifications to trigger push & sound
+      if (_notifications.isNotEmpty && items.isNotEmpty) {
+        final existingIds = _notifications.map((n) => n.id).toSet();
+        for (final newItem in items) {
+          if (!existingIds.contains(newItem.id) && !newItem.isRead) {
+            if (newItem.type == NotificationType.dailySalesSummary) {
+              LocalNotificationService().deliverDailyBusinessSummaryPushNotification(
+                totalSales: (newItem.metadata['totalSales'] as num?)?.toDouble() ?? 0.0,
+                orderCount: (newItem.metadata['ordersCount'] as num?)?.toInt() ?? 0,
+                revenue: (newItem.metadata['revenue'] as num?)?.toDouble() ?? 0.0,
+                dateStr: newItem.metadata['date']?.toString(),
+                formattedDate: newItem.metadata['formattedDate']?.toString(),
+                orders: (newItem.metadata['orders'] as List?) ?? [],
+              );
+            } else if (newItem.type != NotificationType.newOrder) {
+              LocalNotificationService().showPushNotification(
+                title: newItem.title,
+                body: newItem.message,
+                type: newItem.type,
+                entityType: newItem.entityType,
+                entityId: newItem.entityId,
+                metadata: newItem.metadata,
+                playSound: true,
+              );
+            }
+          }
+        }
+      }
+
+      if (page == 1 || refresh || silent) {
+        // Merge seamlessly without flashing
         _notifications.clear();
         _notifications.addAll(items);
       } else {
@@ -96,11 +175,16 @@ class NotificationService extends ChangeNotifier {
 
       _currentPage = (pagination['page'] as int?) ?? page;
       _totalPages = (pagination['totalPages'] as int?) ?? 1;
-      _unreadCount = (data['unreadCount'] as int?) ?? _notifications.where((n) => !n.isRead).length;
+      _unreadCount =
+          (data['unreadCount'] as int?) ?? _notifications.where((n) => !n.isRead).length;
       _errorMessage = null;
+
+      _persistNotificationsToCache();
     } catch (e) {
       debugPrint('[NotificationService] Error fetching notifications: $e');
-      _errorMessage = 'Unable to load notifications. Please check your connection.';
+      if (_notifications.isEmpty) {
+        _errorMessage = 'Unable to load notifications. Please check your connection.';
+      }
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -134,12 +218,15 @@ class NotificationService extends ChangeNotifier {
       final notifsList = (data['notifications'] as List?) ?? [];
       final pagination = (data['pagination'] as Map<String, dynamic>?) ?? {};
 
-      final items = notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
+      final items =
+          notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
       _notifications.addAll(items);
 
       _currentPage = (pagination['page'] as int?) ?? nextPage;
       _totalPages = (pagination['totalPages'] as int?) ?? _totalPages;
       _unreadCount = (data['unreadCount'] as int?) ?? _unreadCount;
+
+      _persistNotificationsToCache();
     } catch (e) {
       debugPrint('[NotificationService] Error loading more notifications: $e');
     } finally {
@@ -157,10 +244,9 @@ class NotificationService extends ChangeNotifier {
       if (_unreadCount != count) {
         _unreadCount = count;
         notifyListeners();
+        _persistNotificationsToCache();
       }
-    } catch (_) {
-      // Quietly ignore network polling errors
-    }
+    } catch (_) {}
   }
 
   /// Mark single notification as read (Optimistic UI + API Sync)
@@ -170,6 +256,7 @@ class NotificationService extends ChangeNotifier {
       _notifications[index].isRead = true;
       _unreadCount = (_unreadCount - 1).clamp(0, 9999);
       notifyListeners();
+      _persistNotificationsToCache();
 
       try {
         await _apiClient.patch(ApiEndpoints.notificationRead(id));
@@ -186,6 +273,7 @@ class NotificationService extends ChangeNotifier {
     }
     _unreadCount = 0;
     notifyListeners();
+    _persistNotificationsToCache();
 
     try {
       await _apiClient.patch(ApiEndpoints.notificationsReadAll);
@@ -202,6 +290,7 @@ class NotificationService extends ChangeNotifier {
     }
     _notifications.removeWhere((n) => n.id == id);
     notifyListeners();
+    _persistNotificationsToCache();
 
     try {
       await _apiClient.delete(ApiEndpoints.notificationDelete(id));
@@ -215,6 +304,7 @@ class NotificationService extends ChangeNotifier {
     _notifications.clear();
     _unreadCount = 0;
     notifyListeners();
+    _persistNotificationsToCache();
 
     try {
       await _apiClient.delete(ApiEndpoints.notificationsClearAll);
@@ -252,7 +342,9 @@ class NotificationService extends ChangeNotifier {
       title: title,
       message: message,
       type: type,
-      rawType: type == NotificationType.welcome ? 'welcome' : 'system',
+      rawType: type == NotificationType.welcome
+          ? 'welcome'
+          : (type == NotificationType.dailySalesSummary ? 'daily_sales_summary' : 'system'),
       timestamp: DateTime.now(),
       isRead: false,
       entityType: entityType ?? 'system',
@@ -261,12 +353,17 @@ class NotificationService extends ChangeNotifier {
     );
 
     // Prevent duplicate welcomes
-    if (type == NotificationType.welcome && _notifications.any((n) => n.type == NotificationType.welcome)) {
+    if (type == NotificationType.welcome &&
+        _notifications.any((n) => n.type == NotificationType.welcome)) {
       return;
     }
 
     _notifications.insert(0, newItem);
     _unreadCount++;
     notifyListeners();
+    _persistNotificationsToCache();
+
+    // Play sound feedback
+    SoundService.playNotificationSound();
   }
 }

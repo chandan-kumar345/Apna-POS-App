@@ -250,4 +250,57 @@ describe('End-to-End Loyalty Program & OTP Redemption Flow', () => {
     expect(redeemTx.messageHeader).toBe('APNA POS');
     expect(redeemTx.message).toContain('₹100 discount applied');
   });
+
+  test('6. Minimum Spend Condition, Point Earning Gap, and Max Cashback Limit Enforcement', async () => {
+    // Configure Points Conditions
+    await request(app)
+      .post('/api/v1/loyalty/config')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        programName: 'THE ROYAL GARDENIA',
+        minSpendConditionEnabled: true,
+        minSpendCondition: 500,
+        pointEarningGapEnabled: true,
+        pointEarningGap: 24,
+        maxCashbackLimitEnabled: true,
+        maxCashbackLimit: 50,
+        pointsPerVisit: 100,
+      });
+
+    // Case 1: Order total ₹300 is below min spend condition of ₹500
+    const failOrder = {
+      id: new mongoose.Types.ObjectId().toString(),
+      orderNumber: 'ORD-LOW-01',
+      customerPhone: '9123456780',
+      totalAmount: 300,
+      orderType: 'Dine-In',
+    };
+    const res1 = await loyaltyService.awardPointsForCompletedOrder(businessId, failOrder);
+    expect(res1.earned).toBe(false);
+    expect(res1.reason).toContain('below minimum spend condition');
+
+    // Case 2: Order total ₹600 qualifies, points capped at max limit of 50 (instead of 100)
+    const successOrder = {
+      id: new mongoose.Types.ObjectId().toString(),
+      orderNumber: 'ORD-HIGH-01',
+      customerPhone: '9123456780',
+      totalAmount: 600,
+      orderType: 'Dine-In',
+    };
+    const res2 = await loyaltyService.awardPointsForCompletedOrder(businessId, successOrder);
+    expect(res2.earned).toBe(true);
+    expect(res2.pointsAwarded).toBe(50); // Capped at 50
+
+    // Case 3: Immediate next order triggers 24h point earning gap cooldown
+    const secondOrder = {
+      id: new mongoose.Types.ObjectId().toString(),
+      orderNumber: 'ORD-HIGH-02',
+      customerPhone: '9123456780',
+      totalAmount: 700,
+      orderType: 'Dine-In',
+    };
+    const res3 = await loyaltyService.awardPointsForCompletedOrder(businessId, secondOrder);
+    expect(res3.earned).toBe(false);
+    expect(res3.reason).toContain('Point earning gap active');
+  });
 });

@@ -71,6 +71,14 @@ const customerLoyaltySchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    bonusPointsAwarded: {
+      type: Boolean,
+      default: false,
+    },
+    bonusAwardedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

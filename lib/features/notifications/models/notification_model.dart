@@ -115,6 +115,23 @@ class NotificationItem {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'userId': userId,
+        'businessId': businessId,
+        'title': title,
+        'message': message,
+        'type': rawType,
+        'rawType': rawType,
+        'createdAt': timestamp.toIso8601String(),
+        'timestamp': timestamp.toIso8601String(),
+        'isRead': isRead,
+        'readAt': readAt?.toIso8601String(),
+        'entityType': entityType,
+        'entityId': entityId,
+        'metadata': metadata,
+      };
+
   NotificationTarget get target {
     switch (type) {
       case NotificationType.newOrder:

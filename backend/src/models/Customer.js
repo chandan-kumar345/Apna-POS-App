@@ -30,6 +30,23 @@ const customerSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    gender: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    birthday: {
+      type: Date,
+      default: null,
+    },
+    anniversary: {
+      type: Date,
+      default: null,
+    },
+    bonusPointsAwarded: {
+      type: Boolean,
+      default: false,
+    },
     totalOrders: {
       type: Number,
       default: 0,

@@ -198,11 +198,14 @@ class LoyaltyService {
       value: Number(s.visitCount || s.value || 300),
       visitCount: Number(s.visitCount || s.value || 300),
       iconName: s.iconName || 'cookie',
-      rewardType: s.rewardType || '₹ Discount',
+      rewardType: s.rewardType || 'Redeem cash discount',
       rewardValue: Number(s.rewardValue || 100),
-      minimumPurchase: Number(s.minimumPurchase || 100),
+      minimumPurchase: Number(s.minimumPurchase || 0),
       freeItemName: s.freeItemName || `Cheers ! Rs ${s.rewardValue || 100} off on your purchase.`,
       rewardText: s.freeItemName || `Cheers ! Rs ${s.rewardValue || 100} off on your purchase.`,
+      discountScope: s.discountScope || 'Whole bill',
+      minSpendRedemptionEnabled: s.minSpendRedemptionEnabled === true,
+      applicableProductIds: Array.isArray(s.applicableProductIds) ? s.applicableProductIds : [],
     }));
 
     const cleanConfig = {
@@ -220,6 +223,17 @@ class LoyaltyService {
       minimumPurchase: Number(configData.minimumPurchase || 100),
       rewardStages: formattedStages,
       termsNote: configData.termsNote || 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
+      minSpendConditionEnabled: configData.minSpendConditionEnabled === true,
+      minSpendCondition: Number(configData.minSpendCondition || 0),
+      pointEarningGapEnabled: configData.pointEarningGapEnabled === true,
+      pointEarningGap: Number(configData.pointEarningGap || 24),
+      maxCashbackLimitEnabled: configData.maxCashbackLimitEnabled === true,
+      maxCashbackLimit: Number(configData.maxCashbackLimit || 0),
+      bonusPointsEnabled: configData.bonusPointsEnabled !== false,
+      bonusPointsAmount: Number(configData.bonusPointsAmount || 100),
+      bonusRequiredFields: Array.isArray(configData.bonusRequiredFields)
+        ? configData.bonusRequiredFields
+        : ['name', 'phone', 'gender', 'birthday', 'anniversary'],
       isActive: configData.isActive !== false,
     };
 
@@ -319,6 +333,7 @@ class LoyaltyService {
       totalVisits: customerLoyalty.totalVisits,
       totalPointsEarned: customerLoyalty.totalPointsEarned,
       totalPointsRedeemed: customerLoyalty.totalPointsRedeemed,
+      bonusPointsAwarded: customerLoyalty.bonusPointsAwarded === true,
       pointsName: visitConfig?.pointsName || 'Cookie',
       programName: visitConfig?.programName || 'THE ROYAL GARDENIA',
       unlockedStages: unlockedStageIds,
@@ -352,11 +367,20 @@ class LoyaltyService {
     }
 
     const orderTotal = Number(order.totalAmount || order.subtotal || 0);
-    const minPurchase = Number(visitConfig.minimumPurchase || 0);
-    if (minPurchase > 0 && orderTotal < minPurchase) {
-      return { earned: false, reason: `Order total below minimum purchase of ₹${minPurchase}` };
+
+    // 1. Check Minimum Spend Condition if enabled
+    if (visitConfig.minSpendConditionEnabled && Number(visitConfig.minSpendCondition) > 0) {
+      if (orderTotal < Number(visitConfig.minSpendCondition)) {
+        return { earned: false, reason: `Order total ₹${orderTotal} is below minimum spend condition of ₹${visitConfig.minSpendCondition}` };
+      }
+    } else {
+      const minPurchase = Number(visitConfig.minimumPurchase || 0);
+      if (minPurchase > 0 && orderTotal < minPurchase) {
+        return { earned: false, reason: `Order total below minimum purchase of ₹${minPurchase}` };
+      }
     }
 
+    // 2. Check Order Type eligibility
     if (visitConfig.orderType) {
       const allowedTypes = visitConfig.orderType.toLowerCase().split(',').map((t) => t.trim().replace('-', ''));
       const currentType = (order.orderType || 'dineIn').toLowerCase().replace('-', '').replace('_', '');
@@ -366,11 +390,31 @@ class LoyaltyService {
       }
     }
 
-    const pointsPerVisit = Number(visitConfig.pointsPerVisit || 10);
+    let customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
+
+    // 3. Check Point Earning Gap (Cooldown period) if enabled
+    if (visitConfig.pointEarningGapEnabled && Number(visitConfig.pointEarningGap) > 0) {
+      if (customerLoyalty && customerLoyalty.lastEarningAt) {
+        const hoursSinceLast = (Date.now() - new Date(customerLoyalty.lastEarningAt).getTime()) / (1000 * 60 * 60);
+        if (hoursSinceLast < Number(visitConfig.pointEarningGap)) {
+          const remainingHours = Math.ceil(Number(visitConfig.pointEarningGap) - hoursSinceLast);
+          return { earned: false, reason: `Point earning gap active. Customer can earn points in ${remainingHours}h` };
+        }
+      }
+    }
+
+    let pointsPerVisit = Number(visitConfig.pointsPerVisit || 10);
+
+    // 4. Check Maximum Limit if enabled
+    if (visitConfig.maxCashbackLimitEnabled && Number(visitConfig.maxCashbackLimit) > 0) {
+      if (pointsPerVisit > Number(visitConfig.maxCashbackLimit)) {
+        pointsPerVisit = Number(visitConfig.maxCashbackLimit);
+      }
+    }
+
     const pointsName = visitConfig.pointsName || 'Cookie';
     const programName = visitConfig.programName || 'THE ROYAL GARDENIA';
 
-    let customerLoyalty = await CustomerLoyalty.findOne({ businessId, customerPhone: cleanPhone });
     if (!customerLoyalty) {
       customerLoyalty = await CustomerLoyalty.create({
         businessId,

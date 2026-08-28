@@ -1,8 +1,8 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../features/notifications/services/notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
+import 'sound_service.dart';
 
 class LocalNotificationService {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
@@ -21,9 +21,9 @@ class LocalNotificationService {
           AndroidInitializationSettings('@mipmap/ic_launcher');
 
       const DarwinInitializationSettings iosSettings = DarwinInitializationSettings(
-        requestAlertPermission: false,
-        requestBadgePermission: false,
-        requestSoundPermission: false,
+        requestAlertPermission: true,
+        requestBadgePermission: true,
+        requestSoundPermission: true,
       );
 
       const InitializationSettings initSettings = InitializationSettings(
@@ -55,26 +55,34 @@ class LocalNotificationService {
     String? entityType,
     String? entityId,
     Map<String, dynamic> metadata = const {},
+    bool playSound = true,
   }) async {
     if (kIsWeb) return;
     if (!_isInitialized) await init();
 
+    // 1. Play immediate in-app audio feedback from assets
+    if (playSound) {
+      SoundService.playNotificationSound();
+    }
+
     try {
       const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'apna_pos_general',
-        'General Alerts',
-        channelDescription: 'Real-time notifications for orders, leads, and business updates',
+        'apna_pos_general_v2',
+        'General Alerts & Orders',
+        channelDescription: 'Real-time notifications for orders, leads, and daily summaries',
         importance: Importance.max,
         priority: Priority.high,
         showWhen: true,
         enableVibration: true,
         playSound: true,
+        sound: RawResourceAndroidNotificationSound('notification_sound'),
       );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
         presentSound: true,
+        sound: 'Notification_sound.mp3',
       );
 
       const NotificationDetails platformDetails = NotificationDetails(
@@ -83,7 +91,7 @@ class LocalNotificationService {
       );
 
       await _notificationsPlugin.show(
-        id,
+        id == 0 ? DateTime.now().millisecondsSinceEpoch.remainder(100000) : id,
         title,
         body,
         platformDetails,
@@ -95,6 +103,61 @@ class LocalNotificationService {
     }
   }
 
+  /// Deliver daily business summary as a prominent system push notification & register in Notification Center
+  Future<void> deliverDailyBusinessSummaryPushNotification({
+    required double totalSales,
+    required int orderCount,
+    required double revenue,
+    String? dateStr,
+    String? formattedDate,
+    List<dynamic> orders = const [],
+  }) async {
+    try {
+      final dateLabel = (formattedDate != null && formattedDate.trim().isNotEmpty)
+          ? formattedDate.trim()
+          : (dateStr ?? 'Today');
+
+      final title = 'Your Daily Business Summary 📊';
+      final body = orderCount > 0
+          ? 'Here’s your business summary for $dateLabel: Total Sales ₹${totalSales.toStringAsFixed(0)} from $orderCount orders. Tap to view orders breakdown.'
+          : 'Your daily summary for $dateLabel is ready. No orders recorded today. Tap to view report.';
+
+      final Map<String, dynamic> metadata = {
+        'date': dateStr ?? DateTime.now().toIso8601String().split('T')[0],
+        'formattedDate': dateLabel,
+        'totalSales': totalSales,
+        'revenue': revenue,
+        'ordersCount': orderCount,
+        'orders': orders,
+      };
+
+      // 1. Show device native push notification in system tray with sound
+      await showPushNotification(
+        id: 9991,
+        title: title,
+        body: body,
+        payload: 'daily_sales_summary',
+        type: NotificationType.dailySalesSummary,
+        entityType: 'sales_report',
+        entityId: dateStr,
+        metadata: metadata,
+        playSound: true,
+      );
+
+      // 2. Add directly to Notification Center list
+      NotificationService().addLocalNotification(
+        title: title,
+        message: body,
+        type: NotificationType.dailySalesSummary,
+        entityType: 'sales_report',
+        entityId: dateStr,
+        metadata: metadata,
+      );
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error delivering daily summary push: $e');
+    }
+  }
+
   /// Deliver welcome push notification when user logs in or creates an account
   Future<void> deliverWelcomeNotificationOnLogin({String? userName}) async {
     try {
@@ -103,21 +166,20 @@ class LocalNotificationService {
           : 'there';
 
       final title = 'Welcome to Apna POS 🎉';
-      final body = 'Hi $greetingName, welcome! Your smart POS partner is ready to manage your sales, orders & business operations.';
+      final body =
+          'Hi $greetingName, welcome! Your smart POS partner is ready to manage your sales, orders & business operations.';
 
-      // Slight delay so the login transition completes smoothly
       await Future.delayed(const Duration(milliseconds: 600));
 
-      // 1. Show native device push notification in system tray
       await showPushNotification(
         id: 1002,
         title: title,
         body: body,
         payload: 'welcome',
         type: NotificationType.welcome,
+        playSound: true,
       );
 
-      // 2. Add directly to in-app Notification Center so it appears in the Notification screen
       NotificationService().addLocalNotification(
         title: title,
         message: body,
@@ -125,7 +187,6 @@ class LocalNotificationService {
         entityType: 'user',
       );
 
-      // 3. Sync with backend notification center
       NotificationService().fetchNotifications(refresh: true);
       NotificationService().fetchUnreadCount();
     } catch (e) {

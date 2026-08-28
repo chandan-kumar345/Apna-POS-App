@@ -1,4 +1,6 @@
 const Customer = require('../models/Customer');
+const CustomerLoyalty = require('../models/CustomerLoyalty');
+const LoyaltyProgram = require('../models/LoyaltyProgram');
 const ApiError = require('../utils/ApiError');
 
 class CustomerService {
@@ -41,7 +43,7 @@ class CustomerService {
     const customers = await Customer.find(query)
       .sort({ lastVisit: -1 })
       .limit(10)
-      .select('name phone email address totalOrders totalSpent lastVisit');
+      .select('name phone email address totalOrders totalSpent lastVisit gender birthday anniversary bonusPointsAwarded');
 
     return customers;
   }
@@ -49,21 +51,91 @@ class CustomerService {
   async createOrUpdateCustomer(businessId, customerData) {
     const phone = (customerData.phone || '').toString().trim();
     const name = (customerData.name || '').toString().trim();
-    const customer = await Customer.findOneAndUpdate(
-      { businessId, phone },
-      {
-        $set: {
-          name,
-          email: customerData.email ? customerData.email.trim() : '',
-          address: customerData.address || '',
-          lastVisit: new Date(),
-        },
-        $setOnInsert: { businessId, phone, firstVisit: new Date() },
-      },
-      { upsert: true, new: true }
+    const gender = (customerData.gender || '').toString().trim();
+    const email = customerData.email ? customerData.email.trim() : '';
+    const address = customerData.address || '';
+    const birthday = customerData.birthday || customerData.dob || null;
+    const anniversary = customerData.anniversary || null;
+
+    let customer = await Customer.findOne({ businessId, phone });
+
+    if (!customer) {
+      customer = new Customer({
+        businessId,
+        phone,
+        name,
+        email,
+        address,
+        gender,
+        birthday,
+        anniversary,
+        firstVisit: new Date(),
+        lastVisit: new Date(),
+      });
+    } else {
+      if (name) customer.name = name;
+      if (email) customer.email = email;
+      if (address) customer.address = address;
+      if (gender) customer.gender = gender;
+      if (birthday) customer.birthday = birthday;
+      if (anniversary) customer.anniversary = anniversary;
+      customer.lastVisit = new Date();
+    }
+
+    // Check if customer has provided all 5 details: name, phone, gender, birthday, anniversary
+    const hasAllBonusDetails = Boolean(
+      customer.name &&
+      customer.phone &&
+      customer.gender &&
+      customer.birthday &&
+      customer.anniversary
     );
 
-    return customer;
+    let bonusAwarded = false;
+    let awardedAmount = 0;
+
+    if (hasAllBonusDetails && !customer.bonusPointsAwarded) {
+      try {
+        const loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
+        const isBonusEnabled = loyaltyDoc?.visitConfig?.bonusPointsEnabled !== false;
+        const bonusAmount = loyaltyDoc?.visitConfig?.bonusPointsAmount || 100;
+
+        if (isBonusEnabled && bonusAmount > 0) {
+          await CustomerLoyalty.findOneAndUpdate(
+            { businessId, customerPhone: phone },
+            {
+              $inc: { pointsBalance: bonusAmount, totalPointsEarned: bonusAmount },
+              $set: {
+                customerName: customer.name,
+                customerId: customer._id,
+                bonusPointsAwarded: true,
+                bonusAwardedAt: new Date(),
+              },
+              $setOnInsert: { businessId, customerPhone: phone },
+            },
+            { upsert: true, new: true }
+          );
+
+          customer.bonusPointsAwarded = true;
+          bonusAwarded = true;
+          awardedAmount = bonusAmount;
+        }
+      } catch (err) {
+        console.error('[CustomerService] Error awarding profile bonus points:', err);
+      }
+    }
+
+    await customer.save();
+
+    const result = customer.toJSON();
+    if (bonusAwarded) {
+      result.bonusAwarded = {
+        amount: awardedAmount,
+        message: `🎉 ${awardedAmount} bonus points awarded for complete profile!`,
+      };
+    }
+
+    return result;
   }
 
   async getCustomerByPhone(businessId, phone) {

@@ -521,6 +521,7 @@ class OrderService {
           customerName: order.customerName || '',
           tableNumber: order.tableNumber || '',
         },
+        sendPush: false,
         idempotencyKey: `new_order_${order._id.toString()}`,
       });
     } catch (err) {

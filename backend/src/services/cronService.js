@@ -54,16 +54,28 @@ class CronService {
         ],
       };
 
-      const orders = await Order.find(matchQuery).lean();
+      const orders = await Order.find(matchQuery).sort({ createdAt: -1 }).lean();
       const orderCount = orders.length;
 
       let totalSales = 0;
       let revenue = 0;
+      const orderBreakdown = [];
 
       for (const ord of orders) {
         const amt = Number(ord.totalAmount) || 0;
         totalSales += amt;
         revenue += amt;
+        orderBreakdown.push({
+          id: ord._id ? ord._id.toString() : ord.id,
+          orderNumber: ord.orderNumber || 'POS',
+          totalAmount: amt,
+          orderType: ord.orderType || 'Dine-In',
+          paymentMethod: ord.paymentMethod || 'Cash',
+          createdAt: ord.createdAt,
+          customerName: ord.customerName || '',
+          customerPhone: ord.customerPhone || '',
+          itemsCount: Array.isArray(ord.items) ? ord.items.length : 1,
+        });
       }
 
       totalSales = Math.round(totalSales * 100) / 100;
@@ -92,9 +104,25 @@ class CronService {
           revenue,
           ordersCount: orderCount,
           timezone,
+          orders: orderBreakdown,
         },
         idempotencyKey,
       });
+
+      // Dispatch push notification
+      const pushNotificationService = require('./pushNotificationService');
+      pushNotificationService.sendPushNotification({
+        userId: business.ownerId,
+        title: 'Your Daily Business Summary 📊',
+        message,
+        data: {
+          type: 'daily_sales_summary',
+          date: dateStr,
+          totalSales,
+          ordersCount: orderCount,
+          orders: orderBreakdown,
+        },
+      }).catch(() => {});
 
       return notification;
     } catch (error) {

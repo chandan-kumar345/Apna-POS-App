@@ -403,13 +403,20 @@ class ReportService {
   SalesReportData _buildLocalSalesReport({String? period, String? startDate, String? endDate}) {
     DateTime? start;
     DateTime? end;
-    if (startDate != null && startDate.isNotEmpty) start = DateTime.tryParse(startDate);
-    if (endDate != null && endDate.isNotEmpty) end = DateTime.tryParse(endDate);
+    if (startDate != null && startDate.isNotEmpty) {
+      final s = DateTime.tryParse(startDate);
+      if (s != null) start = DateTime(s.year, s.month, s.day, 0, 0, 0, 0);
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      final e = DateTime.tryParse(endDate);
+      if (e != null) end = DateTime(e.year, e.month, e.day, 23, 59, 59, 999);
+    }
 
     final settled = _db.orders.where((o) {
       if (o.status != OrderStatus.completed && !o.isPaid) return false;
-      if (start != null && o.createdDateTime.isBefore(start)) return false;
-      if (end != null && o.createdDateTime.isAfter(end)) return false;
+      final oDate = o.createdDateTime.toLocal();
+      if (start != null && oDate.isBefore(start)) return false;
+      if (end != null && oDate.isAfter(end)) return false;
       return true;
     }).toList();
 
