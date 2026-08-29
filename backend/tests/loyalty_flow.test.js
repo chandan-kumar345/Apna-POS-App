@@ -99,8 +99,12 @@ describe('End-to-End Loyalty Program & OTP Redemption Flow', () => {
   });
 
   test('2. Award Points on Completed Order with APNA POS Message', async () => {
-    // Initialize program config
-    await loyaltyService.getLoyaltyPrograms(businessId);
+    // Activate visit made program
+    await loyaltyService.saveVisitConfig(businessId, {
+      programName: 'THE ROYAL GARDENIA',
+      status: 'active',
+      isActive: true,
+    });
 
     const mockOrder = {
       _id: new mongoose.Types.ObjectId(),
@@ -302,5 +306,64 @@ describe('End-to-End Loyalty Program & OTP Redemption Flow', () => {
     const res3 = await loyaltyService.awardPointsForCompletedOrder(businessId, secondOrder);
     expect(res3.earned).toBe(false);
     expect(res3.reason).toContain('Point earning gap active');
+  });
+
+  test('7. Dynamic Loyalty Performance API & Single Active Program Enforcement', async () => {
+    // 1. Activate program and award points to generate dynamic transaction data
+    await loyaltyService.saveVisitConfig(businessId, {
+      programName: 'THE ROYAL GARDENIA',
+      status: 'active',
+      isActive: true,
+    });
+
+    const orderData = {
+      id: new mongoose.Types.ObjectId().toString(),
+      orderNumber: 'ORD-PERF-01',
+      customerPhone: testPhone,
+      totalAmount: 1200,
+      orderType: 'Dine-In',
+    };
+    await loyaltyService.awardPointsForCompletedOrder(businessId, orderData);
+
+    // 2. Fetch Performance
+    const perfRes = await request(app)
+      .get('/api/v1/loyalty/performance')
+      .set('Authorization', `Bearer ${authToken}`);
+
+    expect(perfRes.status).toBe(200);
+    expect(perfRes.body.success).toBe(true);
+    const data = perfRes.body.data;
+
+    // Check status section
+    expect(data.statusSection).toBeDefined();
+    expect(data.statusSection.activeCount).toBeGreaterThanOrEqual(1);
+
+    // Check KPI metrics
+    expect(data.kpiMetricsSection).toBeDefined();
+    expect(data.kpiMetricsSection.pointsIssued).toBeGreaterThanOrEqual(10);
+    expect(typeof data.kpiMetricsSection.redemptionRate).toBe('string');
+
+    // Check Recent Activity has unmasked phone number
+    if (data.recentActivitySection.activities.length > 0) {
+      const recentAct = data.recentActivitySection.activities[0];
+      expect(recentAct.customerPhone).toBe(testPhone);
+      expect(recentAct.customerPhone).not.toContain('XXXX');
+    }
+
+    // 3. Enforce Single Active Program Rule
+    // Activate a new program (e.g. cashback)
+    const updateRes = await loyaltyService.updateLoyaltyProgram(businessId, {
+      id: 'prog_cashback',
+      type: 'cashback',
+      title: '10% Cashback Program',
+      isActive: true,
+      status: 'active',
+    });
+
+    // The visit_made program should now be inactive
+    const updatedVisitMade = updateRes.programs.find((p) => p.id === 'prog_visit_made' || p.type === 'visit_made');
+    if (updatedVisitMade) {
+      expect(updatedVisitMade.isActive).toBe(false);
+    }
   });
 });

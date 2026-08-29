@@ -73,7 +73,8 @@ class LoyaltyService {
         minimumPurchase: 100,
         rewardStages: stages,
         termsNote: 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
-        isActive: true,
+        status: 'inactive',
+        isActive: false,
       },
       programs: [
         {
@@ -84,7 +85,8 @@ class LoyaltyService {
           earningRule: '1 Visit Made = 10 Cookie',
           rewardCurrency: 'Cookie',
           gradientColors: ['#4A082F', '#8E1449'],
-          isActive: true,
+          status: 'inactive',
+          isActive: false,
           orderIndex: 0,
           milestones: stages.map((s) => ({
             id: s.id,
@@ -107,7 +109,8 @@ class LoyaltyService {
           earningRule: '₹75 Amount Spent = 1 Cookie',
           rewardCurrency: 'Cookie',
           gradientColors: ['#6B0505', '#C81A1A'],
-          isActive: true,
+          status: 'inactive',
+          isActive: false,
           orderIndex: 1,
           milestones: [
             { id: 'm4', label: '300 Cookie', value: 300, visitCount: 300, iconName: 'cookie', rewardText: '300 Cookie' },
@@ -123,7 +126,8 @@ class LoyaltyService {
           earningRule: '10% Cashback on sales above ₹500',
           rewardCurrency: '%',
           gradientColors: ['#0A425C', '#1E3A8A'],
-          isActive: true,
+          status: 'inactive',
+          isActive: false,
           orderIndex: 2,
           cashbackDetails: {
             percentage: 10,
@@ -171,7 +175,7 @@ class LoyaltyService {
       companyName: loyaltyDoc.companyName || dynamicCompanyName,
       companyLogo: loyaltyDoc.companyLogo || dynamicCompanyLogo,
       visitConfig: loyaltyDoc.visitConfig || this.getDefaultPrograms(dynamicCompanyName).visitConfig,
-      programs: loyaltyDoc.programs.filter((p) => p.isActive !== false),
+      programs: loyaltyDoc.programs || [],
     };
   }
 
@@ -208,6 +212,9 @@ class LoyaltyService {
       applicableProductIds: Array.isArray(s.applicableProductIds) ? s.applicableProductIds : [],
     }));
 
+    const isDraft = configData.status === 'draft' || configData.isDraft === true;
+    const isProgramActive = !isDraft && configData.isActive !== false && configData.status !== 'inactive';
+
     const cleanConfig = {
       programName: configData.programName || 'THE ROYAL GARDENIA',
       slogan: configData.slogan || 'Get rewarded on every purchase',
@@ -234,23 +241,35 @@ class LoyaltyService {
       bonusRequiredFields: Array.isArray(configData.bonusRequiredFields)
         ? configData.bonusRequiredFields
         : ['name', 'phone', 'gender', 'birthday', 'anniversary'],
-      isActive: configData.isActive !== false,
+      status: isDraft ? 'draft' : (isProgramActive ? 'active' : 'inactive'),
+      isActive: isProgramActive,
     };
 
     let loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
     if (!loyaltyDoc) {
-      const defaultData = this.getDefaultPrograms();
-      loyaltyDoc = await LoyaltyProgram.create({
+      const defaultData = this.getDefaultPrograms(cleanConfig.programName, cleanConfig.logoUrl);
+      loyaltyDoc = new LoyaltyProgram({
         businessId,
         companyName: cleanConfig.programName,
         companyLogo: cleanConfig.logoUrl,
         visitConfig: cleanConfig,
         programs: defaultData.programs,
       });
-    } else {
-      loyaltyDoc.companyName = cleanConfig.programName;
-      if (cleanConfig.logoUrl) loyaltyDoc.companyLogo = cleanConfig.logoUrl;
-      loyaltyDoc.visitConfig = cleanConfig;
+    }
+
+    loyaltyDoc.companyName = cleanConfig.programName;
+    if (cleanConfig.logoUrl) loyaltyDoc.companyLogo = cleanConfig.logoUrl;
+    loyaltyDoc.visitConfig = cleanConfig;
+
+    // Enforce Single Active Program Rule: If visit_made is activated, deactivate other programs
+    if (isProgramActive) {
+      loyaltyDoc.programs.forEach((p) => {
+        if (p.type !== 'visit_made') {
+          p.isActive = false;
+          if (p.status === 'active') p.status = 'inactive';
+        }
+      });
+    }
 
       // Sync visit_made program in programs array
       const visitProgIdx = loyaltyDoc.programs.findIndex((p) => p.type === 'visit_made');
@@ -264,10 +283,25 @@ class LoyaltyService {
           cleanConfig.bgGradientEnd,
         ];
         loyaltyDoc.programs[visitProgIdx].milestones = formattedStages;
+        loyaltyDoc.programs[visitProgIdx].status = cleanConfig.status;
+        loyaltyDoc.programs[visitProgIdx].isActive = isProgramActive;
+      } else {
+        loyaltyDoc.programs.push({
+          id: 'prog_visit_made',
+          type: 'visit_made',
+          title: cleanConfig.programName,
+          description: cleanConfig.slogan,
+          earningRule: `1 Visit Made = ${cleanConfig.pointsPerVisit} ${cleanConfig.pointsName}`,
+          rewardCurrency: cleanConfig.pointsName,
+          gradientColors: [cleanConfig.bgGradientStart, cleanConfig.bgGradientEnd],
+          milestones: formattedStages,
+          status: cleanConfig.status,
+          isActive: isProgramActive,
+          orderIndex: 0,
+        });
       }
 
       await loyaltyDoc.save();
-    }
 
     return loyaltyDoc.visitConfig;
   }
@@ -326,6 +360,11 @@ class LoyaltyService {
     customerLoyalty.unlockedStages = unlockedStageIds;
     await customerLoyalty.save();
 
+    const isProgramActive = visitConfig?.isActive === true && visitConfig?.status !== 'draft' && visitConfig?.status !== 'inactive';
+    const orderTypesList = visitConfig?.orderType
+      ? visitConfig.orderType.split(',').map((s) => s.trim().replace('-', '')).filter(Boolean)
+      : ['DineIn', 'Takeaway'];
+
     return {
       customerPhone: customerLoyalty.customerPhone,
       customerName: customerLoyalty.customerName,
@@ -336,6 +375,8 @@ class LoyaltyService {
       bonusPointsAwarded: customerLoyalty.bonusPointsAwarded === true,
       pointsName: visitConfig?.pointsName || 'Cookie',
       programName: visitConfig?.programName || 'THE ROYAL GARDENIA',
+      isProgramActive: isProgramActive,
+      orderTypes: orderTypesList.length > 0 ? orderTypesList : ['DineIn', 'Takeaway'],
       unlockedStages: unlockedStageIds,
       availableStages,
     };
@@ -658,38 +699,603 @@ class LoyaltyService {
   }
 
   /**
-   * Get Loyalty Performance analytics
+   * Helper to parse and calculate date ranges
    */
-  async getLoyaltyPerformance(businessId) {
-    const totalCustomers = await Customer.countDocuments({ businessId });
-    const enrolledMembers = await CustomerLoyalty.countDocuments({ businessId });
-    const ordersWithLoyalty = await LoyaltyTransaction.countDocuments({ businessId, type: 'redeem' });
+  _getDateFilter(dateRangeStr) {
+    const now = new Date();
+    let startDate = null;
+    let endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    let label = dateRangeStr || 'Last 7 Days';
 
-    const totalSales = await Order.aggregate([
-      { $match: { businessId, status: { $in: ['completed', 'settled'] } } },
-      { $group: { _id: null, total: { $sum: '$totalAmount' } } },
+    if (!dateRangeStr || dateRangeStr === 'Last 7 Days') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+      label = 'Last 7 Days';
+    } else if (dateRangeStr === 'Today') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      label = 'Today';
+    } else if (dateRangeStr === 'Last 30 Days') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 29, 0, 0, 0, 0);
+      label = 'Last 30 Days';
+    } else if (dateRangeStr === 'This Month') {
+      startDate = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      label = 'This Month';
+    } else if (dateRangeStr === 'All Time') {
+      startDate = new Date(2020, 0, 1);
+      label = 'All Time';
+    } else if (dateRangeStr.includes('–') || dateRangeStr.includes('-')) {
+      const parts = dateRangeStr.split(/[–-]/).map((s) => s.trim());
+      if (parts.length === 2) {
+        try {
+          const endYear = parts[1].match(/\d{4}/) ? parts[1].match(/\d{4}/)[0] : now.getFullYear();
+          let sStr = parts[0];
+          if (!sStr.match(/\d{4}/)) sStr += ` ${endYear}`;
+          const sParsed = new Date(Date.parse(sStr));
+          const eParsed = new Date(Date.parse(parts[1]));
+          if (!isNaN(sParsed.getTime()) && !isNaN(eParsed.getTime())) {
+            startDate = new Date(sParsed.getFullYear(), sParsed.getMonth(), sParsed.getDate(), 0, 0, 0, 0);
+            endDate = new Date(eParsed.getFullYear(), eParsed.getMonth(), eParsed.getDate(), 23, 59, 59, 999);
+            label = dateRangeStr;
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (!startDate) {
+      startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6, 0, 0, 0, 0);
+      label = 'Last 7 Days';
+    }
+
+    return { startDate, endDate, label };
+  }
+
+  /**
+   * Transparent Loyalty Health Score calculation (0 - 100)
+   */
+  calculateLoyaltyHealthScore({
+    hasActiveProgram,
+    totalParticipants,
+    uniqueRedeemingCustomers,
+    pointsIssued,
+    pointsRedeemed,
+    redemptionRateNum,
+    totalTransactions,
+  }) {
+    let score = 0;
+
+    // 1. Program Active Status (Max 15 points)
+    if (hasActiveProgram) score += 15;
+
+    // 2. Customer Participation (Max 20 points)
+    if (totalParticipants > 0) {
+      score += Math.min(20, Math.round((totalParticipants / 50) * 20));
+    }
+
+    // 3. Customer Redemption Activity (Max 25 points)
+    if (uniqueRedeemingCustomers > 0) {
+      const ratio = totalParticipants > 0 ? (uniqueRedeemingCustomers / totalParticipants) : 0;
+      score += Math.min(25, Math.round(ratio * 50) + Math.min(10, uniqueRedeemingCustomers * 2));
+    }
+
+    // 4. Points Utilization & Redemption Rate (Max 20 points)
+    if (redemptionRateNum > 0) {
+      if (redemptionRateNum >= 5 && redemptionRateNum <= 60) {
+        score += 20;
+      } else if (redemptionRateNum > 60) {
+        score += 15;
+      } else {
+        score += Math.round((redemptionRateNum / 5) * 20);
+      }
+    }
+
+    // 5. Repeat Engagement & Activity (Max 20 points)
+    if (totalTransactions > 0) {
+      score += Math.min(20, Math.round((totalTransactions / 20) * 20));
+    }
+
+    score = Math.max(0, Math.min(100, score));
+
+    let status = 'Healthy score starts from 80+';
+    if (score >= 86) status = 'Excellent • High loyalty engagement';
+    else if (score >= 71) status = 'Good • Strong reward momentum';
+    else if (score >= 51) status = 'Fair • Growing participation';
+    else if (score >= 31) status = 'Needs Attention • Boost redemptions';
+    else status = 'Poor • Activate and promote loyalty';
+
+    return { score, status };
+  }
+
+  /**
+   * Get Loyalty Performance analytics (100% Dynamic with Parallel Pipeline)
+   */
+  async getLoyaltyPerformance(businessId, query = {}) {
+    if (!businessId) {
+      throw ApiError.badRequest('Business ID is required');
+    }
+
+    const { startDate, endDate, label: activeDateRange } = this._getDateFilter(query.dateRange || query.filter);
+    const isAllTime = activeDateRange === 'All Time';
+    const dateMatch = isAllTime ? {} : { createdAt: { $gte: startDate, $lte: endDate } };
+
+    // Parallel Aggregation Pipeline
+    const [
+      totalParticipants,
+      uniqueRedeemersRaw,
+      earnAggRaw,
+      redeemAggRaw,
+      loyaltyDocRaw,
+      totalSalesRaw,
+      topAggRaw,
+      recentTxDocsRaw,
+      dailySalesRaw,
+      dailyRedeemRaw,
+    ] = await Promise.all([
+      // 1. Total participating customers in loyalty
+      CustomerLoyalty.countDocuments({ businessId }),
+
+      // 2. Unique customers who have redeemed in date range
+      LoyaltyTransaction.distinct('customerPhone', { businessId, type: 'redeem', ...dateMatch }).catch(() => []),
+
+      // 3. Points issued & earn count in date range
+      LoyaltyTransaction.aggregate([
+        { $match: { businessId, type: 'earn', ...dateMatch } },
+        { $group: { _id: null, totalPoints: { $sum: '$points' }, count: { $sum: 1 } } },
+      ]).catch(() => []),
+
+      // 4. Points redeemed, discount amount & redeem count in date range
+      LoyaltyTransaction.aggregate([
+        { $match: { businessId, type: 'redeem', ...dateMatch } },
+        {
+          $group: {
+            _id: null,
+            totalPoints: { $sum: { $abs: '$points' } },
+            totalDiscount: { $sum: '$discountAmount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]).catch(() => []),
+
+      // 5. Loyalty program configuration
+      LoyaltyProgram.findOne({ businessId }).lean(),
+
+      // 6. Total sales from completed/settled orders in date range
+      Order.aggregate([
+        { $match: { businessId, status: { $in: ['completed', 'settled'] }, ...dateMatch } },
+        { $group: { _id: null, total: { $sum: '$totalAmount' }, count: { $sum: 1 } } },
+      ]).catch(() => []),
+
+      // 7. Top 10 redeeming customers
+      LoyaltyTransaction.aggregate([
+        { $match: { businessId, type: 'redeem', ...dateMatch } },
+        {
+          $group: {
+            _id: '$customerPhone',
+            redemptionCount: { $sum: 1 },
+            pointsRedeemed: { $sum: { $abs: '$points' } },
+            totalDiscount: { $sum: '$discountAmount' },
+          },
+        },
+        { $sort: { redemptionCount: -1, totalDiscount: -1 } },
+        { $limit: 10 },
+      ]).catch(() => []),
+
+      // 8. Recent 10 transactions
+      LoyaltyTransaction.find({ businessId })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .populate('orderId', 'orderType totalAmount orderNumber createdAt')
+        .lean()
+        .catch(() => []),
+
+      // 9. Daily sales aggregation within date range
+      Order.aggregate([
+        {
+          $match: {
+            businessId,
+            status: { $in: ['completed', 'settled'] },
+            createdAt: { $gte: startDate, $lte: endDate },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            totalRevenue: { $sum: '$totalAmount' },
+          },
+        },
+      ]).catch(() => []),
+
+      // 10. Daily redemptions aggregation within date range
+      LoyaltyTransaction.aggregate([
+        {
+          $match: {
+            businessId,
+            type: 'redeem',
+            createdAt: { $gte: startDate, $lte: endDate },
+          },
+        },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            totalRedemptions: { $sum: 1 },
+            totalPoints: { $sum: { $abs: '$points' } },
+          },
+        },
+      ]).catch(() => []),
     ]);
 
-    const rev = totalSales.length > 0 ? totalSales[0].total : 125000;
-    const members = enrolledMembers > 0 ? enrolledMembers : (totalCustomers > 0 ? totalCustomers : 142);
-    const rewardsClaimed = ordersWithLoyalty > 0 ? ordersWithLoyalty : 38;
+    // 1. Process Program Library & Status with unique program deduplication
+    let loyaltyDoc = loyaltyDocRaw;
+    if (!loyaltyDoc) {
+      const defaultData = this.getDefaultPrograms();
+      loyaltyDoc = {
+        companyName: defaultData.companyName || 'THE ROYAL GARDENIA',
+        companyLogo: defaultData.companyLogo || '',
+        visitConfig: defaultData.visitConfig,
+        programs: defaultData.programs,
+        createdAt: new Date(),
+      };
+    }
 
+    const rawPrograms = Array.isArray(loyaltyDoc.programs) ? loyaltyDoc.programs : [];
+    
+    // Deduplicate by program ID and type
+    const uniqueProgramsMap = new Map();
+    rawPrograms.forEach((p) => {
+      const key = p.id || p.type;
+      if (key && !uniqueProgramsMap.has(key)) {
+        uniqueProgramsMap.set(key, {
+          ...p,
+          id: p.id || `prog_${p.type}`,
+          status: p.status || (p.isActive ? 'active' : 'inactive'),
+          isActive: p.isActive === true && p.status !== 'draft' && p.status !== 'inactive',
+        });
+      }
+    });
+
+    if (loyaltyDoc.visitConfig) {
+      const vc = loyaltyDoc.visitConfig;
+      const isVcActive = vc.isActive === true && vc.status !== 'draft' && vc.status !== 'inactive';
+      const vcStatus = vc.status || (isVcActive ? 'active' : 'inactive');
+
+      uniqueProgramsMap.set('prog_visit_made', {
+        id: 'prog_visit_made',
+        type: 'visit_made',
+        title: vc.programName || 'Visit Made',
+        description: vc.slogan || 'Get rewarded on every purchase',
+        earningRule: `1 Visit Made = ${vc.pointsPerVisit || 10} ${vc.pointsName || 'Cookie'}`,
+        rewardCurrency: vc.pointsName || 'Cookie',
+        gradientColors: [vc.bgGradientStart || '#4A082F', vc.bgGradientEnd || '#8E1449'],
+        milestones: vc.rewardStages || [],
+        status: vcStatus,
+        isActive: isVcActive,
+        orderIndex: 0,
+        createdAt: loyaltyDoc.createdAt || new Date(),
+      });
+      if (uniqueProgramsMap.has('visit_made')) {
+        uniqueProgramsMap.delete('visit_made');
+      }
+    }
+
+    const programsList = Array.from(uniqueProgramsMap.values());
+
+    const activePrograms = programsList.filter((p) => (p.status === 'active' || (p.isActive === true && p.status !== 'draft' && p.status !== 'inactive')));
+    const draftPrograms = programsList.filter((p) => p.status === 'draft');
+    const inactivePrograms = programsList.filter((p) => (p.status === 'inactive' || p.isActive === false) && p.status !== 'draft');
+
+    const activeCount = activePrograms.length;
+    const inactiveCount = inactivePrograms.length;
+    const draftCount = draftPrograms.length;
+    const totalProgramsCount = programsList.length;
+
+    const activeProgram = activePrograms.length > 0 ? activePrograms[0] : null;
+
+    // 2. Metrics & Points Totals
+    const pointsIssued = earnAggRaw.length > 0 ? Number(earnAggRaw[0].totalPoints) || 0 : 0;
+    const totalEarnTxs = earnAggRaw.length > 0 ? Number(earnAggRaw[0].count) || 0 : 0;
+    const pointsRedeemed = redeemAggRaw.length > 0 ? Number(redeemAggRaw[0].totalPoints) || 0 : 0;
+    const totalRedeemTxs = redeemAggRaw.length > 0 ? Number(redeemAggRaw[0].count) || 0 : 0;
+    const totalDiscountAmount = redeemAggRaw.length > 0 ? Number(redeemAggRaw[0].totalDiscount) || 0 : 0;
+
+    const redemptionRateNum = pointsIssued > 0 ? (pointsRedeemed / pointsIssued) * 100 : 0;
+    const redemptionRate = `${redemptionRateNum.toFixed(2)}%`;
+    const avgRewardPerRedemption = totalRedeemTxs > 0 ? Math.round(totalDiscountAmount / totalRedeemTxs) : 0;
+    const totalRevenue = totalSalesRaw.length > 0 ? Number(totalSalesRaw[0].total) || 0 : 0;
+    const uniqueRedeemingCount = Array.isArray(uniqueRedeemersRaw) ? uniqueRedeemersRaw.length : 0;
+
+    // 3. Dynamic Health Score Calculation
+    const { score: healthScore, status: healthScoreStatus } = this.calculateLoyaltyHealthScore({
+      hasActiveProgram: activeCount > 0,
+      totalParticipants,
+      uniqueRedeemingCustomers: uniqueRedeemingCount,
+      pointsIssued,
+      pointsRedeemed,
+      redemptionRateNum,
+      totalTransactions: totalEarnTxs + totalRedeemTxs,
+    });
+
+    // 4. Date-wise Summary Chart Data Generation (7 Daily buckets)
+    const salesMap = {};
+    (dailySalesRaw || []).forEach((row) => {
+      if (row._id) salesMap[row._id] = Number(row.totalRevenue) || 0;
+    });
+
+    const redeemMap = {};
+    (dailyRedeemRaw || []).forEach((row) => {
+      if (row._id) redeemMap[row._id] = Number(row.totalRedemptions) || 0;
+    });
+
+    const chartData = [];
+    const numDays = 7;
+    const dayIntervalMs = 24 * 60 * 60 * 1000;
+    const chartStartMs = endDate.getTime() - (numDays - 1) * dayIntervalMs;
+
+    for (let i = 0; i < numDays; i++) {
+      const currentDay = new Date(chartStartMs + i * dayIntervalMs);
+      const yyyy = currentDay.getFullYear();
+      const mm = String(currentDay.getMonth() + 1).padStart(2, '0');
+      const dd = String(currentDay.getDate()).padStart(2, '0');
+      const key = `${yyyy}-${mm}-${dd}`;
+
+      const dayLabel = currentDay.toLocaleDateString('en-US', { day: 'numeric', month: 'short' });
+      chartData.push({
+        date: key,
+        day: dayLabel,
+        redemptions: redeemMap[key] !== undefined ? redeemMap[key] : 0.0,
+        revenue: salesMap[key] !== undefined ? salesMap[key] : 0.0,
+      });
+    }
+
+    // 5. Top 10 Redeeming Customers (UNMASKED Full Phone Numbers)
+    const topPhones = (topAggRaw || []).map((t) => t._id).filter(Boolean);
+    const [matchedCustomers, matchedLoyalties] = await Promise.all([
+      Customer.find({ businessId, phone: { $in: topPhones } }).lean().catch(() => []),
+      CustomerLoyalty.find({ businessId, customerPhone: { $in: topPhones } }).lean().catch(() => []),
+    ]);
+
+    const nameMap = {};
+    (matchedCustomers || []).forEach((c) => {
+      if (c.phone) nameMap[c.phone] = c.name || '';
+    });
+    (matchedLoyalties || []).forEach((cl) => {
+      if (cl.customerPhone && !nameMap[cl.customerPhone]) {
+        nameMap[cl.customerPhone] = cl.customerName || '';
+      }
+    });
+
+    const topRedeemingCustomers = (topAggRaw || []).map((item, idx) => {
+      const phone = String(item._id || '').trim();
+      const customerName = nameMap[phone] || `Customer ${idx + 1}`;
+      const count = Number(item.redemptionCount) || 1;
+      return {
+        phone: phone, // FULL UNMASKED PHONE NUMBER
+        name: customerName,
+        redemptionCount: count,
+        badgeText: `Redemption ${count} Time${count > 1 ? 's' : ''}`,
+      };
+    });
+
+    // 6. Reward Scoreboard (Dynamic based on Active Program Levels)
+    let rewardScoreboard = [];
+    const activeStages = activeProgram?.milestones || activeProgram?.rewardStages || loyaltyDoc.visitConfig?.rewardStages || [];
+
+    if (activeStages.length > 0) {
+      const stageClaims = await Promise.all(
+        activeStages.map(async (st) => {
+          const count = await LoyaltyTransaction.countDocuments({
+            businessId,
+            type: 'redeem',
+            $or: [
+              { stageId: st.id },
+              { stageId: String(st.value || st.visitCount) },
+              { discountAmount: st.rewardValue },
+            ],
+          }).catch(() => 0);
+
+          return {
+            rewardText: st.freeItemName || st.rewardText || st.label || `Cheers ! Rs ${st.rewardValue || 100} off on your purchase`,
+            claimCount: count,
+            rewardType: st.rewardType || 'Redeem cash discount',
+          };
+        })
+      );
+      rewardScoreboard = stageClaims;
+    }
+
+    // 7. Recent Program Activity (UNMASKED Full Phone Numbers)
+    const recentPhones = (recentTxDocsRaw || []).map((tx) => tx.customerPhone).filter(Boolean);
+    const recentCusts = await Customer.find({ businessId, phone: { $in: recentPhones } }).lean().catch(() => []);
+    const recentNameMap = {};
+    (recentCusts || []).forEach((c) => {
+      if (c.phone) recentNameMap[c.phone] = c.name || '';
+    });
+
+    const recentActivity = (recentTxDocsRaw || []).map((tx) => {
+      const isRedeem = tx.type === 'redeem';
+      const phone = String(tx.customerPhone || '').trim();
+      const orderType = (tx.orderId && tx.orderId.orderType) ? tx.orderId.orderType : 'Quick Payment';
+      const dateStr = tx.createdAt
+        ? new Date(tx.createdAt).toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+          })
+        : '';
+
+      return {
+        customerPhone: phone, // FULL UNMASKED PHONE NUMBER
+        action: isRedeem ? 'Redeem' : 'Earn',
+        points: isRedeem ? `${tx.points}` : `+${tx.points}`,
+        orderType: orderType,
+        date: dateStr,
+      };
+    });
+
+    // 8. Program Library Section
+    const programLibrary = programsList.map((p) => {
+      const pStatus = p.status || (p.isActive ? 'active' : 'inactive');
+      const pCategory = p.type === 'visit_made' ? 'Visit Made' : p.type === 'amount_spent' ? 'Amount Spent' : 'Cashback';
+      const createdDateStr = p.createdAt
+        ? new Date(p.createdAt).toLocaleDateString('en-GB')
+        : (loyaltyDoc.createdAt ? new Date(loyaltyDoc.createdAt).toLocaleDateString('en-GB') : '');
+
+      const vConfig = (p.type === 'visit_made' && loyaltyDoc.visitConfig) ? loyaltyDoc.visitConfig : null;
+      
+      let orderTypesList = ['Dine-In', 'Takeaway'];
+      if (vConfig && vConfig.orderType) {
+        orderTypesList = Array.isArray(vConfig.orderType)
+          ? vConfig.orderType
+          : String(vConfig.orderType).split(',').map((s) => s.trim()).filter(Boolean);
+      }
+
+      const stagesList = vConfig?.rewardStages && vConfig.rewardStages.length > 0
+        ? vConfig.rewardStages
+        : (p.milestones && p.milestones.length > 0 ? p.milestones : []);
+
+      const starterStage = stagesList.length > 0 ? stagesList[0] : null;
+      const starterRewardTitle = starterStage
+        ? (starterStage.freeItemName || starterStage.rewardText || `🎁 Level 1 Offer (₹${starterStage.rewardValue || 100} off)`)
+        : '🎁 Level 1 Offer';
+      const starterRewardSubtext = starterStage
+        ? `On ${starterStage.visitCount || starterStage.value || 1} Visit${(starterStage.visitCount || starterStage.value || 1) > 1 ? 's' : ''}`
+        : 'Starter Reward';
+
+      return {
+        id: p.id,
+        name: p.title || vConfig?.programName || loyaltyDoc.companyName || 'Loyalty Program',
+        status: pStatus,
+        createDate: createdDateStr,
+        category: pCategory,
+        channel: 'Store Visit',
+        orderTypes: orderTypesList.length > 0 ? orderTypesList : ['Dine-In', 'Takeaway'],
+        bannerImageUrl: vConfig?.bannerImageUrl || 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=800',
+        logoUrl: vConfig?.logoUrl || loyaltyDoc.companyLogo || '',
+        pointsName: p.rewardCurrency || vConfig?.pointsName || 'Cookie',
+        pointsPerVisit: vConfig?.pointsPerVisit || 10,
+        slogan: vConfig?.slogan || p.description || 'Get rewarded on every purchase',
+        bgGradientStart: vConfig?.bgGradientStart || (p.gradientColors && p.gradientColors[0]) || '#4A082F',
+        bgGradientEnd: vConfig?.bgGradientEnd || (p.gradientColors && p.gradientColors[1]) || '#8E1449',
+        rewardColorStart: vConfig?.rewardColorStart || '#0F766E',
+        rewardColorEnd: vConfig?.rewardColorEnd || '#064E3B',
+        starterRewardTitle: starterRewardTitle,
+        starterRewardSubtext: starterRewardSubtext,
+        isActive: pStatus === 'active',
+      };
+    });
+
+    // Return structured, 100% dynamic response
     return {
-      totalMembers: members,
-      activeMembers: Math.max(1, Math.round(members * 0.78)),
-      rewardsClaimed: rewardsClaimed,
-      repeatVisitRate: '42.5%',
-      totalPointsIssued: members * 120 + 450,
-      totalCashbackGiven: Math.round(rev * 0.045),
-      loyaltyRevenue: Math.round(rev * 0.38),
-      roiPercentage: '315%',
+      // 1. Status Section
+      statusSection: {
+        activeCount,
+        inactiveCount,
+        draftCount,
+        totalCount: totalProgramsCount,
+      },
+
+      // 2. Health Score Section
+      healthScoreSection: {
+        score: healthScore,
+        maxScore: 100,
+        status: healthScoreStatus,
+      },
+
+      // 3. Overview Section
+      overviewSection: {
+        dateRange: activeDateRange,
+        totalRevenue,
+        totalRedemptions: totalRedeemTxs,
+        totalParticipants,
+        uniqueRedeemingCustomers: uniqueRedeemingCount,
+      },
+
+      // 4. Summary Chart Section
+      summaryChartSection: {
+        currentMode: 'Redemption',
+        chartData,
+      },
+
+      // 5. KPI Metrics Section
+      kpiMetricsSection: {
+        redemptionRate,
+        pointsRedeemed,
+        pointsIssued,
+        avgRewardPerRedemption,
+      },
+
+      // 6. Top Customers Section
+      topCustomersSection: {
+        title: 'Top 10 Redeeming Customers',
+        customers: topRedeemingCustomers,
+      },
+
+      // 7. Reward Scoreboard Section
+      rewardScoreboardSection: {
+        title: 'Reward Scoreboard',
+        rewards: rewardScoreboard,
+      },
+
+      // 8. Recent Activity Section
+      recentActivitySection: {
+        title: 'Recent Program Activity',
+        activities: recentActivity,
+      },
+
+      // 9. Program Library Section
+      programLibrarySection: {
+        title: 'Program Library',
+        description: 'Filter the loyalty list by status while keeping insights and live performance visible above.',
+        filterCounts: {
+          all: totalProgramsCount,
+          active: activeCount,
+          inactive: inactiveCount,
+          draft: draftCount,
+        },
+        programs: programLibrary,
+      },
+
+      // Top-level aliases for direct access and backward compatibility
+      activeProgramsCount: activeCount,
+      inactiveProgramsCount: inactiveCount,
+      draftProgramsCount: draftCount,
+      totalProgramsCount,
+      healthScore,
+      healthScoreStatus,
+      dateRangeText: activeDateRange,
+      totalRevenue,
+      totalRedemptions: totalRedeemTxs,
+      totalParticipants,
+      redemptionRate,
+      pointsRedeemed,
+      pointsIssued,
+      avgRewardPerRedemption,
+      chartData,
+      topRedeemingCustomers,
+      rewardScoreboard,
+      recentActivity,
+      programLibrary,
+
+      // Legacy analytics fields
+      totalMembers: totalParticipants,
+      activeMembers: uniqueRedeemingCount > 0 ? uniqueRedeemingCount : totalParticipants,
+      rewardsClaimed: totalRedeemTxs,
+      repeatVisitRate: totalParticipants > 0 ? `${Math.round((totalEarnTxs / totalParticipants) * 10)}%` : '0%',
+      totalPointsIssued: pointsIssued,
+      totalCashbackGiven: totalDiscountAmount,
+      loyaltyRevenue: totalRevenue,
+      roiPercentage: totalDiscountAmount > 0 ? `${Math.round((totalRevenue / totalDiscountAmount) * 100)}%` : '0%',
     };
   }
 
   /**
-   * Update or create single loyalty program
+   * Update or create single loyalty program (enforces single active program rule)
    */
   async updateLoyaltyProgram(businessId, programData) {
+    if (!businessId) {
+      throw ApiError.badRequest('Business ID is required');
+    }
+
     let loyaltyDoc = await LoyaltyProgram.findOne({ businessId });
     if (!loyaltyDoc) {
       const defaultData = this.getDefaultPrograms();
@@ -703,12 +1309,42 @@ class LoyaltyService {
     }
 
     const progId = programData.id || `prog_${Date.now()}`;
-    const idx = loyaltyDoc.programs.findIndex((p) => p.id === progId);
+    const isDraft = programData.status === 'draft' || programData.isDraft === true;
+    const isProgramActive = !isDraft && (programData.isActive === true || programData.status === 'active');
 
-    if (idx >= 0) {
-      loyaltyDoc.programs[idx] = { ...loyaltyDoc.programs[idx].toObject(), ...programData, id: progId };
+    // Enforce Single Active Program Rule: If this program is activated, deactivate others
+    if (isProgramActive) {
+      loyaltyDoc.programs.forEach((p) => {
+        if (p.id !== progId) {
+          p.isActive = false;
+          if (p.status === 'active') p.status = 'inactive';
+        }
+      });
+      if (loyaltyDoc.visitConfig) {
+        const isVisitMade = progId === 'prog_visit_made' || programData.type === 'visit_made';
+        loyaltyDoc.visitConfig.isActive = isVisitMade;
+        loyaltyDoc.visitConfig.status = isVisitMade ? 'active' : 'inactive';
+      }
     } else {
-      loyaltyDoc.programs.push({ ...programData, id: progId });
+      if (loyaltyDoc.visitConfig && (progId === 'prog_visit_made' || programData.type === 'visit_made')) {
+        loyaltyDoc.visitConfig.isActive = false;
+        loyaltyDoc.visitConfig.status = isDraft ? 'draft' : 'inactive';
+      }
+    }
+
+    const cleanProgram = {
+      ...programData,
+      id: progId,
+      status: isDraft ? 'draft' : (isProgramActive ? 'active' : 'inactive'),
+      isActive: isProgramActive,
+      updatedAt: new Date(),
+    };
+
+    const idx = loyaltyDoc.programs.findIndex((p) => p.id === progId);
+    if (idx >= 0) {
+      loyaltyDoc.programs[idx] = { ...loyaltyDoc.programs[idx].toObject(), ...cleanProgram };
+    } else {
+      loyaltyDoc.programs.push(cleanProgram);
     }
 
     await loyaltyDoc.save();

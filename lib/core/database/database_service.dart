@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -973,9 +974,11 @@ class DatabaseService extends ChangeNotifier {
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
 
-    // Sync with Firestore
+    // Sync with Firestore asynchronously in background
     if (currentUser != null) {
-      await _firestoreService.saveUser(currentUser!);
+      unawaited(_firestoreService.saveUser(currentUser!).catchError((e) {
+        debugPrint('[DatabaseService] firestore user sync notice: $e');
+      }));
     }
 
     if (isNewAccount) {
@@ -1010,9 +1013,11 @@ class DatabaseService extends ChangeNotifier {
     currentUser = matched;
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
 
-    // Sync with Firestore
+    // Sync with Firestore asynchronously in background
     if (currentUser != null) {
-      await _firestoreService.saveUser(currentUser!);
+      unawaited(_firestoreService.saveUser(currentUser!).catchError((e) {
+        debugPrint('[DatabaseService] firestore user sync notice: $e');
+      }));
     }
 
     if (isNewAccount) {

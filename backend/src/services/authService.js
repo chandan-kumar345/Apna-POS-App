@@ -98,27 +98,29 @@ class AuthService {
       throw ApiError.unauthorized('Incorrect password. Please check your password and try again.', 'INVALID_CREDENTIALS');
     }
 
-    // Generate tokens
-    const tokens = await tokenService.generateAuthTokens(user);
+    // Generate tokens and fetch business in parallel for speed
+    const [tokens, business] = await Promise.all([
+      tokenService.generateAuthTokens(user),
+      Business.findOne({ ownerId: user._id }).lean(),
+    ]);
 
-    // Fetch associated business info
-    const business = await Business.findOne({ ownerId: user._id });
-
-    // Ensure Welcome Notification exists with idempotency
-    try {
-      const userName = business?.profile?.name || user.email.split('@')[0] || 'User';
-      await notificationService.createNotification({
-        userId: user._id,
-        businessId: business?._id,
-        type: 'welcome',
-        title: 'Welcome to Apna POS 🎉',
-        message: `Hi ${userName}, welcome to Apna POS! Your all-in-one POS partner is here to help you manage your sales, orders, customers, payments, and business operations with ease. Let’s make your business smarter, faster, and simpler.`,
-        entityType: 'user',
-        entityId: user._id.toString(),
-        metadata: { userName },
-        idempotencyKey: `welcome_${user._id.toString()}`,
-      });
-    } catch (_) {}
+    // Ensure Welcome Notification exists asynchronously without blocking login response
+    setImmediate(async () => {
+      try {
+        const userName = business?.profile?.name || user.email.split('@')[0] || 'User';
+        await notificationService.createNotification({
+          userId: user._id,
+          businessId: business?._id,
+          type: 'welcome',
+          title: 'Welcome to Apna POS 🎉',
+          message: `Hi ${userName}, welcome to Apna POS! Your all-in-one POS partner is here to help you manage your sales, orders, customers, payments, and business operations with ease. Let’s make your business smarter, faster, and simpler.`,
+          entityType: 'user',
+          entityId: user._id.toString(),
+          metadata: { userName },
+          idempotencyKey: `welcome_${user._id.toString()}`,
+        });
+      } catch (_) {}
+    });
 
     return {
       user: {

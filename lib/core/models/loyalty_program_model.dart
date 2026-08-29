@@ -242,7 +242,189 @@ class LoyaltyBrandingModel {
   }
 }
 
+class LoyaltyDailyChartDataPoint {
+  final String date;
+  final String day;
+  final double redemptions;
+  final double revenue;
+
+  LoyaltyDailyChartDataPoint({
+    required this.date,
+    required this.day,
+    this.redemptions = 0.0,
+    this.revenue = 0.0,
+  });
+
+  factory LoyaltyDailyChartDataPoint.fromJson(Map<String, dynamic> json) {
+    return LoyaltyDailyChartDataPoint(
+      date: json['date']?.toString() ?? '',
+      day: json['day']?.toString() ?? '',
+      redemptions: (json['redemptions'] as num?)?.toDouble() ?? 0.0,
+      revenue: (json['revenue'] as num?)?.toDouble() ?? 0.0,
+    );
+  }
+}
+
+class TopCustomerModel {
+  final String phone;
+  final String name;
+  final int redemptionCount;
+  final String badgeText;
+
+  const TopCustomerModel({
+    required this.phone,
+    this.name = '',
+    this.redemptionCount = 0,
+    this.badgeText = '',
+  });
+
+  factory TopCustomerModel.fromJson(Map<String, dynamic> json) {
+    return TopCustomerModel(
+      phone: json['phone']?.toString() ?? '+91XXXXXXX00',
+      name: json['name']?.toString() ?? '',
+      redemptionCount: (json['redemptionCount'] as num?)?.toInt() ?? 1,
+      badgeText: json['badgeText']?.toString() ?? '',
+    );
+  }
+}
+
+class RewardScoreboardItem {
+  final String rewardText;
+  final int claimCount;
+  final String rewardType;
+
+  const RewardScoreboardItem({
+    required this.rewardText,
+    this.claimCount = 0,
+    this.rewardType = 'Redeem cash discount',
+  });
+
+  factory RewardScoreboardItem.fromJson(Map<String, dynamic> json) {
+    return RewardScoreboardItem(
+      rewardText: json['rewardText']?.toString() ?? '',
+      claimCount: (json['claimCount'] as num?)?.toInt() ?? 0,
+      rewardType: json['rewardType']?.toString() ?? 'Redeem cash discount',
+    );
+  }
+}
+
+class RecentActivityModel {
+  final String customerPhone;
+  final String action; // 'Redeem' or 'Earn'
+  final String points; // '-100' or '+38'
+  final String orderType; // 'Quick Payment', 'Takeaway', 'Dine-in'
+  final String date; // 'Aug 20, 2025 3:10 PM'
+
+  const RecentActivityModel({
+    required this.customerPhone,
+    required this.action,
+    required this.points,
+    required this.orderType,
+    required this.date,
+  });
+
+  factory RecentActivityModel.fromJson(Map<String, dynamic> json) {
+    return RecentActivityModel(
+      customerPhone: json['customerPhone']?.toString() ?? '+91XXXXXXX00',
+      action: json['action']?.toString() ?? 'Earn',
+      points: json['points']?.toString() ?? '+0',
+      orderType: json['orderType']?.toString() ?? 'Dine-in',
+      date: json['date']?.toString() ?? '',
+    );
+  }
+}
+
+class ProgramLibraryItemModel {
+  final String id;
+  final String name;
+  final String status; // 'active', 'inactive', 'draft'
+  final String createDate;
+  final String category; // 'Cashback', 'Visit Made'
+  final String channel; // 'Store Visit', 'WhatsApp'
+  final List<String> orderTypes;
+  final String bannerImageUrl;
+  final String logoUrl;
+  final String pointsName;
+  final int pointsPerVisit;
+  final String slogan;
+  final String bgGradientStart;
+  final String bgGradientEnd;
+  final String rewardColorStart;
+  final String rewardColorEnd;
+  final String starterRewardTitle;
+  final String starterRewardSubtext;
+  final bool isActive;
+
+  const ProgramLibraryItemModel({
+    required this.id,
+    required this.name,
+    this.status = 'active',
+    this.createDate = '',
+    this.category = 'Visit Made',
+    this.channel = 'Store Visit',
+    this.orderTypes = const ['Dine-In', 'Takeaway'],
+    this.bannerImageUrl = '',
+    this.logoUrl = '',
+    this.pointsName = 'Cookie',
+    this.pointsPerVisit = 10,
+    this.slogan = 'Get rewarded on every purchase',
+    this.bgGradientStart = '#4A082F',
+    this.bgGradientEnd = '#8E1449',
+    this.rewardColorStart = '#0F766E',
+    this.rewardColorEnd = '#064E3B',
+    this.starterRewardTitle = '🎁 Level 1 Offer',
+    this.starterRewardSubtext = 'Starter Reward',
+    this.isActive = true,
+  });
+
+  factory ProgramLibraryItemModel.fromJson(Map<String, dynamic> json) {
+    return ProgramLibraryItemModel(
+      id: json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Loyalty Program',
+      status: json['status']?.toString() ?? 'active',
+      createDate: json['createDate']?.toString() ?? '',
+      category: json['category']?.toString() ?? 'Visit Made',
+      channel: json['channel']?.toString() ?? 'Store Visit',
+      orderTypes: (json['orderTypes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          const ['Dine-In', 'Takeaway'],
+      bannerImageUrl: json['bannerImageUrl']?.toString() ?? '',
+      logoUrl: json['logoUrl']?.toString() ?? '',
+      pointsName: json['pointsName']?.toString() ?? 'Cookie',
+      pointsPerVisit: (json['pointsPerVisit'] as num?)?.toInt() ?? 10,
+      slogan: json['slogan']?.toString() ?? 'Get rewarded on every purchase',
+      bgGradientStart: json['bgGradientStart']?.toString() ?? '#4A082F',
+      bgGradientEnd: json['bgGradientEnd']?.toString() ?? '#8E1449',
+      rewardColorStart: json['rewardColorStart']?.toString() ?? '#0F766E',
+      rewardColorEnd: json['rewardColorEnd']?.toString() ?? '#064E3B',
+      starterRewardTitle: json['starterRewardTitle']?.toString() ?? '🎁 Level 1 Offer',
+      starterRewardSubtext: json['starterRewardSubtext']?.toString() ?? 'Starter Reward',
+      isActive: json['isActive'] == true || json['status'] == 'active',
+    );
+  }
+}
+
 class LoyaltyPerformanceModel {
+  final int activeProgramsCount;
+  final int inactiveProgramsCount;
+  final int draftProgramsCount;
+  final int totalProgramsCount;
+  final int healthScore;
+  final String healthScoreStatus;
+  final String dateRangeText;
+  final double totalRevenue;
+  final int totalRedemptions;
+  final int totalParticipants;
+  final String redemptionRate;
+  final int pointsRedeemed;
+  final int pointsIssued;
+  final double avgRewardPerRedemption;
+  final List<LoyaltyDailyChartDataPoint> chartData;
+  final List<TopCustomerModel> topRedeemingCustomers;
+  final List<RewardScoreboardItem> rewardScoreboard;
+  final List<RecentActivityModel> recentActivity;
+  final List<ProgramLibraryItemModel> programLibrary;
+
+  // Backwards compatible fields
   final int totalMembers;
   final int activeMembers;
   final int rewardsClaimed;
@@ -252,7 +434,26 @@ class LoyaltyPerformanceModel {
   final double loyaltyRevenue;
   final String roiPercentage;
 
-  LoyaltyPerformanceModel({
+  const LoyaltyPerformanceModel({
+    this.activeProgramsCount = 0,
+    this.inactiveProgramsCount = 0,
+    this.draftProgramsCount = 0,
+    this.totalProgramsCount = 0,
+    this.healthScore = 0,
+    this.healthScoreStatus = 'Healthy score starts from 80+',
+    this.dateRangeText = 'Last 7 Days',
+    this.totalRevenue = 0.0,
+    this.totalRedemptions = 0,
+    this.totalParticipants = 0,
+    this.redemptionRate = '0%',
+    this.pointsRedeemed = 0,
+    this.pointsIssued = 0,
+    this.avgRewardPerRedemption = 0.0,
+    this.chartData = const [],
+    this.topRedeemingCustomers = const [],
+    this.rewardScoreboard = const [],
+    this.recentActivity = const [],
+    this.programLibrary = const [],
     this.totalMembers = 0,
     this.activeMembers = 0,
     this.rewardsClaimed = 0,
@@ -264,15 +465,100 @@ class LoyaltyPerformanceModel {
   });
 
   factory LoyaltyPerformanceModel.fromJson(Map<String, dynamic> json) {
+    // 1. Status Section
+    final statusSec = json['statusSection'] as Map<String, dynamic>?;
+    final activeCount = (statusSec?['activeCount'] ?? json['activeProgramsCount']) as num? ?? 0;
+    final inactiveCount = (statusSec?['inactiveCount'] ?? json['inactiveProgramsCount']) as num? ?? 0;
+    final draftCount = (statusSec?['draftCount'] ?? json['draftProgramsCount']) as num? ?? 0;
+    final totalCount = (statusSec?['totalCount'] ?? json['totalProgramsCount']) as num? ?? (activeCount + inactiveCount + draftCount);
+
+    // 2. Health Score Section
+    final healthSec = json['healthScoreSection'] as Map<String, dynamic>?;
+    final score = (healthSec?['score'] ?? json['healthScore']) as num? ?? 0;
+    final scoreStatus = healthSec?['status']?.toString() ?? json['healthScoreStatus']?.toString() ?? 'Healthy score starts from 80+';
+
+    // 3. Overview Section
+    final overviewSec = json['overviewSection'] as Map<String, dynamic>?;
+    final dateRange = overviewSec?['dateRange']?.toString() ?? json['dateRangeText']?.toString() ?? 'Last 7 Days';
+    final revenue = (overviewSec?['totalRevenue'] ?? json['totalRevenue']) as num? ?? 0.0;
+    final redemptions = (overviewSec?['totalRedemptions'] ?? json['totalRedemptions']) as num? ?? 0;
+    final participants = (overviewSec?['totalParticipants'] ?? json['totalParticipants']) as num? ?? 0;
+
+    // 4. Summary Chart Section
+    final chartSec = json['summaryChartSection'] as Map<String, dynamic>?;
+    final chartRawList = (chartSec?['chartData'] ?? json['chartData']) as List<dynamic>?;
+    final chartList = chartRawList
+            ?.map((e) => LoyaltyDailyChartDataPoint.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // 5. KPI Metrics Section
+    final kpiSec = json['kpiMetricsSection'] as Map<String, dynamic>?;
+    final rRate = kpiSec?['redemptionRate']?.toString() ?? json['redemptionRate']?.toString() ?? '0%';
+    final pRedeemed = (kpiSec?['pointsRedeemed'] ?? json['pointsRedeemed']) as num? ?? 0;
+    final pIssued = (kpiSec?['pointsIssued'] ?? json['pointsIssued']) as num? ?? 0;
+    final avgReward = (kpiSec?['avgRewardPerRedemption'] ?? json['avgRewardPerRedemption']) as num? ?? 0.0;
+
+    // 6. Top Customers Section
+    final topSec = json['topCustomersSection'] as Map<String, dynamic>?;
+    final topRawList = (topSec?['customers'] ?? json['topRedeemingCustomers']) as List<dynamic>?;
+    final topCustomers = topRawList
+            ?.map((e) => TopCustomerModel.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // 7. Reward Scoreboard Section
+    final rewardSec = json['rewardScoreboardSection'] as Map<String, dynamic>?;
+    final scoreboardRawList = (rewardSec?['rewards'] ?? json['rewardScoreboard']) as List<dynamic>?;
+    final scoreboard = scoreboardRawList
+            ?.map((e) => RewardScoreboardItem.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // 8. Recent Activity Section
+    final activitySec = json['recentActivitySection'] as Map<String, dynamic>?;
+    final activityRawList = (activitySec?['activities'] ?? json['recentActivity']) as List<dynamic>?;
+    final activity = activityRawList
+            ?.map((e) => RecentActivityModel.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
+    // 9. Program Library Section
+    final libSec = json['programLibrarySection'] as Map<String, dynamic>?;
+    final libRawList = (libSec?['programs'] ?? json['programLibrary']) as List<dynamic>?;
+    final lib = libRawList
+            ?.map((e) => ProgramLibraryItemModel.fromJson(e as Map<String, dynamic>))
+            .toList() ??
+        [];
+
     return LoyaltyPerformanceModel(
-      totalMembers: (json['totalMembers'] as num?)?.toInt() ?? 0,
-      activeMembers: (json['activeMembers'] as num?)?.toInt() ?? 0,
-      rewardsClaimed: (json['rewardsClaimed'] as num?)?.toInt() ?? 0,
-      repeatVisitRate: json['repeatVisitRate']?.toString() ?? '42.5%',
-      totalPointsIssued: (json['totalPointsIssued'] as num?)?.toInt() ?? 0,
+      activeProgramsCount: activeCount.toInt(),
+      inactiveProgramsCount: inactiveCount.toInt(),
+      draftProgramsCount: draftCount.toInt(),
+      totalProgramsCount: totalCount.toInt(),
+      healthScore: score.toInt(),
+      healthScoreStatus: scoreStatus,
+      dateRangeText: dateRange,
+      totalRevenue: revenue.toDouble(),
+      totalRedemptions: redemptions.toInt(),
+      totalParticipants: participants.toInt(),
+      redemptionRate: rRate,
+      pointsRedeemed: pRedeemed.toInt(),
+      pointsIssued: pIssued.toInt(),
+      avgRewardPerRedemption: avgReward.toDouble(),
+      chartData: chartList,
+      topRedeemingCustomers: topCustomers,
+      rewardScoreboard: scoreboard,
+      recentActivity: activity,
+      programLibrary: lib,
+      totalMembers: participants.toInt(),
+      activeMembers: (overviewSec?['uniqueRedeemingCustomers'] ?? json['activeMembers']) as int? ?? (participants > 0 ? 1 : 0),
+      rewardsClaimed: redemptions.toInt(),
+      repeatVisitRate: json['repeatVisitRate']?.toString() ?? '0%',
+      totalPointsIssued: pIssued.toInt(),
       totalCashbackGiven: (json['totalCashbackGiven'] as num?)?.toDouble() ?? 0.0,
-      loyaltyRevenue: (json['loyaltyRevenue'] as num?)?.toDouble() ?? 0.0,
-      roiPercentage: json['roiPercentage']?.toString() ?? '315%',
+      loyaltyRevenue: revenue.toDouble(),
+      roiPercentage: json['roiPercentage']?.toString() ?? '0%',
     );
   }
 }
@@ -289,7 +575,7 @@ class RewardStageModel {
   final bool minSpendRedemptionEnabled;
   final List<String> applicableProductIds;
 
-  RewardStageModel({
+  const RewardStageModel({
     required this.id,
     required this.visitCount,
     this.rewardType = 'Redeem cash discount',
@@ -410,8 +696,10 @@ class VisitRewardConfig {
   final bool bonusPointsEnabled;
   final double bonusPointsAmount;
   final List<String> bonusRequiredFields;
+  final String status;
+  final bool isActive;
 
-  VisitRewardConfig({
+  const VisitRewardConfig({
     this.programName = 'THE ROYAL GARDENIA',
     this.slogan = 'Get rewarded on every purchase',
     this.visitTrigger = 'Every Visit',
@@ -434,6 +722,8 @@ class VisitRewardConfig {
     this.bonusPointsEnabled = true,
     this.bonusPointsAmount = 100.0,
     this.bonusRequiredFields = const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
+    this.status = 'active',
+    this.isActive = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -459,6 +749,8 @@ class VisitRewardConfig {
         'bonusPointsEnabled': bonusPointsEnabled,
         'bonusPointsAmount': bonusPointsAmount,
         'bonusRequiredFields': bonusRequiredFields,
+        'status': status,
+        'isActive': isActive,
       };
 
   factory VisitRewardConfig.fromJson(Map<String, dynamic> json) {
@@ -493,8 +785,12 @@ class VisitRewardConfig {
       maxCashbackLimit: (json['maxCashbackLimit'] as num?)?.toDouble() ?? 0.0,
       bonusPointsEnabled: json['bonusPointsEnabled'] != false,
       bonusPointsAmount: (json['bonusPointsAmount'] as num?)?.toDouble() ?? 100.0,
-      bonusRequiredFields: (json['bonusRequiredFields'] as List?)?.map((e) => e.toString()).toList() ??
+      bonusRequiredFields: (json['bonusRequiredFields'] as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .toList() ??
           const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
+      status: json['status']?.toString() ?? 'active',
+      isActive: json['isActive'] != false,
     );
   }
 
@@ -555,7 +851,7 @@ class AvailableRewardStageModel {
   final String freeItemName;
   final bool isUnlocked;
 
-  AvailableRewardStageModel({
+  const AvailableRewardStageModel({
     required this.id,
     required this.requiredPoints,
     this.rewardType = '₹ Discount',
@@ -587,10 +883,12 @@ class CustomerLoyaltyModel {
   final int totalPointsRedeemed;
   final String pointsName;
   final String programName;
+  final bool isProgramActive;
+  final List<String> orderTypes;
   final List<String> unlockedStages;
   final List<AvailableRewardStageModel> availableStages;
 
-  CustomerLoyaltyModel({
+  const CustomerLoyaltyModel({
     required this.customerPhone,
     this.customerName = '',
     this.pointsBalance = 0,
@@ -599,6 +897,8 @@ class CustomerLoyaltyModel {
     this.totalPointsRedeemed = 0,
     this.pointsName = 'Cookie',
     this.programName = 'THE ROYAL GARDENIA',
+    this.isProgramActive = true,
+    this.orderTypes = const ['DineIn', 'Takeaway'],
     this.unlockedStages = const [],
     this.availableStages = const [],
   });
@@ -622,6 +922,11 @@ class CustomerLoyaltyModel {
         ? rawUnlocked.map((e) => e.toString()).toList()
         : <String>[];
 
+    final rawOrderTypes = json['orderTypes'] as List?;
+    final parsedOrderTypes = rawOrderTypes != null
+        ? rawOrderTypes.map((e) => e.toString()).toList()
+        : <String>['DineIn', 'Takeaway'];
+
     return CustomerLoyaltyModel(
       customerPhone: json['customerPhone']?.toString() ?? '',
       customerName: json['customerName']?.toString() ?? '',
@@ -631,6 +936,8 @@ class CustomerLoyaltyModel {
       totalPointsRedeemed: (json['totalPointsRedeemed'] as num?)?.toInt() ?? 0,
       pointsName: json['pointsName']?.toString() ?? 'Cookie',
       programName: json['programName']?.toString() ?? 'THE ROYAL GARDENIA',
+      isProgramActive: json['isProgramActive'] != false,
+      orderTypes: parsedOrderTypes,
       unlockedStages: unlocked,
       availableStages: stages,
     );

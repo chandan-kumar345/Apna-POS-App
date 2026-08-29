@@ -525,20 +525,29 @@ class LoyaltyProgramCard extends StatelessWidget {
                   height: 6,
                   width: double.infinity,
                   color: Colors.black.withValues(alpha: 0.3),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: (cb.progressPercent / 100).clamp(0.0, 1.0),
-                    child: Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Color(0xFFE11D48), // Pink/Rose
-                            Color(0xFFF97316), // Orange
-                            Color(0xFF06B6D4), // Cyan
-                          ],
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final rawPct = cb.progressPercent;
+                      final safePct = (!rawPct.isNaN && !rawPct.isInfinite && rawPct > 0)
+                          ? (rawPct / 100).clamp(0.0, 1.0)
+                          : 0.0;
+                      return Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          width: constraints.maxWidth * safePct,
+                          height: 6,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Color(0xFFE11D48), // Pink/Rose
+                                Color(0xFFF97316), // Orange
+                                Color(0xFF06B6D4), // Cyan
+                              ],
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),

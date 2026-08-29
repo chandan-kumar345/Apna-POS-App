@@ -1495,7 +1495,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     double max,
     Color color,
   ) {
-    double progress = max > 0 ? (value / max).clamp(0.0, 1.0) : 0;
+    final double safeVal = (!value.isNaN && !value.isInfinite && value > 0) ? value : 0.0;
+    final double safeMax = (!max.isNaN && !max.isInfinite && max > 0) ? max : 1.0;
+    double progress = (max > 0) ? (safeVal / safeMax).clamp(0.0, 1.0) : 0.0;
+    if (progress.isNaN || progress.isInfinite) progress = 0.0;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(

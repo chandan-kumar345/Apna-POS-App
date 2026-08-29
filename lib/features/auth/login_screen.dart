@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -723,35 +724,34 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // 1. Authenticate with Firebase Auth in parallel so Firebase context is authenticated
-        try {
-          final auth = FirebaseAuth.instance;
-          try {
-            await auth.signInWithEmailAndPassword(email: email, password: password);
-          } on FirebaseAuthException catch (fbErr) {
-            if (fbErr.code == 'user-not-found' || fbErr.code == 'invalid-credential') {
-              try {
-                await auth.createUserWithEmailAndPassword(email: email, password: password);
-              } catch (_) {}
-            } else {
-              debugPrint('[FirebaseAuth] login warning: ${fbErr.code} - ${fbErr.message}');
-            }
-          }
-        } catch (fbEx) {
-          debugPrint('[FirebaseAuth] login exception: $fbEx');
-        }
-
-        // 2. Authenticate with backend API
+        // 1. Direct fast backend authentication
         final result = await AuthService().login(email, password);
         final userJson = result['user'] as Map<String, dynamic>?;
         final bool onboardingCompleted = userJson?['onboardingCompleted'] == true;
         final int currentStep = (userJson?['onboardingStep'] as num?)?.toInt() ?? 0;
 
-        // 3. Sync user document to Firestore
-        final activeUser = DatabaseService().currentUser;
-        if (activeUser != null) {
-          await FirestoreService().saveUser(activeUser);
-        }
+        // 2. Synchronize Firebase Auth & Firestore in non-blocking background task
+        unawaited(() async {
+          try {
+            final auth = FirebaseAuth.instance;
+            try {
+              await auth.signInWithEmailAndPassword(email: email, password: password);
+            } on FirebaseAuthException catch (fbErr) {
+              if (fbErr.code == 'user-not-found' || fbErr.code == 'invalid-credential') {
+                try {
+                  await auth.createUserWithEmailAndPassword(email: email, password: password);
+                } catch (_) {}
+              }
+            }
+          } catch (_) {}
+
+          try {
+            final activeUser = DatabaseService().currentUser;
+            if (activeUser != null) {
+              await FirestoreService().saveUser(activeUser);
+            }
+          } catch (_) {}
+        }());
 
         if (!mounted) return;
 

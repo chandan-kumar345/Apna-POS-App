@@ -56,8 +56,15 @@ const singleProgramSchema = new mongoose.Schema(
       type: [String],
       default: ['#4A082F', '#8E1449'],
     },
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'draft'],
+      default: 'active',
+    },
     isActive: { type: Boolean, default: true },
     orderIndex: { type: Number, default: 0 },
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -89,6 +96,11 @@ const visitRewardConfigSchema = new mongoose.Schema(
     bonusRequiredFields: {
       type: [String],
       default: ['name', 'phone', 'gender', 'birthday', 'anniversary'],
+    },
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'draft'],
+      default: 'active',
     },
     isActive: { type: Boolean, default: true },
   },

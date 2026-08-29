@@ -62,10 +62,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   // Loyalty Program & Points State
   final LoyaltyService _loyaltyService = LoyaltyService();
+  bool _isLoyaltyActive = false;
   CustomerLoyaltyModel? _currentCustomerLoyalty;
   String? _redeemedLoyaltyStageId;
   int _redeemedLoyaltyPoints = 0;
   double _loyaltyDiscountAmount = 0.0;
+
+  Future<void> _initLoyaltyStatus() async {
+    try {
+      final config = await _loyaltyService.getVisitRewardConfig();
+      if (mounted) {
+        setState(() {
+          _isLoyaltyActive = config.isActive && config.status != 'inactive' && config.status != 'draft';
+        });
+      }
+    } catch (_) {}
+  }
 
   Future<void> _checkCustomerLoyalty() async {
     if (_customerPhone.trim().isEmpty) {
@@ -80,6 +92,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (mounted) {
         setState(() {
           _currentCustomerLoyalty = loyalty;
+          if (loyalty != null) {
+            _isLoyaltyActive = loyalty.isProgramActive;
+          }
         });
       }
     } catch (_) {}
@@ -118,6 +133,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
+    _initLoyaltyStatus();
     if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
@@ -1725,6 +1741,247 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  Future<void> _showLoyaltyPopupDialog(StateSetter setStateModal) async {
+    CustomerLoyaltyModel? loyalty = _currentCustomerLoyalty;
+    if (loyalty == null && _customerPhone.trim().isNotEmpty) {
+      loyalty = await _loyaltyService.getCustomerLoyalty(
+        _customerPhone.trim(),
+        name: _customerName,
+      );
+      if (mounted && loyalty != null) {
+        setState(() {
+          _currentCustomerLoyalty = loyalty;
+        });
+      }
+    }
+    if (loyalty == null) {
+      if (_customerPhone.trim().isEmpty) {
+        _showAddCustomerDialog(setStateModal);
+      }
+      return;
+    }
+
+    final activeLoyalty = loyalty;
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        final ptsName = activeLoyalty.pointsName.isNotEmpty ? activeLoyalty.pointsName : 'Cash';
+        final orderTypesList = activeLoyalty.orderTypes.isNotEmpty ? activeLoyalty.orderTypes : ['DineIn', 'Takeaway'];
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 380),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF00A86B), Color(0xFF008B58)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 20,
+                  offset: Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                // Top-Right Large Translucent Circle Watermark with Currency Name ("Cash" / "Cookie")
+                Positioned(
+                  top: -25,
+                  right: -25,
+                  child: Container(
+                    width: 130,
+                    height: 130,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 20, left: 10),
+                      child: Text(
+                        ptsName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Main Content Column
+                Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Left Order Types Pill Tags
+                    Row(
+                      children: orderTypesList.map((ot) {
+                        return Container(
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x1A000000),
+                                blurRadius: 4,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            ot,
+                            style: const TextStyle(
+                              color: Color(0xFF059669),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                    const SizedBox(height: 24),
+
+                    // Available Balance / Cashback Label with Info Icon
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Text(
+                          'Available Cashback',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        SizedBox(width: 4),
+                        Icon(Icons.info_outline, color: Colors.white, size: 14),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+
+                    // Large Balance & Currency
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '${activeLoyalty.pointsBalance}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 34,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          ptsName,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Earned & Redeemed Points stats and View Loyalty button Row
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // Left: Earned & Redeemed stats
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Earned: ${activeLoyalty.totalPointsEarned}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                'Redeemed: ${activeLoyalty.totalPointsRedeemed}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        // Right: View Loyalty Button
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pop(ctx);
+                            LoyaltyRedemptionDialog.show(
+                              context,
+                              customerPhone: _customerPhone,
+                              customerName: _customerName,
+                              currentOrderTotal: cartSubtotal,
+                              onDiscountApplied: (discountAmount, stageId, pointsToRedeem) {
+                                setState(() {
+                                  _redeemedLoyaltyStageId = stageId;
+                                  _redeemedLoyaltyPoints = pointsToRedeem;
+                                  _loyaltyDiscountAmount = discountAmount;
+                                });
+                                setStateModal(() {});
+                                _checkCustomerLoyalty();
+                              },
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: const Color(0xFF059669),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                            elevation: 3,
+                          ),
+                          child: const Text(
+                            'View Loyalty',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF059669),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showExtraBenefitDialog(StateSetter setStateModal) {
     db.syncExtrasFromBackend();
 
@@ -2774,6 +3031,56 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       ],
                                     ),
                                   ),
+                                  if (_isLoyaltyActive || _currentCustomerLoyalty?.isProgramActive == true) ...[
+                                    const SizedBox(width: 6),
+                                    InkWell(
+                                      onTap: () {
+                                        if (_customerPhone.isNotEmpty || _customerName.isNotEmpty) {
+                                          _showLoyaltyPopupDialog(setStateModal);
+                                        } else {
+                                          _showAddCustomerDialog(setStateModal);
+                                        }
+                                      },
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
+                                              ? const Color(0xFF00A86B)
+                                              : Colors.white.withValues(alpha: 0.15),
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
+                                                ? const Color(0xFF5EEAD4)
+                                                : Colors.white24,
+                                            width: 1.5,
+                                          ),
+                                          boxShadow: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
+                                              ? const [
+                                                  BoxShadow(
+                                                    color: Color(0x3300A86B),
+                                                    blurRadius: 6,
+                                                    offset: Offset(0, 2),
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: Center(
+                                          child: Text(
+                                            'L',
+                                            style: TextStyle(
+                                              color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
+                                                  ? Colors.white
+                                                  : Colors.white38,
+                                              fontWeight: FontWeight.w900,
+                                              fontSize: 15,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),

@@ -128,7 +128,7 @@ class LoyaltyController {
   async getPerformance(req, res, next) {
     try {
       const businessId = this._getBusinessId(req);
-      const data = await loyaltyService.getLoyaltyPerformance(businessId);
+      const data = await loyaltyService.getLoyaltyPerformance(businessId, req.query);
       res.json({
         success: true,
         data,

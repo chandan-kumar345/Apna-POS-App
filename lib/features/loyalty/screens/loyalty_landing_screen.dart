@@ -21,21 +21,30 @@ class LoyaltyLandingScreen extends StatefulWidget {
 class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
   final LoyaltyService _loyaltyService = LoyaltyService();
 
-  bool _isLoading = true;
+  static const Color _primaryThemeColor = Color(0xFF082559);
+  static const Color _accentTeal = Color(0xFF0F766E);
+
+  bool _isLoading = false;
   String? _errorMessage;
   LoyaltyBrandingModel? _brandingData;
 
   @override
   void initState() {
     super.initState();
+    // Instant Load: populate immediately with cache or defaults without waiting
+    _brandingData = _loyaltyService.cachedBranding ?? _loyaltyService.getDefaultLoyaltyBranding();
+    _isLoading = false;
     _loadLoyaltyData();
   }
 
   Future<void> _loadLoyaltyData({bool forceRefresh = false}) async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    // Keep loading flag false if data is already visible to prevent flicker
+    if (_brandingData == null) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final data = await _loyaltyService.fetchLoyaltyPrograms(forceRefresh: forceRefresh);
@@ -46,7 +55,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
         });
       }
     } catch (err) {
-      if (mounted) {
+      if (mounted && _brandingData == null) {
         setState(() {
           _errorMessage = 'Unable to load loyalty programs. Please check connection and retry.';
           _isLoading = false;
@@ -99,73 +108,32 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     final isDesktop = screenWidth >= 650;
 
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: isDesktop ? 640 : double.infinity,
-            ),
-            child: Column(
-              children: [
-                // Sticky Top Navigation Row (Circular Back Button)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-                  child: _buildTopAppBarRow(),
-                ),
+        child: Column(
+          children: [
+            // 1. Top Curved Header in App Default Color Theme (#082559)
+            _buildTopCurvedHeader(),
 
-                // Scrollable Content
-                Expanded(
+            // 2. Scrollable Program List Content
+            Expanded(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isDesktop ? 640 : double.infinity,
+                  ),
                   child: RefreshIndicator(
-                    color: const Color(0xFF0D9488),
+                    color: _primaryThemeColor,
                     onRefresh: () => _loadLoyaltyData(forceRefresh: true),
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(
                         parent: BouncingScrollPhysics(),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          const SizedBox(height: 4),
-
-                          // Dynamic Heading
-                          const Text(
-                            'Select Your Loyalty Program',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF0D9488), // Reference Teal color
-                              letterSpacing: -0.3,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          // Dynamic Subtitle
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 12),
-                            child: Text(
-                              'Discover the perfect loyalty program and tailor it to fit your brand seamlessly!',
-                              style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w500,
-                                color: Color(0xFF475569),
-                                height: 1.35,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Loyalty Performance Pill Button
-                          _buildLoyaltyPerformanceButton(),
-
-                          const SizedBox(height: 20),
-
-                          // Main Content (Loading, Error, Empty, or Dynamic List)
+                          // Main Content (Loading, Error, Empty, or Dynamic Program Cards)
                           _buildBodyContent(),
 
                           const SizedBox(height: 30),
@@ -174,99 +142,120 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                     ),
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
   }
 
-  /// Top Left Circular Back Arrow Button
-  Widget _buildTopAppBarRow() {
-    return Row(
-      children: [
-        Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () {
-              if (widget.onBack != null) {
-                widget.onBack!();
-              } else {
-                Navigator.maybePop(context);
-              }
-            },
-            borderRadius: BorderRadius.circular(50),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFFF1F5F9),
-                border: Border.all(
-                  color: const Color(0xFFE2E8F0),
-                  width: 1.2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.05),
-                    blurRadius: 6,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+  /// Top Curved Header in App Theme Navy Color (#082559) with "Select Your Loyalty Program" text (Centered)
+  Widget _buildTopCurvedHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        color: _primaryThemeColor,
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x22082559),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Top Navigation & Performance Action Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
+                onPressed: () {
+                  if (widget.onBack != null) {
+                    widget.onBack!();
+                  } else {
+                    Navigator.maybePop(context);
+                  }
+                },
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
-              alignment: Alignment.center,
-              child: const Icon(
-                Icons.arrow_back_rounded,
-                color: Color(0xFF0F172A),
-                size: 20,
+              _buildLoyaltyPerformanceHeaderButton(),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Main Header Title: "Select Your Loyalty Program" (Centered)
+          const Text(
+            'Select Your Loyalty Program',
+            style: TextStyle(
+              fontSize: 18.5,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+              letterSpacing: -0.3,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 5),
+
+          // Dynamic Subtitle in Curved Header (Centered)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Discover the perfect loyalty program and tailor it to fit your brand seamlessly!',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w400,
+                color: Colors.white.withValues(alpha: 0.8),
+                height: 1.35,
               ),
+              textAlign: TextAlign.center,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  /// Pill-Shaped "Loyalty Performance" Button with Analytics Icon
-  Widget _buildLoyaltyPerformanceButton() {
+  /// Frosted Glass Header Button for "Loyalty Performance"
+  Widget _buildLoyaltyPerformanceHeaderButton() {
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: _navigateToPerformance,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: const Color(0xFF99F6E4).withValues(alpha: 0.7), // Light teal/mint
-            borderRadius: BorderRadius.circular(24),
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: const Color(0xFF5EEAD4),
+              color: Colors.white.withValues(alpha: 0.28),
               width: 1,
             ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF0D9488).withValues(alpha: 0.12),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
           ),
           child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
                 Icons.query_stats_rounded,
-                color: Color(0xFF0F766E), // Deep teal
-                size: 19,
+                color: Colors.white,
+                size: 15,
               ),
-              SizedBox(width: 8),
+              SizedBox(width: 5),
               Text(
-                'Loyalty Performance',
+                'Performance',
                 style: TextStyle(
-                  color: Color(0xFF0F766E),
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: 0.2,
                 ),
               ),
@@ -330,7 +319,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
               height: 24,
               child: CircularProgressIndicator(
                 strokeWidth: 2.5,
-                color: const Color(0xFF0D9488).withValues(alpha: 0.5),
+                color: _primaryThemeColor.withValues(alpha: 0.5),
               ),
             ),
           ),
@@ -398,7 +387,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
       ),
       child: Column(
         children: [
-          const Icon(Icons.card_giftcard_rounded, color: Color(0xFF0D9488), size: 44),
+          const Icon(Icons.card_giftcard_rounded, color: _accentTeal, size: 44),
           const SizedBox(height: 12),
           const Text(
             'No Active Loyalty Programs',
@@ -420,7 +409,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             icon: const Icon(Icons.add_rounded, size: 16),
             label: const Text('Initialize Default Programs'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF051C48),
+              backgroundColor: _primaryThemeColor,
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

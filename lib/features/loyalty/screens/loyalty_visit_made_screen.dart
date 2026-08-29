@@ -5,6 +5,7 @@ import '../../../core/database/database_service.dart';
 import '../../../core/models/loyalty_program_model.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/services/loyalty_service.dart';
+import 'loyalty_performance_screen.dart';
 
 class SelectableProductItem {
   final String id;
@@ -121,9 +122,9 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
   // Validation
   String? _programNameError;
 
-  // Channel screen state (media_1787953660666.png)
-  String _channelDisplayName = 'Apna POS';
+  // Channel Configuration State
   String _userCompanyName = 'THE ROYAL GARDENIA';
+  String _channelDisplayName = 'THE ROYAL GARDENIA';
   bool _whatsappUtilityEnabled = true;
 
   final List<String> _stepTitles = [
@@ -141,7 +142,9 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     final initialName = widget.companyName.isNotEmpty
         ? widget.companyName
         : (currentUser?.companyName ?? (dbRestaurant?.name ?? 'THE ROYAL GARDENIA'));
+
     _userCompanyName = initialName;
+    _channelDisplayName = initialName;
 
     _programNameCtrl = TextEditingController(
       text: widget.program?.title.isNotEmpty == true
@@ -260,7 +263,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
           : (currentUser?.profilePhotoPath ?? '');
       final fallbackName = widget.companyName.isNotEmpty
           ? widget.companyName
-          : (currentUser?.companyName ?? (dbRestaurant?.name ?? 'Swaad Chowpatty'));
+          : (currentUser?.companyName ?? (dbRestaurant?.name ?? 'THE ROYAL GARDENIA'));
 
       final config = await _loyaltyService.getVisitRewardConfig(
         companyName: fallbackName,
@@ -269,10 +272,14 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
       if (mounted) {
         setState(() {
-          if (fallbackName.isNotEmpty) _userCompanyName = fallbackName;
+          if (fallbackName.isNotEmpty) {
+            _userCompanyName = fallbackName;
+            _channelDisplayName = fallbackName;
+          }
           if (config.programName.isNotEmpty) {
             _programNameCtrl.text = config.programName;
             _userCompanyName = config.programName;
+            _channelDisplayName = config.programName;
           }
           if (config.slogan.isNotEmpty) _sloganCtrl.text = config.slogan;
           if (config.minimumPurchase > 0) {
@@ -400,6 +407,8 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       bonusPointsEnabled: _bonusPointsEnabled,
       bonusPointsAmount: double.tryParse(_bonusPointsAmountCtrl.text.trim()) ?? 100.0,
       bonusRequiredFields: const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
+      status: 'inactive',
+      isActive: false,
     );
 
     await _loyaltyService.saveVisitRewardConfig(config);
@@ -443,11 +452,13 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
               ),
               const SizedBox(height: 6),
               Text(
-                'Your loyalty program settings for "${_programNameCtrl.text}" are saved and active.',
+                'Your loyalty program "${_programNameCtrl.text.isNotEmpty ? _programNameCtrl.text : _userCompanyName}" has been created and saved in the Inactive section. You can toggle it ON whenever you are ready.',
                 style: const TextStyle(fontSize: 12, color: Color(0xFF334155), height: 1.35),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 20),
+
+              // Button 1: Go to Inactive Section (Redirects directly to Inactive tab)
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
@@ -455,16 +466,52 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     backgroundColor: _primaryThemeColor,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                     elevation: 0,
+                  ),
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    widget.onCompleted?.call();
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const LoyaltyPerformanceScreen(initialLibraryFilter: 2),
+                      ),
+                    );
+                  },
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Go to Inactive Section',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      SizedBox(width: 6),
+                      Icon(Icons.arrow_forward_rounded, size: 16, color: Colors.white),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Button 2: Back to Loyalty Hub
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF64748B),
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                   onPressed: () {
                     Navigator.pop(ctx);
                     widget.onCompleted?.call();
                     Navigator.pop(context);
                   },
-                  child: const Text('Go to Loyalty Hub',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    'Back to Loyalty Hub',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
@@ -1597,13 +1644,19 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.center,
                                       children: [
-                                        // Step 1: Edit Bonus Screen (media_1787952853197.png)
+                                        // Subtitle / Intro only on Step 0
+                                        if (_activeStep == 0) ...[
+                                          _buildIntroSubtitle(),
+                                          const SizedBox(height: 12),
+                                        ],
+
+                                        // Step 1: Edit Bonus Screen (Matching media_1787952853197.png)
                                         if (_activeStep == 1)
                                           _buildEditBonusScreen()
-                                        // Step 2: Edit Channel Screen (media_1787953660666.png)
+                                        // Step 2: Edit Channel Screen (Matching media_1787953660666.png)
                                         else if (_activeStep == 2)
                                           _buildEditChannelScreen()
-                                        // Step 3: Done Screen
+                                        // Step 3: Done Screen with Live Loyalty Preview
                                         else if (_activeStep == 3)
                                           _buildDoneScreen()
                                         else if (isTabletLandscape)
@@ -1657,7 +1710,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  // --- 1. TOP HEADER (Edit Theme & Enriched Next > button in App Theme Navy Color) ---
+  // --- 1. TOP HEADER (Edit Theme & Enriched Next/Done button in App Theme Navy Color) ---
   Widget _buildTopHeader() {
     final currentTitle = _stepTitles[_activeStep];
     final isLastStep = _activeStep == _stepTitles.length - 1;
@@ -1741,7 +1794,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  // --- 2. PROGRESS STEPPER in App Header Navy Color (Theme, Bonus, Channel, Done) ---
+  // --- 2. PROGRESS STEPPER in App Header Navy Color (4 Steps: Theme, Bonus, Channel, Done) ---
   Widget _buildProgressStepper() {
     final steps = [
       {'title': 'Edit Theme', 'icon': Icons.palette_outlined},
@@ -1829,25 +1882,25 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
   }
 
   // --- 3. SUBTITLE TEXT BANNER ---
-  // Widget _buildIntroSubtitle() {
-  //   return Padding(
-  //     padding: const EdgeInsets.symmetric(horizontal: 10),
-  //     child: RichText(
-  //       textAlign: TextAlign.center,
-  //       text: const TextSpan(
-  //         style: TextStyle(fontSize: 11.5, color: Color(0xFF334155), height: 1.35),
-  //         children: [
-  //           TextSpan(text: "We've designed a loyalty program just for you! "),
-  //           TextSpan(
-  //             text: "Feel free to review and make any changes",
-  //             style: TextStyle(fontWeight: FontWeight.w900, color: _primaryThemeColor),
-  //           ),
-  //           TextSpan(text: " to suit your needs."),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
+  Widget _buildIntroSubtitle() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: const TextSpan(
+          style: TextStyle(fontSize: 11.5, color: Color(0xFF334155), height: 1.35),
+          children: [
+            TextSpan(text: "We've designed a loyalty program just for you! "),
+            TextSpan(
+              text: "Feel free to review and make any changes",
+              style: TextStyle(fontWeight: FontWeight.w900, color: _primaryThemeColor),
+            ),
+            TextSpan(text: " to suit your needs."),
+          ],
+        ),
+      ),
+    );
+  }
 
   // --- 4. SECTION TABS (Theme, Points, Rewards, Terms) ---
   Widget _buildSectionTabs() {
@@ -3495,7 +3548,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     );
   }
 
-  // --- Step 1: Edit Bonus Screen (Refined Smaller Text & Prominent Button) ---
+  // --- Step 1: Edit Bonus Screen (Refined Smaller Typography & Prominent Button) ---
   Widget _buildEditBonusScreen() {
     final pointsName = _currentPointsName;
     final bonusAmount = _bonusPointsAmountCtrl.text.trim().isNotEmpty

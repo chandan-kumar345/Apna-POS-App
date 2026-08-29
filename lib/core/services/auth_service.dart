@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -140,13 +141,13 @@ class AuthService {
       }
     }
 
-    // Auto-fetch all cloud orders, products, tables, and floor status for this user
-    try {
-      await _db.syncWithBackend();
-    } catch (_) {}
+    // Auto-fetch all cloud orders, products, tables, and floor status asynchronously in the background
+    unawaited(_db.syncWithBackend().catchError((e) {
+      debugPrint('[AuthService] background sync notice: $e');
+    }));
 
-    // Deliver welcome push notification upon login
-    LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name);
+    // Deliver welcome push notification upon login in background
+    unawaited(Future(() => LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name)));
 
     return data;
   }
