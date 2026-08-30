@@ -97,11 +97,10 @@ class LoyaltyService {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final response = await _apiClient.get(ApiEndpoints.loyaltyPrograms);
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          final data = (body is Map<String, dynamic> && body.containsKey('data'))
-              ? body['data']
-              : body;
+        if (response != null) {
+          final data = (response is Map<String, dynamic> && response.containsKey('data'))
+              ? response['data']
+              : response;
           if (data is Map<String, dynamic>) {
             _cachedBranding = LoyaltyBrandingModel.fromJson(data);
             await _persistBrandingToPrefs(_cachedBranding!);
@@ -150,11 +149,10 @@ class LoyaltyService {
           ApiEndpoints.loyaltyPerformance,
           queryParameters: queryParams,
         );
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          final data = (body is Map<String, dynamic> && body.containsKey('data'))
-              ? body['data']
-              : body;
+        if (response != null) {
+          final data = (response is Map<String, dynamic> && response.containsKey('data'))
+              ? response['data']
+              : response;
           if (data is Map<String, dynamic>) {
             resultModel = LoyaltyPerformanceModel.fromJson(data);
           }
@@ -295,7 +293,7 @@ class LoyaltyService {
           '${ApiEndpoints.loyaltyPrograms}/${program.id}',
           data: program.toJson(),
         );
-        if (response.statusCode == 200) {
+        if (response != null) {
           debugPrint('[LoyaltyService.updateLoyaltyProgram] Cloud program updated: ${program.id}');
         }
       }
@@ -375,7 +373,7 @@ class LoyaltyService {
             ApiEndpoints.loyaltyConfig,
             data: config.toJson(),
           );
-          if (response.statusCode == 200) {
+          if (response != null) {
             debugPrint('[LoyaltyService.saveVisitRewardConfig] Saved to cloud successfully!');
           }
         } catch (apiErr) {
@@ -396,11 +394,10 @@ class LoyaltyService {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final response = await _apiClient.get(ApiEndpoints.loyaltyConfig);
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          final data = (body is Map<String, dynamic> && body.containsKey('data'))
-              ? body['data']
-              : body;
+        if (response != null) {
+          final data = (response is Map<String, dynamic> && response.containsKey('data'))
+              ? response['data']
+              : response;
           if (data is Map<String, dynamic>) {
             final config = VisitRewardConfig.fromJson(data);
             final prefs = await SharedPreferences.getInstance();
@@ -475,11 +472,10 @@ class LoyaltyService {
       if (isAuth) {
         final uri = '${ApiEndpoints.loyaltyCustomer}/${phone.trim()}${name.isNotEmpty ? '?name=${Uri.encodeComponent(name)}' : ''}';
         final response = await _apiClient.get(uri);
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          final data = (body is Map<String, dynamic> && body.containsKey('data'))
-              ? body['data']
-              : body;
+        if (response != null) {
+          final data = (response is Map<String, dynamic> && response.containsKey('data'))
+              ? response['data']
+              : response;
           if (data is Map<String, dynamic>) {
             return CustomerLoyaltyModel.fromJson(data);
           }
@@ -507,11 +503,10 @@ class LoyaltyService {
             'stageId': stageId,
           },
         );
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          return (body is Map<String, dynamic> && body.containsKey('data'))
-              ? (body['data'] as Map<String, dynamic>)
-              : (body as Map<String, dynamic>);
+        if (response != null) {
+          return (response is Map<String, dynamic> && response.containsKey('data'))
+              ? (response['data'] as Map<String, dynamic>)
+              : (response as Map<String, dynamic>);
         }
       }
     } catch (e) {
@@ -537,11 +532,10 @@ class LoyaltyService {
             'otp': otp.trim(),
           },
         );
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          return (body is Map<String, dynamic> && body.containsKey('data'))
-              ? (body['data'] as Map<String, dynamic>)
-              : (body as Map<String, dynamic>);
+        if (response != null) {
+          return (response is Map<String, dynamic> && response.containsKey('data'))
+              ? (response['data'] as Map<String, dynamic>)
+              : (response as Map<String, dynamic>);
         }
       }
     } catch (e) {
@@ -575,11 +569,10 @@ class LoyaltyService {
             'orderNumber': orderNumber,
           },
         );
-        if (response.statusCode == 200 && response.data != null) {
-          final body = response.data;
-          return (body is Map<String, dynamic> && body.containsKey('data'))
-              ? (body['data'] as Map<String, dynamic>)
-              : (body as Map<String, dynamic>);
+        if (response != null) {
+          return (response is Map<String, dynamic> && response.containsKey('data'))
+              ? (response['data'] as Map<String, dynamic>)
+              : (response as Map<String, dynamic>);
         }
       }
     } catch (e) {

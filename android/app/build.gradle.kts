@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("kotlin-android")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
     id("com.google.gms.google-services")
@@ -8,12 +9,16 @@ plugins {
 android {
     namespace = "com.example.apna_pos"
     compileSdk = 36
-    ndkVersion = "28.2.13676358"
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    androidResources {
+        noCompress.addAll(listOf("tflite", "lite", "bin", "json", "ttf", "otf", "mp3", "wav", "png", "jpg", "jpeg", "webp", "frag", "Z", "dat", "exe"))
     }
 
     defaultConfig {

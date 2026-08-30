@@ -21,6 +21,12 @@ class FirestoreService {
   /// Save or update user profile in Firestore
   Future<void> saveUser(UserModel user) async {
     try {
+      final currentFbUser = FirebaseAuth.instance.currentUser;
+      if (currentFbUser == null) {
+        // Skip Firestore sync when not signed in with Firebase Auth
+        return;
+      }
+
       final db = _db;
       if (db == null) {
         debugPrint('[FirestoreService] FirebaseFirestore is null or not initialized.');
@@ -35,7 +41,7 @@ class FirestoreService {
 
       final docId = user.id.isNotEmpty
           ? user.id
-          : (FirebaseAuth.instance.currentUser?.uid ?? 'usr_${DateTime.now().millisecondsSinceEpoch}');
+          : (currentFbUser.uid.isNotEmpty ? currentFbUser.uid : 'usr_${DateTime.now().millisecondsSinceEpoch}');
 
       await db.collection(usersCollection).doc(docId).set(
         data,
@@ -44,8 +50,8 @@ class FirestoreService {
       debugPrint('[FirestoreService] User $docId successfully saved to Firestore (Collection: $usersCollection)');
 
       // If Firebase Auth has a different UID than user.id (e.g. MongoDB ID), also link/save under currentUser.uid
-      final fbUid = FirebaseAuth.instance.currentUser?.uid;
-      if (fbUid != null && fbUid.isNotEmpty && fbUid != docId) {
+      final fbUid = currentFbUser.uid;
+      if (fbUid.isNotEmpty && fbUid != docId) {
         await db.collection(usersCollection).doc(fbUid).set(
           data,
           SetOptions(merge: true),
@@ -53,13 +59,14 @@ class FirestoreService {
         debugPrint('[FirestoreService] User duplicate linked to Firestore with Firebase Auth UID: $fbUid');
       }
     } catch (e) {
-      debugPrint('[FirestoreService] Error saving user to Firestore: $e');
+      debugPrint('[FirestoreService] Error saving user to Firestore (non-fatal): $e');
     }
   }
 
   /// Get user from Firestore
   Future<UserModel?> getUser(String userId) async {
     try {
+      if (FirebaseAuth.instance.currentUser == null) return null;
       final db = _db;
       if (db == null) return null;
       final doc = await db.collection(usersCollection).doc(userId).get();
@@ -76,6 +83,7 @@ class FirestoreService {
   /// Save or update restaurant details in Firestore
   Future<void> saveRestaurant(RestaurantModel restaurant) async {
     try {
+      if (FirebaseAuth.instance.currentUser == null) return;
       final db = _db;
       if (db == null) return;
 

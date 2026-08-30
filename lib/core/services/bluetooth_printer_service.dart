@@ -297,6 +297,7 @@ class BluetoothPrinterService {
         PosColumn(text: 'Bill: #${_toAscii(order.orderNumber)}', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(text: 'Type: ${_toAscii(orderTypeStr)}', width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
+      bytes += generator.text('Invoice: #INV-${_toAscii(order.orderNumber)}', styles: const PosStyles(bold: true));
 
       final dateStr = order.createdAt.contains(' ')
           ? order.createdAt.split(' ').first
@@ -420,7 +421,8 @@ class BluetoothPrinterService {
         PosColumn(text: 'Payment Method', width: 6),
         PosColumn(text: _toAscii(order.paymentMethod.toUpperCase()), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
       ]);
-      final String paymentStatusStr = order.isPaid ? 'PAID (COMPLETED)' : 'UNPAID / PENDING';
+      final bool isOrderPaid = order.isPaid || order.paymentStatus.toLowerCase() == 'paid' || order.status == OrderStatus.completed;
+      final String paymentStatusStr = isOrderPaid ? 'PAID (COMPLETED)' : 'UNPAID / PENDING';
       bytes += generator.row([
         PosColumn(text: 'Payment Status', width: 6, styles: const PosStyles(bold: true)),
         PosColumn(text: paymentStatusStr, width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),

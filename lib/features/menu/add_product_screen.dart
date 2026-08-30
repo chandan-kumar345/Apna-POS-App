@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
@@ -32,6 +34,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
   bool _addDiscount = false;
   String _selectedCategory = 'Main Course';
   String? _selectedImagePath;
+  Uint8List? _selectedImageBytes;
+  String? _selectedImageFileName;
+  bool _isDragging = false;
+  bool _isImageLoading = false;
 
   // Accordion Section States
   bool _isVariantsExpanded = true;
@@ -157,8 +163,79 @@ class _AddProductScreenState extends State<AddProductScreen> {
     );
   }
 
+  Future<void> _processIncomingFile(dynamic file) async {
+    try {
+      Uint8List? bytes;
+      String name = 'product.jpg';
+      String? path;
+
+      debugPrint('[_processIncomingFile] Received file: ${file.runtimeType}');
+
+      if (file is XFile) {
+        path = file.path;
+        name = file.name;
+        try {
+          bytes = await file.readAsBytes();
+        } catch (e) {
+          debugPrint('[_processIncomingFile XFile read error]: $e');
+        }
+      } else if (file is PlatformFile) {
+        name = file.name;
+        path = file.path;
+        bytes = file.bytes;
+      } else if (file is File) {
+        path = file.path;
+        name = file.path.split(Platform.pathSeparator).last;
+      }
+
+      // Fallback: If bytes not loaded but path is valid, read from local filesystem
+      if ((bytes == null || bytes.isEmpty) && path != null && path.isNotEmpty) {
+        try {
+          final localFile = File(path);
+          if (localFile.existsSync()) {
+            bytes = await localFile.readAsBytes();
+          }
+        } catch (e) {
+          debugPrint('[_processIncomingFile direct File read error]: $e');
+        }
+      }
+
+      debugPrint('[_processIncomingFile] Resolved bytes length: ${bytes?.length}, path: $path, name: $name');
+
+      if ((bytes != null && bytes.isNotEmpty) || (path != null && path.isNotEmpty)) {
+        setState(() {
+          _selectedImageBytes = bytes;
+          _selectedImagePath = path;
+          _selectedImageFileName = name;
+        });
+        _showSuccessSnackBar('Image loaded successfully!');
+      } else {
+        _showErrorSnackBar('Unable to read selected image file.');
+      }
+    } catch (e) {
+      debugPrint('[_processIncomingFile] error: $e');
+      _showErrorSnackBar('Failed to read image file: $e');
+    }
+  }
+
   Future<void> _pickImageFromGallery() async {
     try {
+      // 1. Try FilePicker for robust desktop & mobile support
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'jfif'],
+        withData: true,
+      );
+      if (result != null && result.files.isNotEmpty) {
+        await _processIncomingFile(result.files.first);
+        return;
+      }
+    } catch (e) {
+      debugPrint('[AddProductScreen] FilePicker fallback: $e');
+    }
+
+    try {
+      // 2. Fallback to ImagePicker
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
@@ -167,9 +244,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         imageQuality: 85,
       );
       if (pickedFile != null) {
-        setState(() {
-          _selectedImagePath = pickedFile.path;
-        });
+        await _processIncomingFile(pickedFile);
       }
     } catch (e) {
       _showErrorSnackBar('Gallery pick error: $e');
@@ -544,8 +619,21 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final stockVal = int.tryParse(_stockController.text.trim()) ?? 50;
 
       String finalImageUrl = _selectedImagePath ?? '';
-      // Image is completely optional: If user picked an image file, upload it; otherwise proceed with empty string
-      if (_selectedImagePath != null &&
+      
+      // If we have selected image bytes (from drag & drop or picker), upload to Cloudflare R2
+      if (_selectedImageBytes != null && _selectedImageBytes!.isNotEmpty) {
+        try {
+          final uploadedUrl = await UploadService().uploadImageBytes(
+            _selectedImageBytes!,
+            fileName: _selectedImageFileName ?? 'product_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          );
+          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+            finalImageUrl = uploadedUrl;
+          }
+        } catch (e) {
+          debugPrint('[AddProductScreen] image bytes upload fallback: $e');
+        }
+      } else if (_selectedImagePath != null &&
           _selectedImagePath!.isNotEmpty &&
           !_selectedImagePath!.startsWith('http') &&
           File(_selectedImagePath!).existsSync()) {
@@ -871,78 +959,246 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               // 6. UPLOAD PHOTOS AND IMAGE PREVIEW
                               _buildFieldHeader('Product Image (Optional)'),
                               const SizedBox(height: 8),
-                              Container(
+                              AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
-                                ),
-                                child: Column(
-                                  children: [
-                                    if (_selectedImagePath != null && _selectedImagePath!.isNotEmpty) ...[
-                                      ClipRRect(
-                                        borderRadius: BorderRadius.circular(14),
-                                        child: Image.file(
-                                          File(_selectedImagePath!),
-                                          height: 150,
+                                  decoration: BoxDecoration(
+                                    color: _isDragging ? const Color(0xFFEFF6FF) : Colors.white,
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(
+                                      color: _isDragging ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                      width: _isDragging ? 2.2 : 1.2,
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      if (_isImageLoading) ...[
+                                        Container(
+                                          height: 160,
                                           width: double.infinity,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) => Container(
-                                            height: 120,
-                                            color: const Color(0xFFF1F5F9),
-                                            child: const Center(child: Icon(Icons.broken_image, size: 40, color: Color(0xFF94A3B8))),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(14),
+                                            border: Border.all(color: const Color(0xFF93C5FD)),
+                                          ),
+                                          child: const Center(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: 32,
+                                                  height: 32,
+                                                  child: CircularProgressIndicator(
+                                                    strokeWidth: 3,
+                                                    color: Color(0xFF051C48),
+                                                  ),
+                                                ),
+                                                SizedBox(height: 10),
+                                                Text(
+                                                  'Loading image preview...',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF0F172A),
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                      Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          ElevatedButton.icon(
-                                            onPressed: _pickImageFromGallery,
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: const Color(0xFF051C48),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                      ] else if (_selectedImageBytes != null ||
+                                          (_selectedImagePath != null && _selectedImagePath!.isNotEmpty)) ...[
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFDCFCE7),
+                                                borderRadius: BorderRadius.circular(8),
+                                                border: Border.all(color: const Color(0xFF86EFAC)),
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  const Icon(Icons.check_circle, color: Color(0xFF16A34A), size: 15),
+                                                  const SizedBox(width: 5),
+                                                  Text(
+                                                    (_selectedImageFileName != null && _selectedImageFileName!.isNotEmpty)
+                                                        ? _selectedImageFileName!
+                                                        : 'Image Attached',
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: Color(0xFF15803D),
+                                                    ),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                            icon: const Icon(Icons.edit, color: Colors.white, size: 16),
-                                            label: const Text('Change Image', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
-                                          ),
-                                          const SizedBox(width: 10),
-                                          OutlinedButton.icon(
-                                            onPressed: () => setState(() => _selectedImagePath = null),
-                                            style: OutlinedButton.styleFrom(
-                                              side: const BorderSide(color: Color(0xFFEF4444)),
-                                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                            ),
-                                            icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
-                                            label: const Text('Remove', style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 12.5)),
-                                          ),
-                                        ],
-                                      ),
-                                    ] else ...[
-                                      const Icon(Icons.cloud_upload_outlined, size: 42, color: Color(0xFF051C48)),
-                                      const SizedBox(height: 8),
-                                      const Text('Upload Product Image from Gallery (Optional)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
-                                      const SizedBox(height: 4),
-                                      const Text('Supports JPG, PNG formats', style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
-                                      const SizedBox(height: 12),
-                                      ElevatedButton(
-                                        onPressed: _pickImageFromGallery,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: const Color(0xFF051C48),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                            const Spacer(),
+                                            if (_selectedImageBytes != null)
+                                              Text(
+                                                '${(_selectedImageBytes!.lengthInBytes / 1024).toStringAsFixed(0)} KB',
+                                                style: const TextStyle(
+                                                  fontSize: 11.5,
+                                                  color: Color(0xFF64748B),
+                                                  fontWeight: FontWeight.w600,
+                                                ),
+                                              ),
+                                          ],
                                         ),
-                                        child: const Text('Choose Image', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                                      ),
+                                        const SizedBox(height: 10),
+                                        Container(
+                                          height: 190,
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF8FAFC),
+                                            borderRadius: BorderRadius.circular(14),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withOpacity(0.06),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ],
+                                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(14),
+                                            child: _selectedImageBytes != null
+                                                ? Image.memory(
+                                                    _selectedImageBytes!,
+                                                    key: ValueKey(_selectedImageBytes.hashCode),
+                                                    height: 190,
+                                                    width: double.infinity,
+                                                    fit: BoxFit.cover,
+                                                    alignment: Alignment.center,
+                                                    errorBuilder: (_, __, ___) => Container(
+                                                      height: 140,
+                                                      color: const Color(0xFFF1F5F9),
+                                                      child: const Center(
+                                                        child: Icon(Icons.broken_image, size: 40, color: Color(0xFF94A3B8)),
+                                                      ),
+                                                    ),
+                                                  )
+                                                : ((_selectedImagePath!.startsWith('http://') ||
+                                                        _selectedImagePath!.startsWith('https://'))
+                                                    ? Image.network(
+                                                        _selectedImagePath!,
+                                                        key: ValueKey(_selectedImagePath!),
+                                                        height: 190,
+                                                        width: double.infinity,
+                                                        fit: BoxFit.cover,
+                                                        alignment: Alignment.center,
+                                                        errorBuilder: (_, __, ___) => Container(
+                                                          height: 140,
+                                                          color: const Color(0xFFF1F5F9),
+                                                          child: const Center(
+                                                            child: Icon(Icons.broken_image, size: 40, color: Color(0xFF94A3B8)),
+                                                          ),
+                                                        ),
+                                                      )
+                                                    : Image.file(
+                                                        File(_selectedImagePath!),
+                                                        key: ValueKey(_selectedImagePath!),
+                                                        height: 190,
+                                                        width: double.infinity,
+                                                        fit: BoxFit.cover,
+                                                        alignment: Alignment.center,
+                                                        errorBuilder: (_, __, ___) => Container(
+                                                          height: 140,
+                                                          color: const Color(0xFFF1F5F9),
+                                                          child: const Center(
+                                                            child: Icon(Icons.broken_image, size: 40, color: Color(0xFF94A3B8)),
+                                                          ),
+                                                        ),
+                                                      )),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            ElevatedButton.icon(
+                                              onPressed: _pickImageFromGallery,
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF051C48),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                              ),
+                                              icon: const Icon(Icons.edit, color: Colors.white, size: 16),
+                                              label: const Text('Change Image',
+                                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5)),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            OutlinedButton.icon(
+                                              onPressed: () => setState(() {
+                                                _selectedImageBytes = null;
+                                                _selectedImagePath = null;
+                                                _selectedImageFileName = null;
+                                              }),
+                                              style: OutlinedButton.styleFrom(
+                                                side: const BorderSide(color: Color(0xFFEF4444)),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                              ),
+                                              icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 16),
+                                              label: const Text('Remove',
+                                                  style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold, fontSize: 12.5)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 6),
+                                        const Text(
+                                          'Tip: You can also drag & drop another image here to replace',
+                                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontStyle: FontStyle.italic),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ] else ...[
+                                        InkWell(
+                                          onTap: _pickImageFromGallery,
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 12.0),
+                                            child: Column(
+                                              children: [
+                                                Icon(
+                                                  _isDragging ? Icons.file_download_outlined : Icons.cloud_upload_outlined,
+                                                  size: 46,
+                                                  color: _isDragging ? const Color(0xFF2563EB) : const Color(0xFF051C48),
+                                                ),
+                                                const SizedBox(height: 8),
+                                                Text(
+                                                  _isDragging ? 'Drop Image Here to Upload' : 'Drag & Drop Product Image here',
+                                                  style: TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: _isDragging ? const Color(0xFF2563EB) : const Color(0xFF0F172A),
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                const Text('Supports JPG, PNG, WEBP, GIF formats', style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8))),
+                                                const SizedBox(height: 12),
+                                                ElevatedButton.icon(
+                                                  onPressed: _pickImageFromGallery,
+                                                  icon: const Icon(Icons.photo_library_outlined, size: 16, color: Colors.white),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor: const Color(0xFF051C48),
+                                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                                  ),
+                                                  label: const Text('Choose Image', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
-                                  ],
+                                  ),
                                 ),
-                              ),
 
                               const SizedBox(height: 18),
 

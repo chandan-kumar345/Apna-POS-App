@@ -1170,7 +1170,9 @@ class DatabaseService extends ChangeNotifier {
   Future<void> updatePosViewMode(String mode) async {
     if (mode != 'with_image' && mode != 'without_image') return;
     if (restaurant != null) {
-      restaurant = restaurant!.copyWith(posViewMode: mode);
+      restaurant = restaurant!.copyWith(
+        posViewMode: mode,
+      );
       await _saveRestaurantToPrefs();
       notifyListeners();
 
@@ -1178,7 +1180,10 @@ class DatabaseService extends ChangeNotifier {
         final isAuth = await _authService.isAuthenticated();
         if (isAuth) {
           final ApiClient client = ApiClient();
-          await client.patch(ApiEndpoints.posSettings, data: {'posViewMode': mode});
+          await client.patch(ApiEndpoints.posSettings, data: {
+            'posViewMode': mode,
+            'showItemImages': mode == 'with_image',
+          });
         }
       } catch (e) {
         debugPrint('[DatabaseService.updatePosViewMode] API error: $e');
@@ -1476,18 +1481,20 @@ class DatabaseService extends ChangeNotifier {
         activeOrderTotal: isFree ? 0.0 : tbl.activeOrderTotal,
         activeItemCount: isFree ? 0 : tbl.activeItemCount,
       );
-      await _saveTablesToPrefs();
+      _saveTablesToPrefs();
       notifyListeners();
 
-      try {
-        final isAuth = await _authService.isAuthenticated();
+      _authService.isAuthenticated().then((isAuth) {
         if (isAuth) {
           final targetApiId = tbl.id.isNotEmpty ? tbl.id : tblName;
-          await _tableService.updateTableStatus(targetApiId, status, orderId: orderId);
+          _tableService.updateTableStatus(targetApiId, status, orderId: orderId).catchError((e) {
+            debugPrint('[DatabaseService.updateTableStatus] API error: $e');
+            return false;
+          });
         }
-      } catch (e) {
-        debugPrint('[DatabaseService.updateTableStatus] API error: $e');
-      }
+      }).catchError((e) {
+        debugPrint('[DatabaseService.updateTableStatus] Auth error: $e');
+      });
     }
   }
 
@@ -1630,12 +1637,23 @@ class DatabaseService extends ChangeNotifier {
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
     final orderNum = '$year$month$day-$hour$min-$tSuffix';
 
+    final bool isPaymentCompleted = (status == OrderStatus.completed) ||
+        paymentMethod.toLowerCase().contains('cash') ||
+        paymentMethod.toLowerCase().contains('upi') ||
+        paymentMethod.toLowerCase().contains('card') ||
+        paymentMethod.toLowerCase().contains('split');
+
+    final bool resolvedIsPaid = isPaymentCompleted;
+    final String resolvedPaymentStatus = resolvedIsPaid ? 'paid' : 'pending';
+
     var newOrder = OrderModel(
       id: orderId,
       orderNumber: orderNum,
       tableNumber: tableNumber,
       orderType: orderType,
-      status: status ?? OrderStatus.pending,
+      status: status ?? (resolvedIsPaid ? OrderStatus.completed : OrderStatus.pending),
+      paymentStatus: resolvedPaymentStatus,
+      isPaid: resolvedIsPaid,
       items: items,
       subtotal: subtotal,
       taxAmount: taxAmount,
@@ -1652,7 +1670,7 @@ class DatabaseService extends ChangeNotifier {
     );
 
     orders.insert(0, newOrder);
-    await _saveOrdersToPrefs();
+    _saveOrdersToPrefs();
 
     // If customer phone is present, automatically save/update customer in CRM & local DB
     if (customerPhone != null && customerPhone.trim().isNotEmpty) {
@@ -1849,27 +1867,7 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final apiResult = await _orderService.saveAndPrintOrder(payload);
-        if (apiResult != null && apiResult['order'] != null && apiResult['order'] is Map) {
-          final serverOrder = OrderModel.fromJson(Map<String, dynamic>.from(apiResult['order'] as Map));
-          final qrData = apiResult['qrData'] is Map ? Map<String, dynamic>.from(apiResult['qrData'] as Map) : null;
-          final String resolvedQr = qrData?['qrIntentUrl']?.toString() ?? serverOrder.qrIntentUrl ?? fallbackQr;
-
-          currentOrder = serverOrder.copyWith(
-            isSynced: true,
-            items: serverOrder.items.isNotEmpty ? serverOrder.items : List.from(items),
-            qrIntentUrl: resolvedQr,
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('[DatabaseService.saveAndPrintOrder] API error: $e');
-    }
-
-    // Upsert in local orders list
+    // Upsert in local orders list immediately
     final existingIdx = orders.indexWhere((o) => o.id == currentOrder.id || o.orderNumber == currentOrder.orderNumber);
     if (existingIdx >= 0) {
       orders[existingIdx] = currentOrder;
@@ -1877,8 +1875,36 @@ class DatabaseService extends ChangeNotifier {
       orders.insert(0, currentOrder);
     }
 
-    await _saveOrdersToPrefs();
+    _saveOrdersToPrefs();
     notifyListeners();
+
+    // Persist and generate cloud QR asynchronously in background (non-blocking for instant UI response)
+    _authService.isAuthenticated().then((isAuth) {
+      if (isAuth) {
+        _orderService.saveAndPrintOrder(payload).then((apiResult) async {
+          if (apiResult != null && apiResult['order'] != null && apiResult['order'] is Map) {
+            final serverOrder = OrderModel.fromJson(Map<String, dynamic>.from(apiResult['order'] as Map));
+            final qrData = apiResult['qrData'] is Map ? Map<String, dynamic>.from(apiResult['qrData'] as Map) : null;
+            final String resolvedQr = qrData?['qrIntentUrl']?.toString() ?? serverOrder.qrIntentUrl ?? fallbackQr;
+
+            final idx = orders.indexWhere((o) => o.id == currentOrder.id || o.orderNumber == currentOrder.orderNumber);
+            if (idx >= 0) {
+              orders[idx] = serverOrder.copyWith(
+                isSynced: true,
+                items: serverOrder.items.isNotEmpty ? serverOrder.items : List.from(items),
+                qrIntentUrl: resolvedQr,
+              );
+              await _saveOrdersToPrefs();
+              notifyListeners();
+            }
+          }
+        }).catchError((e) {
+          debugPrint('[DatabaseService.saveAndPrintOrder] API error: $e');
+        });
+      }
+    }).catchError((e) {
+      debugPrint('[DatabaseService.saveAndPrintOrder] Auth error: $e');
+    });
 
     return currentOrder;
   }
@@ -1956,13 +1982,12 @@ class DatabaseService extends ChangeNotifier {
       }
     }
 
-    await _saveOrdersToPrefs();
-    await _saveMenuToPrefs();
+    _saveOrdersToPrefs();
+    _saveMenuToPrefs();
     notifyListeners();
 
-    // Call API settlement
-    try {
-      final isAuth = await _authService.isAuthenticated();
+    // Call API settlement asynchronously in background (non-blocking for instant invoice opening)
+    _authService.isAuthenticated().then((isAuth) {
       if (isAuth) {
         final payload = {
           'paymentMethod': paymentMethod,
@@ -1975,20 +2000,23 @@ class DatabaseService extends ChangeNotifier {
         };
 
         final targetApiId = completedOrder.id.length == 24 ? completedOrder.id : (completedOrder.orderNumber.isNotEmpty ? completedOrder.orderNumber : completedOrder.id);
-        final settleResult = await _orderService.settleOrder(targetApiId, payload);
-        if (settleResult != null && settleResult['order'] != null) {
-          final serverOrder = OrderModel.fromJson(settleResult['order'] as Map<String, dynamic>);
-          final idx = orders.indexWhere((o) => o.id == completedOrder.id || o.orderNumber == completedOrder.orderNumber);
-          if (idx >= 0) {
-            orders[idx] = serverOrder.copyWith(isSynced: true);
-            await _saveOrdersToPrefs();
-            notifyListeners();
+        _orderService.settleOrder(targetApiId, payload).then((settleResult) async {
+          if (settleResult != null && settleResult['order'] != null) {
+            final serverOrder = OrderModel.fromJson(settleResult['order'] as Map<String, dynamic>);
+            final idx = orders.indexWhere((o) => o.id == completedOrder.id || o.orderNumber == completedOrder.orderNumber);
+            if (idx >= 0) {
+              orders[idx] = serverOrder.copyWith(isSynced: true);
+              await _saveOrdersToPrefs();
+              notifyListeners();
+            }
           }
-        }
+        }).catchError((e) {
+          debugPrint('[DatabaseService.settleOrder] API error: $e');
+        });
       }
-    } catch (e) {
-      debugPrint('[DatabaseService.settleOrder] API error: $e');
-    }
+    }).catchError((e) {
+      debugPrint('[DatabaseService.settleOrder] Auth error: $e');
+    });
 
     return completedOrder;
   }

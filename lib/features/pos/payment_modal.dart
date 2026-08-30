@@ -191,10 +191,6 @@ class _PaymentModalState extends State<PaymentModal> {
     });
 
     final nav = Navigator.of(context);
-    // Display animated success screen briefly before closing
-    await Future.delayed(const Duration(milliseconds: 900));
-    if (!mounted) return;
-
     final String finalMethod = 'UPI (UTR: $_upiTransactionRef)';
     nav.pop(PaymentModalResult(
       paymentMethod: finalMethod,

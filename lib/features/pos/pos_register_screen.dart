@@ -1188,29 +1188,36 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Widget _buildPosProductImage(MenuItemModel item) {
-    if (item.imageUrl.isEmpty) {
-      return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24)));
+    String imagePath = item.imageUrl.trim();
+    if (imagePath.isEmpty && item.images.isNotEmpty) {
+      imagePath = item.images.first.trim();
     }
-    if (item.imageUrl.startsWith('http://') || item.imageUrl.startsWith('https://')) {
-      return Image.network(
-        item.imageUrl,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
-      );
+
+    final String fallbackEmoji = item.emoji.trim().isNotEmpty ? item.emoji.trim() : '🥘';
+
+    if (imagePath.isNotEmpty) {
+      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        return Image.network(
+          imagePath,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          errorBuilder: (_, __, ___) => Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24))),
+        );
+      } else {
+        final file = File(imagePath);
+        if (file.existsSync()) {
+          return Image.file(
+            file,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (_, __, ___) => Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24))),
+          );
+        }
+      }
     }
-    final file = File(item.imageUrl);
-    if (file.existsSync()) {
-      return Image.file(
-        file,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        height: double.infinity,
-        errorBuilder: (_, __, ___) => Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24))),
-      );
-    }
-    return Center(child: Text(item.emoji, style: const TextStyle(fontSize: 24)));
+    return Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24)));
   }
 
   void _showAddItemDialog() {
@@ -3413,13 +3420,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
 
       // DO NOT clear cart, DO NOT mark as paid, DO NOT close modal.
-      // Show ReceiptDialog with generated invoice and dynamic QR
+      // Instantly show ReceiptDialog with generated invoice and dynamic QR
       if (mounted && targetContext.mounted) {
-        await showDialog(
+        showGeneralDialog(
           context: targetContext,
           useRootNavigator: true,
           barrierDismissible: true,
-          builder: (dialogCtx) => ReceiptDialog(order: savedOrder, currency: currency),
+          barrierLabel: 'Thermal Bill Receipt',
+          barrierColor: Colors.black54,
+          transitionDuration: const Duration(milliseconds: 100),
+          pageBuilder: (dialogCtx, anim1, anim2) => ReceiptDialog(order: savedOrder, currency: currency),
         );
       }
     } catch (e) {
@@ -3537,13 +3547,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           }).firstOrNull;
 
           if (tbl != null) {
-            await db.updateTableStatus(tbl.id, TableStatus.free);
+            db.updateTableStatus(tbl.id, TableStatus.free);
           }
           db.setLiveTableCart(targetTableStr, []);
           db.setLiveCartTotal(targetTableStr, 0);
         }
 
-        // Deduct redeemed loyalty points if loyalty stage was applied
+        // Deduct redeemed loyalty points asynchronously in background (non-blocking)
         if (_redeemedLoyaltyStageId != null && _redeemedLoyaltyPoints > 0 && _customerPhone.isNotEmpty) {
           _loyaltyService.redeemLoyaltyPoints(
             phone: _customerPhone,
@@ -3552,22 +3562,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             pointsToRedeem: _redeemedLoyaltyPoints,
             orderId: completedOrder.id,
             orderNumber: completedOrder.orderNumber,
-          );
+          ).catchError((e) {
+            debugPrint('[_checkoutOrder] Loyalty redemption sync error: $e');
+            return null;
+          });
         }
 
-        // Close the cart screen modal ONLY when payment is successfully done
-        if (cartContext != null && cartContext.mounted) {
-          Navigator.pop(cartContext);
-        }
-
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          useRootNavigator: true,
-          barrierDismissible: true,
-          builder: (_) => ReceiptDialog(order: completedOrder, currency: currency),
-        );
-
+        // Reset cart state immediately
         setState(() {
           _cartItems.clear();
           _discountAmount = 0.0;
@@ -3589,6 +3590,24 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           _activeRunningOrderId = null;
           _activeRunningOrderNumber = null;
         });
+
+        // Close the cart screen modal when payment is successfully done
+        if (cartContext != null && cartContext.mounted) {
+          Navigator.pop(cartContext);
+        }
+
+        // Instantly display the thermal receipt dialog with zero latency
+        if (mounted) {
+          showGeneralDialog(
+            context: context,
+            useRootNavigator: true,
+            barrierDismissible: true,
+            barrierLabel: 'Thermal Bill Receipt',
+            barrierColor: Colors.black54,
+            transitionDuration: const Duration(milliseconds: 100),
+            pageBuilder: (ctx, anim1, anim2) => ReceiptDialog(order: completedOrder, currency: currency),
+          );
+        }
       }
     }
   }
@@ -3891,7 +3910,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       )
                     : Builder(
                         builder: (context) {
-                          final bool showImages = db.restaurant?.showItemImages ?? true;
+                          final bool showImages = (db.restaurant?.posViewMode ?? 'with_image') != 'without_image' &&
+                              (db.restaurant?.showItemImages ?? true);
 
                           return GridView.builder(
                             physics: const BouncingScrollPhysics(),

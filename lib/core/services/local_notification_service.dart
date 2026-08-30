@@ -12,9 +12,16 @@ class LocalNotificationService {
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
 
+  bool get _isSupportedPlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux);
+
   /// Initialize local notification channels for Android and iOS
   Future<void> init() async {
-    if (_isInitialized || kIsWeb) return;
+    if (_isInitialized || !_isSupportedPlatform) return;
 
     try {
       const AndroidInitializationSettings androidSettings =
@@ -57,13 +64,17 @@ class LocalNotificationService {
     Map<String, dynamic> metadata = const {},
     bool playSound = true,
   }) async {
-    if (kIsWeb) return;
-    if (!_isInitialized) await init();
-
     // 1. Play immediate in-app audio feedback from assets
     if (playSound) {
       SoundService.playNotificationSound();
     }
+
+    if (!_isSupportedPlatform) {
+      debugPrint('[LocalNotificationService] Push notification delivered (in-app): "$title"');
+      return;
+    }
+
+    if (!_isInitialized) await init();
 
     try {
       const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(

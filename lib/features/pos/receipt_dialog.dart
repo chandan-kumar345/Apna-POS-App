@@ -85,25 +85,7 @@ class ReceiptDialog extends StatelessWidget {
     final String photoPath = user?.profilePhotoPath ?? '';
 
     if (photoPath.isNotEmpty) {
-      if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
-        return Container(
-          width: 54,
-          height: 54,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: const Color(0xFF051C48), width: 2),
-            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-          ),
-          child: ClipOval(
-            child: Image.file(
-              File(photoPath),
-              width: 54,
-              height: 54,
-              fit: BoxFit.cover,
-            ),
-          ),
-        );
-      } else if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+      if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
         return Container(
           width: 54,
           height: 54,
@@ -115,6 +97,25 @@ class ReceiptDialog extends StatelessWidget {
           child: ClipOval(
             child: Image.network(
               photoPath,
+              width: 54,
+              height: 54,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? 'Apna POS'),
+            ),
+          ),
+        );
+      } else if (!photoPath.contains('_selected')) {
+        return Container(
+          width: 54,
+          height: 54,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFF051C48), width: 2),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+          ),
+          child: ClipOval(
+            child: Image.file(
+              File(photoPath),
               width: 54,
               height: 54,
               fit: BoxFit.cover,
@@ -418,30 +419,37 @@ class ReceiptDialog extends StatelessWidget {
                                 'Payment Status',
                                 style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: order.isPaid
-                                      ? const Color(0xFFDCFCE7)
-                                      : const Color(0xFFFEF3C7),
-                                  borderRadius: BorderRadius.circular(4),
-                                  border: Border.all(
-                                    color: order.isPaid
-                                        ? const Color(0xFF16A34A)
-                                        : const Color(0xFFD97706),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Text(
-                                  order.isPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: order.isPaid
-                                        ? const Color(0xFF166534)
-                                        : const Color(0xFF92400E),
-                                  ),
-                                ),
+                              Builder(
+                                builder: (_) {
+                                  final bool isBillPaid = order.isPaid ||
+                                      order.paymentStatus.toLowerCase() == 'paid' ||
+                                      order.status == OrderStatus.completed;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isBillPaid
+                                          ? const Color(0xFFDCFCE7)
+                                          : const Color(0xFFFEF3C7),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(
+                                        color: isBillPaid
+                                            ? const Color(0xFF16A34A)
+                                            : const Color(0xFFD97706),
+                                        width: 1,
+                                      ),
+                                    ),
+                                    child: Text(
+                                      isBillPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: isBillPaid
+                                            ? const Color(0xFF166534)
+                                            : const Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  );
+                                },
                               ),
                             ],
                           ),
@@ -560,25 +568,12 @@ class ReceiptDialog extends StatelessWidget {
   }
 
   Widget _buildDashedLine() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final double width = constraints.maxWidth.isFinite && constraints.maxWidth > 0 ? constraints.maxWidth : 320.0;
-        const double dashWidth = 4;
-        const double dashSpace = 3;
-        final int count = (width / (dashWidth + dashSpace)).floor().clamp(1, 100);
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(count, (_) {
-            return const SizedBox(
-              width: dashWidth,
-              height: 1,
-              child: DecoratedBox(
-                decoration: BoxDecoration(color: Color(0xFF94A3B8)),
-              ),
-            );
-          }),
-        );
-      },
+    return const SizedBox(
+      width: double.infinity,
+      height: 1,
+      child: CustomPaint(
+        painter: _DashedLinePainter(),
+      ),
     );
   }
 
@@ -680,4 +675,30 @@ class ReceiptDialog extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  const _DashedLinePainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFF94A3B8)
+      ..strokeWidth = 1.0;
+
+    const double dashWidth = 4.0;
+    const double dashSpace = 3.0;
+    double startX = 0;
+    while (startX < size.width) {
+      canvas.drawLine(
+        Offset(startX, 0),
+        Offset((startX + dashWidth).clamp(0, size.width), 0),
+        paint,
+      );
+      startX += dashWidth + dashSpace;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

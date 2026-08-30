@@ -39,4 +39,37 @@ class UploadService {
       return null;
     }
   }
+
+  /// Upload image bytes directly to Cloudflare R2 / Server Storage
+  Future<String?> uploadImageBytes(
+    Uint8List bytes, {
+    String fileName = 'image.jpg',
+    String folder = 'products',
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'image': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+        ),
+      });
+
+      final response = await _client.post(
+        '${ApiEndpoints.uploadImage}?folder=$folder',
+        data: formData,
+      );
+
+      if (response != null && response is Map<String, dynamic>) {
+        if (response['success'] == true && response['data'] != null) {
+          final imageUrl = response['data']['imageUrl']?.toString();
+          debugPrint('[UploadService] Image uploaded successfully: $imageUrl');
+          return imageUrl;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[UploadService] Upload bytes failed: $e');
+      return null;
+    }
+  }
 }
