@@ -139,6 +139,7 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
       final success = await printerService.printBill(
         order: orderSnapshot,
         restaurant: rest,
+        user: _db.currentUser,
         currency: currency,
       );
 

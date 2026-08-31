@@ -185,6 +185,38 @@ class DatabaseService extends ChangeNotifier {
     } catch (_) {}
   }
 
+  void clearTableCartAndFree(String? tableRef) {
+    if (tableRef == null || tableRef.trim().isEmpty) return;
+    final tRef = tableRef.trim();
+
+    _liveCartTotals.remove(tRef);
+    _liveTableCarts.remove(tRef);
+    _liveCartTotals.remove('T-$tRef');
+    _liveTableCarts.remove('T-$tRef');
+
+    for (int i = 0; i < tables.length; i++) {
+      final t = tables[i];
+      if (isSameTable(t.name, tRef) || isSameTable(t.tableNumber.toString(), tRef) || isSameTable('T-${t.tableNumber}', tRef)) {
+        _liveCartTotals.remove(t.name);
+        _liveTableCarts.remove(t.name);
+        _liveCartTotals.remove('T-${t.tableNumber}');
+        _liveTableCarts.remove('T-${t.tableNumber}');
+        tables[i] = t.copyWith(
+          status: TableStatus.free,
+          currentOrderId: null,
+          activeOrderNumber: null,
+          activeOrderTotal: 0.0,
+          activeItemCount: 0,
+          occupiedSince: null,
+        );
+        updateTableStatus(t.id, TableStatus.free);
+      }
+    }
+    _saveLiveTableCartsToPrefs();
+    _saveTablesToPrefs();
+    notifyListeners();
+  }
+
   void _reconcileTablesWithRunningOrders() {
     for (int i = 0; i < tables.length; i++) {
       final tbl = tables[i];
@@ -206,6 +238,23 @@ class DatabaseService extends ChangeNotifier {
         );
         _liveCartTotals[tbl.name] = activeOrder.totalAmount;
         _liveTableCarts[tbl.name] = List.from(activeOrder.items);
+      } else {
+        // No active pending/preparing order exists for this table
+        final hasDraftCart = _liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty;
+        if (!hasDraftCart) {
+          tables[i] = tbl.copyWith(
+            status: TableStatus.free,
+            currentOrderId: null,
+            activeOrderNumber: null,
+            activeOrderTotal: 0.0,
+            activeItemCount: 0,
+            occupiedSince: null,
+          );
+          _liveCartTotals.remove(tbl.name);
+          _liveTableCarts.remove(tbl.name);
+          _liveCartTotals.remove('T-${tbl.tableNumber}');
+          _liveTableCarts.remove('T-${tbl.tableNumber}');
+        }
       }
     }
   }
@@ -458,8 +507,145 @@ class DatabaseService extends ChangeNotifier {
     _isInitialized = true;
     notifyListeners();
 
+    // Start real-time background auto-sync across devices
+    startAutoSync();
+
     // Background sync with live backend if logged in
     syncWithBackend();
+  }
+
+  Timer? _autoSyncTimer;
+  bool _isSilentSyncing = false;
+
+  /// Starts periodic background auto-sync for live tables and active orders across devices
+  void startAutoSync({Duration interval = const Duration(seconds: 4)}) {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(interval, (_) {
+      syncTablesAndOrdersSilently();
+    });
+  }
+
+  /// Stops periodic background auto-sync
+  void stopAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
+  }
+
+  /// Triggers an immediate cloud sync on table state / order change
+  Future<void> triggerImmediateSync() async {
+    await syncTablesAndOrdersSilently();
+  }
+
+  /// Performs a silent, non-blocking background sync of live tables and active orders across all devices
+  Future<void> syncTablesAndOrdersSilently() async {
+    if (_isSilentSyncing) return;
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      _isSilentSyncing = true;
+
+      // 1. Push any local unsynced orders
+      final unsynced = orders.where((o) => !o.isSynced).toList();
+      if (unsynced.isNotEmpty) {
+        for (final localOrder in unsynced) {
+          try {
+            final remoteOrder = await _orderService.createOrder(localOrder);
+            final idx = orders.indexWhere((o) => o.id == localOrder.id || o.orderNumber == localOrder.orderNumber);
+            if (idx >= 0) {
+              orders[idx] = remoteOrder.copyWith(
+                isSynced: true,
+                items: remoteOrder.items.isNotEmpty ? remoteOrder.items : localOrder.items,
+              );
+            }
+          } catch (err) {
+            debugPrint('[DatabaseService.syncTablesAndOrdersSilently] Offline push error: $err');
+          }
+        }
+      }
+
+      // 2. Fetch live tables from backend
+      final remoteTables = await _tableService.fetchTables();
+
+      // 3. Fetch latest active orders from backend
+      final remoteOrders = await _orderService.fetchOrders(limit: 200);
+
+      bool hasChanged = false;
+
+      // 4. Merge remote orders
+      if (remoteOrders.isNotEmpty) {
+        final Map<String, OrderModel> orderMap = {};
+        for (final r in remoteOrders) {
+          final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
+          orderMap[key] = r.copyWith(isSynced: true);
+        }
+        for (final local in orders) {
+          final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
+          final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
+          if (existingRemote == null) {
+            orderMap[key] = local;
+          } else {
+            if ((local.status == OrderStatus.completed || local.isPaid) &&
+                existingRemote.status != OrderStatus.completed &&
+                !existingRemote.isPaid) {
+              orderMap[key] = local.copyWith(isSynced: false);
+            } else {
+              orderMap[key] = existingRemote.copyWith(
+                items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
+              );
+            }
+          }
+        }
+
+        final mergedOrders = orderMap.values.toList();
+        mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+
+        if (orders.length != mergedOrders.length ||
+            !listEquals(orders.map((o) => '${o.id}_${o.status.name}_${o.paymentStatus}_${o.totalAmount}').toList(),
+                mergedOrders.map((o) => '${o.id}_${o.status.name}_${o.paymentStatus}_${o.totalAmount}').toList())) {
+          orders = mergedOrders;
+          hasChanged = true;
+        }
+      }
+
+      // 5. Update and reconcile tables
+      if (remoteTables.isNotEmpty) {
+        if (tables.length != remoteTables.length) {
+          tables = remoteTables;
+          hasChanged = true;
+        } else {
+          for (int i = 0; i < remoteTables.length; i++) {
+            final rt = remoteTables[i];
+            final ltIdx = tables.indexWhere((t) => t.id == rt.id || isSameTable(t.name, rt.name));
+            if (ltIdx >= 0) {
+              final lt = tables[ltIdx];
+              if (lt.status != rt.status ||
+                  (lt.activeOrderTotal - rt.activeOrderTotal).abs() > 0.01 ||
+                  lt.activeItemCount != rt.activeItemCount ||
+                  lt.currentOrderId != rt.currentOrderId) {
+                tables[ltIdx] = rt;
+                hasChanged = true;
+              }
+            }
+          }
+        }
+
+        // Reconcile with latest running orders
+        _reconcileTablesWithRunningOrders();
+        hasChanged = true;
+      }
+
+      if (hasChanged) {
+        await _saveOrdersToPrefs();
+        await _saveTablesToPrefs();
+        await _saveLiveTableCartsToPrefs();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.syncTablesAndOrdersSilently] error: $e');
+    } finally {
+      _isSilentSyncing = false;
+    }
   }
 
   /// Syncs all in-memory data with the live production backend MongoDB APIs
@@ -1099,6 +1285,7 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    stopAutoSync();
     ProductService.clearPosCache();
     currentUser = null;
     restaurant = null;
@@ -1487,7 +1674,9 @@ class DatabaseService extends ChangeNotifier {
       _authService.isAuthenticated().then((isAuth) {
         if (isAuth) {
           final targetApiId = tbl.id.isNotEmpty ? tbl.id : tblName;
-          _tableService.updateTableStatus(targetApiId, status, orderId: orderId).catchError((e) {
+          _tableService.updateTableStatus(targetApiId, status, orderId: orderId).then((_) {
+            triggerImmediateSync();
+          }).catchError((e) {
             debugPrint('[DatabaseService.updateTableStatus] API error: $e');
             return false;
           });
@@ -1681,11 +1870,19 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // If table assigned, mark table as Occupied (pending) or Free (completed)
+    // If table assigned, mark table as Occupied (pending), Free (completed), or maintain RunningKot (preparing / active KOT)
     if (tableNumber != null && tableNumber.isNotEmpty) {
-      final tIndex = tables.indexWhere((t) => t.name == tableNumber || t.tableNumber.toString() == tableNumber);
+      final tIndex = tables.indexWhere((t) =>
+          t.name.trim().toLowerCase() == tableNumber.trim().toLowerCase() ||
+          t.tableNumber.toString() == tableNumber ||
+          'T-${t.tableNumber}'.toLowerCase() == tableNumber.trim().toLowerCase());
       if (tIndex >= 0) {
-        final targetStatus = (status == OrderStatus.completed) ? TableStatus.free : TableStatus.occupied;
+        final currentTable = tables[tIndex];
+        final targetStatus = (status == OrderStatus.completed)
+            ? TableStatus.free
+            : (status == OrderStatus.preparing || currentTable.status == TableStatus.runningKot
+                ? TableStatus.runningKot
+                : TableStatus.occupied);
         updateTableStatus(tables[tIndex].id, targetStatus, orderId: status == OrderStatus.completed ? null : orderId);
       }
     }
@@ -1711,6 +1908,7 @@ class DatabaseService extends ChangeNotifier {
             orders[idx] = remoteOrder.copyWith(isSynced: true);
             await _saveOrdersToPrefs();
             notifyListeners();
+            triggerImmediateSync();
           }
         }).catchError((e) {
           debugPrint('[DatabaseService.createOrder] API error: $e');
@@ -1730,20 +1928,7 @@ class DatabaseService extends ChangeNotifier {
 
       // If completed or cancelled, clear occupied table and live cart data
       if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
-        final tNum = orders[index].tableNumber;
-        if (tNum != null && tNum.isNotEmpty) {
-          _liveCartTotals.remove(tNum);
-          _liveTableCarts.remove(tNum);
-
-          final tIndex = tables.indexWhere((t) =>
-            t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
-            t.tableNumber.toString() == tNum ||
-            'T-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase()
-          );
-          if (tIndex >= 0) {
-            updateTableStatus(tables[tIndex].id, TableStatus.free);
-          }
-        }
+        clearTableCartAndFree(orders[index].tableNumber);
       }
       await _saveOrdersToPrefs();
       notifyListeners();
@@ -1789,16 +1974,52 @@ class DatabaseService extends ChangeNotifier {
 
     final String upiId = (restaurant?.upiId ?? 'apnapos@upi').trim();
     final String restName = (restaurant?.name ?? 'Apna POS Store').trim();
+
+    // Resolve existing running order for this table/order to prevent creating duplicate orders on multiple Save & Print clicks
+    final activeTableOrder = (tableNumber != null && tableNumber.isNotEmpty && orderType == OrderType.dineIn)
+        ? orders.where((o) =>
+            isSameTable(o.tableNumber, tableNumber) &&
+            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+          ).firstOrNull
+        : null;
+
+    final activeRunningOrder = (orderType != OrderType.dineIn)
+        ? orders.where((o) =>
+            o.orderType == orderType &&
+            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+          ).firstOrNull
+        : null;
+
+    final existingOrder = (existingOrderId != null && existingOrderId.isNotEmpty)
+        ? orders.where((o) => o.id == existingOrderId || o.orderNumber == existingOrderId).firstOrNull
+        : (activeTableOrder ?? activeRunningOrder);
+
+    final String resolvedOrderId = (existingOrderId != null && existingOrderId.isNotEmpty)
+        ? existingOrderId
+        : (existingOrder?.id ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}');
+
     final String safeOrderNum = (existingOrderNumber != null && existingOrderNumber.isNotEmpty)
         ? existingOrderNumber
-        : '${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+        : (existingOrder?.orderNumber ?? '${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}');
+
     final String fallbackQr = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(restName)}&am=${finalTotalAmount.toStringAsFixed(2)}&cu=INR&tr=$safeOrderNum&tn=${Uri.encodeComponent("Bill $safeOrderNum")}';
 
+    final tMatch = (tableNumber != null && tableNumber.isNotEmpty)
+        ? tables.where((t) =>
+            t.name.trim().toLowerCase() == tableNumber.trim().toLowerCase() ||
+            t.tableNumber.toString() == tableNumber ||
+            'T-${t.tableNumber}'.toLowerCase() == tableNumber.trim().toLowerCase()
+          ).firstOrNull
+        : null;
+
+    final bool isKotRunning = (existingOrder?.status == OrderStatus.preparing) || (tMatch?.status == TableStatus.runningKot);
+    final OrderStatus effectiveOrderStatus = isKotRunning ? OrderStatus.preparing : (existingOrder?.status ?? OrderStatus.pending);
+
     final payload = {
-      if (existingOrderId != null && existingOrderId.isNotEmpty) 'orderId': existingOrderId,
-      if (existingOrderNumber != null && existingOrderNumber.isNotEmpty) 'orderNumber': existingOrderNumber,
+      'orderId': resolvedOrderId,
+      'orderNumber': safeOrderNum,
       'orderType': orderType.name,
-      'status': 'pending',
+      'status': effectiveOrderStatus.name,
       'paymentStatus': 'pending',
       'paymentMethod': 'unpaid',
       'tableNumber': orderType == OrderType.dineIn ? (tableNumber ?? '') : '',
@@ -1824,11 +2045,11 @@ class DatabaseService extends ChangeNotifier {
     };
 
     OrderModel currentOrder = OrderModel(
-      id: existingOrderId ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+      id: resolvedOrderId,
       orderNumber: safeOrderNum,
       tableNumber: tableNumber,
       orderType: orderType,
-      status: OrderStatus.pending,
+      status: effectiveOrderStatus,
       paymentStatus: 'pending',
       isPaid: false,
       isSynced: false,
@@ -1842,19 +2063,26 @@ class DatabaseService extends ChangeNotifier {
       totalAmount: finalTotalAmount,
       paymentMethod: 'unpaid',
       deliveryAddress: deliveryAddress,
-      createdAt: DateTime.now().toIso8601String(),
+      createdAt: existingOrder?.createdAt ?? DateTime.now().toIso8601String(),
       customerName: customerName,
       customerPhone: customerPhone,
       invoiceNumber: 'INV-$safeOrderNum',
       qrIntentUrl: fallbackQr,
-      printCount: 1,
+      printCount: (existingOrder?.printCount ?? 0) + 1,
     );
 
-    // If table assigned, keep table occupied
+    // If table assigned, keep table in runningKot if KOT is active, else occupied
     if (tableNumber != null && tableNumber.isNotEmpty && orderType == OrderType.dineIn) {
-      final tIndex = tables.indexWhere((t) => t.name == tableNumber || t.tableNumber.toString() == tableNumber);
+      final tIndex = tables.indexWhere((t) =>
+          t.name.trim().toLowerCase() == tableNumber.trim().toLowerCase() ||
+          t.tableNumber.toString() == tableNumber ||
+          'T-${t.tableNumber}'.toLowerCase() == tableNumber.trim().toLowerCase());
       if (tIndex >= 0) {
-        updateTableStatus(tables[tIndex].id, TableStatus.occupied, orderId: currentOrder.id);
+        final currentTable = tables[tIndex];
+        final targetTableStatus = (currentTable.status == TableStatus.runningKot || isKotRunning)
+            ? TableStatus.runningKot
+            : TableStatus.occupied;
+        updateTableStatus(tables[tIndex].id, targetTableStatus, orderId: currentOrder.id);
       }
     }
 
@@ -1867,8 +2095,13 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // Upsert in local orders list immediately
-    final existingIdx = orders.indexWhere((o) => o.id == currentOrder.id || o.orderNumber == currentOrder.orderNumber);
+    // Upsert in local orders list immediately in-place
+    final existingIdx = orders.indexWhere((o) =>
+      o.id == resolvedOrderId ||
+      o.orderNumber == safeOrderNum ||
+      (tableNumber != null && tableNumber.isNotEmpty && orderType == OrderType.dineIn && isSameTable(o.tableNumber, tableNumber) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) ||
+      (orderType != OrderType.dineIn && o.orderType == orderType && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing))
+    );
     if (existingIdx >= 0) {
       orders[existingIdx] = currentOrder;
     } else {
@@ -1896,6 +2129,7 @@ class DatabaseService extends ChangeNotifier {
               );
               await _saveOrdersToPrefs();
               notifyListeners();
+              triggerImmediateSync();
             }
           }
         }).catchError((e) {
@@ -1950,27 +2184,39 @@ class DatabaseService extends ChangeNotifier {
       orders.insert(0, completedOrder);
     }
 
-    // Free table if dineIn
-    final tNum = completedOrder.tableNumber;
-    if (tNum != null && tNum.isNotEmpty) {
-      _liveCartTotals.remove(tNum);
-      _liveTableCarts.remove(tNum);
-
-      final cleanTNum = tNum.replaceAll(RegExp(r'[^0-9]'), '');
-      final tIndex = tables.indexWhere((t) {
-        final cleanTableTNum = t.tableNumber.toString().replaceAll(RegExp(r'[^0-9]'), '');
-        final cleanTableName = t.name.replaceAll(RegExp(r'[^0-9]'), '');
-        return t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
-            t.tableNumber.toString() == tNum.trim() ||
-            't-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
-            't${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
-            'table ${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase() ||
-            (cleanTNum.isNotEmpty && (cleanTableTNum == cleanTNum || cleanTableName == cleanTNum));
-      });
-      if (tIndex >= 0) {
-        await updateTableStatus(tables[tIndex].id, TableStatus.free);
+    // Also mark any other duplicate running orders for this table or takeaway/delivery as completed
+    final settledTable = completedOrder.tableNumber;
+    if (settledTable != null && settledTable.isNotEmpty) {
+      for (int i = 0; i < orders.length; i++) {
+        if (isSameTable(orders[i].tableNumber, settledTable) &&
+            (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing || orders[i].status == OrderStatus.ready)) {
+          orders[i] = orders[i].copyWith(
+            status: OrderStatus.completed,
+            paymentStatus: 'paid',
+            isPaid: true,
+            paymentMethod: paymentMethod,
+            totalAmount: totalAmount,
+          );
+        }
+      }
+    } else {
+      for (int i = 0; i < orders.length; i++) {
+        if (orders[i].orderType == completedOrder.orderType &&
+            orders[i].id != completedOrder.id &&
+            (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing || orders[i].status == OrderStatus.ready)) {
+          orders[i] = orders[i].copyWith(
+            status: OrderStatus.completed,
+            paymentStatus: 'paid',
+            isPaid: true,
+            paymentMethod: paymentMethod,
+            totalAmount: totalAmount,
+          );
+        }
       }
     }
+
+    // Free table if dineIn
+    clearTableCartAndFree(completedOrder.tableNumber);
 
     // Deduct stock quantity locally
     for (var cartItem in completedOrder.items) {
@@ -2008,6 +2254,7 @@ class DatabaseService extends ChangeNotifier {
               orders[idx] = serverOrder.copyWith(isSynced: true);
               await _saveOrdersToPrefs();
               notifyListeners();
+              triggerImmediateSync();
             }
           }
         }).catchError((e) {
@@ -2039,20 +2286,7 @@ class DatabaseService extends ChangeNotifier {
       );
 
       final currentOrder = orders[index];
-      final tNum = currentOrder.tableNumber;
-      if (tNum != null && tNum.isNotEmpty) {
-        _liveCartTotals.remove(tNum);
-        _liveTableCarts.remove(tNum);
-
-        final tIndex = tables.indexWhere((t) =>
-          t.name.trim().toLowerCase() == tNum.trim().toLowerCase() ||
-          t.tableNumber.toString() == tNum ||
-          'T-${t.tableNumber}'.toLowerCase() == tNum.trim().toLowerCase()
-        );
-        if (tIndex >= 0) {
-          updateTableStatus(tables[tIndex].id, TableStatus.free);
-        }
-      }
+      clearTableCartAndFree(currentOrder.tableNumber);
 
       await _saveOrdersToPrefs();
       notifyListeners();

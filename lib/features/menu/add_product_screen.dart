@@ -956,14 +956,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
                               const SizedBox(height: 18),
 
-                              // 6. UPLOAD PHOTOS AND IMAGE PREVIEW
                               _buildFieldHeader('Product Image (Optional)'),
                               const SizedBox(height: 8),
                               AnimatedContainer(
                                 duration: const Duration(milliseconds: 200),
                                 width: double.infinity,
                                 padding: const EdgeInsets.all(16),
-                                  decoration: BoxDecoration(
+                                decoration: BoxDecoration(
                                     color: _isDragging ? const Color(0xFFEFF6FF) : Colors.white,
                                     borderRadius: BorderRadius.circular(16),
                                     border: Border.all(

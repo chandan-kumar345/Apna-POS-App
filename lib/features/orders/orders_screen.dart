@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
@@ -7,6 +8,8 @@ import '../pos/receipt_dialog.dart';
 import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
+
+enum OrderDateFilter { allTime, today, yesterday, thisWeek, thisMonth, custom }
 
 class OrdersScreen extends StatefulWidget {
   final Function(String tableName)? onOpenPosForTable;
@@ -28,6 +31,10 @@ class OrdersScreen extends StatefulWidget {
 
 class _OrdersScreenState extends State<OrdersScreen> {
   final db = DatabaseService();
+
+  // Date Filter matching Sales Report Screen
+  OrderDateFilter _selectedDateFilter = OrderDateFilter.allTime;
+  DateTimeRange? _customDateRange;
 
   // REMOVED 'All' OPTION; DEFAULT TO 'DineIn' & 'Preparing'
   String _selectedOrderTypeFilter = 'DineIn'; // 'DineIn', 'TakeAway', 'Delivery'
@@ -203,6 +210,193 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
   }
 
+  bool _matchesDateFilter(OrderModel o) {
+    if (_selectedDateFilter == OrderDateFilter.allTime) return true;
+    if (o.createdAt.trim().isEmpty) return true;
+
+    DateTime? orderDate = DateTime.tryParse(o.createdAt);
+    if (orderDate == null) {
+      try {
+        orderDate = DateFormat('yyyy-MM-dd HH:mm:ss').parse(o.createdAt, true);
+      } catch (_) {
+        return true;
+      }
+    }
+    orderDate = orderDate.toLocal();
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+
+    switch (_selectedDateFilter) {
+      case OrderDateFilter.allTime:
+        return true;
+      case OrderDateFilter.today:
+        return orderDate.isAfter(todayStart.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(todayEnd.add(const Duration(milliseconds: 1)));
+      case OrderDateFilter.yesterday:
+        final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+        final yesterdayEnd = DateTime(yesterdayStart.year, yesterdayStart.month, yesterdayStart.day, 23, 59, 59, 999);
+        return orderDate.isAfter(yesterdayStart.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(yesterdayEnd.add(const Duration(milliseconds: 1)));
+      case OrderDateFilter.thisWeek:
+        final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
+        return orderDate.isAfter(weekStart.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(todayEnd.add(const Duration(milliseconds: 1)));
+      case OrderDateFilter.thisMonth:
+        final monthStart = DateTime(now.year, now.month, 1);
+        final nextMonth = (now.month == 12) ? DateTime(now.year + 1, 1, 1) : DateTime(now.year, now.month + 1, 1);
+        final monthEnd = nextMonth.subtract(const Duration(milliseconds: 1));
+        return orderDate.isAfter(monthStart.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(monthEnd.add(const Duration(milliseconds: 1)));
+      case OrderDateFilter.custom:
+        if (_customDateRange == null) return true;
+        final start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
+        final end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999);
+        return orderDate.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(end.add(const Duration(milliseconds: 1)));
+    }
+  }
+
+  Future<void> _pickCustomDateRange() async {
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      initialDateRange: _customDateRange ??
+          DateTimeRange(
+            start: DateTime.now().subtract(const Duration(days: 7)),
+            end: DateTime.now(),
+          ),
+      builder: (context, child) {
+        return Theme(
+          data: ThemeData.light().copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Color(0xFF051C48),
+              onPrimary: Colors.white,
+              surface: Colors.white,
+              onSurface: Color(0xFF0F172A),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _customDateRange = picked;
+        _selectedDateFilter = OrderDateFilter.custom;
+      });
+    }
+  }
+
+  String _getFilterLabel() {
+    switch (_selectedDateFilter) {
+      case OrderDateFilter.today:
+        return 'Today';
+      case OrderDateFilter.yesterday:
+        return 'Yesterday';
+      case OrderDateFilter.thisWeek:
+        return 'This Week';
+      case OrderDateFilter.thisMonth:
+        return 'This Month';
+      case OrderDateFilter.custom:
+        if (_customDateRange != null) {
+          final fmt = DateFormat('d MMM');
+          return '${fmt.format(_customDateRange!.start)} - ${fmt.format(_customDateRange!.end)}';
+        }
+        return 'Custom';
+      case OrderDateFilter.allTime:
+        return 'All Time';
+    }
+  }
+
+  Widget _buildDateFilterChip(String label, OrderDateFilter filter) {
+    final isSelected = _selectedDateFilter == filter;
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: isSelected,
+        selectedColor: const Color(0xFF051C48),
+        backgroundColor: const Color(0xFFF1F5F9),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        side: BorderSide(
+          color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+          width: isSelected ? 1.5 : 1,
+        ),
+        labelStyle: TextStyle(
+          color: isSelected ? Colors.white : const Color(0xFF334155),
+          fontWeight: FontWeight.w700,
+          fontSize: 11.5,
+        ),
+        onSelected: (_) {
+          setState(() {
+            _selectedDateFilter = filter;
+          });
+        },
+      ),
+    );
+  }
+
+  Widget _buildDateFilterBar() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x06000000), blurRadius: 6, offset: Offset(0, 2)),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.filter_alt_rounded, color: Color(0xFF051C48), size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  _buildDateFilterChip('All Time', OrderDateFilter.allTime),
+                  _buildDateFilterChip('Today', OrderDateFilter.today),
+                  _buildDateFilterChip('Yesterday', OrderDateFilter.yesterday),
+                  _buildDateFilterChip('This Week', OrderDateFilter.thisWeek),
+                  _buildDateFilterChip('This Month', OrderDateFilter.thisMonth),
+                  Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ChoiceChip(
+                      avatar: const Icon(Icons.calendar_month_rounded, size: 14),
+                      label: Text(_selectedDateFilter == OrderDateFilter.custom ? _getFilterLabel() : 'Custom'),
+                      selected: _selectedDateFilter == OrderDateFilter.custom,
+                      selectedColor: const Color(0xFF051C48),
+                      backgroundColor: const Color(0xFFF1F5F9),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      side: BorderSide(
+                        color: _selectedDateFilter == OrderDateFilter.custom ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+                        width: _selectedDateFilter == OrderDateFilter.custom ? 1.5 : 1,
+                      ),
+                      labelStyle: TextStyle(
+                        color: _selectedDateFilter == OrderDateFilter.custom ? Colors.white : const Color(0xFF334155),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11.5,
+                      ),
+                      onSelected: (_) => _pickCustomDateRange(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
@@ -210,12 +404,16 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return ListenableBuilder(
       listenable: db,
       builder: (context, _) {
-        // Filter orders by OrderType (NO 'All' option)
+        // Filter orders by OrderType (NO 'All' option) and Date Filter
         List<OrderModel> typeFilteredOrders = db.orders.where((o) {
-          if (_selectedOrderTypeFilter == 'Delivery') return o.orderType == OrderType.delivery;
-          if (_selectedOrderTypeFilter == 'DineIn') return o.orderType == OrderType.dineIn;
-          if (_selectedOrderTypeFilter == 'TakeAway') return o.orderType == OrderType.takeaway;
-          return true;
+          final matchesType = (_selectedOrderTypeFilter == 'Delivery')
+              ? o.orderType == OrderType.delivery
+              : (_selectedOrderTypeFilter == 'DineIn')
+                  ? o.orderType == OrderType.dineIn
+                  : (_selectedOrderTypeFilter == 'TakeAway')
+                      ? o.orderType == OrderType.takeaway
+                      : true;
+          return matchesType && _matchesDateFilter(o);
         }).toList();
 
         // RUNNING KOT AUTOMATICALLY LOGIC FOR PREPARING
@@ -310,6 +508,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     ],
                   ),
                 ),
+
+                // Date Filter Bar (Matches Sales Report Screen)
+                _buildDateFilterBar(),
 
                 // 1) Order Type Section Chips (NO 'All' OPTION)
                 SizedBox(
@@ -594,193 +795,155 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                             ),
                                             const Spacer(),
                                             if (order.tableNumber != null &&
-                                                order.tableNumber!.trim().isNotEmpty &&
-                                                (effectiveStatus == OrderStatus.pending ||
-                                                    effectiveStatus == OrderStatus.preparing))
-                                              Padding(
-                                                padding: const EdgeInsets.only(right: 6),
-                                                child: InkWell(
-                                                  onTap: () {
-                                                    if (widget.onOpenPosForTable != null) {
-                                                      widget.onOpenPosForTable!(order.tableNumber!);
-                                                    }
-                                                  },
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(0xFF051C48).withOpacity(0.08),
-                                                      borderRadius: BorderRadius.circular(8),
-                                                      border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                                    ),
-                                                    child: const Row(
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        Icon(Icons.point_of_sale_rounded, size: 12, color: Color(0xFF051C48)),
-                                                        SizedBox(width: 3),
-                                                        Text('POS', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            // KOT Button
-                                            InkWell(
-                                              onTap: () async {
-                                                final printerService = BluetoothPrinterService();
-                                                final bool isConnected = await printerService.isConnected();
-                                                if (!context.mounted) return;
+                                                 order.tableNumber!.trim().isNotEmpty &&
+                                                 (effectiveStatus == OrderStatus.pending ||
+                                                     effectiveStatus == OrderStatus.preparing))
+                                               Padding(
+                                                 padding: const EdgeInsets.only(right: 5),
+                                                 child: InkWell(
+                                                   onTap: () {
+                                                     if (widget.onOpenPosForTable != null) {
+                                                       widget.onOpenPosForTable!(order.tableNumber!);
+                                                     }
+                                                   },
+                                                   borderRadius: BorderRadius.circular(8),
+                                                   child: Container(
+                                                     height: 29,
+                                                     padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                     decoration: BoxDecoration(
+                                                       color: const Color(0xFF051C48).withOpacity(0.08),
+                                                       borderRadius: BorderRadius.circular(8),
+                                                       border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                                                     ),
+                                                     alignment: Alignment.center,
+                                                     child: const Row(
+                                                       mainAxisSize: MainAxisSize.min,
+                                                       children: [
+                                                         Icon(Icons.point_of_sale_rounded, size: 12, color: Color(0xFF051C48)),
+                                                         SizedBox(width: 3),
+                                                         Text('POS', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                       ],
+                                                     ),
+                                                   ),
+                                                 ),
+                                               ),
+                                             // KOT Button
+                                             InkWell(
+                                               onTap: () async {
+                                                 final printerService = BluetoothPrinterService();
+                                                 final bool isConnected = await printerService.isConnected();
+                                                 if (!context.mounted) return;
 
-                                                if (isConnected) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Printing KOT Ticket...'),
-                                                      backgroundColor: Color(0xFFD97706),
-                                                      duration: Duration(seconds: 2),
-                                                    ),
-                                                  );
-                                                  final rest = DatabaseService().restaurant;
-                                                  final success = await printerService.printKOT(order: order, restaurant: rest);
-                                                  if (context.mounted && !success) {
-                                                    PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                                                  }
-                                                } else {
-                                                  final bool reconnected = await printerService.autoConnectSavedPrinter();
-                                                  if (reconnected) {
-                                                    final rest = DatabaseService().restaurant;
-                                                    await printerService.printKOT(order: order, restaurant: rest);
-                                                  } else if (context.mounted) {
-                                                    PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                                                  }
-                                                }
-                                              },
-                                              borderRadius: BorderRadius.circular(8),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFD97706).withOpacity(0.08),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(color: const Color(0xFFD97706).withOpacity(0.4)),
-                                                ),
-                                                child: const Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.soup_kitchen_rounded, size: 12, color: Color(0xFFD97706)),
-                                                    SizedBox(width: 3),
-                                                    Text('KOT', style: TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            // Bill Button
-                                            InkWell(
-                                              onTap: () => showDialog(
-                                                context: context,
-                                                useRootNavigator: true,
-                                                barrierDismissible: true,
-                                                builder: (_) => ReceiptDialog(order: order, currency: currency),
-                                              ),
-                                              borderRadius: BorderRadius.circular(8),
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF051C48).withOpacity(0.08),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                                ),
-                                                child: const Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Icon(Icons.receipt_rounded, size: 12, color: Color(0xFF051C48)),
-                                                    SizedBox(width: 3),
-                                                    Text('Bill', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                  ],
-                                                ),
-                                              ),
-                                            ),
-                                            // Settle Button for Unpaid Orders
-                                            if (!order.isPaid && effectiveStatus != OrderStatus.cancelled) ...[
-                                              const SizedBox(width: 6),
-                                              InkWell(
-                                                onTap: () => _settleOrderFromList(order),
-                                                borderRadius: BorderRadius.circular(8),
-                                                child: Container(
-                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                                                  decoration: BoxDecoration(
-                                                    gradient: const LinearGradient(
-                                                      colors: [Color(0xFF051C48), Color(0xFF0A2E7A)],
-                                                    ),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: const Color(0xFF051C48).withOpacity(0.25),
-                                                        blurRadius: 4,
-                                                        offset: const Offset(0, 2),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: const Row(
-                                                    mainAxisSize: MainAxisSize.min,
-                                                    children: [
-                                                      Icon(Icons.check_circle_outline, size: 12, color: Colors.white),
-                                                      SizedBox(width: 3),
-                                                      Text('Settle', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                                    ],
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                            const SizedBox(width: 6),
-                                            // Status Transition Button
-                                            if (effectiveStatus == OrderStatus.pending)
-                                              ElevatedButton(
-                                                onPressed: () {
-                                                  db.updateOrderStatus(order.id, OrderStatus.preparing);
-                                                  setState(() {});
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF051C48),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                                  minimumSize: Size.zero,
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  elevation: 0,
-                                                ),
-                                                child: const Text('Accept', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                              )
-                                            else if (effectiveStatus == OrderStatus.preparing)
-                                              ElevatedButton(
-                                                onPressed: () {
-                                                  db.updateOrderStatus(order.id, OrderStatus.ready);
-                                                  setState(() {});
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF10B981),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                                  minimumSize: Size.zero,
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  elevation: 0,
-                                                ),
-                                                child: const Text('Mark Ready', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                              )
-                                            else if (effectiveStatus == OrderStatus.ready)
-                                              ElevatedButton(
-                                                onPressed: () {
-                                                  db.updateOrderStatus(order.id, OrderStatus.completed);
-                                                  setState(() {});
-                                                },
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFF051C48),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                                                  minimumSize: Size.zero,
-                                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                                  elevation: 0,
-                                                ),
-                                                child: const Text('Complete', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                                              ),
+                                                 if (isConnected) {
+                                                   ScaffoldMessenger.of(context).showSnackBar(
+                                                     const SnackBar(
+                                                       content: Text('Printing KOT Ticket...'),
+                                                       backgroundColor: Color(0xFFD97706),
+                                                       duration: Duration(seconds: 2),
+                                                     ),
+                                                   );
+                                                   final rest = DatabaseService().restaurant;
+                                                   final success = await printerService.printKOT(order: order, restaurant: rest);
+                                                   if (context.mounted && !success) {
+                                                     PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                   }
+                                                 } else {
+                                                   final bool reconnected = await printerService.autoConnectSavedPrinter();
+                                                   if (reconnected) {
+                                                     final rest = DatabaseService().restaurant;
+                                                     await printerService.printKOT(order: order, restaurant: rest);
+                                                   } else if (context.mounted) {
+                                                     PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                   }
+                                                 }
+                                               },
+                                               borderRadius: BorderRadius.circular(8),
+                                               child: Container(
+                                                 height: 29,
+                                                 padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                 decoration: BoxDecoration(
+                                                   color: const Color(0xFFD97706).withOpacity(0.08),
+                                                   borderRadius: BorderRadius.circular(8),
+                                                   border: Border.all(color: const Color(0xFFD97706).withOpacity(0.4)),
+                                                 ),
+                                                 alignment: Alignment.center,
+                                                 child: const Row(
+                                                   mainAxisSize: MainAxisSize.min,
+                                                   children: [
+                                                     Icon(Icons.soup_kitchen_rounded, size: 12, color: Color(0xFFD97706)),
+                                                     SizedBox(width: 3),
+                                                     Text('KOT', style: TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                   ],
+                                                 ),
+                                               ),
+                                             ),
+                                             const SizedBox(width: 5),
+                                             // Bill Button
+                                             InkWell(
+                                               onTap: () => showDialog(
+                                                 context: context,
+                                                 useRootNavigator: true,
+                                                 barrierDismissible: true,
+                                                 builder: (_) => ReceiptDialog(order: order, currency: currency),
+                                               ),
+                                               borderRadius: BorderRadius.circular(8),
+                                               child: Container(
+                                                 height: 29,
+                                                 padding: const EdgeInsets.symmetric(horizontal: 8),
+                                                 decoration: BoxDecoration(
+                                                   color: const Color(0xFF051C48).withOpacity(0.08),
+                                                   borderRadius: BorderRadius.circular(8),
+                                                   border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                                                 ),
+                                                 alignment: Alignment.center,
+                                                 child: const Row(
+                                                   mainAxisSize: MainAxisSize.min,
+                                                   children: [
+                                                     Icon(Icons.receipt_rounded, size: 12, color: Color(0xFF051C48)),
+                                                     SizedBox(width: 3),
+                                                     Text('Bill', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
+                                                   ],
+                                                 ),
+                                               ),
+                                             ),
+                                             if (effectiveStatus == OrderStatus.pending ||
+                                                 effectiveStatus == OrderStatus.preparing ||
+                                                 effectiveStatus == OrderStatus.ready) ...[
+                                               const SizedBox(width: 5),
+                                               // Status Transition Button (Accept / Mark Ready / Settle)
+                                               InkWell(
+                                                 onTap: () {
+                                                   if (effectiveStatus == OrderStatus.pending) {
+                                                     db.updateOrderStatus(order.id, OrderStatus.preparing);
+                                                   } else if (effectiveStatus == OrderStatus.preparing) {
+                                                     db.updateOrderStatus(order.id, OrderStatus.ready);
+                                                   } else if (effectiveStatus == OrderStatus.ready) {
+                                                     _settleOrderFromList(order);
+                                                   }
+                                                   setState(() {});
+                                                 },
+                                                 borderRadius: BorderRadius.circular(8),
+                                                 child: Container(
+                                                   height: 29,
+                                                   padding: const EdgeInsets.symmetric(horizontal: 9),
+                                                   decoration: BoxDecoration(
+                                                     color: effectiveStatus == OrderStatus.preparing
+                                                         ? const Color(0xFF10B981)
+                                                         : (effectiveStatus == OrderStatus.ready
+                                                             ? const Color(0xFFD97706)
+                                                             : const Color(0xFF051C48)),
+                                                     borderRadius: BorderRadius.circular(8),
+                                                   ),
+                                                   alignment: Alignment.center,
+                                                   child: Text(
+                                                     effectiveStatus == OrderStatus.pending
+                                                         ? 'Accept'
+                                                         : (effectiveStatus == OrderStatus.preparing ? 'Mark Ready' : 'Settle'),
+                                                     style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                                                   ),
+                                                 ),
+                                               ),
+                                             ],
                                           ],
                                         ),
                                       ],

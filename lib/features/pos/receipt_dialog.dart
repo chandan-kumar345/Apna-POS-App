@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -17,6 +18,13 @@ class ReceiptDialog extends StatelessWidget {
     required this.order,
     required this.currency,
   });
+
+  String _formatAmount(double val) {
+    if (val % 1 == 0) {
+      return val.toInt().toString();
+    }
+    return val.toStringAsFixed(2);
+  }
 
   void _shareBillReceipt(BuildContext context) {
     final db = DatabaseService();
@@ -48,28 +56,28 @@ class ReceiptDialog extends StatelessWidget {
     buffer.writeln('--------------------------------');
     buffer.writeln('ITEMS:');
     for (var item in order.items) {
-      buffer.writeln('${item.item.name}');
-      buffer.writeln('  Qty: ${item.quantity} x $currency${item.item.price.toStringAsFixed(2)} = $currency${item.totalPrice.toStringAsFixed(2)}');
+      buffer.writeln(item.item.name);
+      buffer.writeln('  Qty: ${item.quantity} x $currency${_formatAmount(item.item.price)} = $currency${_formatAmount(item.totalPrice)}');
     }
     buffer.writeln('--------------------------------');
-    buffer.writeln('Subtotal: $currency${order.subtotal.toStringAsFixed(2)}');
+    buffer.writeln('Subtotal: $currency${_formatAmount(order.subtotal)}');
     if (order.discountAmount > 0) {
-      buffer.writeln('Discount: -$currency${order.discountAmount.toStringAsFixed(2)}');
+      buffer.writeln('Discount: -$currency${_formatAmount(order.discountAmount)}');
     }
     if (order.taxAmount > 0) {
-      buffer.writeln('Tax (GST): $currency${order.taxAmount.toStringAsFixed(2)}');
+      buffer.writeln('Tax (GST): $currency${_formatAmount(order.taxAmount)}');
     }
     if (order.tipAmount > 0) {
-      buffer.writeln('Tip: +$currency${order.tipAmount.toStringAsFixed(2)}');
+      buffer.writeln('Tip: +$currency${_formatAmount(order.tipAmount)}');
     }
     if (order.deliveryCharge > 0) {
-      buffer.writeln('Delivery Charge: +$currency${order.deliveryCharge.toStringAsFixed(2)}');
+      buffer.writeln('Delivery Charge: +$currency${_formatAmount(order.deliveryCharge)}');
     }
     if (order.roundOff.abs() > 0.001) {
       final sign = order.roundOff >= 0 ? '+' : '';
-      buffer.writeln('Round Off: $sign$currency${order.roundOff.toStringAsFixed(2)}');
+      buffer.writeln('Round Off: $sign$currency${_formatAmount(order.roundOff)}');
     }
-    buffer.writeln('GRAND TOTAL: $currency${order.totalAmount.toStringAsFixed(2)}');
+    buffer.writeln('GRAND TOTAL: $currency${_formatAmount(order.totalAmount)}');
     buffer.writeln('Payment Method: ${order.paymentMethod}');
     buffer.writeln('================================');
     buffer.writeln('  Thank you! Visit Again!  ');
@@ -87,8 +95,8 @@ class ReceiptDialog extends StatelessWidget {
     if (photoPath.isNotEmpty) {
       if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
         return Container(
-          width: 54,
-          height: 54,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: const Color(0xFF051C48), width: 2),
@@ -97,45 +105,98 @@ class ReceiptDialog extends StatelessWidget {
           child: ClipOval(
             child: Image.network(
               photoPath,
-              width: 54,
-              height: 54,
+              width: 58,
+              height: 58,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? 'Apna POS'),
+              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
             ),
           ),
         );
-      } else if (!photoPath.contains('_selected')) {
+      } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
+        try {
+          final cleanBase64 = photoPath.contains(',') ? photoPath.split(',').last : photoPath;
+          final bytes = base64Decode(cleanBase64);
+          return Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF051C48), width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+            child: ClipOval(
+              child: Image.memory(
+                bytes,
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
+              ),
+            ),
+          );
+        } catch (_) {}
+      } else if (photoPath.startsWith('assets/')) {
         return Container(
-          width: 54,
-          height: 54,
+          width: 58,
+          height: 58,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             border: Border.all(color: const Color(0xFF051C48), width: 2),
             boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
           ),
           child: ClipOval(
-            child: Image.file(
-              File(photoPath),
-              width: 54,
-              height: 54,
+            child: Image.asset(
+              photoPath,
+              width: 58,
+              height: 58,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? 'Apna POS'),
+              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
             ),
           ),
         );
+      } else {
+        final file = File(photoPath);
+        if (file.existsSync()) {
+          return Container(
+            width: 58,
+            height: 58,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFF051C48), width: 2),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+            ),
+            child: ClipOval(
+              child: Image.file(
+                file,
+                width: 58,
+                height: 58,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
+              ),
+            ),
+          );
+        }
       }
     }
-    return _buildFallbackLogo(rest?.name ?? 'Apna POS');
+
+    // Do NOT show default Apna POS logo, show custom restaurant / business initials badge
+    return _buildFallbackLogo(rest?.name ?? user?.companyName ?? user?.name ?? 'POS');
   }
 
   Widget _buildFallbackLogo(String name) {
-    final String initials = name.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(3).join('').toUpperCase();
+    final words = name.trim().split(RegExp(r'\s+'));
+    final String initials = words.length > 1
+        ? '${words[0][0]}${words[1][0]}'.toUpperCase()
+        : (name.length >= 2 ? name.substring(0, 2).toUpperCase() : name.toUpperCase());
+
     return Container(
-      width: 52,
-      height: 52,
-      decoration: const BoxDecoration(
-        color: Colors.black,
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: const Color(0xFF051C48),
         shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
       ),
       alignment: Alignment.center,
       child: Text(
@@ -143,7 +204,7 @@ class ReceiptDialog extends StatelessWidget {
         style: const TextStyle(
           color: Color(0xFFD4AF37), // Gold accent
           fontWeight: FontWeight.bold,
-          fontSize: 16,
+          fontSize: 18,
           letterSpacing: 1.2,
         ),
       ),
@@ -357,7 +418,7 @@ class ReceiptDialog extends StatelessWidget {
                                   Expanded(
                                     flex: 2,
                                     child: Text(
-                                      '$currency${cartItem.item.price.toStringAsFixed(2)}',
+                                      '$currency${_formatAmount(cartItem.item.price)}',
                                       textAlign: TextAlign.right,
                                       style: const TextStyle(fontSize: 10.5, color: Color(0xFF000000)),
                                     ),
@@ -365,7 +426,7 @@ class ReceiptDialog extends StatelessWidget {
                                   Expanded(
                                     flex: 2,
                                     child: Text(
-                                      '$currency${cartItem.totalPrice.toStringAsFixed(2)}',
+                                      '$currency${_formatAmount(cartItem.totalPrice)}',
                                       textAlign: TextAlign.right,
                                       style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
                                     ),
@@ -377,36 +438,36 @@ class ReceiptDialog extends StatelessWidget {
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
-                          _buildReceiptRow('Sub Total', '$currency${order.subtotal.toStringAsFixed(2)}'),
+                          _buildReceiptRow('Sub Total', '$currency${_formatAmount(order.subtotal)}'),
                           if (order.discountAmount > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('Discount', '- $currency${order.discountAmount.toStringAsFixed(2)}'),
+                            _buildReceiptRow('Discount', '- $currency${_formatAmount(order.discountAmount)}'),
                           ],
                           if (order.taxAmount > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${cgstAmount.toStringAsFixed(2)}'),
+                            _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${_formatAmount(cgstAmount)}'),
                             const SizedBox(height: 3),
-                            _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${sgstAmount.toStringAsFixed(2)}'),
+                            _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${_formatAmount(sgstAmount)}'),
                           ],
                           if (order.tipAmount > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('Tip', '+ $currency${order.tipAmount.toStringAsFixed(2)}'),
+                            _buildReceiptRow('Tip', '+ $currency${_formatAmount(order.tipAmount)}'),
                           ],
                           if (order.deliveryCharge > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('Delivery Charge', '+ $currency${order.deliveryCharge.toStringAsFixed(2)}'),
+                            _buildReceiptRow('Delivery Charge', '+ $currency${_formatAmount(order.deliveryCharge)}'),
                           ],
                           if (order.roundOff.abs() > 0.001) ...[
                             const SizedBox(height: 3),
                             _buildReceiptRow(
                               'Round Off',
-                              '${order.roundOff >= 0 ? '+' : ''}$currency${order.roundOff.toStringAsFixed(2)}',
+                              '${order.roundOff >= 0 ? '+' : ''}$currency${_formatAmount(order.roundOff)}',
                             ),
                           ],
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
-                          _buildReceiptRow('Total Amount', '$currency${order.totalAmount.toStringAsFixed(2)}', isBold: true),
+                          _buildReceiptRow('Total Amount', '$currency${_formatAmount(order.totalAmount)}', isBold: true),
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
@@ -512,10 +573,13 @@ class ReceiptDialog extends StatelessWidget {
                             ),
                           );
                         }
-                        final rest = DatabaseService().restaurant;
+                        final dbInstance = DatabaseService();
+                        final rest = dbInstance.restaurant;
+                        final currentUser = dbInstance.currentUser;
                         final success = await printerService.printBill(
                           order: order,
                           restaurant: rest,
+                          user: currentUser,
                           currency: currency,
                         );
                         if (!context.mounted) return;
@@ -653,7 +717,7 @@ class ReceiptDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Amount: $currency${order.totalAmount.toStringAsFixed(2)}',
+            'Amount: $currency${_formatAmount(order.totalAmount)}',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,

@@ -12,6 +12,30 @@ const loyaltyService = require('./loyaltyService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
+  _getTableQuery(businessId, tableStr) {
+    if (!tableStr) return { businessId: null };
+    const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const raw = tableStr.toString().trim();
+    const cleanNum = raw.replace(/\D/g, '');
+    const orConditions = [
+      { name: raw },
+      { name: new RegExp(`^${raw}$`, 'i') },
+      { name: `Table ${raw}` },
+      { name: `T-${raw}` },
+      { name: `T${raw}` },
+    ];
+    if (cleanNum) {
+      const num = Number(cleanNum);
+      if (!isNaN(num)) {
+        orConditions.push({ tableNumber: num });
+        orConditions.push({ name: `T${num}` });
+        orConditions.push({ name: `T-${num}` });
+        orConditions.push({ name: `Table ${num}` });
+      }
+    }
+    return { businessId: bId, $or: orConditions };
+  }
+
   _generateOrderNumber() {
     const random = Math.floor(1000 + Math.random() * 9000);
     const dateStr = new Date().toISOString().slice(2, 10).replace(/-/g, '');
@@ -120,7 +144,7 @@ class OrderService {
         // Free table if dineIn
         if (existingOrder.orderType === 'dineIn' && existingOrder.tableNumber) {
           await Table.findOneAndUpdate(
-            { businessId, name: existingOrder.tableNumber },
+            this._getTableQuery(businessId, existingOrder.tableNumber),
             { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
           );
         }
@@ -391,14 +415,15 @@ class OrderService {
 
     // 8. Update Table status
     if (order.orderType === 'dineIn' && order.tableNumber) {
+      const tQuery = this._getTableQuery(businessId, order.tableNumber);
       if (status === 'completed') {
         await Table.findOneAndUpdate(
-          { businessId, name: order.tableNumber },
+          tQuery,
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
       } else {
         await Table.findOneAndUpdate(
-          { businessId, name: order.tableNumber },
+          tQuery,
           {
             $set: {
               status: 'occupied',
@@ -625,7 +650,7 @@ class OrderService {
       // Free linked table
       if (order.tableNumber) {
         await Table.findOneAndUpdate(
-          { businessId, name: order.tableNumber },
+          this._getTableQuery(businessId, order.tableNumber),
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
       }
@@ -676,7 +701,7 @@ class OrderService {
       // Free linked table
       if (order.tableNumber) {
         await Table.findOneAndUpdate(
-          { businessId, name: order.tableNumber },
+          this._getTableQuery(businessId, order.tableNumber),
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
       }
@@ -742,7 +767,7 @@ class OrderService {
     // Free table if dineIn
     if (order.tableNumber) {
       await Table.findOneAndUpdate(
-        { businessId, name: order.tableNumber },
+        this._getTableQuery(businessId, order.tableNumber),
         { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
       );
     }
@@ -814,6 +839,25 @@ class OrderService {
         $or: searchConditions,
         status: { $nin: ['completed', 'cancelled'] },
       });
+    }
+
+    if (!existingOrder && rawData.tableNumber && (rawData.orderType === 'dineIn' || rawData.orderType === 'dine_in')) {
+      const cleanTable = rawData.tableNumber.toString().replace('T-', '').trim();
+      existingOrder = await Order.findOne({
+        businessId: bId,
+        $or: [
+          { tableNumber: rawData.tableNumber },
+          { tableNumber: `T-${cleanTable}` },
+          { tableNumber: cleanTable },
+        ],
+        status: { $in: ['pending', 'preparing', 'ready'] },
+      }).sort({ createdAt: -1 });
+    } else if (!existingOrder && (rawData.orderType === 'takeaway' || rawData.orderType === 'takeAway' || rawData.orderType === 'delivery')) {
+      existingOrder = await Order.findOne({
+        businessId: bId,
+        orderType: { $regex: new RegExp(`^${rawData.orderType}$`, 'i') },
+        status: { $in: ['pending', 'preparing', 'ready'] },
+      }).sort({ createdAt: -1 });
     }
 
     // 2. Parse Items & Financials
@@ -935,15 +979,21 @@ class OrderService {
       });
     }
 
-    // Keep table occupied if dineIn
+    // Keep table occupied if dineIn (maintain runningKot if KOT is already running)
     if (order.orderType === 'dineIn' && order.tableNumber) {
+      const tQuery = this._getTableQuery(bId, order.tableNumber);
+      const existingTable = await Table.findOne(tQuery);
+      const tableStatus = (existingTable && (existingTable.status === 'runningKot' || existingTable.status === 'running_kot'))
+        ? 'runningKot'
+        : 'occupied';
+
       await Table.findOneAndUpdate(
-        { businessId: bId, name: order.tableNumber },
+        tQuery,
         {
           $set: {
-            status: 'occupied',
+            status: tableStatus,
             currentOrderId: order._id,
-            occupiedSince: new Date(),
+            occupiedSince: existingTable?.occupiedSince || new Date(),
           },
         }
       );
@@ -1119,19 +1169,50 @@ class OrderService {
 
     // 3. Free Table if dineIn
     if (order.tableNumber) {
-      const cleanNum = order.tableNumber.toString().replace(/[^0-9]/g, '');
-      const orConditions = [
-        { name: order.tableNumber },
-        { name: new RegExp(`^${order.tableNumber}$`, 'i') },
-      ];
-      if (cleanNum) {
-        orConditions.push({ tableNumber: Number(cleanNum) });
-        orConditions.push({ name: `T${cleanNum}` });
-        orConditions.push({ name: `Table ${cleanNum}` });
-      }
       await Table.findOneAndUpdate(
-        { businessId: bId, $or: orConditions },
+        this._getTableQuery(bId, order.tableNumber),
         { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
+      );
+
+      // Also resolve any duplicate pending/preparing orders for this table so none remain stuck in preparing
+      const cleanTable = order.tableNumber.toString().replace('T-', '').trim();
+      await Order.updateMany(
+        {
+          businessId: bId,
+          _id: { $ne: order._id },
+          $or: [
+            { tableNumber: order.tableNumber },
+            { tableNumber: `T-${cleanTable}` },
+            { tableNumber: cleanTable },
+          ],
+          status: { $in: ['pending', 'preparing', 'ready'] },
+        },
+        {
+          $set: {
+            status: 'completed',
+            paymentStatus: 'paid',
+            isPaid: true,
+            completedAt: new Date(),
+          },
+        }
+      );
+    } else {
+      // Also resolve any duplicate pending/preparing orders for takeaway/delivery
+      await Order.updateMany(
+        {
+          businessId: bId,
+          _id: { $ne: order._id },
+          orderType: { $regex: new RegExp(`^${order.orderType}$`, 'i') },
+          status: { $in: ['pending', 'preparing', 'ready'] },
+        },
+        {
+          $set: {
+            status: 'completed',
+            paymentStatus: 'paid',
+            isPaid: true,
+            completedAt: new Date(),
+          },
+        }
       );
     }
 

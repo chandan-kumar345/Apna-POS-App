@@ -142,10 +142,13 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       _statusMessage = 'Sending bill receipt to thermal printer...';
     });
 
-    final restaurant = DatabaseService().restaurant;
+    final dbInstance = DatabaseService();
+    final restaurant = dbInstance.restaurant;
+    final user = dbInstance.currentUser;
     final success = await _printerService.printBill(
       order: widget.orderToPrint!,
       restaurant: restaurant,
+      user: user,
       currency: widget.currency,
     );
 

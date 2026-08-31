@@ -163,6 +163,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _selectedOrderType = OrderType.dineIn;
       _cartItems.clear();
       _discountAmount = 0.0;
+      _activeRunningOrderId = null;
+      _activeRunningOrderNumber = null;
+      _customerName = '';
+      _customerPhone = '';
+
       final activeOrder = db.orders.where((o) =>
         isSameTable(o.tableNumber, tableName) &&
         (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
@@ -176,11 +181,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _customerName = activeOrder.customerName ?? '';
         _customerPhone = activeOrder.customerPhone ?? '';
       } else {
-        _activeRunningOrderId = activeOrder?.id;
-        _activeRunningOrderNumber = activeOrder?.orderNumber;
-        final savedCart = db.getLiveTableCart(tableName);
-        if (savedCart.isNotEmpty) {
-          _cartItems.addAll(savedCart);
+        final tbl = db.tables.where((t) => isSameTable(t.name, tableName)).firstOrNull;
+        if (tbl != null && tbl.status != TableStatus.free) {
+          final savedCart = db.getLiveTableCart(tableName);
+          if (savedCart.isNotEmpty) {
+            _cartItems.addAll(savedCart);
+          }
         }
       }
     });
@@ -195,14 +201,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Future<void> _sendKotOrder([StateSetter? setStateModal]) async {
-    final targetTable = _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : 'Takeaway';
-
-    // Check if table already has a Running KOT active order in DB
-    final activeOrder = db.orders.where((o) =>
-      ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
-       'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
-      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-    ).firstOrNull;
+    // Check if table or takeaway/delivery already has a Running KOT active order in DB
+    final activeOrder = (_activeRunningOrderId != null && _activeRunningOrderId!.isNotEmpty)
+        ? db.orders.where((o) => o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId).firstOrNull
+        : (_selectedOrderType == OrderType.dineIn && _selectedTable != null
+            ? db.orders.where((o) =>
+                isSameTable(o.tableNumber, _selectedTable) &&
+                (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+              ).firstOrNull
+            : db.orders.where((o) =>
+                o.orderType == _selectedOrderType &&
+                (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+              ).firstOrNull);
 
     if (_cartItems.isEmpty && activeOrder == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -218,13 +228,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         builder: (_) => KotDialog(
           order: activeOrder,
           onPrintKot: () {
-            final tbl = db.tables.where((t) =>
-              t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
-              t.tableNumber.toString() == targetTable ||
-              'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
-            ).firstOrNull;
-            if (tbl != null) {
-              db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+            if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
+              final tbl = db.tables.where((t) =>
+                isSameTable(t.name, _selectedTable) ||
+                t.tableNumber.toString() == _selectedTable
+              ).firstOrNull;
+              if (tbl != null) {
+                db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+              }
             }
             if (setStateModal != null) setStateModal(() {});
             setState(() {});
@@ -238,8 +249,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
     final tempOrder = OrderModel(
-      id: 'KOT-${DateTime.now().millisecondsSinceEpoch}',
-      orderNumber: 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}',
+      id: _activeRunningOrderId ?? (activeOrder?.id ?? 'KOT-${DateTime.now().millisecondsSinceEpoch}'),
+      orderNumber: _activeRunningOrderNumber ?? (activeOrder?.orderNumber ?? 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}'),
       items: List.from(_cartItems),
       subtotal: calc.subtotal,
       taxAmount: calc.taxAmount,
@@ -252,7 +263,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       orderType: _selectedOrderType,
       paymentMethod: 'KOT Pending',
       status: OrderStatus.preparing,
-      createdAt: DateTime.now().toIso8601String(),
+      createdAt: activeOrder?.createdAt ?? DateTime.now().toIso8601String(),
       customerName: _customerName,
       customerPhone: _customerPhone,
     );
@@ -264,29 +275,52 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         order: tempOrder,
         onPrintKot: () async {
           // WHEN USER CLICKS PRINT KOT IN POPUP:
-          // NOW save order to DB and update table status to Running KOT!
-          final newOrder = await db.createOrder(
-            items: List.from(_cartItems),
-            tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-            deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-            orderType: _selectedOrderType,
-            subtotalOverride: calc.subtotal,
-            discountAmount: calc.orderDiscount,
-            taxAmountOverride: calc.taxAmount,
-            tipAmount: calc.tipAmount,
-            deliveryCharge: calc.deliveryCharge,
-            totalAmount: calc.totalPayableAmount,
-            paymentMethod: 'KOT Pending',
-            status: OrderStatus.preparing,
-            customerName: _customerName,
-            customerPhone: _customerPhone,
-          );
+          // If active order already exists, update in-place with status: preparing. Else create new order.
+          OrderModel newOrder;
+          if (_activeRunningOrderId != null || activeOrder != null) {
+            final orderIdToUpdate = _activeRunningOrderId ?? activeOrder?.id;
+            final orderNumToUpdate = _activeRunningOrderNumber ?? activeOrder?.orderNumber;
+
+            newOrder = await db.saveAndPrintOrder(
+              items: List.from(_cartItems),
+              tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+              orderType: _selectedOrderType,
+              subtotalOverride: calc.subtotal,
+              discountAmount: calc.orderDiscount,
+              taxAmountOverride: calc.taxAmount,
+              tipAmount: calc.tipAmount,
+              deliveryCharge: calc.deliveryCharge,
+              totalAmount: calc.totalPayableAmount,
+              existingOrderId: orderIdToUpdate,
+              existingOrderNumber: orderNumToUpdate,
+              customerName: _customerName,
+              customerPhone: _customerPhone,
+            );
+            db.updateOrderStatus(newOrder.id, OrderStatus.preparing);
+          } else {
+            newOrder = await db.createOrder(
+              items: List.from(_cartItems),
+              tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+              orderType: _selectedOrderType,
+              subtotalOverride: calc.subtotal,
+              discountAmount: calc.orderDiscount,
+              taxAmountOverride: calc.taxAmount,
+              tipAmount: calc.tipAmount,
+              deliveryCharge: calc.deliveryCharge,
+              totalAmount: calc.totalPayableAmount,
+              paymentMethod: 'KOT Pending',
+              status: OrderStatus.preparing,
+              customerName: _customerName,
+              customerPhone: _customerPhone,
+            );
+          }
 
           if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
             final tbl = db.tables.where((t) =>
-              t.name.trim().toLowerCase() == _selectedTable!.trim().toLowerCase() ||
-              t.tableNumber.toString() == _selectedTable ||
-              'T-${t.tableNumber}'.toLowerCase() == _selectedTable!.trim().toLowerCase()
+              isSameTable(t.name, _selectedTable) ||
+              t.tableNumber.toString() == _selectedTable
             ).firstOrNull;
 
             if (tbl != null) {
@@ -295,6 +329,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
             db.setLiveCartTotal(_selectedTable!, newOrder.totalAmount);
           }
+
+          setState(() {
+            _activeRunningOrderId = newOrder.id;
+            _activeRunningOrderNumber = newOrder.orderNumber;
+          });
           if (setStateModal != null) setStateModal(() {});
           setState(() {});
         },
@@ -332,10 +371,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ).firstOrNull;
 
           if (activeOrder != null) {
-            final mapped = (activeOrder.status == OrderStatus.preparing) ? TableStatus.runningKot : TableStatus.occupied;
+            final mapped = (activeOrder.status == OrderStatus.preparing || tbl.status == TableStatus.runningKot)
+                ? TableStatus.runningKot
+                : TableStatus.occupied;
             if (tbl.status != mapped) {
               db.updateTableStatus(tbl.id, mapped, orderId: activeOrder.id);
             }
+          } else if (tbl.status == TableStatus.runningKot) {
+            // Maintain runningKot (RED) state for active KOT
           } else if (_cartItems.isNotEmpty && tbl.status == TableStatus.free) {
             db.updateTableStatus(tbl.id, TableStatus.occupied);
           } else if (_cartItems.isEmpty && tbl.status == TableStatus.occupied) {
@@ -1276,7 +1319,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     setState(() {
       _cartItems.clear();
       _discountAmount = 0.0;
-      if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+      _activeRunningOrderId = null;
+      _activeRunningOrderNumber = null;
+      _customerName = '';
+      _customerPhone = '';
+      _deliveryAddress = '';
+      _deliveryLandmark = '';
+      _deliveryCity = '';
+      _deliveryState = '';
+      _deliveryPincode = '';
+
+      if (_selectedTable != null && _selectedTable!.isNotEmpty && _selectedOrderType == OrderType.dineIn) {
         final targetTable = _selectedTable!;
 
         // 1. Delete active preparing/pending order from db.orders (removes it from 'Preparing' in My Orders)
@@ -1351,88 +1404,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final oldTable = _selectedTable;
 
     if (oldTable != null && oldTable.isNotEmpty && oldTable.trim().toLowerCase() != newTableName.trim().toLowerCase()) {
-      // Check if oldTable has a Running KOT active order
       final oldActiveOrder = db.orders.where((o) =>
         ((o.tableNumber?.trim().toLowerCase() ?? '') == oldTable.trim().toLowerCase() ||
          'T-${o.tableNumber}'.toLowerCase() == oldTable.trim().toLowerCase()) &&
         (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
       ).firstOrNull;
 
-      final oldTbl = db.tables.where((t) =>
-        t.name.trim().toLowerCase() == oldTable.trim().toLowerCase() ||
-        t.tableNumber.toString() == oldTable ||
-        'T-${t.tableNumber}'.toLowerCase() == oldTable.trim().toLowerCase()
-      ).firstOrNull;
-
-      final newTbl = db.tables.where((t) =>
-        t.name.trim().toLowerCase() == newTableName.trim().toLowerCase() ||
-        t.tableNumber.toString() == newTableName ||
-        'T-${t.tableNumber}'.toLowerCase() == newTableName.trim().toLowerCase()
-      ).firstOrNull;
-
-      if (oldActiveOrder != null) {
-        // 1. Move Running KOT order & products from oldTable to newTableName
-        final orderIdx = db.orders.indexWhere((o) => o.id == oldActiveOrder.id);
-        if (orderIdx != -1) {
-          db.orders[orderIdx] = oldActiveOrder.copyWith(tableNumber: newTableName);
+      if (oldActiveOrder == null && _cartItems.isNotEmpty) {
+        db.setLiveTableCart(oldTable, List.from(_cartItems));
+        db.setLiveCartTotal(oldTable, cartTotal);
+        final oldTbl = db.tables.where((t) => isSameTable(t.name, oldTable)).firstOrNull;
+        if (oldTbl != null && oldTbl.status == TableStatus.free) {
+          db.updateTableStatus(oldTbl.id, TableStatus.occupied);
         }
-
-        if (newTbl != null) {
-          db.updateTableStatus(newTbl.id, TableStatus.runningKot, orderId: oldActiveOrder.id);
-        }
-
-        // Free Table A
-        if (oldTbl != null) {
-          db.updateTableStatus(oldTbl.id, TableStatus.free);
-        }
-        db.setLiveTableCart(oldTable, []);
-        db.setLiveCartTotal(oldTable, 0);
-      } else {
-        // 2. Move draft cart products from oldTable to newTableName
-        if (_cartItems.isNotEmpty) {
-          db.setLiveTableCart(newTableName, List.from(_cartItems));
-          db.setLiveCartTotal(newTableName, cartTotal);
-
-          if (newTbl != null && newTbl.status == TableStatus.free) {
-            db.updateTableStatus(newTbl.id, TableStatus.occupied);
-          }
-        }
-
-        // Free Table A
-        if (oldTbl != null) {
-          db.updateTableStatus(oldTbl.id, TableStatus.free);
-        }
-        db.setLiveTableCart(oldTable, []);
-        db.setLiveCartTotal(oldTable, 0);
       }
     }
 
-    // Switch selected table
-    _selectedTable = newTableName;
-    _selectedOrderType = OrderType.dineIn;
-    _cartItems.clear();
-    _discountAmount = 0.0;
-
-    // Load active order or live table cart for newly selected table
-    final newActiveOrder = db.orders.where((o) =>
-      ((o.tableNumber?.trim().toLowerCase() ?? '') == newTableName.trim().toLowerCase() ||
-       'T-${o.tableNumber}'.toLowerCase() == newTableName.trim().toLowerCase()) &&
-      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-    ).firstOrNull;
-
-    if (newActiveOrder != null) {
-      _cartItems.addAll(newActiveOrder.items);
-      _discountAmount = newActiveOrder.discountAmount;
-    } else {
-      final savedCart = db.getLiveTableCart(newTableName);
-      if (savedCart.isNotEmpty) {
-        _cartItems.addAll(savedCart);
-      }
-    }
-
-    db.setLiveTableCart(newTableName, List.from(_cartItems));
-    db.setLiveCartTotal(newTableName, cartTotal);
-
+    _loadCartForTable(newTableName);
     setStateModal(() {});
     setState(() {});
   }
@@ -3392,6 +3380,29 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final calc = currentOrderCalculation;
     final targetContext = callerContext ?? context;
 
+    // Resolve existing active table / takeaway / delivery order ID if not in state
+    if (_activeRunningOrderId == null) {
+      if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
+        final activeOrder = db.orders.where((o) =>
+          isSameTable(o.tableNumber, _selectedTable) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        ).firstOrNull;
+        if (activeOrder != null) {
+          _activeRunningOrderId = activeOrder.id;
+          _activeRunningOrderNumber = activeOrder.orderNumber;
+        }
+      } else {
+        final activeOrder = db.orders.where((o) =>
+          o.orderType == _selectedOrderType &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        ).firstOrNull;
+        if (activeOrder != null) {
+          _activeRunningOrderId = activeOrder.id;
+          _activeRunningOrderNumber = activeOrder.orderNumber;
+        }
+      }
+    }
+
     try {
       final savedOrder = await db.saveAndPrintOrder(
         existingOrderId: _activeRunningOrderId,
@@ -3421,23 +3432,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
       // DO NOT clear cart, DO NOT mark as paid, DO NOT close modal.
       // Instantly show ReceiptDialog with generated invoice and dynamic QR
-      if (mounted && targetContext.mounted) {
-        showGeneralDialog(
-          context: targetContext,
-          useRootNavigator: true,
-          barrierDismissible: true,
-          barrierLabel: 'Thermal Bill Receipt',
-          barrierColor: Colors.black54,
-          transitionDuration: const Duration(milliseconds: 100),
-          pageBuilder: (dialogCtx, anim1, anim2) => ReceiptDialog(order: savedOrder, currency: currency),
-        );
-      }
+      showDialog(
+        context: targetContext,
+        builder: (_) => ReceiptDialog(
+          order: savedOrder,
+          currency: currency,
+        ),
+      );
     } catch (e) {
-      debugPrint('[_handleSaveAndPrint] error: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(targetContext).showSnackBar(
           SnackBar(
-            content: Text('Save & Print failed: ${e.toString()}'),
+            content: Text('Save & Print error: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -3496,8 +3502,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         final existingKotIndex = db.orders.indexWhere((o) =>
           (_activeRunningOrderId != null && (o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId)) ||
           (_selectedOrderType == OrderType.dineIn && _selectedTable != null &&
-           ((o.tableNumber?.trim().toLowerCase() ?? '') == _selectedTable!.trim().toLowerCase() ||
-            'T-${o.tableNumber}'.toLowerCase() == _selectedTable!.trim().toLowerCase()) &&
+           isSameTable(o.tableNumber, _selectedTable) &&
+           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) ||
+          (_selectedOrderType != OrderType.dineIn &&
+           o.orderType == _selectedOrderType &&
            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing))
         );
 
@@ -3534,23 +3542,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         // Robustly free table on settlement
         final targetTableStr = _selectedTable ?? completedOrder.tableNumber;
         if (targetTableStr != null && targetTableStr.isNotEmpty) {
-          final cleanTarget = targetTableStr.replaceAll(RegExp(r'[^0-9]'), '');
-          final tbl = db.tables.where((t) {
-            final cleanTableTNum = t.tableNumber.toString().replaceAll(RegExp(r'[^0-9]'), '');
-            final cleanTableName = t.name.replaceAll(RegExp(r'[^0-9]'), '');
-            return t.name.trim().toLowerCase() == targetTableStr.trim().toLowerCase() ||
-                t.tableNumber.toString() == targetTableStr.trim() ||
-                't-${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
-                't${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
-                'table ${t.tableNumber}'.toLowerCase() == targetTableStr.trim().toLowerCase() ||
-                (cleanTarget.isNotEmpty && (cleanTableTNum == cleanTarget || cleanTableName == cleanTarget));
-          }).firstOrNull;
-
-          if (tbl != null) {
-            db.updateTableStatus(tbl.id, TableStatus.free);
-          }
-          db.setLiveTableCart(targetTableStr, []);
-          db.setLiveCartTotal(targetTableStr, 0);
+          db.clearTableCartAndFree(targetTableStr);
         }
 
         // Deduct redeemed loyalty points asynchronously in background (non-blocking)
