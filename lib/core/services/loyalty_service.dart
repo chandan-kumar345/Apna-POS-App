@@ -33,57 +33,7 @@ class LoyaltyService {
     return LoyaltyBrandingModel(
       companyName: companyName,
       companyLogo: companyLogo,
-      programs: [
-        LoyaltyProgramModel(
-          id: 'prog_visit_made',
-          type: LoyaltyType.visitMade,
-          title: 'Visit Made',
-          description: 'Get rewarded on every purchase',
-          earningRule: '1 Visit Made = 10 Cookie',
-          rewardCurrency: 'Cookie',
-          gradientColors: ['#4A082F', '#8E1449'],
-          milestones: [
-            RewardMilestoneModel(id: 'm1', label: '300 Cookie', value: 300, iconName: 'cookie', rewardValue: 100),
-            RewardMilestoneModel(id: 'm2', label: '500 Cookie', value: 500, iconName: 'cookie', rewardValue: 200),
-            RewardMilestoneModel(id: 'm3', label: '800 Cookie', value: 800, iconName: 'cookie', rewardValue: 300),
-          ],
-        ),
-        LoyaltyProgramModel(
-          id: 'prog_amount_spent',
-          type: LoyaltyType.amountSpent,
-          title: 'Amount Spent',
-          description: 'Get rewarded on every purchase',
-          earningRule: '₹75 Amount Spent = 1 Cookie',
-          rewardCurrency: 'Cookie',
-          gradientColors: ['#6B0505', '#C81A1A'],
-          milestones: [
-            RewardMilestoneModel(id: 'm4', label: '300 Cookie', value: 300, iconName: 'cookie'),
-            RewardMilestoneModel(id: 'm5', label: '500 Cookie', value: 500, iconName: 'cookie'),
-            RewardMilestoneModel(id: 'm6', label: '800 Cookie', value: 800, iconName: 'cookie'),
-          ],
-        ),
-        LoyaltyProgramModel(
-          id: 'prog_cashback',
-          type: LoyaltyType.cashback,
-          title: 'Cashback',
-          description: 'Get rewarded on every step',
-          earningRule: '10% Cashback on sales above ₹500',
-          rewardCurrency: '%',
-          gradientColors: ['#0A425C', '#1E3A8A'],
-          cashbackDetails: CashbackDetailsModel(
-            percentage: 10.0,
-            minSpend: 500.0,
-            headline: '10% Cashback on sales',
-            subtext: 'On min. spend of ₹500',
-            termsNote: 'Cashback will be credited when another coupon or offer is already applied.',
-            billRewardText: 'Rs 500+ bill earns 10% cashback',
-            slabTitle: 'STARTER REWARD',
-            goal: 'On min purchase of Rs 500',
-            reward: '🎁 Earn 10% cashback',
-            progressPercent: 65.0,
-          ),
-        ),
-      ],
+      programs: [],
     );
   }
 
@@ -129,13 +79,14 @@ class LoyaltyService {
   Future<LoyaltyPerformanceModel> fetchLoyaltyPerformance({
     bool forceRefresh = false,
     String? dateRange,
+    String? programId,
   }) async {
-    final cacheKey = dateRange ?? 'default';
+    final cacheKey = '${dateRange ?? 'default'}_${programId ?? 'all'}';
     if (!forceRefresh && _performanceCache.containsKey(cacheKey)) {
       _cachedPerformance = _performanceCache[cacheKey];
       return _cachedPerformance!;
     }
-    if (!forceRefresh && dateRange == null && _cachedPerformance != null) {
+    if (!forceRefresh && dateRange == null && programId == null && _cachedPerformance != null) {
       return _cachedPerformance!;
     }
 
@@ -144,10 +95,13 @@ class LoyaltyService {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        final queryParams = dateRange != null ? {'dateRange': dateRange} : null;
+        final queryParams = <String, dynamic>{
+          if (dateRange != null) 'dateRange': dateRange,
+          if (programId != null && programId != 'all') 'programId': programId,
+        };
         final response = await _apiClient.get(
           ApiEndpoints.loyaltyPerformance,
-          queryParameters: queryParams,
+          queryParameters: queryParams.isNotEmpty ? queryParams : null,
         );
         if (response != null) {
           final data = (response is Map<String, dynamic> && response.containsKey('data'))
@@ -167,7 +121,7 @@ class LoyaltyService {
     final syncedModel = await _ensureProgramInPerformance(base);
 
     _performanceCache[cacheKey] = syncedModel;
-    if (dateRange == null) _cachedPerformance = syncedModel;
+    if (dateRange == null && (programId == null || programId == 'all')) _cachedPerformance = syncedModel;
     return syncedModel;
   }
 
@@ -188,19 +142,20 @@ class LoyaltyService {
           if (configMap != null) {
             configMap['isActive'] = serverProg.isActive;
             configMap['status'] = serverProg.status;
+            configMap['isConfigured'] = true;
             await prefs.setString('apna_pos_visit_reward_config', jsonEncode(configMap));
           }
         }
         return base;
       }
 
-      // Only if base.programLibrary is empty (offline/fallback), construct from local prefs
+      // If base.programLibrary is empty and user never configured local loyalty, return empty state
       if (configJsonStr == null || configJsonStr.isEmpty) {
         return base;
       }
 
       final configMap = jsonDecode(configJsonStr) as Map<String, dynamic>?;
-      if (configMap == null) return base;
+      if (configMap == null || configMap['isConfigured'] != true) return base;
 
       final config = VisitRewardConfig.fromJson(configMap);
       final progName = config.programName.isNotEmpty
@@ -280,6 +235,38 @@ class LoyaltyService {
     } catch (e) {
       debugPrint('[LoyaltyService._ensureProgramInPerformance] error: $e');
       return base;
+    }
+  }
+
+  /// Delete a loyalty program via API and update local cache
+  Future<bool> deleteLoyaltyProgram(String programId) async {
+    try {
+      _performanceCache.clear();
+      _cachedPerformance = null;
+
+      final prefs = await SharedPreferences.getInstance();
+      if (programId == 'prog_visit_made' || programId.contains('visit')) {
+        await prefs.remove('apna_pos_visit_reward_config');
+      }
+
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        await _apiClient.delete('${ApiEndpoints.loyaltyPrograms}/$programId');
+      }
+
+      if (_cachedBranding != null) {
+        final updatedList = _cachedBranding!.programs.where((p) => p.id != programId).toList();
+        _cachedBranding = LoyaltyBrandingModel(
+          companyName: _cachedBranding!.companyName,
+          companyLogo: _cachedBranding!.companyLogo,
+          programs: updatedList,
+        );
+        await _persistBrandingToPrefs(_cachedBranding!);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[LoyaltyService.deleteLoyaltyProgram] Error: $e');
+      return false;
     }
   }
 

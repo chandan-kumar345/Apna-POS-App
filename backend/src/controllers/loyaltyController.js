@@ -151,6 +151,21 @@ class LoyaltyController {
       next(err);
     }
   }
+
+  async deleteProgram(req, res, next) {
+    try {
+      const businessId = this._getBusinessId(req);
+      const { id } = req.params;
+      const result = await loyaltyService.deleteLoyaltyProgram(businessId, id);
+      res.json({
+        success: true,
+        message: 'Loyalty program deleted successfully',
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new LoyaltyController();

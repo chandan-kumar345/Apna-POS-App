@@ -330,6 +330,26 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                   : config.bonusPointsAmount.toString())
               : '100';
 
+          if (config.bgGradientStart.isNotEmpty) {
+            _bgGradientStart = _parseHexColor(config.bgGradientStart, _bgGradientStart);
+          }
+          if (config.bgGradientEnd.isNotEmpty) {
+            _bgGradientEnd = _parseHexColor(config.bgGradientEnd, _bgGradientEnd);
+          }
+          if (config.rewardColorStart.isNotEmpty) {
+            _rewardColorStart = _parseHexColor(config.rewardColorStart, _rewardColorStart);
+          }
+          if (config.rewardColorEnd.isNotEmpty) {
+            _rewardColorEnd = _parseHexColor(config.rewardColorEnd, _rewardColorEnd);
+          }
+
+          if (config.pointsName.isNotEmpty) {
+            _pointsNameCtrl.text = config.pointsName;
+          }
+          if (config.pointsPerVisit > 0) {
+            _customerEarnsPointsCtrl.text = config.pointsPerVisit.toString();
+          }
+
           if (config.rewardStages.isNotEmpty) {
             _rewardStages = List.from(config.rewardStages);
           }
@@ -337,6 +357,23 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       }
     } catch (_) {
       // Background fetch error handled gracefully without blocking UI
+    }
+  }
+
+  Color _parseHexColor(String hexString, Color fallback) {
+    try {
+      final buffer = StringBuffer();
+      final clean = hexString.replaceAll('#', '').trim();
+      if (clean.length == 6) {
+        buffer.write('ff$clean');
+      } else if (clean.length == 8) {
+        buffer.write(clean);
+      } else {
+        return fallback;
+      }
+      return Color(int.parse(buffer.toString(), radix: 16));
+    } catch (_) {
+      return fallback;
     }
   }
 
@@ -377,6 +414,10 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
     }
   }
 
+  String _colorToHex(Color c) {
+    return '#${c.toARGB32().toRadixString(16).padLeft(8, '0').substring(2)}';
+  }
+
   Future<void> _saveAndComplete() async {
     setState(() => _isSaving = true);
 
@@ -384,18 +425,29 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
         ? (double.tryParse(_minSpendConditionCtrl.text.trim()) ?? 0.0)
         : (double.tryParse(_minPurchaseCtrl.text.trim()) ?? 100.0);
 
+    final hexBgStart = _colorToHex(_bgGradientStart);
+    final hexBgEnd = _colorToHex(_bgGradientEnd);
+    final hexRewardStart = _colorToHex(_rewardColorStart);
+    final hexRewardEnd = _colorToHex(_rewardColorEnd);
+
     final config = VisitRewardConfig(
-      programName: _programNameCtrl.text.trim(),
-      slogan: _sloganCtrl.text.trim(),
+      programName: _programNameCtrl.text.trim().isNotEmpty ? _programNameCtrl.text.trim() : _userCompanyName,
+      slogan: _sloganCtrl.text.trim().isNotEmpty ? _sloganCtrl.text.trim() : 'Get rewarded on every purchase',
       visitTrigger: 'Every Visit',
       triggerMinSpend: minSpend,
       visitCount: _rewardStages.isNotEmpty ? _rewardStages.first.visitCount : 300,
       rewardType: _rewardStages.isNotEmpty ? _rewardStages.first.rewardType : 'Redeem cash discount',
-      rewardValue: 100.0,
+      rewardValue: _rewardStages.isNotEmpty ? _rewardStages.first.rewardValue : 100.0,
       minimumPurchase: minSpend,
       rewardStages: _rewardStages,
       bannerImageUrl: _bannerImagePath,
       logoUrl: _logoUrl,
+      bgGradientStart: hexBgStart,
+      bgGradientEnd: hexBgEnd,
+      rewardColorStart: hexRewardStart,
+      rewardColorEnd: hexRewardEnd,
+      pointsName: _currentPointsName,
+      pointsPerVisit: int.tryParse(_customerEarnsPointsCtrl.text.trim()) ?? 10,
       orderType: _selectedOrderTypes.join(', '),
       termsNote: _termsCtrl.text.trim().isNotEmpty
           ? _termsCtrl.text.trim()
@@ -409,6 +461,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
       bonusRequiredFields: const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
       status: 'inactive',
       isActive: false,
+      isConfigured: true,
     );
 
     await _loyaltyService.saveVisitRewardConfig(config);

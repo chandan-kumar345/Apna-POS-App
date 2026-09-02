@@ -18,6 +18,7 @@ const printLogRoutes = require('./printLogRoutes');
 const loyaltyRoutes = require('./loyaltyRoutes');
 const crmRoutes = require('./crmRoutes');
 const notificationRoutes = require('./notificationRoutes');
+const subscriptionRoutes = require('./subscriptionRoutes');
 
 const router = express.Router();
 
@@ -52,5 +53,7 @@ router.use('/print-logs', printLogRoutes);
 router.use('/printlogs', printLogRoutes);
 router.use('/loyalty', loyaltyRoutes);
 router.use('/notifications', notificationRoutes);
+router.use('/subscription', subscriptionRoutes);
+router.use('/subscriptions', subscriptionRoutes);
 
 module.exports = router;

@@ -334,6 +334,11 @@ class ApiEndpoints {
   static const String registerDeviceToken = '/notifications/device-token';
   static const String triggerDailySummary = '/notifications/trigger-daily-summary';
 
+  // Subscription & Lead endpoints
+  static const String subscriptionPlans = '/subscription/plans';
+  static const String subscriptionLead = '/subscription/lead';
+  static const String subscriptionLeads = '/subscription/leads';
+
   /// Show Developer / Admin Server Configuration Sheet
   static void showServerConfigSheet(BuildContext context, {VoidCallback? onUrlChanged}) {
     final controller = TextEditingController(text: baseUrl);

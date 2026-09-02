@@ -29,6 +29,11 @@ const loyaltyTransactionSchema = new mongoose.Schema(
       enum: ['earn', 'redeem', 'adjustment'],
       required: true,
     },
+    programId: {
+      type: String,
+      default: 'prog_visit_made',
+      index: true,
+    },
     points: {
       type: Number,
       required: true,

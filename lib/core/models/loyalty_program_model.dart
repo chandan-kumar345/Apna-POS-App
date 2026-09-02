@@ -685,6 +685,12 @@ class VisitRewardConfig {
   final List<RewardStageModel> rewardStages;
   final String bannerImageUrl;
   final String logoUrl;
+  final String bgGradientStart;
+  final String bgGradientEnd;
+  final String rewardColorStart;
+  final String rewardColorEnd;
+  final String pointsName;
+  final int pointsPerVisit;
   final String orderType;
   final String termsNote;
   final bool minSpendConditionEnabled;
@@ -698,6 +704,7 @@ class VisitRewardConfig {
   final List<String> bonusRequiredFields;
   final String status;
   final bool isActive;
+  final bool isConfigured;
 
   const VisitRewardConfig({
     this.programName = 'THE ROYAL GARDENIA',
@@ -711,6 +718,12 @@ class VisitRewardConfig {
     this.rewardStages = const [],
     this.bannerImageUrl = '',
     this.logoUrl = '',
+    this.bgGradientStart = '#4A082F',
+    this.bgGradientEnd = '#8E1449',
+    this.rewardColorStart = '#4A082F',
+    this.rewardColorEnd = '#8E1449',
+    this.pointsName = 'Cookie',
+    this.pointsPerVisit = 10,
     this.orderType = 'Dine-In',
     this.termsNote = 'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
     this.minSpendConditionEnabled = false,
@@ -724,6 +737,7 @@ class VisitRewardConfig {
     this.bonusRequiredFields = const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
     this.status = 'active',
     this.isActive = true,
+    this.isConfigured = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -738,6 +752,12 @@ class VisitRewardConfig {
         'rewardStages': rewardStages.map((s) => s.toJson()).toList(),
         'bannerImageUrl': bannerImageUrl,
         'logoUrl': logoUrl,
+        'bgGradientStart': bgGradientStart,
+        'bgGradientEnd': bgGradientEnd,
+        'rewardColorStart': rewardColorStart,
+        'rewardColorEnd': rewardColorEnd,
+        'pointsName': pointsName,
+        'pointsPerVisit': pointsPerVisit,
         'orderType': orderType,
         'termsNote': termsNote,
         'minSpendConditionEnabled': minSpendConditionEnabled,
@@ -751,6 +771,7 @@ class VisitRewardConfig {
         'bonusRequiredFields': bonusRequiredFields,
         'status': status,
         'isActive': isActive,
+        'isConfigured': isConfigured,
       };
 
   factory VisitRewardConfig.fromJson(Map<String, dynamic> json) {
@@ -774,6 +795,12 @@ class VisitRewardConfig {
       rewardStages: stages,
       bannerImageUrl: json['bannerImageUrl']?.toString() ?? '',
       logoUrl: json['logoUrl']?.toString() ?? '',
+      bgGradientStart: json['bgGradientStart']?.toString() ?? '#4A082F',
+      bgGradientEnd: json['bgGradientEnd']?.toString() ?? '#8E1449',
+      rewardColorStart: json['rewardColorStart']?.toString() ?? '#4A082F',
+      rewardColorEnd: json['rewardColorEnd']?.toString() ?? '#8E1449',
+      pointsName: json['pointsName']?.toString() ?? 'Cookie',
+      pointsPerVisit: (json['pointsPerVisit'] as num?)?.toInt() ?? 10,
       orderType: json['orderType']?.toString() ?? 'Dine-In',
       termsNote: json['termsNote']?.toString() ??
           'Terms and conditions apply.\nMinimum purchase of ₹100 required.\n3 offers cannot be clubbed.',
@@ -791,6 +818,7 @@ class VisitRewardConfig {
           const ['name', 'phone', 'gender', 'birthday', 'anniversary'],
       status: json['status']?.toString() ?? 'active',
       isActive: json['isActive'] != false,
+      isConfigured: json['isConfigured'] == true,
     );
   }
 
@@ -806,6 +834,12 @@ class VisitRewardConfig {
     List<RewardStageModel>? rewardStages,
     String? bannerImageUrl,
     String? logoUrl,
+    String? bgGradientStart,
+    String? bgGradientEnd,
+    String? rewardColorStart,
+    String? rewardColorEnd,
+    String? pointsName,
+    int? pointsPerVisit,
     String? orderType,
     String? termsNote,
     bool? minSpendConditionEnabled,
@@ -817,6 +851,9 @@ class VisitRewardConfig {
     bool? bonusPointsEnabled,
     double? bonusPointsAmount,
     List<String>? bonusRequiredFields,
+    String? status,
+    bool? isActive,
+    bool? isConfigured,
   }) {
     return VisitRewardConfig(
       programName: programName ?? this.programName,
@@ -830,6 +867,12 @@ class VisitRewardConfig {
       rewardStages: rewardStages ?? this.rewardStages,
       bannerImageUrl: bannerImageUrl ?? this.bannerImageUrl,
       logoUrl: logoUrl ?? this.logoUrl,
+      bgGradientStart: bgGradientStart ?? this.bgGradientStart,
+      bgGradientEnd: bgGradientEnd ?? this.bgGradientEnd,
+      rewardColorStart: rewardColorStart ?? this.rewardColorStart,
+      rewardColorEnd: rewardColorEnd ?? this.rewardColorEnd,
+      pointsName: pointsName ?? this.pointsName,
+      pointsPerVisit: pointsPerVisit ?? this.pointsPerVisit,
       orderType: orderType ?? this.orderType,
       termsNote: termsNote ?? this.termsNote,
       minSpendConditionEnabled: minSpendConditionEnabled ?? this.minSpendConditionEnabled,
@@ -838,6 +881,12 @@ class VisitRewardConfig {
       pointEarningGap: pointEarningGap ?? this.pointEarningGap,
       maxCashbackLimitEnabled: maxCashbackLimitEnabled ?? this.maxCashbackLimitEnabled,
       maxCashbackLimit: maxCashbackLimit ?? this.maxCashbackLimit,
+      bonusPointsEnabled: bonusPointsEnabled ?? this.bonusPointsEnabled,
+      bonusPointsAmount: bonusPointsAmount ?? this.bonusPointsAmount,
+      bonusRequiredFields: bonusRequiredFields ?? this.bonusRequiredFields,
+      status: status ?? this.status,
+      isActive: isActive ?? this.isActive,
+      isConfigured: isConfigured ?? this.isConfigured,
     );
   }
 }

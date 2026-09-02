@@ -6,6 +6,8 @@ import 'loyalty_performance_screen.dart';
 import 'loyalty_details_screen.dart';
 import 'loyalty_visit_made_screen.dart';
 
+import '../../subscription/screens/subscription_screen.dart';
+
 class LoyaltyLandingScreen extends StatefulWidget {
   final VoidCallback? onBack;
 
@@ -73,6 +75,15 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     );
   }
 
+  void _openSubscription() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SubscriptionScreen(sourceFeature: 'loyalty'),
+      ),
+    );
+  }
+
   void _navigateToDetails(LoyaltyProgramModel program) {
     if (program.type == LoyaltyType.visitMade) {
       Navigator.push(
@@ -133,6 +144,10 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
+                          // Pro Loyalty Upgrade Banner
+                          _buildLoyaltyProBanner(),
+                          const SizedBox(height: 12),
+
                           // Main Content (Loading, Error, Empty, or Dynamic Program Cards)
                           _buildBodyContent(),
 
@@ -146,6 +161,60 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildLoyaltyProBanner() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF4A082F), Color(0xFF8E1449)],
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFF472B6), width: 1.2),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.card_giftcard_rounded, color: Color(0xFFF472B6), size: 18),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Pro Loyalty Engine 👑',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13),
+                ),
+                Text(
+                  'Automated cashbacks, SMS rewards & customer tiers.',
+                  style: TextStyle(color: Color(0xFFFCE7F3), fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: _openSubscription,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFF59E0B),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text('Upgrade', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900)),
+          ),
+        ],
       ),
     );
   }
@@ -187,7 +256,33 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
               ),
-              _buildLoyaltyPerformanceHeaderButton(),
+              Row(
+                children: [
+                  _buildLoyaltyPerformanceHeaderButton(),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _openSubscription,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF59E0B),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text(
+                            'Plans 👑',
+                            style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 12),

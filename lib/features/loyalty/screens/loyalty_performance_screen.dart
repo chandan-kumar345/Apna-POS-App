@@ -30,6 +30,9 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
   // Active Date Filter
   String _selectedDateRange = 'Last 7 Days';
 
+  // Selected Program Filter: 'all' or programId e.g. 'prog_visit_made'
+  String _selectedProgramId = 'all';
+
   // Summary Chart Mode: 0 for 'Redemption', 1 for 'Revenue'
   int _summaryChartMode = 0;
 
@@ -48,13 +51,15 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
     _loadPerformance(forceRefresh: true);
   }
 
-  Future<void> _loadPerformance({bool forceRefresh = false}) async {
+  Future<void> _loadPerformance({bool forceRefresh = false, String? programId}) async {
+    if (programId != null) _selectedProgramId = programId;
     if (_performance == null && !_isLoading) {
       setState(() => _isLoading = true);
     }
     final data = await _loyaltyService.fetchLoyaltyPerformance(
       forceRefresh: forceRefresh,
       dateRange: _selectedDateRange,
+      programId: _selectedProgramId,
     );
     if (mounted) {
       setState(() {
@@ -500,6 +505,61 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
           ],
         ),
         const SizedBox(height: 10),
+
+        // Program Selector Chips (All Programs vs Specific Loyalty Program)
+        if (perf.programLibrary.length > 1) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('All Programs'),
+                  selected: _selectedProgramId == 'all',
+                  selectedColor: _primaryThemeColor,
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  side: BorderSide(color: _selectedProgramId == 'all' ? _primaryThemeColor : const Color(0xFFCBD5E1)),
+                  labelStyle: TextStyle(
+                    color: _selectedProgramId == 'all' ? Colors.white : const Color(0xFF475569),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 11,
+                  ),
+                  onSelected: (selected) {
+                    if (selected) {
+                      _loadPerformance(forceRefresh: true, programId: 'all');
+                    }
+                  },
+                ),
+                ...perf.programLibrary.map((prog) {
+                  final isSel = _selectedProgramId == prog.id;
+                  return Padding(
+                    padding: const EdgeInsets.only(left: 6),
+                    child: ChoiceChip(
+                      label: Text(prog.name),
+                      selected: isSel,
+                      selectedColor: _primaryThemeColor,
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      side: BorderSide(color: isSel ? _primaryThemeColor : const Color(0xFFCBD5E1)),
+                      labelStyle: TextStyle(
+                        color: isSel ? Colors.white : const Color(0xFF475569),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                      onSelected: (selected) {
+                        if (selected) {
+                          _loadPerformance(forceRefresh: true, programId: prog.id);
+                        }
+                      },
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+        ],
 
         // 3 Key Metric Cards in a Row
         Row(
@@ -1341,7 +1401,70 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
         const SizedBox(height: 12),
 
         // Program Cards or Empty State
-        if (filteredPrograms.isEmpty)
+        if (perf.programLibrary.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x06000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                Container(
+                  width: 52,
+                  height: 52,
+                  decoration: BoxDecoration(
+                    color: _primaryThemeColor.withValues(alpha: 0.08),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.card_giftcard_rounded, size: 26, color: _primaryThemeColor),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No Loyalty Program Created Yet',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14, color: Color(0xFF0F172A)),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  'Create your customized Visit Made loyalty program to start rewarding customers on every visit.',
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 11.5, color: Color(0xFF64748B), height: 1.35),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => LoyaltyVisitMadeScreen(
+                          onCompleted: () => _loadPerformance(forceRefresh: true),
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 16),
+                  label: const Text('Create Visit Made Loyalty', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryThemeColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    elevation: 0,
+                  ),
+                ),
+              ],
+            ),
+          )
+        else if (filteredPrograms.isEmpty)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
@@ -1529,7 +1652,7 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Left Content
+              // Left Content (Flexible with zero overflow)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1576,7 +1699,7 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
                     Text(
                       companyName,
                       style: const TextStyle(
-                        fontSize: 15.5,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF0F172A),
                       ),
@@ -1587,21 +1710,24 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
 
                     // Create Date
                     Text(
-                      prog.createDate.isNotEmpty ? 'Create Date: ${prog.createDate}' : 'Create Date: 23/07/2026 19:24:30',
+                      prog.createDate.isNotEmpty ? 'Create Date: ${prog.createDate}' : 'Create Date: 23/07/2026',
                       style: const TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 10,
                         color: Color(0xFF64748B),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 8),
 
-                    // Row: Green index circle + Channel Type: whatsapp
-                    Row(
+                    // Row: Green index circle + Channel Type (RESPONSIVE WRAP - NO OVERFLOW)
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 4,
+                      runSpacing: 4,
                       children: [
                         Container(
-                          width: 18,
-                          height: 18,
+                          width: 17,
+                          height: 17,
                           decoration: const BoxDecoration(
                             color: Color(0xFF059669),
                             shape: BoxShape.circle,
@@ -1609,62 +1735,61 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
                           child: const Center(
                             child: Text(
                               '5',
-                              style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                              style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 6),
                         const Text(
                           'Channel Type: ',
-                          style: TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600),
                         ),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: const Color(0xFF059669),
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                           ),
                           child: Text(
                             prog.channel.toLowerCase() == 'store visit' ? 'whatsapp' : prog.channel.toLowerCase(),
-                            style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
 
-                    // Row: Order Type: DineIn, TakeAway
+                    // Row: Order Type: DineIn, TakeAway (RESPONSIVE WRAP - NO OVERFLOW)
                     Wrap(
-                      spacing: 6,
+                      spacing: 4,
                       runSpacing: 4,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         const Text(
                           'Order Type: ',
-                          style: TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600),
                         ),
                         ...prog.orderTypes.map((ot) {
                           final cleanOt = ot.replaceAll('-', '').replaceAll(' ', '');
                           return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                             decoration: BoxDecoration(
                               color: const Color(0xFF059669),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
                               cleanOt,
-                              style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                              style: const TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.bold),
                             ),
                           );
                         }),
                       ],
                     ),
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 12),
 
-                    // Action Buttons Row: View, Customer View, Edit, Delete
+                    // Action Buttons: View, Customer View, Edit, Delete
                     Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
+                      spacing: 5,
+                      runSpacing: 5,
                       children: [
                         ElevatedButton(
                           onPressed: () => _showProgramDetailsSheet(prog),
@@ -1672,39 +1797,37 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
                             backgroundColor: const Color(0xFF0284C7),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             elevation: 0,
                           ),
-                          child: const Text('View', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                          child: const Text('View', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
                         ),
                         ElevatedButton(
                           onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => const LoyaltyVisitMadeScreen(),
-                              ),
-                            );
+                            _showCustomerViewDialog(prog);
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF0F766E),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             elevation: 0,
                           ),
-                          child: const Text('Customer View', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                          child: const Text('Customer View', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
                         ),
                         ElevatedButton(
                           onPressed: () {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => const LoyaltyVisitMadeScreen(),
+                                builder: (_) => LoyaltyVisitMadeScreen(
+                                  companyName: prog.name,
+                                  onCompleted: () => _loadPerformance(forceRefresh: true),
+                                ),
                               ),
                             );
                           },
@@ -1712,25 +1835,25 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
                             backgroundColor: const Color(0xFF0284C7),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             elevation: 0,
                           ),
-                          child: const Text('Edit', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                          child: const Text('Edit', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
                         ),
                         ElevatedButton(
                           onPressed: () => _confirmDeleteProgram(prog),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF0284C7),
+                            backgroundColor: const Color(0xFFDC2626),
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                             minimumSize: Size.zero,
                             tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             elevation: 0,
                           ),
-                          child: const Text('Delete', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+                          child: const Text('Delete', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
                         ),
                       ],
                     ),
@@ -1988,6 +2111,182 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
     );
   }
 
+  void _showCustomerViewDialog(ProgramLibraryItemModel prog) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: Container(
+          width: 320,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 16,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: _primaryThemeColor,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Customer View Preview',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 13.5),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 18),
+                      onPressed: () => Navigator.pop(ctx),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Loyalty Card Preview
+                    Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            _parseHexColor(prog.bgGradientStart, const Color(0xFF4A082F)),
+                            _parseHexColor(prog.bgGradientEnd, const Color(0xFF8E1449)),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x22000000),
+                            blurRadius: 10,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (prog.logoUrl.isNotEmpty)
+                            CircleAvatar(
+                              radius: 24,
+                              backgroundImage: NetworkImage(prog.logoUrl),
+                              backgroundColor: Colors.white,
+                            )
+                          else
+                            const CircleAvatar(
+                              radius: 24,
+                              backgroundColor: Colors.white,
+                              child: Icon(Icons.storefront_rounded, color: Color(0xFF4A082F), size: 24),
+                            ),
+                          const SizedBox(height: 10),
+                          Text(
+                            prog.name,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            prog.slogan,
+                            style: const TextStyle(
+                              color: Color(0xFFE2E8F0),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 14),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.stars_rounded, color: Color(0xFFFEF08A), size: 18),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '1 Visit = ${prog.pointsPerVisit} ${prog.pointsName}',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  prog.starterRewardTitle,
+                                  style: const TextStyle(color: Color(0xFFFEF08A), fontWeight: FontWeight.w800, fontSize: 12),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  prog.starterRewardSubtext,
+                                  style: const TextStyle(color: Colors.white, fontSize: 10),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _primaryThemeColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                        ),
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Close Preview', style: TextStyle(fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _confirmDeleteProgram(ProgramLibraryItemModel prog) {
     showDialog(
       context: context,
@@ -2009,9 +2308,44 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
             ),
             onPressed: () async {
               Navigator.pop(ctx);
-              setState(() => _isLoading = true);
-              await _loyaltyService.updateProgramStatus(prog.id, isActive: false, status: 'draft');
+              setState(() {
+                _isLoading = true;
+                if (_performance != null) {
+                  final remaining = _performance!.programLibrary.where((p) => p.id != prog.id).toList();
+                  _performance = LoyaltyPerformanceModel(
+                    activeProgramsCount: remaining.where((p) => p.isActive).length,
+                    inactiveProgramsCount: remaining.where((p) => !p.isActive).length,
+                    draftProgramsCount: 0,
+                    totalProgramsCount: remaining.length,
+                    healthScore: remaining.isEmpty ? 0 : _performance!.healthScore,
+                    healthScoreStatus: remaining.isEmpty ? 'Healthy score starts from 80+' : _performance!.healthScoreStatus,
+                    dateRangeText: _performance!.dateRangeText,
+                    totalRevenue: remaining.isEmpty ? 0.0 : _performance!.totalRevenue,
+                    totalRedemptions: remaining.isEmpty ? 0 : _performance!.totalRedemptions,
+                    totalParticipants: remaining.isEmpty ? 0 : _performance!.totalParticipants,
+                    redemptionRate: remaining.isEmpty ? '0%' : _performance!.redemptionRate,
+                    pointsRedeemed: remaining.isEmpty ? 0 : _performance!.pointsRedeemed,
+                    pointsIssued: remaining.isEmpty ? 0 : _performance!.pointsIssued,
+                    avgRewardPerRedemption: remaining.isEmpty ? 0.0 : _performance!.avgRewardPerRedemption,
+                    chartData: remaining.isEmpty ? [] : _performance!.chartData,
+                    topRedeemingCustomers: remaining.isEmpty ? [] : _performance!.topRedeemingCustomers,
+                    rewardScoreboard: remaining.isEmpty ? [] : _performance!.rewardScoreboard,
+                    recentActivity: remaining.isEmpty ? [] : _performance!.recentActivity,
+                    programLibrary: remaining,
+                  );
+                }
+              });
+              await _loyaltyService.deleteLoyaltyProgram(prog.id);
               await _loadPerformance(forceRefresh: true);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Loyalty program deleted successfully', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    backgroundColor: Color(0xFFDC2626),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
             },
             child: const Text('Delete'),
           ),

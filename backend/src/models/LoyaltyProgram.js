@@ -103,6 +103,7 @@ const visitRewardConfigSchema = new mongoose.Schema(
       default: 'active',
     },
     isActive: { type: Boolean, default: true },
+    isConfigured: { type: Boolean, default: false },
   },
   { _id: false }
 );

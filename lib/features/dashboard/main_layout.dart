@@ -24,6 +24,8 @@ import '../../core/models/table_model.dart';
 import '../../core/models/order_model.dart';
 import '../auth/login_screen.dart';
 import 'dashboard_screen.dart';
+import '../subscription/screens/subscription_screen.dart';
+import '../campaign/screens/campaign_screen.dart';
 
 
 class MainLayout extends StatefulWidget {
@@ -132,52 +134,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
 
 
-  Widget _buildFeatureModalScreen(String title, IconData icon, String description) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.all(24),
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x0C000000),
-              blurRadius: 20,
-            ),
-          ],
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: const Color(0xFF0052FF), size: 56),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              description,
-              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: () => _selectTab(1),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0052FF),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-              child: const Text('Back to POS Billing', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+
 
   // ══════════════════════════════════════════════════════
   //  PREMIUM SUBSCRIPTION DIALOG
@@ -301,12 +258,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                           child: ElevatedButton(
                             onPressed: () {
                               Navigator.pop(ctx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: const Text('Redirecting to subscription portal...'),
-                                  backgroundColor: const Color(0xFF051C48),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => SubscriptionScreen(sourceFeature: featureName.toLowerCase()),
                                 ),
                               );
                             },
@@ -321,8 +276,8 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                 Text('👑', style: TextStyle(fontSize: 15)),
                                 SizedBox(width: 8),
                                 Text(
-                                  'Subscribe Now',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14),
+                                  'Explore Plans & Upgrade',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
                                 ),
                               ],
                             ),
@@ -529,9 +484,65 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(7, 'CRM', Icons.people_alt_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(10, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
               ],
+            ),
+          ),
+
+          // Upgrade to Pro Suite Card in Sidebar
+          GestureDetector(
+            onTap: () {
+              _closeSidebar();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SubscriptionScreen(sourceFeature: 'sidebar_drawer'),
+                ),
+              );
+            },
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
+                ),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF00C2FF), width: 1.2),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x3300C2FF), blurRadius: 8, offset: Offset(0, 2)),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFF59E0B),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 16),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Upgrade to Pro 👑',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5),
+                        ),
+                        Text(
+                          'Unlock Inventory, Loyalty, Campaign',
+                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF00C2FF), size: 12),
+                ],
+              ),
             ),
           ),
 
@@ -875,14 +886,14 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                       },
                                     ),
                                     const MenuManagementScreen(),
-                                    const InventoryScreen(),
+                                    InventoryScreen(onBack: () => _selectTab(0)),
                                     const ReportsScreen(),
                                     CrmLeadsScreen(
                                       onOpenDrawer: _toggleSidebar,
                                       onNavigateToDashboard: () => _selectTab(0),
                                     ),
                                     LoyaltyLandingScreen(onBack: () => _selectTab(0)),
-                                    _buildFeatureModalScreen('Marketing Campaign', Icons.campaign_rounded, 'Create promotional SMS/WhatsApp campaigns and discount coupons for customers.'),
+                                    CampaignScreen(onBack: () => _selectTab(0)),
                                     const BusinessSettingsHubScreen(),
                                   ],
                                 ),
