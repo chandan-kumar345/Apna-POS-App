@@ -310,6 +310,7 @@ class _ProductionRegistrationScreenState
       padding: const EdgeInsets.only(bottom: 14),
       child: TextFormField(
         controller: controller,
+        scrollPadding: const EdgeInsets.only(bottom: 90),
         validator: validator,
         obscureText: obscureText,
         keyboardType: keyboardType,

@@ -1395,14 +1395,18 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> with SingleTickerProvid
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            return Padding(
+            return AnimatedPadding(
               padding: EdgeInsets.only(
                 left: 20,
                 right: 20,
                 top: 20,
                 bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
               ),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
               child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1583,13 +1587,15 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> with SingleTickerProvid
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            return Padding(
+            return AnimatedPadding(
               padding: EdgeInsets.only(
                 left: 20,
                 right: 20,
                 top: 20,
                 bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
               ),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2119,6 +2125,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> with SingleTickerProvid
   }) {
     return TextField(
       controller: controller,
+      scrollPadding: const EdgeInsets.only(bottom: 90),
       keyboardType: keyboardType,
       maxLines: maxLines,
       style: const TextStyle(

@@ -7,6 +7,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get('/', (req, res, next) => printLogController.getPrintLogs(req, res, next));
+router.post('/', (req, res, next) => printLogController.createPrintLog(req, res, next));
 router.get('/:id', (req, res, next) => printLogController.getPrintLogById(req, res, next));
 router.post('/:id/reprint', (req, res, next) => printLogController.reprintLog(req, res, next));
 

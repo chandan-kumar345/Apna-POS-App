@@ -231,6 +231,27 @@ class ApiEndpoints {
     return 'http://127.0.0.1:$defaultPort/api/v1';
   }
 
+  /// Resolve relative or local media URL (image / video) into an absolute URL
+  static String resolveMediaUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return '';
+    final trimmed = url.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    // Local device file path exists on disk
+    if (!kIsWeb) {
+      try {
+        if (File(trimmed).existsSync()) {
+          return trimmed;
+        }
+      } catch (_) {}
+    }
+    // Server relative path (e.g. /uploads/products/123.jpg or uploads/products/123.jpg)
+    final serverBase = baseUrl.replaceAll('/api/v1', '').replaceAll(RegExp(r'/+$'), '');
+    final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    return '$serverBase$path';
+  }
+
   // Auth endpoints
   static const String register = '/auth/register';
   static const String login = '/auth/login';
@@ -314,6 +335,7 @@ class ApiEndpoints {
 
   // Upload endpoints
   static const String uploadImage = '/upload/image';
+  static const String uploadVideo = '/upload/video';
 
   // Loyalty endpoints
   static const String loyaltyPrograms = '/loyalty/programs';
@@ -353,10 +375,12 @@ class ApiEndpoints {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (modalCtx, setModalState) {
-            return Padding(
+            return AnimatedPadding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(modalCtx).viewInsets.bottom,
               ),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
               child: Container(
                 decoration: const BoxDecoration(
                   color: Colors.white,
@@ -405,6 +429,7 @@ class ApiEndpoints {
                     const SizedBox(height: 16),
                     TextField(
                       controller: controller,
+                      scrollPadding: const EdgeInsets.only(bottom: 90),
                       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
                       decoration: InputDecoration(
                         labelText: 'Backend Base URL',

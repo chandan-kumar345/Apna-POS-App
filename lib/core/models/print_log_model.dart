@@ -116,6 +116,7 @@ class PrintLogModel {
   });
 
   bool get isPaid => paymentStatus.toLowerCase() == 'paid';
+  bool get isClearCart => printType == 'clear_cart' || printType == 'void' || printType == 'cancelled' || orderStatus == 'cancelled';
 
   DateTime get createdDateTime {
     final parsed = DateTime.tryParse(createdAt);

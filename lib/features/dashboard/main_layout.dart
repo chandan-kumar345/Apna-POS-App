@@ -483,66 +483,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true, isSmallScreen: isSmallScreen),
                 _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
                 _buildNavItem(7, 'CRM', Icons.people_alt_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
+                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
                 _buildNavItem(10, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
               ],
-            ),
-          ),
-
-          // Upgrade to Pro Suite Card in Sidebar
-          GestureDetector(
-            onTap: () {
-              _closeSidebar();
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SubscriptionScreen(sourceFeature: 'sidebar_drawer'),
-                ),
-              );
-            },
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF0F172A), Color(0xFF1E3A8A)],
-                ),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF00C2FF), width: 1.2),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x3300C2FF), blurRadius: 8, offset: Offset(0, 2)),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF59E0B),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 16),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Upgrade to Pro 👑',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5),
-                        ),
-                        Text(
-                          'Unlock Inventory, Loyalty, Campaign',
-                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(Icons.arrow_forward_ios_rounded, color: Color(0xFF00C2FF), size: 12),
-                ],
-              ),
             ),
           ),
 
@@ -977,7 +921,23 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
         child: GestureDetector(
           onTap: () {
             if (isSmallScreen) _closeSidebar();
-            _showSubscriptionDialog(title);
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => SubscriptionScreen(
+                  sourceFeature: title.toLowerCase(),
+                  onNavigateToFeature: (target) {
+                    if (target.contains('inventory')) {
+                      _selectTab(5);
+                    } else if (target.contains('loyalty')) {
+                      _selectTab(8);
+                    } else if (target.contains('campaign')) {
+                      _selectTab(9);
+                    }
+                  },
+                ),
+              ),
+            );
           },
           child: AnimatedBuilder(
             animation: _shimmerController,

@@ -848,10 +848,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   country.dialCode.contains(query);
             }).toList();
 
-            return Padding(
+            return AnimatedPadding(
               padding: EdgeInsets.only(
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
               child: Material(
                 color: Colors.white,
                 borderRadius:
@@ -914,6 +916,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: TextField(
+                                scrollPadding: const EdgeInsets.only(bottom: 90),
                                 onChanged: (val) {
                                   setModalState(() {
                                     searchQuery = val;
@@ -1413,6 +1416,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         Expanded(
                                           child: TextField(
                                             controller: _phoneController,
+                                            scrollPadding: const EdgeInsets.only(bottom: 90),
                                             keyboardType: TextInputType.phone,
                                             style: const TextStyle(
                                               fontSize: 15,
@@ -1768,6 +1772,7 @@ class _LoginScreenState extends State<LoginScreen> {
               Expanded(
                 child: TextField(
                   controller: controller,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   obscureText: obscureText,
                   keyboardType: keyboardType,
                   style: const TextStyle(

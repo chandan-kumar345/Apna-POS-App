@@ -64,6 +64,10 @@ class ProductService {
       normalized.images = [normalized.image];
     }
 
+    if (data.videoUrl !== undefined || data.video !== undefined) {
+      normalized.videoUrl = (data.videoUrl || data.video || '').toString().trim();
+    }
+
     if (Array.isArray(data.variants)) {
       normalized.variants = data.variants.map((v) => {
         const vPrice = Math.max(0, parseFloat(v.price) || 0);

@@ -93,6 +93,11 @@ const productSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    videoUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     foodType: {
       type: String,
       enum: ['veg', 'non_veg', 'egg', 'beverage'],

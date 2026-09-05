@@ -279,6 +279,7 @@ class GlassTextField extends StatelessWidget {
           blurStrength: 8,
           child: TextFormField(
             controller: controller,
+            scrollPadding: const EdgeInsets.only(bottom: 90),
             obscureText: obscureText,
             keyboardType: keyboardType,
             onTap: () {

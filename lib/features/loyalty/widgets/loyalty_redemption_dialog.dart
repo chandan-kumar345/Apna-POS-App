@@ -56,6 +56,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
   bool _isSendingOtp = false;
   bool _isVerifyingOtp = false;
   String? _otpError;
+  String? _debugOtp;
   int _resendCountdown = 60;
   Timer? _countdownTimer;
 
@@ -118,6 +119,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
       _isSendingOtp = true;
       _selectedStage = stage;
       _otpError = null;
+      _debugOtp = null;
     });
 
     try {
@@ -126,12 +128,24 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
         stageId: stage.id,
       );
 
+      final extractedOtp = res['otpDebug']?.toString() ??
+          (res['message']?.toString().contains('OTP generated:') == true
+              ? res['message'].toString().split('OTP generated:').last.trim()
+              : null);
+
       if (mounted) {
         setState(() {
           _isSendingOtp = false;
           _isOtpStep = true;
+          _debugOtp = extractedOtp;
         });
         _startCountdown();
+
+        debugPrint('\n================================================================');
+        debugPrint('🔑 [LOYALTY REDEEM OTP TEST - DIALOG RECIEVED]');
+        debugPrint('📱 Phone: ${widget.customerPhone}');
+        debugPrint('🔢 OTP  : >>> ${extractedOtp ?? 'Printed in backend terminal'} <<<');
+        debugPrint('================================================================\n');
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -211,14 +225,20 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(16, 12, 16, MediaQuery.of(context).viewInsets.bottom + 16),
-      child: SingleChildScrollView(
-        child: Column(
+    return AnimatedPadding(
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -244,7 +264,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
                     Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: _primaryNavy.withOpacity(0.08),
+                        color: _primaryNavy.withValues(alpha: 0.08),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.card_giftcard_rounded, color: _primaryNavy, size: 20),
@@ -312,8 +332,9 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
           ],
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildStagesListView() {
     final balance = _customerLoyalty?.pointsBalance ?? 0;
@@ -337,7 +358,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
             borderRadius: BorderRadius.circular(14),
             boxShadow: [
               BoxShadow(
-                color: _primaryNavy.withOpacity(0.2),
+                color: _primaryNavy.withValues(alpha: 0.2),
                 blurRadius: 8,
                 offset: const Offset(0, 3),
               ),
@@ -356,14 +377,14 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
                   const SizedBox(height: 2),
                   Text(
                     'Phone: ${widget.customerPhone} • $visits Visits',
-                    style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 11),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 11),
                   ),
                 ],
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.18),
+                  color: Colors.white.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: Colors.white30),
                 ),
@@ -559,6 +580,7 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
         const SizedBox(height: 6),
         TextField(
           controller: _otpController,
+          scrollPadding: const EdgeInsets.only(bottom: 90),
           keyboardType: TextInputType.number,
           maxLength: 4,
           style: const TextStyle(
@@ -578,6 +600,47 @@ class _LoyaltyRedemptionDialogState extends State<LoyaltyRedemptionDialog> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
             enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _primaryNavy, width: 1.8)),
+          ),
+        ),
+        const SizedBox(height: 8),
+
+        // Testing helper hint (Shows OTP or indicates terminal output)
+        InkWell(
+          onTap: () {
+            if (_debugOtp != null && _debugOtp!.isNotEmpty) {
+              setState(() {
+                _otpController.text = _debugOtp!;
+              });
+            }
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFFCD34D)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.developer_mode_rounded, size: 14, color: Color(0xFFB45309)),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _debugOtp != null
+                        ? '🧪 Test OTP: $_debugOtp (Tap to autofill / see terminal)'
+                        : '🧪 Test Mode: OTP is printed in Terminal console (or use 1234)',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF92400E),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 14),

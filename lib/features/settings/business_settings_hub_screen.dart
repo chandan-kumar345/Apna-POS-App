@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
@@ -454,6 +455,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         const SizedBox(height: 6),
                         TextField(
                           controller: _upiIdController,
+                          scrollPadding: const EdgeInsets.only(bottom: 90),
                           style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                           decoration: InputDecoration(
                             hintText: 'e.g. merchant@okicici, 9876543210@paytm',
@@ -1043,6 +1045,316 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     );
   }
 
+  void _showSecurityPinModal() {
+    final currentPin = db.managerPin;
+    final pinController = TextEditingController(text: currentPin);
+    bool obscurePin = true;
+    String? errorMessage;
+
+    void generateRandomPin(StateSetter setModalState) {
+      final randomNum = 1000 + Random().nextInt(9000);
+      setModalState(() {
+        pinController.text = randomNum.toString();
+        errorMessage = null;
+      });
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 520 ? 420.0 : (screenWidth * 0.92);
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              elevation: 16,
+              clipBehavior: Clip.antiAlias,
+              child: SizedBox(
+                width: dialogWidth,
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header Row
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
+                              ),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.key_rounded, color: Color(0xFF00C2FF), size: 22),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Generate Security PIN',
+                                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                ),
+                                Text(
+                                  'Manager PIN to void orders & clear cart',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            tooltip: 'Close',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 14),
+
+                      // Info banner
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFDE68A)),
+                        ),
+                        child: const Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.shield_outlined, color: Color(0xFFD97706), size: 18),
+                            SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'This PIN protects running KOT tables from unauthorized clearing or voiding by staff.',
+                                style: TextStyle(fontSize: 11.5, color: Color(0xFF92400E), height: 1.35, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      if (errorMessage != null) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFFCA5A5)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  errorMessage!,
+                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFFDC2626), fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+
+                      // PIN Field: Enter Your PIN
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Enter Your PIN',
+                                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+                              ),
+                              Row(
+                                children: [
+                                  // Quick auto-generate random PIN button
+                                  InkWell(
+                                    onTap: () => generateRandomPin(setModalState),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.casino_outlined, size: 13, color: Color(0xFF051C48)),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Auto Generate',
+                                            style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    onTap: () => setModalState(() => obscurePin = !obscurePin),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          obscurePin ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                          size: 14,
+                                          color: const Color(0xFF051C48),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          obscurePin ? 'Show' : 'Hide',
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: pinController,
+                            scrollPadding: const EdgeInsets.only(bottom: 90),
+                            autofocus: true,
+                            keyboardType: TextInputType.number,
+                            maxLength: 4,
+                            obscureText: obscurePin,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: 6,
+                            ),
+                            textAlign: TextAlign.center,
+                            decoration: InputDecoration(
+                              counterText: '',
+                              hintText: '••••',
+                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 16, letterSpacing: 4),
+                              prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF051C48), size: 20),
+                              filled: true,
+                              fillColor: const Color(0xFFF8FAFC),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.8)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(color: Color(0xFFDCFCE7), shape: BoxShape.circle),
+                            child: const Icon(Icons.check, size: 12, color: Color(0xFF15803D)),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Active PIN: ${db.managerPin}',
+                            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 14),
+
+                      // Bottom Actions: Cancel & Generate PIN
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              onPressed: () async {
+                                final p1 = pinController.text.trim();
+
+                                if (p1.length != 4 || int.tryParse(p1) == null) {
+                                  setModalState(() => errorMessage = 'PIN must be exactly 4 numeric digits');
+                                  return;
+                                }
+
+                                final messenger = ScaffoldMessenger.of(context);
+                                await db.updateManagerPin(p1);
+                                if (dialogCtx.mounted) {
+                                  Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                }
+                                if (!mounted) return;
+                                setState(() {});
+
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text('Security PIN generated & saved as $p1 successfully!', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                                      ],
+                                    ),
+                                    backgroundColor: const Color(0xFF15803D),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    duration: const Duration(seconds: 3),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.key_rounded, size: 16, color: Colors.white),
+                              label: const Text('Generate PIN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildLightInputField({
     required TextEditingController controller,
     required String label,
@@ -1058,6 +1370,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
         const SizedBox(height: 5),
         TextField(
           controller: controller,
+          scrollPadding: const EdgeInsets.only(bottom: 90),
           maxLines: maxLines,
           keyboardType: isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
@@ -1213,6 +1526,16 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                 ),
                               );
                             },
+                          ),
+
+                          // 5. SECURITY / MANAGER PIN
+                          _buildSettingGridCard(
+                            title: 'Security PIN',
+                            subtitle: 'Manager PIN for Cart Clear & Void',
+                            icon: Icons.lock_person_rounded,
+                            accentColor: const Color(0xFFDC2626),
+                            badgeText: 'PIN',
+                            onTap: _showSecurityPinModal,
                           ),
                         ],
                       );

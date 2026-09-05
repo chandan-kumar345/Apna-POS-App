@@ -286,6 +286,128 @@ class TableService {
     }
     return { id: tableId, message: 'Table removed' };
   }
+
+  /**
+   * Shift all products, active carts, and running KOT orders from Table A to Table B dynamically
+   */
+  async shiftTable(businessId, { sourceTable, targetTable }) {
+    if (!sourceTable || !targetTable) {
+      throw ApiError.badRequest('Source table and target table are required');
+    }
+
+    const src = sourceTable.trim();
+    const dst = targetTable.trim();
+    if (src.toLowerCase() === dst.toLowerCase()) {
+      return { message: 'Source and target tables are the same', sourceTable: src, targetTable: dst };
+    }
+
+    const srcNum = src.replace(/\D/g, '');
+    const dstNum = dst.replace(/\D/g, '');
+
+    const srcMatches = [src, `T-${srcNum}`, srcNum, `T${srcNum}`].filter(Boolean);
+    const dstMatches = [dst, `T-${dstNum}`, dstNum, `T${dstNum}`].filter(Boolean);
+
+    const formattedDstName = dst.startsWith('T-') ? dst : (dstNum ? `T-${dstNum}` : dst);
+
+    // 1. Shift Active Orders (pending / preparing)
+    const activeOrders = await Order.find({
+      businessId,
+      status: { $in: ['pending', 'preparing'] },
+      orderType: 'dineIn',
+      tableNumber: { $in: srcMatches },
+    });
+
+    for (const order of activeOrders) {
+      order.tableNumber = formattedDstName;
+      await order.save();
+    }
+
+    // 2. Shift Active Cart
+    const sourceCart = await Cart.findOne({
+      businessId,
+      orderType: 'dineIn',
+      tableNumber: { $in: srcMatches },
+    });
+
+    let targetCart = await Cart.findOne({
+      businessId,
+      orderType: 'dineIn',
+      tableNumber: { $in: dstMatches },
+    });
+
+    if (sourceCart && sourceCart.items && sourceCart.items.length > 0) {
+      if (!targetCart) {
+        targetCart = new Cart({
+          businessId,
+          orderType: 'dineIn',
+          tableNumber: formattedDstName,
+          items: sourceCart.items,
+        });
+      } else {
+        targetCart.items = sourceCart.items;
+      }
+      targetCart.recalculateTotals();
+      await targetCart.save();
+
+      // Clear source cart
+      sourceCart.items = [];
+      sourceCart.recalculateTotals();
+      await sourceCart.save();
+    }
+
+    // 3. Update Table models status
+    const sourceTableDoc = await Table.findOne({
+      businessId,
+      $or: [{ name: { $in: srcMatches } }, { tableNumber: parseInt(srcNum, 10) || 0 }],
+    });
+
+    const targetTableDoc = await Table.findOne({
+      businessId,
+      $or: [{ name: { $in: dstMatches } }, { tableNumber: parseInt(dstNum, 10) || 0 }],
+    });
+
+    let newStatus = 'free';
+    if (activeOrders.length > 0) {
+      newStatus = 'runningKot';
+    } else if (targetCart && targetCart.items && targetCart.items.length > 0) {
+      newStatus = 'occupied';
+    }
+
+    if (sourceTableDoc) {
+      sourceTableDoc.status = 'free';
+      sourceTableDoc.occupiedSince = null;
+      sourceTableDoc.currentOrderId = null;
+      sourceTableDoc.currentOrderNumber = null;
+      sourceTableDoc.currentOrderTotal = 0;
+      sourceTableDoc.activeItemCount = 0;
+      await sourceTableDoc.save();
+    }
+
+    if (targetTableDoc) {
+      targetTableDoc.status = newStatus;
+      if (newStatus !== 'free') {
+        targetTableDoc.occupiedSince = targetTableDoc.occupiedSince || new Date();
+        if (activeOrders.length > 0) {
+          targetTableDoc.currentOrderId = activeOrders[0]._id;
+          targetTableDoc.currentOrderNumber = activeOrders[0].orderNumber;
+          targetTableDoc.currentOrderTotal = activeOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+          targetTableDoc.activeItemCount = activeOrders.reduce((sum, o) => sum + (o.items ? o.items.length : 0), 0);
+        } else if (targetCart && targetCart.items) {
+          targetTableDoc.currentOrderTotal = targetCart.subtotal || 0;
+          targetTableDoc.activeItemCount = targetCart.items.length;
+        }
+      }
+      await targetTableDoc.save();
+    }
+
+    return {
+      shiftedOrdersCount: activeOrders.length,
+      shiftedCartItemsCount: targetCart?.items?.length || 0,
+      sourceTable: src,
+      targetTable: formattedDstName,
+      targetTableStatus: newStatus,
+    };
+  }
 }
 
 module.exports = new TableService();

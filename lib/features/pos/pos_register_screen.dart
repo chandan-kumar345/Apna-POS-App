@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
@@ -17,7 +16,9 @@ import 'kot_dialog.dart';
 import '../../core/utils/order_calculator.dart';
 import '../../core/models/loyalty_program_model.dart';
 import '../../core/services/loyalty_service.dart';
+import '../../core/services/table_service.dart';
 import '../loyalty/widgets/loyalty_redemption_dialog.dart';
+import 'widgets/pos_product_media_box.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
@@ -71,33 +72,46 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   Future<void> _initLoyaltyStatus() async {
     try {
       final config = await _loyaltyService.getVisitRewardConfig();
+      final branding = await _loyaltyService.fetchLoyaltyPrograms();
+      final hasActive = (config.isActive && config.status != 'inactive' && config.status != 'draft') ||
+          branding.programs.any((p) => p.isActive);
       if (mounted) {
         setState(() {
-          _isLoyaltyActive = config.isActive && config.status != 'inactive' && config.status != 'draft';
+          _isLoyaltyActive = hasActive || config.isActive;
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoyaltyActive = true;
+        });
+      }
+    }
   }
 
   Future<void> _checkCustomerLoyalty() async {
-    if (_customerPhone.trim().isEmpty) {
+    if (_customerPhone.trim().isEmpty && _customerName.trim().isEmpty) {
       if (mounted) setState(() => _currentCustomerLoyalty = null);
       return;
     }
     try {
       final loyalty = await _loyaltyService.getCustomerLoyalty(
         _customerPhone.trim(),
-        name: _customerName,
+        name: _customerName.trim(),
       );
       if (mounted) {
         setState(() {
           _currentCustomerLoyalty = loyalty;
-          if (loyalty != null) {
-            _isLoyaltyActive = loyalty.isProgramActive;
-          }
+          _isLoyaltyActive = true;
         });
       }
-    } catch (_) {}
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _isLoyaltyActive = true;
+        });
+      }
+    }
   }
 
   String _deliveryAddress = '';
@@ -377,12 +391,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             if (tbl.status != mapped) {
               db.updateTableStatus(tbl.id, mapped, orderId: activeOrder.id);
             }
-          } else if (tbl.status == TableStatus.runningKot) {
-            // Maintain runningKot (RED) state for active KOT
+          } else if (_cartItems.isEmpty) {
+            db.clearTableCartAndFree(targetTable);
           } else if (_cartItems.isNotEmpty && tbl.status == TableStatus.free) {
             db.updateTableStatus(tbl.id, TableStatus.occupied);
-          } else if (_cartItems.isEmpty && tbl.status == TableStatus.occupied) {
-            db.updateTableStatus(tbl.id, TableStatus.free);
           }
         }
       }
@@ -1231,36 +1243,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Widget _buildPosProductImage(MenuItemModel item) {
-    String imagePath = item.imageUrl.trim();
-    if (imagePath.isEmpty && item.images.isNotEmpty) {
-      imagePath = item.images.first.trim();
-    }
-
-    final String fallbackEmoji = item.emoji.trim().isNotEmpty ? item.emoji.trim() : '🥘';
-
-    if (imagePath.isNotEmpty) {
-      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        return Image.network(
-          imagePath,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          errorBuilder: (_, __, ___) => Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24))),
-        );
-      } else {
-        final file = File(imagePath);
-        if (file.existsSync()) {
-          return Image.file(
-            file,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            errorBuilder: (_, __, ___) => Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24))),
-          );
-        }
-      }
-    }
-    return Center(child: Text(fallbackEmoji, style: const TextStyle(fontSize: 24)));
+    return PosProductMediaBox(
+      key: ValueKey('media_${item.id}_${item.imageUrl}_${item.videoUrl}_${item.images.length}'),
+      item: item,
+      fit: BoxFit.cover,
+      showDots: true,
+      borderRadius: BorderRadius.circular(10),
+    );
   }
 
   void _showAddItemDialog() {
@@ -1315,8 +1304,327 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
+  bool _isTableRunningKot(String tableName) {
+    if (_selectedOrderType != OrderType.dineIn || tableName.isEmpty) return false;
+
+    // 1. Check in-memory active order indicators
+    if (_activeRunningOrderId != null || _activeRunningOrderNumber != null) {
+      return true;
+    }
+
+    // 2. Check table status in db.tables
+    final tbl = db.tables.where((t) =>
+      isSameTable(t.name, tableName) ||
+      isSameTable(t.tableNumber.toString(), tableName) ||
+      'T-${t.tableNumber}'.toLowerCase() == tableName.trim().toLowerCase()
+    ).firstOrNull;
+
+    if (tbl != null && tbl.status == TableStatus.runningKot) {
+      return true;
+    }
+
+    // 3. Check active preparing / pending order in db.orders
+    final hasActiveOrder = db.orders.any((o) =>
+      isSameTable(o.tableNumber, tableName) &&
+      (o.status == OrderStatus.preparing || (o.status == OrderStatus.pending && o.items.isNotEmpty))
+    );
+
+    return hasActiveOrder;
+  }
+
+  Future<bool> _promptManagerPinForClearCart({
+    required BuildContext modalContext,
+    required String tableName,
+  }) async {
+    final pinController = TextEditingController();
+    String? pinError;
+    bool obscure = true;
+
+    final authorized = await showDialog<bool>(
+      context: modalContext,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+              elevation: 16,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header with Shield Icon & Alert styling
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEE2E2),
+                              shape: BoxShape.circle,
+                              border: Border.all(color: const Color(0xFFFCA5A5)),
+                            ),
+                            child: const Icon(Icons.shield_rounded, color: Color(0xFFDC2626), size: 24),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Security PIN Required',
+                                  style: TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                Text(
+                                  'Running KOT in Kitchen',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFFDC2626),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(false),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 14),
+
+                      // Warning explanation
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 18),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Table $tableName has an active Running KOT in the kitchen. Clearing the cart will void this order and mark Table $tableName as Free.',
+                                style: const TextStyle(
+                                  fontSize: 11.5,
+                                  color: Color(0xFF991B1B),
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // PIN input field
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Enter Manager Security PIN',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          ),
+                          InkWell(
+                            onTap: () => setDialogState(() => obscure = !obscure),
+                            child: Text(
+                              obscure ? 'Show' : 'Hide',
+                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      TextField(
+                        controller: pinController,
+                        scrollPadding: const EdgeInsets.only(bottom: 90),
+                        autofocus: true,
+                        keyboardType: TextInputType.number,
+                        maxLength: 4,
+                        obscureText: obscure,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: 6,
+                        ),
+                        textAlign: TextAlign.center,
+                        decoration: InputDecoration(
+                          counterText: '',
+                          errorText: pinError,
+                          hintText: '••••',
+                          hintStyle: const TextStyle(letterSpacing: 4, color: Color(0xFF94A3B8)),
+                          filled: true,
+                          fillColor: const Color(0xFFF8FAFC),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.8)),
+                        ),
+                        onSubmitted: (val) {
+                          if (db.verifyManagerPin(val)) {
+                            Navigator.of(dialogCtx, rootNavigator: true).pop(true);
+                          } else {
+                            setDialogState(() {
+                              pinError = 'Incorrect Security PIN. Try again or check Settings.';
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 6),
+                      const Center(
+                        child: Text(
+                          '(PIN can be changed in Business Setting Hub)',
+                          style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(false),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text('Keep Cart', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 13)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                final entered = pinController.text.trim();
+                                if (db.verifyManagerPin(entered)) {
+                                  Navigator.of(dialogCtx, rootNavigator: true).pop(true);
+                                } else {
+                                  setDialogState(() {
+                                    pinError = 'Incorrect Security PIN. Please try again.';
+                                  });
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFFDC2626),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                elevation: 0,
+                              ),
+                              child: const Text('Void & Clear', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    return authorized == true;
+  }
+
+  Future<void> _handleClearCartAction(BuildContext modalContext, [StateSetter? setStateModal]) async {
+    final targetTable = _selectedTable;
+    final isDineIn = _selectedOrderType == OrderType.dineIn;
+
+    if (isDineIn && targetTable != null && targetTable.isNotEmpty && _isTableRunningKot(targetTable)) {
+      final authorized = await _promptManagerPinForClearCart(
+        modalContext: modalContext,
+        tableName: targetTable,
+      );
+
+      if (!authorized) {
+        return; // User cancelled or failed PIN
+      }
+    }
+
+    // Capture snapshot for Print Logs BEFORE clearing
+    final snapshotItems = List<CartItemModel>.from(_cartItems);
+    final snapshotTotal = cartTotal;
+    final activeId = _activeRunningOrderId;
+    final activeNum = _activeRunningOrderNumber;
+    final cName = _customerName;
+    final cPhone = _customerPhone;
+
+    // Execute Clear
+    _clearCart();
+
+    // Log cleared cart snapshot to Print Logs
+    if (snapshotItems.isNotEmpty || snapshotTotal > 0) {
+      await db.logClearedCart(
+        tableNumber: targetTable ?? '',
+        items: snapshotItems,
+        totalAmount: snapshotTotal,
+        orderId: activeId,
+        orderNumber: activeNum,
+        customerName: cName,
+        customerPhone: cPhone,
+        reason: 'Cleared Cart & Freed Table via Manager Security PIN',
+      );
+    }
+
+    if (setStateModal != null) {
+      setStateModal(() {});
+    }
+    if (mounted) {
+      _checkAndCloseEmptyCart(modalContext, setStateModal);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                targetTable != null && targetTable.isNotEmpty
+                    ? 'Table $targetTable cart cleared & freed successfully'
+                    : 'Cart cleared successfully',
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF051C48),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   void _clearCart() {
     setState(() {
+      final targetTable = _selectedTable;
+      final activeId = _activeRunningOrderId;
+
       _cartItems.clear();
       _discountAmount = 0.0;
       _activeRunningOrderId = null;
@@ -1329,57 +1637,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _deliveryState = '';
       _deliveryPincode = '';
 
-      if (_selectedTable != null && _selectedTable!.isNotEmpty && _selectedOrderType == OrderType.dineIn) {
-        final targetTable = _selectedTable!;
+      if (targetTable != null && targetTable.isNotEmpty && _selectedOrderType == OrderType.dineIn) {
+        // Void any active preparing/pending orders in memory & backend, and mark table as Free
+        db.voidTableOrderAndFree(targetTable, orderId: activeId, reason: 'Cart Cleared by POS Staff');
 
-        // 1. Delete active preparing/pending order from db.orders (removes it from 'Preparing' in My Orders)
-        db.orders.removeWhere((o) =>
-          ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
-           'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
-          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-        );
-
-        // 2. Reset live cart items and total amount to 0
-        db.setLiveTableCart(targetTable, []);
-        db.setLiveCartTotal(targetTable, 0);
-
-        // 3. Free table status
-        final tbl = db.tables.where((t) =>
-          t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
-          t.tableNumber.toString() == targetTable ||
-          'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
-        ).firstOrNull;
-
-        if (tbl != null) {
-          db.updateTableStatus(tbl.id, TableStatus.free);
-        }
+        // Clean up backend cart asynchronously
+        try {
+          CartApiService().clearCart(tableNumber: targetTable, orderType: 'dineIn');
+        } catch (_) {}
       }
     });
   }
 
   void _checkAndCloseEmptyCart(BuildContext modalContext, [StateSetter? setStateModal]) {
     if (_cartItems.isEmpty) {
-      if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+      if (_selectedTable != null && _selectedTable!.isNotEmpty && _selectedOrderType == OrderType.dineIn) {
         final targetTable = _selectedTable!;
-
-        db.setLiveTableCart(targetTable, []);
-        db.setLiveCartTotal(targetTable, 0);
-
-        final tbl = db.tables.where((t) =>
-          t.name.trim().toLowerCase() == targetTable.trim().toLowerCase() ||
-          t.tableNumber.toString() == targetTable ||
-          'T-${t.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()
-        ).firstOrNull;
-
-        if (tbl != null) {
-          db.updateTableStatus(tbl.id, TableStatus.free);
-        }
-
-        db.orders.removeWhere((o) =>
-          ((o.tableNumber?.trim().toLowerCase() ?? '') == targetTable.trim().toLowerCase() ||
-           'T-${o.tableNumber}'.toLowerCase() == targetTable.trim().toLowerCase()) &&
-          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-        );
+        db.voidTableOrderAndFree(targetTable);
       }
 
       if (setStateModal != null) {
@@ -1398,6 +1672,52 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _cartItems.removeWhere((i) => i.item.id == item.id);
       _syncTableStatusWithCart();
     });
+  }
+
+  /// Dynamically shift all cart items, orders, and details from current table to new table
+  Future<void> _shiftTable(String newTableName, StateSetter setStateModal) async {
+    final oldTable = _selectedTable;
+    if (oldTable == null || oldTable.isEmpty || isSameTable(oldTable, newTableName)) {
+      _switchTable(newTableName, setStateModal);
+      return;
+    }
+
+    // 1. Sync any active in-memory cart items to old table first
+    if (_cartItems.isNotEmpty) {
+      db.setLiveTableCart(oldTable, List.from(_cartItems));
+      db.setLiveCartTotal(oldTable, cartTotal);
+    }
+
+    // 2. Perform full data migration in local database
+    db.shiftTableData(oldTable, newTableName);
+
+    // 3. Trigger cloud API sync for multi-device synchronization
+    try {
+      final tableService = TableService();
+      await tableService.shiftTable(sourceTable: oldTable, targetTable: newTableName);
+    } catch (e) {
+      debugPrint('[POS._shiftTable] API sync notice: $e');
+    }
+
+    // 4. Update selected table and load the shifted cart
+    setState(() {
+      _selectedTable = newTableName;
+    });
+    _loadCartForTable(newTableName);
+
+    setStateModal(() {});
+    setState(() {});
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Table shifted from $oldTable to $newTableName with all items'),
+          backgroundColor: const Color(0xFF00A86B),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _switchTable(String newTableName, StateSetter setStateModal) {
@@ -1600,7 +1920,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                                 return InkWell(
                                   onTap: () {
-                                    _switchTable(table.name, setStateModal);
+                                    _shiftTable(table.name, setStateModal);
                                     Navigator.pop(context);
                                   },
                                   borderRadius: BorderRadius.circular(16),
@@ -1724,6 +2044,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             setState(() {
               _customerName = name;
               _customerPhone = phone;
+              _isLoyaltyActive = true;
               if (address != null && address.trim().isNotEmpty) {
                 _setDeliveryAddressFromCustomer(address);
               }
@@ -2148,6 +2469,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   Expanded(
                                     child: TextField(
                                       controller: couponCtrl,
+                                      scrollPadding: const EdgeInsets.only(bottom: 90),
                                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                       decoration: const InputDecoration(
                                         hintText: 'SAVE50',
@@ -2324,6 +2646,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                         Expanded(
                                           child: TextField(
                                             controller: discCtrl,
+                                            scrollPadding: const EdgeInsets.only(bottom: 90),
                                             keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                             decoration: InputDecoration(
@@ -2394,6 +2717,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   Expanded(
                                     child: TextField(
                                       controller: tipCtrl,
+                                      scrollPadding: const EdgeInsets.only(bottom: 90),
                                       keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                       style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                       decoration: const InputDecoration(
@@ -2788,10 +3112,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         ),
                         if (_cartItems.isNotEmpty)
                           InkWell(
-                            onTap: () {
-                              _clearCart();
-                              _checkAndCloseEmptyCart(context, setStateModal);
-                            },
+                            onTap: () => _handleClearCartAction(context, setStateModal),
                             borderRadius: BorderRadius.circular(20),
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -3026,7 +3347,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       ],
                                     ),
                                   ),
-                                  if (_isLoyaltyActive || _currentCustomerLoyalty?.isProgramActive == true) ...[
+                                  if (_isLoyaltyActive || _currentCustomerLoyalty?.isProgramActive == true || _customerPhone.isNotEmpty || _customerName.isNotEmpty) ...[
                                     const SizedBox(width: 6),
                                     InkWell(
                                       onTap: () {
@@ -3812,6 +4133,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ],
                   ),
                   child: TextField(
+                    scrollPadding: const EdgeInsets.only(bottom: 90),
                     onChanged: (val) => setState(() => _searchQuery = val),
                     style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
                     decoration: InputDecoration(
@@ -4630,6 +4952,7 @@ class _CustomerDetailsDialogState extends State<_CustomerDetailsDialog> {
                   child: TextField(
                     controller: _phoneCtrl,
                     focusNode: _phoneFocusNode,
+                    scrollPadding: const EdgeInsets.only(bottom: 90),
                     keyboardType: TextInputType.phone,
                     cursorColor: const Color(0xFF051C48),
                     onChanged: _onPhoneChanged,
@@ -4830,6 +5153,7 @@ class _CustomerDetailsDialogState extends State<_CustomerDetailsDialog> {
                 TextField(
                   controller: _nameCtrl,
                   focusNode: _nameFocusNode,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   keyboardType: TextInputType.name,
                   textCapitalization: TextCapitalization.words,
                   cursorColor: const Color(0xFF051C48),

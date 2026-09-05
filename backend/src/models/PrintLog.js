@@ -45,9 +45,8 @@ const printLogSchema = new mongoose.Schema(
       index: true,
     },
     orderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Order',
-      required: true,
+      type: mongoose.Schema.Types.Mixed,
+      required: false,
       index: true,
     },
     orderNumber: {
@@ -61,7 +60,7 @@ const printLogSchema = new mongoose.Schema(
     },
     printType: {
       type: String,
-      enum: ['save_and_print', 'bill', 'receipt', 'reprint', 'kot'],
+      enum: ['save_and_print', 'bill', 'receipt', 'reprint', 'kot', 'clear_cart', 'void', 'cancelled'],
       default: 'save_and_print',
       index: true,
     },
@@ -72,7 +71,7 @@ const printLogSchema = new mongoose.Schema(
     },
     paymentStatus: {
       type: String,
-      enum: ['pending', 'paid', 'unpaid', 'refunded'],
+      enum: ['pending', 'paid', 'unpaid', 'refunded', 'voided'],
       default: 'pending',
       index: true,
     },

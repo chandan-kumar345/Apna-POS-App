@@ -12,8 +12,12 @@ const app = express();
 // Trust proxy for tunnels / cloud load balancers
 app.set('trust proxy', 1);
 
-// 1. Security Headers
-app.use(helmet());
+// 1. Security Headers (allow cross-origin media rendering)
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  })
+);
 
 // 2. CORS Configuration
 app.use(
@@ -39,7 +43,7 @@ const limiter = rateLimit({
       message: 'Too many requests from this IP, please try again after 15 minutes',
     },
   },
-  skip: () => env.NODE_ENV === 'test',
+  skip: (req) => env.NODE_ENV === 'test' || env.NODE_ENV === 'development' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1',
 });
 app.use(limiter);
 
@@ -61,8 +65,16 @@ app.use(
 );
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 6. Serve static uploads (local fallback)
-app.use('/uploads', express.static(path.join(__dirname, '../public/uploads')));
+// 6. Serve static uploads (local fallback with cross-origin headers)
+app.use(
+  '/uploads',
+  express.static(path.join(__dirname, '../public/uploads'), {
+    setHeaders: (res) => {
+      res.set('Access-Control-Allow-Origin', '*');
+      res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  })
+);
 
 // 7. Mount Versioned APIs under /api/v1
 app.use('/api/v1', routes);

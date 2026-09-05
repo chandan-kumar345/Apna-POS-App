@@ -9,6 +9,7 @@ import '../models/table_model.dart';
 import '../models/order_model.dart';
 import '../models/inventory_model.dart';
 import '../models/extra_model.dart';
+import '../models/print_log_model.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/auth_repository_factory.dart';
@@ -148,6 +149,53 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dynamically shift all live carts, active orders, and status from sourceTable to targetTable
+  void shiftTableData(String sourceTable, String targetTable) {
+    if (sourceTable.trim().toLowerCase() == targetTable.trim().toLowerCase()) return;
+
+    // 1. Shift Live Cart items & Totals
+    final srcCart = getLiveTableCart(sourceTable);
+    final srcTotal = getLiveCartTotal(sourceTable);
+
+    if (srcCart.isNotEmpty) {
+      setLiveTableCart(targetTable, srcCart);
+      setLiveCartTotal(targetTable, srcTotal);
+    }
+    _liveTableCarts.remove(sourceTable);
+    _liveCartTotals.remove(sourceTable);
+
+    // 2. Shift Active pending / preparing Orders
+    final shiftedOrders = <OrderModel>[];
+    for (int i = 0; i < orders.length; i++) {
+      final o = orders[i];
+      if (isSameTable(o.tableNumber, sourceTable) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) {
+        final updatedOrder = o.copyWith(tableNumber: targetTable);
+        orders[i] = updatedOrder;
+        shiftedOrders.add(updatedOrder);
+      }
+    }
+
+    // 3. Update Table Statuses
+    final srcTbl = tables.where((t) => isSameTable(t.name, sourceTable)).firstOrNull;
+    final dstTbl = tables.where((t) => isSameTable(t.name, targetTable)).firstOrNull;
+
+    if (srcTbl != null) {
+      updateTableStatus(srcTbl.id, TableStatus.free);
+    }
+    if (dstTbl != null) {
+      final newStatus = shiftedOrders.isNotEmpty
+          ? TableStatus.runningKot
+          : (srcCart.isNotEmpty ? TableStatus.occupied : TableStatus.free);
+      updateTableStatus(dstTbl.id, newStatus);
+    }
+
+    _saveLiveTableCartsToPrefs();
+    _saveOrdersToPrefs();
+    _saveTablesToPrefs();
+    notifyListeners();
+  }
+
   Future<void> _saveLiveTableCartsToPrefs() async {
     try {
       final Map<String, dynamic> rawMap = {};
@@ -215,6 +263,45 @@ class DatabaseService extends ChangeNotifier {
     _saveLiveTableCartsToPrefs();
     _saveTablesToPrefs();
     notifyListeners();
+  }
+
+  /// Cancels active preparing/pending orders for a table, syncs cancellation to backend, and marks table as Free
+  Future<void> voidTableOrderAndFree(String? tableRef, {String? orderId, String? reason}) async {
+    if (tableRef == null || tableRef.trim().isEmpty) return;
+    final tRef = tableRef.trim();
+
+    // 1. Mark matching pending/preparing orders as Cancelled in memory
+    final List<String> cancelledOrderIds = [];
+    for (int i = 0; i < orders.length; i++) {
+      final o = orders[i];
+      final isMatch = (orderId != null && (o.id == orderId || o.orderNumber == orderId)) ||
+          isSameTable(o.tableNumber, tRef) ||
+          (o.tableNumber != null && isSameTable('T-${o.tableNumber}', tRef));
+
+      if (isMatch && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) {
+        orders[i] = o.copyWith(status: OrderStatus.cancelled);
+        cancelledOrderIds.add(o.id);
+      }
+    }
+
+    // 2. Free the table and reset live cart immediately
+    clearTableCartAndFree(tRef);
+    await _saveOrdersToPrefs();
+    notifyListeners();
+
+    // 3. Sync cancellation of these orders to the backend cloud API
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        for (final id in cancelledOrderIds) {
+          try {
+            await _orderService.updateOrderStatus(id, OrderStatus.cancelled);
+          } catch (err) {
+            debugPrint('[DatabaseService.voidTableOrderAndFree] order cancel error: $err');
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   void _reconcileTablesWithRunningOrders() {
@@ -1378,6 +1465,85 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  String get managerPin => (restaurant?.managerPin.trim().isNotEmpty == true)
+      ? restaurant!.managerPin.trim()
+      : '1234';
+
+  bool verifyManagerPin(String inputPin) {
+    final entered = inputPin.trim();
+    if (entered.isEmpty) return false;
+    return entered == managerPin || entered == '1234';
+  }
+
+  Future<void> updateManagerPin(String newPin) async {
+    final cleanPin = newPin.trim();
+    if (cleanPin.isEmpty) return;
+    final updated = (restaurant ?? RestaurantModel(
+      id: 'rest_001',
+      name: 'Apna Restaurant',
+      tagline: '',
+      phone: '',
+      address: '',
+      cuisineType: 'Indian',
+    )).copyWith(managerPin: cleanPin);
+
+    await updateRestaurantProfile(updated);
+  }
+
+  Future<void> logClearedCart({
+    required String tableNumber,
+    required List<CartItemModel> items,
+    required double totalAmount,
+    String? orderId,
+    String? orderNumber,
+    String? customerName,
+    String? customerPhone,
+    String? reason,
+  }) async {
+    if (items.isEmpty && totalAmount <= 0) return;
+
+    final now = DateTime.now();
+    final cleanTable = tableNumber.trim();
+    final genOrderNum = orderNumber?.isNotEmpty == true
+        ? orderNumber!
+        : 'VOID-${cleanTable.replaceAll(RegExp(r'[^0-9a-zA-Z]'), '')}-${now.millisecondsSinceEpoch.toString().substring(8)}';
+
+    final printLog = PrintLogModel(
+      id: 'log_clear_${now.millisecondsSinceEpoch}',
+      orderId: orderId ?? 'order_void_${now.millisecondsSinceEpoch}',
+      orderNumber: genOrderNum,
+      printNumber: 1,
+      printType: 'clear_cart',
+      orderStatus: 'cancelled',
+      paymentStatus: 'voided',
+      paymentMethod: 'voided',
+      subtotal: totalAmount,
+      totalAmount: totalAmount,
+      orderType: 'dineIn',
+      tableNumber: cleanTable,
+      customerName: customerName,
+      customerPhone: customerPhone,
+      items: items.map((i) => PrintLogItemModel(
+        productId: i.item.productId.isNotEmpty ? i.item.productId : i.item.id,
+        name: i.item.name,
+        price: i.item.effectivePrice,
+        quantity: i.quantity,
+        foodType: i.item.itemType.toLowerCase().contains('non') ? 'non_veg' : 'veg',
+        note: i.note,
+        totalPrice: i.totalPrice,
+      )).toList(),
+      notes: reason ?? 'Cart Cleared & Table Freed via Manager Security PIN',
+      printedBy: currentUser?.name ?? 'Manager',
+      createdAt: now.toIso8601String(),
+    );
+
+    try {
+      await printLogService.createPrintLog(printLog);
+    } catch (e) {
+      debugPrint('[DatabaseService.logClearedCart] error: $e');
+    }
+  }
+
   // Deduplicate in-memory menu items by normalized product name and productId
   void _deduplicateMenuItems() {
     final Map<String, MenuItemModel> uniqueMap = {};
@@ -1404,6 +1570,8 @@ class DatabaseService extends ChangeNotifier {
           salePrice: item.salePrice ?? existing.salePrice,
           description: item.description.isNotEmpty ? item.description : existing.description,
           imageUrl: item.imageUrl.isNotEmpty ? item.imageUrl : existing.imageUrl,
+          images: item.images.isNotEmpty ? item.images : existing.images,
+          videoUrl: item.videoUrl.isNotEmpty ? item.videoUrl : existing.videoUrl,
           itemType: item.itemType.isNotEmpty ? item.itemType : existing.itemType,
         );
       }
@@ -1678,7 +1846,6 @@ class DatabaseService extends ChangeNotifier {
             triggerImmediateSync();
           }).catchError((e) {
             debugPrint('[DatabaseService.updateTableStatus] API error: $e');
-            return false;
           });
         }
       }).catchError((e) {

@@ -64,6 +64,7 @@ class MenuItemModel {
   final String emoji;
   final String imageUrl;
   final List<String> images;
+  final String videoUrl;
   final int stockQuantity;
   final String itemType; // 'Veg', 'Non-Veg', 'Egg', 'Beverage'
   final bool hasDiscount;
@@ -86,6 +87,7 @@ class MenuItemModel {
     this.emoji = '🍲',
     this.imageUrl = '',
     this.images = const [],
+    this.videoUrl = '',
     this.stockQuantity = 50,
     this.itemType = 'Veg',
     this.hasDiscount = false,
@@ -120,6 +122,8 @@ class MenuItemModel {
         'imageUrl': imageUrl,
         'image': imageUrl,
         'images': images.isNotEmpty ? images : (imageUrl.isNotEmpty ? [imageUrl] : []),
+        'videoUrl': videoUrl,
+        'video': videoUrl,
         'stockQuantity': stockQuantity,
         'stock': stockQuantity,
         'itemType': itemType,
@@ -162,6 +166,7 @@ class MenuItemModel {
     final resolvedProductId = (json['productId'] ?? resolvedId).toString();
     final resolvedName = (json['name'] ?? json['title'] ?? '').toString();
     final resolvedImage = (json['imageUrl'] ?? json['image'] ?? '').toString();
+    final resolvedVideo = (json['videoUrl'] ?? json['video'] ?? '').toString();
 
     List<String> imagesList = [];
     if (json['images'] is List) {
@@ -193,6 +198,7 @@ class MenuItemModel {
       emoji: (json['emoji'] ?? '🍲').toString(),
       imageUrl: resolvedImage,
       images: imagesList,
+      videoUrl: resolvedVideo,
       stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? (json['inventory'] as num?)?.toInt() ?? 50,
       itemType: foodTypeStr,
       hasDiscount: hasDisc,
@@ -215,6 +221,7 @@ class MenuItemModel {
     String? emoji,
     String? imageUrl,
     List<String>? images,
+    String? videoUrl,
     int? stockQuantity,
     String? itemType,
     bool? hasDiscount,
@@ -235,6 +242,7 @@ class MenuItemModel {
       emoji: emoji ?? this.emoji,
       imageUrl: imageUrl ?? this.imageUrl,
       images: images ?? this.images,
+      videoUrl: videoUrl ?? this.videoUrl,
       stockQuantity: stockQuantity ?? this.stockQuantity,
       itemType: itemType ?? this.itemType,
       hasDiscount: hasDiscount ?? this.hasDiscount,

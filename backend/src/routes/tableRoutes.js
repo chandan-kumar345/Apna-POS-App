@@ -13,6 +13,7 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get('/', (req, res, next) => tableController.getTables(req, res, next));
+router.post('/shift', (req, res, next) => tableController.shiftTable(req, res, next));
 router.post('/', validate(createTableSchema), (req, res, next) =>
   tableController.createTable(req, res, next)
 );

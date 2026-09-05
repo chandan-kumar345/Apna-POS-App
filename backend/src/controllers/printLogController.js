@@ -30,6 +30,18 @@ class PrintLogController {
       next(error);
     }
   }
+
+  async createPrintLog(req, res, next) {
+    try {
+      const printLog = await printLogService.createPrintLog(req.businessId, {
+        ...req.body,
+        printedBy: req.user?.name || req.body.printedBy || '',
+      });
+      return ApiResponse.created(res, { printLog }, 'Print log created successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new PrintLogController();

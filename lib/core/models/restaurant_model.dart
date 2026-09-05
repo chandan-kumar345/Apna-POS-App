@@ -21,6 +21,7 @@ class RestaurantModel {
   final List<String> kitchenSections; // ['Main Kitchen', 'Beverages Bar']
   final String upiId; // Merchant UPI VPA ID e.g., 'merchant@upi' or '9876543210@paytm'
   final String posViewMode; // 'with_image' or 'without_image'
+  final String managerPin; // Security / Manager PIN to clear running KOT carts & void orders (default: '1234')
 
   bool get showItemImages => posViewMode != 'without_image';
 
@@ -45,6 +46,7 @@ class RestaurantModel {
     this.kitchenSections = const ['Main Kitchen', 'Beverages Bar'],
     this.upiId = 'apnapos@upi',
     this.posViewMode = 'with_image',
+    this.managerPin = '1234',
   });
 
   Map<String, dynamic> toJson() => {
@@ -68,6 +70,7 @@ class RestaurantModel {
         'kitchenSections': kitchenSections,
         'upiId': upiId,
         'posViewMode': posViewMode,
+        'managerPin': managerPin,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -92,6 +95,11 @@ class RestaurantModel {
             (json['kitchenSections'] as List?)?.map((e) => e.toString()).toList() ?? const ['Main Kitchen', 'Beverages Bar'],
         upiId: json['upiId'] ?? 'apnapos@upi',
         posViewMode: json['posViewMode'] ?? (json['orderSettings'] is Map ? json['orderSettings']['posViewMode'] : null) ?? 'with_image',
+        managerPin: json['managerPin']?.toString().trim().isNotEmpty == true
+            ? json['managerPin'].toString().trim()
+            : (json['securityPin']?.toString().trim().isNotEmpty == true
+                ? json['securityPin'].toString().trim()
+                : '1234'),
       );
 
   RestaurantModel copyWith({
@@ -114,6 +122,7 @@ class RestaurantModel {
     List<String>? kitchenSections,
     String? upiId,
     String? posViewMode,
+    String? managerPin,
   }) {
     return RestaurantModel(
       id: id,
@@ -136,6 +145,7 @@ class RestaurantModel {
       kitchenSections: kitchenSections ?? this.kitchenSections,
       upiId: upiId ?? this.upiId,
       posViewMode: posViewMode ?? this.posViewMode,
+      managerPin: managerPin ?? this.managerPin,
     );
   }
 }

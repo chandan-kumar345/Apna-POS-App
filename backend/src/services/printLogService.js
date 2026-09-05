@@ -248,6 +248,46 @@ class PrintLogService {
 
     return reprintDoc;
   }
+
+  /**
+   * Create a generic or cleared cart print log snapshot
+   */
+  async createPrintLog(businessId, logData = {}) {
+    const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const doc = await PrintLog.create({
+      businessId: bId,
+      orderId: logData.orderId || new mongoose.Types.ObjectId(),
+      orderNumber: logData.orderNumber || `ORD-${Date.now().toString().slice(-6)}`,
+      printNumber: Number(logData.printNumber) || 1,
+      printType: logData.printType || 'clear_cart',
+      orderStatus: logData.orderStatus || 'cancelled',
+      paymentStatus: logData.paymentStatus || 'unpaid',
+      paymentMethod: logData.paymentMethod || 'voided',
+      subtotal: Number(logData.subtotal) || 0,
+      discountAmount: Number(logData.discountAmount) || 0,
+      taxAmount: Number(logData.taxAmount) || 0,
+      cgst: Number(logData.cgst) || 0,
+      sgst: Number(logData.sgst) || 0,
+      igst: Number(logData.igst) || 0,
+      tipAmount: Number(logData.tipAmount) || 0,
+      deliveryCharge: Number(logData.deliveryCharge) || 0,
+      roundOff: Number(logData.roundOff) || 0,
+      totalAmount: Number(logData.totalAmount) || 0,
+      orderType: logData.orderType || 'dineIn',
+      tableNumber: logData.tableNumber || '',
+      deliveryAddress: logData.deliveryAddress || '',
+      customerName: logData.customerName || '',
+      customerPhone: logData.customerPhone || '',
+      items: Array.isArray(logData.items) ? logData.items : [],
+      qrPayload: logData.qrPayload || '',
+      qrImageUrl: logData.qrImageUrl || '',
+      invoiceNumber: logData.invoiceNumber || '',
+      isReprint: logData.isReprint === true,
+      printedBy: logData.printedBy || '',
+      notes: logData.notes || '',
+    });
+    return doc;
+  }
 }
 
 module.exports = new PrintLogService();

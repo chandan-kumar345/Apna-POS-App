@@ -777,15 +777,20 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
             chosenSummaryText = '${chosenItems.length} Items Selected';
           }
 
-          return Container(
-            padding:
-                EdgeInsets.fromLTRB(18, 14, 18, MediaQuery.of(context).viewInsets.bottom + 20),
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: SingleChildScrollView(
-              child: Column(
+          return AnimatedPadding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+            duration: const Duration(milliseconds: 160),
+            curve: Curves.easeOutCubic,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -840,6 +845,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     ),
                     child: TextField(
                       controller: pointsRequiredCtrl,
+                      scrollPadding: const EdgeInsets.only(bottom: 90),
                       keyboardType: TextInputType.number,
                       onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                       style: const TextStyle(
@@ -965,6 +971,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                       ),
                       child: TextField(
                         controller: stageValueCtrl,
+                        scrollPadding: const EdgeInsets.only(bottom: 90),
                         keyboardType: TextInputType.number,
                         onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                         style: const TextStyle(
@@ -1165,6 +1172,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: TextField(
+                                      scrollPadding: const EdgeInsets.only(bottom: 90),
                                       style: const TextStyle(fontSize: 11.5, color: Color(0xFF0F172A)),
                                       cursorColor: _primaryThemeColor,
                                       decoration: const InputDecoration(
@@ -1336,6 +1344,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                           ),
                           child: TextField(
                             controller: stageMinSpendCtrl,
+                            scrollPadding: const EdgeInsets.only(bottom: 90),
                             keyboardType: TextInputType.number,
                             onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                             style: const TextStyle(
@@ -1381,6 +1390,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     ),
                     child: TextField(
                       controller: stageTitleCtrl,
+                      scrollPadding: const EdgeInsets.only(bottom: 90),
                       onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                       style: const TextStyle(
                         fontSize: 12.5,
@@ -1462,7 +1472,8 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ],
               ),
             ),
-          );
+          ),
+        );
         },
       ),
     );
@@ -2358,6 +2369,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
               TextField(
                 controller: _programNameCtrl,
+                scrollPadding: const EdgeInsets.only(bottom: 90),
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 style: const TextStyle(
                   color: Color(0xFF0F172A),
@@ -2395,6 +2407,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
               TextField(
                 controller: _sloganCtrl,
+                scrollPadding: const EdgeInsets.only(bottom: 90),
                 onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                 style: const TextStyle(
                   color: Color(0xFF0F172A),
@@ -2470,6 +2483,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ),
                 child: TextField(
                   controller: _timesCustomerVisitCtrl,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   keyboardType: TextInputType.number,
                   onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   style: const TextStyle(
@@ -2511,6 +2525,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ),
                 child: TextField(
                   controller: _customerEarnsPointsCtrl,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   keyboardType: TextInputType.number,
                   onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   style: const TextStyle(
@@ -2615,6 +2630,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ),
                 child: TextField(
                   controller: _pointsNameCtrl,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   style: const TextStyle(
                     fontSize: 12.5,
@@ -2700,6 +2716,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ),
                 child: TextField(
                   controller: _minSpendConditionCtrl,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   keyboardType: TextInputType.number,
                   onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   style: const TextStyle(
@@ -2764,6 +2781,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                 ),
                 child: TextField(
                   controller: _maxCashbackLimitCtrl,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   keyboardType: TextInputType.number,
                   onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                   style: const TextStyle(
@@ -3032,6 +3050,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                     const SizedBox(height: 4),
                     TextField(
                       controller: _termsCtrl,
+                      scrollPadding: const EdgeInsets.only(bottom: 90),
                       maxLines: 4,
                       minLines: 2,
                       onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
@@ -3132,6 +3151,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                   ),
                   child: TextField(
                     controller: _customTermCtrl,
+                    scrollPadding: const EdgeInsets.only(bottom: 90),
                     style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                     cursorColor: _primaryThemeColor,
                     onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
@@ -3741,6 +3761,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
                       ),
                       child: TextField(
                         controller: _bonusPointsAmountCtrl,
+                        scrollPadding: const EdgeInsets.only(bottom: 90),
                         keyboardType: TextInputType.number,
                         onTapOutside: (_) => FocusManager.instance.primaryFocus?.unfocus(),
                         style: const TextStyle(

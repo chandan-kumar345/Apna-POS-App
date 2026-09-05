@@ -37,7 +37,14 @@ class StorageService {
    * @returns {Promise<string>} Public URL of uploaded image
    */
   async uploadImage(fileBuffer, originalName, mimeType, folder = 'products') {
-    const ext = path.extname(originalName) || '.jpg';
+    return this.uploadMedia(fileBuffer, originalName, mimeType, folder);
+  }
+
+  /**
+   * Upload media buffer (video/image/document) to Cloudflare R2 (or local fallback)
+   */
+  async uploadMedia(fileBuffer, originalName, mimeType, folder = 'products') {
+    const ext = path.extname(originalName) || (mimeType && mimeType.startsWith('video/') ? '.mp4' : '.jpg');
     const cleanFileName = `${Date.now()}_${crypto.randomBytes(4).toString('hex')}${ext}`;
     const key = `${folder}/${cleanFileName}`;
 
@@ -46,7 +53,7 @@ class StorageService {
         Bucket: this.bucketName,
         Key: key,
         Body: fileBuffer,
-        ContentType: mimeType,
+        ContentType: mimeType || 'application/octet-stream',
       });
 
       await this.client.send(command);

@@ -47,6 +47,22 @@ class TableController {
       next(error);
     }
   }
+
+  async shiftTable(req, res, next) {
+    try {
+      const { sourceTable, targetTable } = req.body;
+      if (!sourceTable || !targetTable) {
+        return res.status(400).json({
+          status: 'fail',
+          message: 'Source table and target table are required',
+        });
+      }
+      const result = await tableService.shiftTable(req.businessId, { sourceTable, targetTable });
+      return ApiResponse.success(res, result, 'Table shifted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new TableController();

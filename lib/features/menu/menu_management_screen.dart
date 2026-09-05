@@ -8,6 +8,7 @@ import '../../core/widgets/food_type_icon.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import 'add_product_screen.dart';
+import '../pos/widgets/pos_product_media_box.dart';
 
 class MenuManagementScreen extends StatefulWidget {
   const MenuManagementScreen({super.key});
@@ -773,42 +774,15 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   }
 
   Widget _buildProductImage(MenuItemModel dish) {
-    if (dish.imageUrl.isNotEmpty) {
-      if (dish.imageUrl.startsWith('http://') || dish.imageUrl.startsWith('https://')) {
-        return Image.network(
-          dish.imageUrl,
-          width: 40,
-          height: 40,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _buildFallbackImage(),
-        );
-      } else {
-        final file = File(dish.imageUrl);
-        if (file.existsSync()) {
-          return Image.file(
-            file,
-            width: 40,
-            height: 40,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildFallbackImage(),
-          );
-        }
-      }
-    }
-    return _buildFallbackImage();
-  }
-
-  Widget _buildFallbackImage() {
-    return Container(
+    return PosProductMediaBox(
+      key: ValueKey('menu_media_${dish.id}_${dish.imageUrl}_${dish.videoUrl}_${dish.images.length}'),
+      item: dish,
       width: 40,
       height: 40,
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      alignment: Alignment.center,
-      child: const Icon(Icons.fastfood_rounded, color: Color(0xFF051C48), size: 18),
+      fit: BoxFit.cover,
+      borderRadius: BorderRadius.circular(8),
+      isMini: true,
+      showDots: false,
     );
   }
 

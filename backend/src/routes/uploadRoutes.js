@@ -20,10 +20,28 @@ const upload = multer({
   },
 });
 
+const uploadVideoMulter = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB maximum video size
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('video/') || file.originalname.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new ApiError(400, 'Only video files (MP4, WEBM, MOV, MKV, etc.) are allowed!'), false);
+    }
+  },
+});
+
 router.use(authMiddleware);
 
 router.post('/image', upload.single('image'), (req, res, next) =>
   uploadController.uploadImage(req, res, next)
+);
+
+router.post('/video', uploadVideoMulter.single('video'), (req, res, next) =>
+  uploadController.uploadVideo(req, res, next)
 );
 
 module.exports = router;

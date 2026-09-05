@@ -110,4 +110,24 @@ class TableService {
       return false;
     }
   }
+
+  /// Shift table products, active carts, and running orders from Table A to Table B dynamically
+  Future<bool> shiftTable({
+    required String sourceTable,
+    required String targetTable,
+  }) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.tables}/shift',
+        data: {
+          'sourceTable': sourceTable.trim(),
+          'targetTable': targetTable.trim(),
+        },
+      );
+      return response != null && response['status'] == 'success';
+    } catch (e) {
+      debugPrint('[TableService.shiftTable] error: $e');
+      return false;
+    }
+  }
 }

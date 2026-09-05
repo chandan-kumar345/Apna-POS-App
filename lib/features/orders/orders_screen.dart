@@ -420,8 +420,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
         int countForStatus(OrderStatus s) {
           return typeFilteredOrders.where((o) {
             if (s == OrderStatus.preparing) {
+              if (o.status == OrderStatus.cancelled || o.status == OrderStatus.completed) return false;
+              if (o.orderType == OrderType.dineIn && o.tableNumber != null) {
+                final tbl = db.tables.where((t) => isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)).firstOrNull;
+                if (tbl != null && tbl.status == TableStatus.free) {
+                  return false;
+                }
+              }
               final isRunningKotTable = o.tableNumber != null &&
-                  db.tables.any((t) => (t.name == o.tableNumber || t.tableNumber.toString() == o.tableNumber) && t.status == TableStatus.runningKot);
+                  db.tables.any((t) => (isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)) && t.status == TableStatus.runningKot);
               return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
             }
             return o.status == s;
@@ -438,8 +445,15 @@ class _OrdersScreenState extends State<OrdersScreen> {
         List<OrderModel> filteredOrders = typeFilteredOrders.where((o) {
           if (_selectedStatusFilter == 'Pending') return o.status == OrderStatus.pending;
           if (_selectedStatusFilter == 'Preparing') {
+            if (o.status == OrderStatus.cancelled || o.status == OrderStatus.completed) return false;
+            if (o.orderType == OrderType.dineIn && o.tableNumber != null) {
+              final tbl = db.tables.where((t) => isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)).firstOrNull;
+              if (tbl != null && tbl.status == TableStatus.free) {
+                return false;
+              }
+            }
             final isRunningKotTable = o.tableNumber != null &&
-                db.tables.any((t) => (t.name == o.tableNumber || t.tableNumber.toString() == o.tableNumber) && t.status == TableStatus.runningKot);
+                db.tables.any((t) => (isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)) && t.status == TableStatus.runningKot);
             return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
           }
           if (_selectedStatusFilter == 'Ready') return o.status == OrderStatus.ready;
@@ -641,6 +655,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                               itemBuilder: (context, rowIdx) {
                                 Widget buildCard(OrderModel order) {
                                   final isRunningKot = order.tableNumber != null &&
+                                      order.status != OrderStatus.cancelled &&
                                       db.tables.any((t) =>
                                           (t.name == order.tableNumber ||
                                               t.tableNumber.toString() == order.tableNumber) &&

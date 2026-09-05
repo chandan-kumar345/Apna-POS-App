@@ -9,9 +9,19 @@ import 'core/widgets/sound_feedback_wrapper.dart';
 import 'features/auth/splash_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:video_player_win/video_player_win.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && Platform.isWindows) {
+    try {
+      WindowsVideoPlayer.registerWith();
+    } catch (e) {
+      debugPrint('WindowsVideoPlayer.registerWith error: $e');
+    }
+  }
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,

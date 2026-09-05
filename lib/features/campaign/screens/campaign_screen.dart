@@ -63,19 +63,27 @@ class _CampaignScreenState extends State<CampaignScreen> {
       builder: (modalCtx) {
         return StatefulBuilder(
           builder: (ctx, setModalState) {
-            return Container(
+            return AnimatedPadding(
               padding: EdgeInsets.only(
-                bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
-                left: 16,
-                right: 16,
-                top: 14,
+                bottom: MediaQuery.of(ctx).viewInsets.bottom,
               ),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
+              duration: const Duration(milliseconds: 160),
+              curve: Curves.easeOutCubic,
+              child: Container(
+                padding: const EdgeInsets.only(
+                  bottom: 16,
+                  left: 16,
+                  right: 16,
+                  top: 14,
+                ),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -269,12 +277,13 @@ class _CampaignScreenState extends State<CampaignScreen> {
                   ],
                 ),
               ),
-            );
-          },
-        );
-      },
-    );
-  }
+            ),
+          );
+        },
+      );
+    },
+  );
+}
 
   void _showCampaignSuccessDialog({
     required String campaignTitle,
@@ -375,6 +384,7 @@ class _CampaignScreenState extends State<CampaignScreen> {
         const SizedBox(height: 4),
         TextField(
           controller: controller,
+          scrollPadding: const EdgeInsets.only(bottom: 90),
           keyboardType: keyboardType,
           maxLines: maxLines,
           style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),

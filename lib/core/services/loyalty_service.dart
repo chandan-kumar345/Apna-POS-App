@@ -96,7 +96,7 @@ class LoyaltyService {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final queryParams = <String, dynamic>{
-          if (dateRange != null) 'dateRange': dateRange,
+          'dateRange': ?dateRange,
           if (programId != null && programId != 'all') 'programId': programId,
         };
         final response = await _apiClient.get(
@@ -125,91 +125,118 @@ class LoyaltyService {
     return syncedModel;
   }
 
-  /// Ensure locally created VisitRewardConfig is represented in program library
+  /// Ensure locally created VisitRewardConfig and branding programs are represented in program library
   Future<LoyaltyPerformanceModel> _ensureProgramInPerformance(LoyaltyPerformanceModel base) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final configJsonStr = prefs.getString('apna_pos_visit_reward_config');
 
-      // If backend returned programs, use backend as authoritative source and sync local prefs
-      if (base.programLibrary.isNotEmpty) {
-        final serverProg = base.programLibrary.firstWhere(
-          (p) => p.id == 'prog_visit_made' || p.category.contains('Visit'),
-          orElse: () => base.programLibrary.first,
-        );
-        if (configJsonStr != null && configJsonStr.isNotEmpty) {
+      final Map<String, ProgramLibraryItemModel> consolidatedMap = {};
+
+      // 1. Add any programs returned by backend
+      for (final p in base.programLibrary) {
+        consolidatedMap[p.id] = p;
+      }
+
+      // 2. Add/sync VisitRewardConfig if present
+      if (configJsonStr != null && configJsonStr.isNotEmpty) {
+        try {
           final configMap = jsonDecode(configJsonStr) as Map<String, dynamic>?;
-          if (configMap != null) {
-            configMap['isActive'] = serverProg.isActive;
-            configMap['status'] = serverProg.status;
-            configMap['isConfigured'] = true;
-            await prefs.setString('apna_pos_visit_reward_config', jsonEncode(configMap));
+          if (configMap != null && configMap['isConfigured'] == true) {
+            final config = VisitRewardConfig.fromJson(configMap);
+            final progName = config.programName.isNotEmpty
+                ? config.programName
+                : (_db.restaurant?.name ?? _db.currentUser?.companyName ?? 'THE ROYAL GARDENIA');
+
+            final orderTypes = config.orderType.isNotEmpty
+                ? config.orderType.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
+                : const ['DineIn', 'TakeAway'];
+
+            final starterStage = config.rewardStages.isNotEmpty ? config.rewardStages.first : null;
+            final starterRewardTitle = starterStage != null
+                ? (starterStage.freeItemName.isNotEmpty ? starterStage.freeItemName : '🎁 Level 1 Offer (₹${starterStage.rewardValue.toInt()} off)')
+                : '🎁 Level 1 Offer';
+            final starterRewardSubtext = starterStage != null
+                ? '${starterStage.visitCount} Cookie'
+                : '200 Cookie';
+
+            final isProgActive = config.isActive && config.status != 'inactive' && config.status != 'draft';
+            final progStatus = isProgActive ? 'active' : (config.status.isNotEmpty ? config.status : 'inactive');
+
+            consolidatedMap['prog_visit_made'] = ProgramLibraryItemModel(
+              id: 'prog_visit_made',
+              name: progName,
+              status: progStatus,
+              createDate: '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
+              category: 'Visit Made',
+              channel: 'Store Visit',
+              orderTypes: orderTypes,
+              bannerImageUrl: config.bannerImageUrl,
+              logoUrl: config.logoUrl,
+              pointsName: 'Cookie',
+              pointsPerVisit: config.pointsPerVisit,
+              slogan: config.slogan.isNotEmpty ? config.slogan : 'Get rewarded on every purchase',
+              bgGradientStart: config.bgGradientStart.isNotEmpty ? config.bgGradientStart : '#4A082F',
+              bgGradientEnd: config.bgGradientEnd.isNotEmpty ? config.bgGradientEnd : '#8E1449',
+              rewardColorStart: '#0F766E',
+              rewardColorEnd: '#064E3B',
+              starterRewardTitle: starterRewardTitle,
+              starterRewardSubtext: starterRewardSubtext,
+              isActive: isProgActive,
+            );
+          }
+        } catch (_) {}
+      }
+
+      // 3. Add any active programs from cached branding
+      if (_cachedBranding != null) {
+        for (final bp in _cachedBranding!.programs) {
+          if (!consolidatedMap.containsKey(bp.id)) {
+            final isBActive = bp.isActive;
+            final bCategory = bp.type == LoyaltyType.visitMade
+                ? 'Visit Made'
+                : bp.type == LoyaltyType.amountSpent
+                    ? 'Amount Spent'
+                    : 'Cashback';
+            final colors = bp.gradientColors;
+
+            consolidatedMap[bp.id] = ProgramLibraryItemModel(
+              id: bp.id,
+              name: bp.title.isNotEmpty ? bp.title : _cachedBranding!.companyName,
+              status: isBActive ? 'active' : 'inactive',
+              category: bCategory,
+              channel: 'Store Visit',
+              pointsName: bp.rewardCurrency,
+              slogan: bp.description,
+              bgGradientStart: colors.isNotEmpty ? colors.first : '#4A082F',
+              bgGradientEnd: colors.length > 1 ? colors[1] : '#8E1449',
+              isActive: isBActive,
+            );
           }
         }
-        return base;
       }
 
-      // If base.programLibrary is empty and user never configured local loyalty, return empty state
-      if (configJsonStr == null || configJsonStr.isEmpty) {
-        return base;
+      final currentLib = consolidatedMap.values.toList();
+      final activeCount = currentLib.where((p) => p.status.toLowerCase() == 'active' || (p.isActive && p.status.toLowerCase() != 'draft' && p.status.toLowerCase() != 'inactive')).length;
+      final inactiveCount = currentLib.where((p) => p.status.toLowerCase() == 'inactive' || (!p.isActive && p.status.toLowerCase() != 'draft')).length;
+      final draftCount = currentLib.where((p) => p.status.toLowerCase() == 'draft').length;
+      final totalCount = currentLib.length;
+
+      // Health Score: If base had 0 but we have active programs, provide healthy baseline
+      int healthScore = base.healthScore;
+      String healthStatus = base.healthScoreStatus;
+      if (healthScore == 0 && activeCount > 0) {
+        healthScore = 85;
+        healthStatus = 'Good • Active loyalty engagement';
       }
-
-      final configMap = jsonDecode(configJsonStr) as Map<String, dynamic>?;
-      if (configMap == null || configMap['isConfigured'] != true) return base;
-
-      final config = VisitRewardConfig.fromJson(configMap);
-      final progName = config.programName.isNotEmpty
-          ? config.programName
-          : (_db.restaurant?.name ?? _db.currentUser?.companyName ?? 'THE ROYAL GARDENIA');
-
-      final orderTypes = config.orderType.isNotEmpty
-          ? config.orderType.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList()
-          : const ['DineIn', 'TakeAway'];
-
-      final starterStage = config.rewardStages.isNotEmpty ? config.rewardStages.first : null;
-      final starterRewardTitle = starterStage != null
-          ? (starterStage.freeItemName.isNotEmpty ? starterStage.freeItemName : '🎁 Level 1 Offer (₹${starterStage.rewardValue.toInt()} off)')
-          : '🎁 Level 1 Offer';
-      final starterRewardSubtext = starterStage != null
-          ? '${starterStage.visitCount} Cookie'
-          : '200 Cookie';
-
-      final isProgActive = config.isActive && config.status != 'inactive' && config.status != 'draft';
-      final progStatus = isProgActive ? 'active' : (config.status.isNotEmpty ? config.status : 'inactive');
-
-      final localProgramItem = ProgramLibraryItemModel(
-        id: 'prog_visit_made',
-        name: progName,
-        status: progStatus,
-        createDate: '${DateTime.now().day.toString().padLeft(2, '0')}/${DateTime.now().month.toString().padLeft(2, '0')}/${DateTime.now().year}',
-        category: 'Visit Made',
-        channel: 'Store Visit',
-        orderTypes: orderTypes,
-        bannerImageUrl: config.bannerImageUrl,
-        logoUrl: config.logoUrl,
-        pointsName: 'Cookie',
-        pointsPerVisit: 10,
-        slogan: config.slogan.isNotEmpty ? config.slogan : 'Get rewarded on every purchase',
-        bgGradientStart: '#4A082F',
-        bgGradientEnd: '#8E1449',
-        rewardColorStart: '#0F766E',
-        rewardColorEnd: '#064E3B',
-        starterRewardTitle: starterRewardTitle,
-        starterRewardSubtext: starterRewardSubtext,
-        isActive: isProgActive,
-      );
-
-      final currentLib = [localProgramItem];
-      final activeCount = isProgActive ? 1 : 0;
-      final inactiveCount = !isProgActive ? 1 : 0;
 
       return LoyaltyPerformanceModel(
         activeProgramsCount: activeCount,
         inactiveProgramsCount: inactiveCount,
-        draftProgramsCount: 0,
-        totalProgramsCount: 1,
-        healthScore: base.healthScore,
-        healthScoreStatus: base.healthScoreStatus,
+        draftProgramsCount: draftCount,
+        totalProgramsCount: totalCount,
+        healthScore: healthScore,
+        healthScoreStatus: healthStatus,
         dateRangeText: base.dateRangeText,
         totalRevenue: base.totalRevenue,
         totalRedemptions: base.totalRedemptions,
@@ -324,6 +351,33 @@ class LoyaltyService {
           configMap['status'] = status ?? (isActive ? 'active' : 'inactive');
           await prefs.setString('apna_pos_visit_reward_config', jsonEncode(configMap));
         }
+      }
+
+      if (_cachedBranding != null) {
+        final updatedPrograms = _cachedBranding!.programs.map((p) {
+          if (p.id == programId || (programId == 'prog_visit_made' && p.type == LoyaltyType.visitMade)) {
+            return LoyaltyProgramModel(
+              id: p.id,
+              type: p.type,
+              title: p.title,
+              description: p.description,
+              earningRule: p.earningRule,
+              rewardCurrency: p.rewardCurrency,
+              milestones: p.milestones,
+              cashbackDetails: p.cashbackDetails,
+              gradientColors: p.gradientColors,
+              isActive: isActive,
+              orderIndex: p.orderIndex,
+            );
+          }
+          return p;
+        }).toList();
+        _cachedBranding = LoyaltyBrandingModel(
+          companyName: _cachedBranding!.companyName,
+          companyLogo: _cachedBranding!.companyLogo,
+          programs: updatedPrograms,
+        );
+        await _persistBrandingToPrefs(_cachedBranding!);
       }
 
       final isAuth = await _authService.isAuthenticated();
@@ -491,9 +545,27 @@ class LoyaltyService {
           },
         );
         if (response != null) {
-          return (response is Map<String, dynamic> && response.containsKey('data'))
+          final resData = (response is Map<String, dynamic> && response.containsKey('data'))
               ? (response['data'] as Map<String, dynamic>)
               : (response as Map<String, dynamic>);
+
+          final testOtp = resData['otpDebug'] ??
+              (resData['message']?.toString().contains('OTP generated:') == true
+                  ? resData['message'].toString().split('OTP generated:').last.trim()
+                  : null);
+
+          debugPrint('\n================================================================');
+          debugPrint('🔑 [LOYALTY REDEEM OTP TEST - FLUTTER TERMINAL OUTPUT]');
+          debugPrint('📱 Customer Phone : ${phone.trim()}');
+          if (testOtp != null) {
+            debugPrint('🔢 OTP Code       : >>> $testOtp <<<');
+          } else {
+            debugPrint('🔢 Response Msg   : ${resData['message']}');
+          }
+          debugPrint('🎁 Stage ID       : $stageId');
+          debugPrint('================================================================\n');
+
+          return resData;
         }
       }
     } catch (e) {
@@ -511,6 +583,7 @@ class LoyaltyService {
   }) async {
     try {
       final isAuth = await _authService.isAuthenticated();
+      debugPrint('\n🔑 [LOYALTY REDEEM OTP VERIFY] Verifying OTP: $otp for Phone: ${phone.trim()}');
       if (isAuth) {
         final response = await _apiClient.post(
           ApiEndpoints.loyaltyVerifyOtp,
@@ -520,9 +593,11 @@ class LoyaltyService {
           },
         );
         if (response != null) {
-          return (response is Map<String, dynamic> && response.containsKey('data'))
+          final resData = (response is Map<String, dynamic> && response.containsKey('data'))
               ? (response['data'] as Map<String, dynamic>)
               : (response as Map<String, dynamic>);
+          debugPrint('✅ [LOYALTY REDEEM OTP VERIFY] Verified successfully: $resData\n');
+          return resData;
         }
       }
     } catch (e) {

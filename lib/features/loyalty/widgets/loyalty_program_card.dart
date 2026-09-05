@@ -123,7 +123,7 @@ class LoyaltyProgramCard extends StatelessWidget {
               ),
               const SizedBox(width: 6),
               Text(
-                program.title.toUpperCase(),
+                _badgeTitle,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 11,
@@ -140,6 +140,22 @@ class LoyaltyProgramCard extends StatelessWidget {
 ),
 );
 }
+
+  String get _badgeTitle {
+    switch (program.type) {
+      case LoyaltyType.visitMade:
+        return 'VISIT MADE';
+      case LoyaltyType.amountSpent:
+        return 'AMOUNT SPENT';
+      case LoyaltyType.cashback:
+        return 'CASHBACK';
+      case LoyaltyType.custom:
+        if (program.title.isNotEmpty && program.title.toLowerCase() != companyName.toLowerCase()) {
+          return program.title.toUpperCase();
+        }
+        return 'VISIT MADE';
+    }
+  }
 
   /// Top Branding & Chevron Header Row
   Widget _buildCardHeader() {

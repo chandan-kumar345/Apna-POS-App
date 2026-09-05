@@ -18,7 +18,6 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
   final PrintLogService _printLogService = PrintLogService();
 
   String _selectedPeriod = 'All Time';
-  String _selectedPaymentStatus = 'All';
   String _searchQuery = '';
   DateTimeRange? _customDateRange;
 
@@ -33,12 +32,6 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
     'This Week',
     'This Month',
     'Custom Date',
-  ];
-
-  final List<String> _paymentStatusOptions = [
-    'All',
-    'Paid',
-    'Pending',
   ];
 
   @override
@@ -63,17 +56,26 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
         endDate = _customDateRange!.end.toIso8601String();
       }
 
+      // Strictly fetch clear_cart logs
       final logs = await _printLogService.fetchPrintLogs(
         period: _selectedPeriod == 'Custom Date' ? null : _selectedPeriod,
         startDate: startDate,
         endDate: endDate,
-        paymentStatus: _selectedPaymentStatus == 'All' ? null : _selectedPaymentStatus,
+        printType: 'clear_cart',
         search: _searchQuery.trim().isNotEmpty ? _searchQuery.trim() : null,
       );
 
+      // Strictly ensure only cleared cart / voided logs are displayed
+      final clearCartOnly = logs.where((l) =>
+        l.isClearCart ||
+        l.printType == 'clear_cart' ||
+        l.orderStatus == 'cancelled' ||
+        l.paymentStatus == 'voided'
+      ).toList();
+
       if (mounted) {
         setState(() {
-          _printLogs = logs;
+          _printLogs = clearCartOnly;
           _isLoading = false;
         });
       }
@@ -182,13 +184,26 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
-        title: const Text(
-          'Print Logs & Invoices',
-          style: TextStyle(
-            color: Color(0xFF0F172A),
-            fontWeight: FontWeight.w900,
-            fontSize: 18,
-          ),
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Print Logs',
+              style: TextStyle(
+                color: Color(0xFF0F172A),
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+            Text(
+              'Cleared Cart & Voided Order History',
+              style: TextStyle(
+                color: Color(0xFF64748B),
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
         ),
         backgroundColor: Colors.white,
         elevation: 0,
@@ -207,7 +222,7 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
         children: [
           // Filter & Search Header Card
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             decoration: const BoxDecoration(
               color: Colors.white,
               border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
@@ -222,7 +237,7 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
                     _loadPrintLogs();
                   },
                   decoration: InputDecoration(
-                    hintText: 'Search Order #, Customer, Table, Invoice...',
+                    hintText: 'Search Order #, Customer, Table, Staff...',
                     hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
                     prefixIcon: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF64748B)),
                     filled: true,
@@ -234,7 +249,7 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
 
                 // Period Filter Pills Row
                 SingleChildScrollView(
@@ -275,49 +290,6 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
                     }).toList(),
                   ),
                 ),
-                const SizedBox(height: 8),
-
-                // Status Filter Row
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Payment: ',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                      ),
-                      ..._paymentStatusOptions.map((status) {
-                        final isSelected = _selectedPaymentStatus == status;
-                        return Padding(
-                          padding: const EdgeInsets.only(right: 6),
-                          child: FilterChip(
-                            label: Text(
-                              status,
-                              style: TextStyle(
-                                color: isSelected ? const Color(0xFF051C48) : const Color(0xFF64748B),
-                                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                                fontSize: 11.5,
-                              ),
-                            ),
-                            selected: isSelected,
-                            selectedColor: const Color(0xFF051C48).withOpacity(0.12),
-                            backgroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
-                              side: BorderSide(
-                                color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
-                              ),
-                            ),
-                            onSelected: (selected) {
-                              setState(() => _selectedPaymentStatus = status);
-                              _loadPrintLogs();
-                            },
-                          ),
-                        );
-                      }),
-                    ],
-                  ),
-                ),
               ],
             ),
           ),
@@ -347,28 +319,33 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
                       )
                     : _printLogs.isEmpty
                         ? Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(Icons.receipt_long_outlined, size: 64, color: Colors.grey.shade400),
-                                const SizedBox(height: 12),
-                                Text(
-                                  'No print logs found',
-                                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade600),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Save & Print operations will be snapshot and logged here.',
-                                  style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500),
-                                ),
-                              ],
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 24),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.remove_shopping_cart_outlined, size: 64, color: Colors.grey.shade400),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No cleared cart logs found',
+                                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.grey.shade700),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'When a table cart with active running KOT is cleared via Manager Security PIN, the audit snapshot will appear here.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(fontSize: 12.5, color: Colors.grey.shade500, height: 1.35),
+                                  ),
+                                ],
+                              ),
                             ),
                           )
                         : RefreshIndicator(
                             color: const Color(0xFF051C48),
                             onRefresh: _loadPrintLogs,
                             child: ListView.builder(
-                              padding: const EdgeInsets.all(16),
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
                               itemCount: _printLogs.length,
                               itemBuilder: (context, index) {
                                 final log = _printLogs[index];
@@ -382,230 +359,355 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
     );
   }
 
+  /// Print Log Card matching EXACT My Orders Screen Card styling & layout
   Widget _buildPrintLogCard(PrintLogModel log, String currency) {
     final isPaid = log.isPaid;
+    final isClear = log.isClearCart;
     final dateStr = DateFormat('dd MMM yyyy, hh:mm a').format(log.createdDateTime);
 
+    // Status styling matching My Orders screen
+    Color statusColor;
+    String statusLabel;
+
+    if (isClear) {
+      statusColor = const Color(0xFFEF4444);
+      statusLabel = 'Cart Cleared';
+    } else if (log.orderStatus == 'completed') {
+      statusColor = const Color(0xFF10B981);
+      statusLabel = 'Completed';
+    } else if (log.orderStatus == 'preparing') {
+      statusColor = const Color(0xFFF59E0B);
+      statusLabel = 'Preparing';
+    } else {
+      statusColor = const Color(0xFF051C48);
+      statusLabel = log.orderStatus.toUpperCase();
+    }
+
+    final orderTypeLabel = log.orderType == 'takeaway'
+        ? 'TakeAway'
+        : (log.orderType == 'delivery' ? 'Delivery' : 'Dine-In');
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 14),
+      margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isClear ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0),
+          width: isClear ? 1.2 : 1.0,
+        ),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x0A000000),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 8,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Top Row: Order # + Version Badge + Payment Status
-            Row(
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      Text(
-                        '#${log.orderNumber}',
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                        decoration: BoxDecoration(
-                          color: log.isReprint
-                              ? const Color(0xFFEDE9FE)
-                              : const Color(0xFFE0E7FF),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: log.isReprint
-                                ? const Color(0xFF8B5CF6)
-                                : const Color(0xFF6366F1),
-                            width: 1,
-                          ),
-                        ),
-                        child: Text(
-                          log.isReprint ? 'REPRINT #${log.printNumber}' : 'COPY #${log.printNumber}',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w800,
-                            color: log.isReprint ? const Color(0xFF6D28D9) : const Color(0xFF4338CA),
-                          ),
-                        ),
-                      ),
-                    ],
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 1. Header: Order # + Type Badge + Print/Clear Badge + Payment Badge + Status Badge
+          Row(
+            children: [
+              Flexible(
+                child: Text(
+                  '#${log.orderNumber}',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              const SizedBox(width: 6),
+
+              // Order Type Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
+                ),
+                child: Text(
+                  '$orderTypeLabel${log.tableNumber != null && log.tableNumber!.isNotEmpty ? " (${log.tableNumber})" : ""}',
+                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                ),
+              ),
+              const SizedBox(width: 4),
+
+              // Print Version / Clear Badge
+              if (isClear)
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
                   decoration: BoxDecoration(
-                    color: isPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(8),
+                    color: const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFFCA5A5), width: 1),
+                  ),
+                  child: const Text(
+                    'VOIDED',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFFDC2626),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: log.isReprint
+                        ? const Color(0xFFEDE9FE)
+                        : const Color(0xFF051C48).withValues(alpha: 0.06),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
-                      color: isPaid ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                      color: log.isReprint
+                          ? const Color(0xFF8B5CF6)
+                          : const Color(0xFF051C48).withValues(alpha: 0.2),
                     ),
                   ),
                   child: Text(
-                    isPaid ? 'PAID' : 'UNPAID / RUNNING',
+                    log.isReprint ? 'R#${log.printNumber}' : 'P#${log.printNumber}',
                     style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      color: isPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.bold,
+                      color: log.isReprint ? const Color(0xFF6D28D9) : const Color(0xFF051C48),
                     ),
                   ),
                 ),
-              ],
-            ),
 
-            const SizedBox(height: 6),
-            // Timestamp & Table Info
-            Row(
-              children: [
-                const Icon(Icons.access_time_rounded, size: 13, color: Color(0xFF64748B)),
-                const SizedBox(width: 4),
-                Text(
-                  dateStr,
-                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                ),
-                if (log.tableNumber != null && log.tableNumber!.isNotEmpty) ...[
-                  const SizedBox(width: 10),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF051C48).withOpacity(0.08),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      'Table ${log.tableNumber}',
-                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
-                    ),
+              const Spacer(),
+
+              // Payment Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: isClear
+                      ? const Color(0xFFEF4444).withValues(alpha: 0.12)
+                      : (isPaid
+                          ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                          : const Color(0xFFF59E0B).withValues(alpha: 0.12)),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: isClear
+                        ? const Color(0xFFEF4444).withValues(alpha: 0.4)
+                        : (isPaid
+                            ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                            : const Color(0xFFF59E0B).withValues(alpha: 0.4)),
                   ),
-                ],
-              ],
-            ),
+                ),
+                child: Text(
+                  isClear ? 'VOIDED' : (isPaid ? 'PAID' : 'UNPAID'),
+                  style: TextStyle(
+                    color: isClear
+                        ? const Color(0xFFDC2626)
+                        : (isPaid ? const Color(0xFF10B981) : const Color(0xFFD97706)),
+                    fontSize: 9.5,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
 
-            if (log.customerName != null && log.customerName!.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                'Customer: ${log.customerName}${log.customerPhone != null && log.customerPhone!.isNotEmpty ? " (${log.customerPhone})" : ""}',
-                style: const TextStyle(fontSize: 11.5, color: Color(0xFF475569), fontWeight: FontWeight.w500),
+              // Status Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(9),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  statusLabel,
+                  style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w900),
+                ),
               ),
             ],
+          ),
 
-            const SizedBox(height: 10),
-            const Divider(color: Color(0xFFF1F5F9), height: 1),
-            const SizedBox(height: 10),
+          const SizedBox(height: 6),
 
-            // Items Snapshot Snippet
-            Text(
-              'Snapshot Items (${log.items.length}):',
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-            ),
-            const SizedBox(height: 4),
-            ...log.items.take(3).map((item) => Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${item.quantity}x ${item.name}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
-                      ),
-                      Text(
-                        '$currency${item.totalPrice.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                )),
-            if (log.items.length > 3)
+          // Date & Audit Details Row
+          Row(
+            children: [
+              const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF94A3B8)),
+              const SizedBox(width: 4),
               Text(
-                '+ ${log.items.length - 3} more items in snapshot',
-                style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: Color(0xFF94A3B8)),
+                dateStr,
+                style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
               ),
-
-            const SizedBox(height: 10),
-            const Divider(color: Color(0xFFF1F5F9), height: 1),
-            const SizedBox(height: 10),
-
-            // Total Amount & Action Buttons Row
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Snapshot Total', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
-                    Text(
-                      '$currency${log.totalAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF051C48),
-                      ),
-                    ),
-                  ],
+              if (log.customerName != null && log.customerName!.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                Text(
+                  '• ${log.customerName}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600),
                 ),
-                Row(
-                  children: [
-                    // View Invoice Button
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          useRootNavigator: true,
-                          barrierDismissible: true,
-                          builder: (_) => ReceiptDialog(
-                            order: log.toOrderModel(),
-                            currency: currency,
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.remove_red_eye_outlined, size: 14, color: Color(0xFF051C48)),
-                      label: const Text(
-                        'View Invoice',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF051C48), width: 1.2),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
+              ],
+            ],
+          ),
 
-                    // Reprint Button
-                    ElevatedButton.icon(
-                      onPressed: () => _handleReprint(log),
-                      icon: const Icon(Icons.print_rounded, size: 14, color: Colors.white),
-                      label: const Text(
-                        'Reprint',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF051C48),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        elevation: 0,
-                      ),
-                    ),
-                  ],
+          if (isClear && log.notes.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.shield_outlined, size: 12, color: Color(0xFFDC2626)),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    log.notes,
+                    style: const TextStyle(fontSize: 10.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w600),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ],
             ),
           ],
-        ),
+
+          const SizedBox(height: 8),
+          const Divider(color: Color(0xFFF1F5F9), height: 1),
+          const SizedBox(height: 8),
+
+          // 2. Items List Snapshot (Identical to My Orders screen)
+          ...log.items.map((item) => Padding(
+                padding: const EdgeInsets.only(bottom: 3),
+                child: Row(
+                  children: [
+                    Text(
+                      '${item.quantity}×',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF051C48),
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        item.name,
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      '$currency ${item.totalPrice.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+
+          const SizedBox(height: 8),
+          const Divider(color: Color(0xFFF1F5F9), height: 1),
+          const SizedBox(height: 8),
+
+          // 3. Footer: Total & Actions
+          Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isClear ? 'Cleared Total' : 'Total',
+                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+                  ),
+                  Text(
+                    '$currency ${log.totalAmount.toStringAsFixed(0)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: isClear ? const Color(0xFFDC2626) : const Color(0xFF051C48),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+
+              // View Invoice Button
+              InkWell(
+                onTap: () {
+                  showDialog(
+                    context: context,
+                    useRootNavigator: true,
+                    barrierDismissible: true,
+                    builder: (_) => ReceiptDialog(
+                      order: log.toOrderModel(),
+                      currency: currency,
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  height: 29,
+                  padding: const EdgeInsets.symmetric(horizontal: 9),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.3)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.remove_red_eye_outlined, size: 12, color: Color(0xFF051C48)),
+                      const SizedBox(width: 4),
+                      Text(
+                        isClear ? 'Snapshot' : 'Invoice',
+                        style: const TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              if (!isClear) ...[
+                const SizedBox(width: 6),
+                // Reprint Button
+                InkWell(
+                  onTap: () => _handleReprint(log),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 29,
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF051C48),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.print_rounded, size: 12, color: Colors.white),
+                        SizedBox(width: 4),
+                        Text(
+                          'Reprint',
+                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
 }
+

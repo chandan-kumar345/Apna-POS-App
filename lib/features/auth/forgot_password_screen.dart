@@ -539,6 +539,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                 TextFormField(
                                   controller: _emailController,
                                   focusNode: _emailFocus,
+                                  scrollPadding: const EdgeInsets.only(bottom: 90),
                                   keyboardType: TextInputType.emailAddress,
                                   style: const TextStyle(color: Colors.white, fontSize: 14),
                                   decoration: InputDecoration(
@@ -642,6 +643,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                 TextFormField(
                                   controller: _otpController,
                                   focusNode: _otpFocus,
+                                  scrollPadding: const EdgeInsets.only(bottom: 90),
                                   keyboardType: TextInputType.number,
                                   maxLength: 4,
                                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -699,6 +701,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                 TextFormField(
                                   controller: _newPasswordController,
                                   focusNode: _newPasswordFocus,
+                                  scrollPadding: const EdgeInsets.only(bottom: 90),
                                   obscureText: _obscureNewPassword,
                                   style: const TextStyle(color: Colors.white, fontSize: 14),
                                   decoration: InputDecoration(
@@ -758,6 +761,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                 TextFormField(
                                   controller: _confirmPasswordController,
                                   focusNode: _confirmPasswordFocus,
+                                  scrollPadding: const EdgeInsets.only(bottom: 90),
                                   obscureText: _obscureConfirmPassword,
                                   style: const TextStyle(color: Colors.white, fontSize: 14),
                                   decoration: InputDecoration(

@@ -91,4 +91,21 @@ class PrintLogService {
       return null;
     }
   }
+
+  /// Create a print log snapshot or clear cart audit log
+  Future<PrintLogModel?> createPrintLog(PrintLogModel log) async {
+    try {
+      final response = await _apiClient.post(
+        ApiEndpoints.printLogs,
+        data: log.toJson(),
+      );
+      if (response != null && response['data'] != null && response['data']['printLog'] != null) {
+        return PrintLogModel.fromJson(response['data']['printLog'] as Map<String, dynamic>);
+      }
+      return log;
+    } catch (e) {
+      debugPrint('[PrintLogService.createPrintLog] error: $e');
+      return log;
+    }
+  }
 }
