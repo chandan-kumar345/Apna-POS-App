@@ -26,6 +26,7 @@ import '../services/report_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/payment_service.dart';
 import '../services/print_log_service.dart';
+import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -1974,8 +1975,15 @@ class DatabaseService extends ChangeNotifier {
     String? customerPhone,
   }) async {
     final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
-    final double taxRate = restaurant?.taxRate ?? 5.0;
-    final double taxAmount = taxAmountOverride ?? ((subtotal - discountAmount).clamp(0.0, double.infinity) * (taxRate / 100.0));
+    final double defaultTaxRate = (restaurant?.billingType == 'Non-GST') ? 0.0 : (restaurant?.taxRate ?? 5.0);
+    final double taxAmount = taxAmountOverride ??
+        OrderCalculator.calculate(
+          items: items,
+          defaultTaxRate: defaultTaxRate,
+          manualDiscountOverride: discountAmount,
+          tipAmount: tipAmount,
+          deliveryCharge: deliveryCharge,
+        ).taxAmount;
     final double computedTotal = (subtotal - discountAmount + taxAmount + tipAmount + deliveryCharge + roundOff).clamp(0.0, double.infinity);
     final double finalTotalAmount = totalAmount ?? computedTotal;
 
@@ -2134,8 +2142,15 @@ class DatabaseService extends ChangeNotifier {
     String? notes,
   }) async {
     final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
-    final double taxRate = restaurant?.taxRate ?? 5.0;
-    final double taxAmount = taxAmountOverride ?? ((subtotal - discountAmount).clamp(0.0, double.infinity) * (taxRate / 100.0));
+    final double defaultTaxRate = (restaurant?.billingType == 'Non-GST') ? 0.0 : (restaurant?.taxRate ?? 5.0);
+    final double taxAmount = taxAmountOverride ??
+        OrderCalculator.calculate(
+          items: items,
+          defaultTaxRate: defaultTaxRate,
+          manualDiscountOverride: discountAmount,
+          tipAmount: tipAmount,
+          deliveryCharge: deliveryCharge,
+        ).taxAmount;
     final double computedTotal = (subtotal - discountAmount + taxAmount + tipAmount + deliveryCharge + roundOff).clamp(0.0, double.infinity);
     final double finalTotalAmount = totalAmount ?? computedTotal;
 

@@ -52,6 +52,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
   int _currentImageIndex = 0;
   Timer? _imageSlideTimer;
   Timer? _staggerTimer;
+  PageController? _pageController;
   bool _hasBothVideoAndImages = false;
 
   List<String> _resolvedImages = [];
@@ -117,6 +118,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
 
   void _initializePlayback() {
     _currentImageIndex = 0;
+    _pageController?.dispose();
+    if (_resolvedImages.length > 1) {
+      _pageController = PageController(initialPage: 0);
+    } else {
+      _pageController = null;
+    }
 
     if (_resolvedVideoUrl.isNotEmpty) {
       // Start with Video playback
@@ -152,22 +159,39 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         streamTarget = ApiEndpoints.resolveMediaUrl(_resolvedVideoUrl);
       }
 
+      // Windows Media Foundation IPv4 fix: replace localhost with 127.0.0.1
+      if (streamTarget.contains('localhost:')) {
+        streamTarget = streamTarget.replaceAll('localhost:', '127.0.0.1:');
+      }
+
       if (!mounted) return;
 
-      final uri = Uri.tryParse(streamTarget);
-      if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
-        _videoController = VideoPlayerController.networkUrl(uri);
-      } else {
-        final file = File(streamTarget);
-        if (file.existsSync()) {
-          _videoController = VideoPlayerController.file(file);
-        } else {
-          final resolvedUri = Uri.tryParse(ApiEndpoints.resolveMediaUrl(streamTarget));
-          if (resolvedUri != null && (resolvedUri.isScheme('http') || resolvedUri.isScheme('https'))) {
-            _videoController = VideoPlayerController.networkUrl(resolvedUri);
-          } else {
-            throw Exception('Unresolvable video source: $streamTarget');
+      bool isLocalFile = false;
+      if (!kIsWeb) {
+        try {
+          if (File(streamTarget).existsSync()) {
+            isLocalFile = true;
           }
+        } catch (_) {}
+      }
+
+      if (isLocalFile) {
+        _videoController = VideoPlayerController.file(
+          File(streamTarget),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else {
+        final uri = Uri.tryParse(streamTarget);
+        if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
+          _videoController = VideoPlayerController.networkUrl(
+            uri,
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+        } else {
+          _videoController = VideoPlayerController.file(
+            File(streamTarget),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
         }
       }
 
@@ -177,24 +201,26 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         return;
       }
 
-      // Mute for auto-play inside grid cards
+      // Mute for auto-play inside grid cards (required for browser and OS autoplay)
       await _videoController!.setVolume(0.0);
 
       if (_hasBothVideoAndImages) {
         // Non-looping: listen for completion to switch to images
         await _videoController!.setLooping(false);
-        _videoController!.addListener(_videoListener);
       } else {
         // Video only: loop indefinitely
         await _videoController!.setLooping(true);
       }
+      _videoController!.addListener(_videoListener);
 
       await _videoController!.play();
 
-      setState(() {
-        _isVideoInitialized = true;
-        _isVideoError = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isVideoInitialized = true;
+          _isVideoError = false;
+        });
+      }
     } catch (e) {
       debugPrint('[PosProductMediaBox] Video init error (${widget.item.name}): $e');
       if (mounted) {
@@ -214,6 +240,20 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     if (_videoController == null || !_videoController!.value.isInitialized) return;
 
     final val = _videoController!.value;
+    if (val.hasError) {
+      debugPrint('[PosProductMediaBox] Video playback error: ${val.errorDescription}');
+      if (mounted && _activeMode == 0) {
+        setState(() {
+          _isVideoError = true;
+          _activeMode = 1;
+        });
+        if (_resolvedImages.length > 1) {
+          _startImageCarousel();
+        }
+      }
+      return;
+    }
+
     // Check if video reached its end
     if (val.isCompleted ||
         (val.duration > Duration.zero && val.position >= val.duration - const Duration(milliseconds: 250))) {
@@ -231,6 +271,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       _currentImageIndex = 0;
     });
 
+    if (_pageController != null && _pageController!.hasClients) {
+      _pageController!.jumpToPage(0);
+    }
+
     // Start auto-slide through images
     _startImageCarousel(isSequentialFromVideo: true);
   }
@@ -239,20 +283,28 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     _imageSlideTimer?.cancel();
     _staggerTimer?.cancel();
 
-    if (_resolvedImages.isEmpty) return;
+    if (_resolvedImages.length <= 1) return;
 
-    // Stagger delay for independent non-synchronized transitions across grid cards
-    final int staggerMs = isSequentialFromVideo ? 0 : (widget.item.id.hashCode.abs() % 2200);
+    // Fast initial start (0ms if from video, otherwise 200-600ms)
+    final int staggerMs = isSequentialFromVideo ? 0 : ((widget.item.id.hashCode.abs() % 400) + 150);
 
     _staggerTimer = Timer(Duration(milliseconds: staggerMs), () {
       if (!mounted) return;
-      _imageSlideTimer = Timer.periodic(const Duration(milliseconds: 3200), (timer) {
+      // Fast snappy interval (2.0s per slide)
+      _imageSlideTimer = Timer.periodic(const Duration(milliseconds: 2000), (timer) {
         if (!mounted) return;
 
         if (_currentImageIndex + 1 < _resolvedImages.length) {
-          setState(() {
-            _currentImageIndex++;
-          });
+          _currentImageIndex++;
+          if (_pageController != null && _pageController!.hasClients) {
+            _pageController!.animateToPage(
+              _currentImageIndex,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeInOutCubic,
+            );
+          } else {
+            setState(() {});
+          }
         } else {
           // Reached last image!
           if (_hasBothVideoAndImages && _videoController != null && _isVideoInitialized) {
@@ -265,10 +317,17 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
             _videoController!.seekTo(Duration.zero);
             _videoController!.play();
           } else {
-            // Loop back to first image
-            setState(() {
-              _currentImageIndex = 0;
-            });
+            // Loop back to first image smoothly
+            _currentImageIndex = 0;
+            if (_pageController != null && _pageController!.hasClients) {
+              _pageController!.animateToPage(
+                0,
+                duration: const Duration(milliseconds: 400),
+                curve: Curves.easeInOutCubic,
+              );
+            } else {
+              setState(() {});
+            }
           }
         }
       });
@@ -278,6 +337,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
   void _cleanupControllers() {
     _imageSlideTimer?.cancel();
     _staggerTimer?.cancel();
+    _pageController?.dispose();
+    _pageController = null;
     if (_videoController != null) {
       _videoController!.removeListener(_videoListener);
       _videoController!.dispose();
@@ -298,90 +359,90 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     Widget content;
 
     if (_activeMode == 0 && _isVideoInitialized && _videoController != null && !_isVideoError) {
-      // 1. Render Video
+      // 1. Render Video with hardware-accelerated FittedBox
+      final size = _videoController!.value.size;
+      final double vWidth = size.width > 0 ? size.width : 160;
+      final double vHeight = size.height > 0 ? size.height : 100;
+
       content = Stack(
         fit: StackFit.expand,
         children: [
-          FittedBox(
-            fit: widget.fit,
-            clipBehavior: Clip.hardEdge,
-            child: SizedBox(
-              width: _videoController!.value.size.width > 0 ? _videoController!.value.size.width : 200,
-              height: _videoController!.value.size.height > 0 ? _videoController!.value.size.height : 200,
-              child: VideoPlayer(_videoController!),
-            ),
-          ),
-          // Subtle video badge indicator in mini mode or top-left
-          if (!widget.isMini)
-            Positioned(
-              bottom: 4,
-              right: 4,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.55),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.play_arrow_rounded, color: Colors.white, size: 11),
-                    SizedBox(width: 1),
-                    Text(
-                      'VIDEO',
-                      style: TextStyle(color: Colors.white, fontSize: 8.5, fontWeight: FontWeight.w700),
-                    ),
-                  ],
-                ),
+          // Background fallback image while video loads/buffers
+          if (_resolvedImages.isNotEmpty)
+            _buildSingleImage(_resolvedImages.first),
+          SizedBox.expand(
+            child: FittedBox(
+              fit: widget.fit,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: vWidth,
+                height: vHeight,
+                child: VideoPlayer(_videoController!),
               ),
             ),
+          ),
         ],
       );
     } else if (_resolvedImages.isNotEmpty) {
-      // 2. Render Image (Single or Carousel)
-      final String imagePath = _resolvedImages[_currentImageIndex % _resolvedImages.length];
-      content = Stack(
-        fit: StackFit.expand,
-        children: [
-          AnimatedSwitcher(
-            duration: const Duration(milliseconds: 350),
-            transitionBuilder: (child, animation) {
-              return FadeTransition(opacity: animation, child: child);
-            },
-            child: _buildSingleImage(imagePath, key: ValueKey(imagePath)),
-          ),
-          // Multi-image indicator dots
-          if (widget.showDots && _resolvedImages.length > 1 && !widget.isMini)
-            Positioned(
-              bottom: 4,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_resolvedImages.length, (index) {
-                  final isSelected = index == _currentImageIndex;
-                  return AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    margin: const EdgeInsets.symmetric(horizontal: 1.5),
-                    width: isSelected ? 8 : 4,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.4),
-                          blurRadius: 2,
-                          offset: const Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ),
+      // 2. Render Image (Single or Multi-image Slide PageView)
+      if (_resolvedImages.length > 1) {
+        content = Stack(
+          fit: StackFit.expand,
+          children: [
+            PageView.builder(
+              controller: _pageController,
+              itemCount: _resolvedImages.length,
+              physics: const BouncingScrollPhysics(),
+              onPageChanged: (index) {
+                setState(() {
+                  _currentImageIndex = index;
+                });
+              },
+              itemBuilder: (context, index) {
+                final imagePath = _resolvedImages[index];
+                return _buildSingleImage(imagePath, key: ValueKey('slide_${widget.item.id}_$index'));
+              },
             ),
-        ],
-      );
+            // Multi-image slide indicator pill dots
+            if (widget.showDots && !widget.isMini)
+              Positioned(
+                bottom: 4,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: List.generate(_resolvedImages.length, (index) {
+                        final isSelected = index == _currentImageIndex;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 250),
+                          curve: Curves.easeOutCubic,
+                          margin: const EdgeInsets.symmetric(horizontal: 2),
+                          width: isSelected ? 12 : 4,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.45),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      } else {
+        // Single static image
+        final String imagePath = _resolvedImages.first;
+        content = _buildSingleImage(imagePath, key: ValueKey('single_${widget.item.id}'));
+      }
     } else {
       // 3. Fallback Emoji
       content = _buildEmojiFallback();

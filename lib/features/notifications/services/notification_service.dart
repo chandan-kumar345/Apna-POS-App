@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/network/api_client.dart';
 import '../../../core/network/api_endpoints.dart';
+import '../../../core/security/secure_storage_service.dart';
 import '../../../core/services/sound_service.dart';
 import '../../../core/services/local_notification_service.dart';
 import '../models/notification_model.dart';
@@ -20,6 +21,7 @@ class NotificationService extends ChangeNotifier {
   static const String _unreadCacheKey = 'apna_pos_notifications_unread_count_v2';
 
   final ApiClient _apiClient = ApiClient();
+  final SecureStorageService _storage = SecureStorageService();
 
   final List<NotificationItem> _notifications = [];
   int _unreadCount = 0;
@@ -99,6 +101,11 @@ class NotificationService extends ChangeNotifier {
     bool silent = false,
   }) async {
     if (_isLoading) return;
+
+    final token = await _storage.getAccessToken();
+    if (token == null || token.isEmpty) {
+      return;
+    }
 
     if (filterType != null) {
       _activeFilter = filterType;
@@ -195,6 +202,9 @@ class NotificationService extends ChangeNotifier {
   Future<void> loadMore() async {
     if (_isLoading || _isLoadingMore || !hasMore) return;
 
+    final token = await _storage.getAccessToken();
+    if (token == null || token.isEmpty) return;
+
     _isLoadingMore = true;
     notifyListeners();
 
@@ -238,6 +248,9 @@ class NotificationService extends ChangeNotifier {
   /// Fetch live unread count from API
   Future<void> fetchUnreadCount() async {
     try {
+      final token = await _storage.getAccessToken();
+      if (token == null || token.isEmpty) return;
+
       final response = await _apiClient.get(ApiEndpoints.notificationsUnreadCount);
       final data = response['data'] as Map<String, dynamic>? ?? {};
       final count = (data['unreadCount'] as int?) ?? 0;

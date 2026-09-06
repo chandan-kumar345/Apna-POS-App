@@ -78,12 +78,22 @@ class YouTubeService {
     final yt = YoutubeExplode();
     try {
       final manifest = await yt.videos.streamsClient.getManifest(videoId);
-      // Prefer muxed streams (both video + audio) with highest bitrate or 720p/480p/360p for fast POS card streaming
+      // Prefer muxed MP4 streams (both video + audio) for universal Windows/Android/iOS playback
       StreamInfo? selectedStream;
       if (manifest.muxed.isNotEmpty) {
-        selectedStream = manifest.muxed.withHighestBitrate();
+        final mp4Streams = manifest.muxed.where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4')).toList();
+        if (mp4Streams.isNotEmpty) {
+          selectedStream = mp4Streams.withHighestBitrate();
+        } else {
+          selectedStream = manifest.muxed.withHighestBitrate();
+        }
       } else if (manifest.videoOnly.isNotEmpty) {
-        selectedStream = manifest.videoOnly.withHighestBitrate();
+        final mp4Video = manifest.videoOnly.where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4')).toList();
+        if (mp4Video.isNotEmpty) {
+          selectedStream = mp4Video.withHighestBitrate();
+        } else {
+          selectedStream = manifest.videoOnly.withHighestBitrate();
+        }
       }
 
       if (selectedStream != null) {

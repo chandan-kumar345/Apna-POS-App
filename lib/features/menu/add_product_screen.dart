@@ -92,7 +92,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
 
     // Default GST from onboarding restaurant configuration
-    _selectedGstPercent = db.restaurant?.taxRate ?? 5.0;
+    final bool isNonGstRestaurant = db.restaurant?.billingType == 'Non-GST';
+    _selectedGstPercent = isNonGstRestaurant ? 0.0 : (db.restaurant?.taxRate ?? 5.0);
 
     if (widget.editItem != null) {
       final item = widget.editItem!;
@@ -321,7 +322,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _previewVideoController?.dispose();
       _previewVideoController = null;
 
-      if (isFile) {
+      if (isFile && !cleanSource.startsWith('http')) {
         _previewVideoController = VideoPlayerController.file(File(cleanSource));
       } else {
         String streamUrl = cleanSource;
@@ -344,20 +345,27 @@ class _AddProductScreenState extends State<AddProductScreen> {
           streamUrl = ApiEndpoints.resolveMediaUrl(cleanSource);
         }
 
-        final uri = Uri.tryParse(streamUrl);
-        if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
-          _previewVideoController = VideoPlayerController.networkUrl(uri);
-        } else {
-          final file = File(streamUrl);
-          if (file.existsSync()) {
-            _previewVideoController = VideoPlayerController.file(file);
-          } else {
-            final resolvedUri = Uri.tryParse(ApiEndpoints.resolveMediaUrl(streamUrl));
-            if (resolvedUri != null && (resolvedUri.isScheme('http') || resolvedUri.isScheme('https'))) {
-              _previewVideoController = VideoPlayerController.networkUrl(resolvedUri);
-            } else {
-              _previewVideoController = VideoPlayerController.networkUrl(Uri.parse(streamUrl));
+        if (streamUrl.contains('localhost:')) {
+          streamUrl = streamUrl.replaceAll('localhost:', '127.0.0.1:');
+        }
+
+        bool localExists = false;
+        if (!kIsWeb) {
+          try {
+            if (File(streamUrl).existsSync()) {
+              localExists = true;
             }
+          } catch (_) {}
+        }
+
+        if (localExists) {
+          _previewVideoController = VideoPlayerController.file(File(streamUrl));
+        } else {
+          final uri = Uri.tryParse(streamUrl);
+          if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
+            _previewVideoController = VideoPlayerController.networkUrl(uri);
+          } else {
+            _previewVideoController = VideoPlayerController.file(File(streamUrl));
           }
         }
       }
@@ -900,7 +908,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
         finalVideoUrl = _selectedVideoPath!.trim();
       }
 
-      if (_selectedVideoBytes != null && _selectedVideoBytes!.isNotEmpty) {
+      // Try uploading file if path exists
+      if (_selectedVideoPath != null &&
+          _selectedVideoPath!.isNotEmpty &&
+          !_selectedVideoPath!.startsWith('http')) {
+        try {
+          final file = File(_selectedVideoPath!);
+          if (file.existsSync()) {
+            final uploadedVideo = await UploadService().uploadVideo(file);
+            if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
+              finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);
+            }
+          }
+        } catch (e) {
+          debugPrint('[AddProductScreen] video file upload error: $e');
+        }
+      } else if (_selectedVideoBytes != null && _selectedVideoBytes!.isNotEmpty) {
         try {
           final uploadedVideo = await UploadService().uploadVideoBytes(
             _selectedVideoBytes!,
@@ -911,23 +934,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
           }
         } catch (e) {
           debugPrint('[AddProductScreen] video bytes upload error: $e');
-        }
-      } else if (_selectedVideoPath != null &&
-          _selectedVideoPath!.isNotEmpty &&
-          !_selectedVideoPath!.startsWith('http')) {
-        try {
-          final file = File(_selectedVideoPath!);
-          if (file.existsSync()) {
-            final uploadedVideo = await UploadService().uploadVideo(file);
-            if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
-              finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);
-            } else {
-              finalVideoUrl = _selectedVideoPath!;
-            }
-          }
-        } catch (e) {
-          debugPrint('[AddProductScreen] video file upload fallback: $e');
-          finalVideoUrl = _selectedVideoPath!;
         }
       }
 
@@ -2125,9 +2131,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                     child: ListView(
                                       scrollDirection: Axis.horizontal,
                                       physics: const BouncingScrollPhysics(),
-                                      children: [null, 0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
-                                        final isSel = _selectedGstPercent == rate;
-                                        final label = rate == null ? 'No GST' : '$rate%';
+                                      children: [0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
+                                        final bool isNonGst = db.restaurant?.billingType == 'Non-GST';
+                                        final isSel = _selectedGstPercent == rate || (_selectedGstPercent == null && rate == (isNonGst ? 0.0 : (db.restaurant?.taxRate ?? 5.0)));
+                                        final label = rate == 0.0 ? 'No GST (0%)' : '$rate%';
                                         return Padding(
                                           padding: const EdgeInsets.only(right: 8),
                                           child: ChoiceChip(

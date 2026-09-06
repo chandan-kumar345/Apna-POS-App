@@ -384,9 +384,6 @@ class BluetoothPrinterService {
       final restPhone = _toAscii(restaurant?.phone.isNotEmpty == true ? restaurant!.phone : '+91 98765 43210');
       final gstNumber = _toAscii(restaurant?.gstNumber.isNotEmpty == true ? restaurant!.gstNumber : '');
       final safeCurrency = (currency == '₹' || currency.contains('₹')) ? 'Rs.' : _toAscii(currency);
-      final double taxRate = restaurant?.taxRate ?? 5.0;
-      final double cgstRate = taxRate / 2;
-      final double sgstRate = taxRate / 2;
       final double cgstAmount = order.taxAmount / 2;
       final double sgstAmount = order.taxAmount / 2;
 
@@ -494,11 +491,11 @@ class BluetoothPrinterService {
       }
       if (order.taxAmount > 0) {
         bytes += generator.row([
-          PosColumn(text: 'CGST @ ${cgstRate.toStringAsFixed(1)}%', width: 7),
+          PosColumn(text: 'CGST', width: 7),
           PosColumn(text: '$safeCurrency${_formatAmount(cgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
         ]);
         bytes += generator.row([
-          PosColumn(text: 'SGST @ ${sgstRate.toStringAsFixed(1)}%', width: 7),
+          PosColumn(text: 'SGST', width: 7),
           PosColumn(text: '$safeCurrency${_formatAmount(sgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
         ]);
       }

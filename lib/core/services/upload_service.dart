@@ -24,6 +24,7 @@ class UploadService {
       final response = await _client.post(
         '${ApiEndpoints.uploadImage}?folder=$folder',
         data: formData,
+        options: Options(contentType: 'multipart/form-data'),
       );
 
       if (response != null && response is Map<String, dynamic>) {
@@ -57,6 +58,7 @@ class UploadService {
       final response = await _client.post(
         '${ApiEndpoints.uploadImage}?folder=$folder',
         data: formData,
+        options: Options(contentType: 'multipart/form-data'),
       );
 
       if (response != null && response is Map<String, dynamic>) {
@@ -90,6 +92,7 @@ class UploadService {
       final response = await _client.post(
         '${ApiEndpoints.uploadVideo}?folder=$folder',
         data: formData,
+        options: Options(contentType: 'multipart/form-data'),
       );
 
       if (response != null && response is Map<String, dynamic>) {
@@ -123,6 +126,7 @@ class UploadService {
       final response = await _client.post(
         '${ApiEndpoints.uploadVideo}?folder=$folder',
         data: formData,
+        options: Options(contentType: 'multipart/form-data'),
       );
 
       if (response != null && response is Map<String, dynamic>) {

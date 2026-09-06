@@ -223,9 +223,6 @@ class ReceiptDialog extends StatelessWidget {
         : 'Dakshin Jagaddal, Narendrapur, Kolkata, West Bengal, India - 700149';
     final String restPhone = rest?.phone.isNotEmpty == true ? rest!.phone : '+91 7980614787';
     final String gstNumber = rest?.gstNumber.isNotEmpty == true ? rest!.gstNumber : '19FPYPD2539M1Z0';
-    final double taxRate = rest?.taxRate ?? 5.0;
-    final double cgstRate = taxRate / 2;
-    final double sgstRate = taxRate / 2;
     final double cgstAmount = order.taxAmount / 2;
     final double sgstAmount = order.taxAmount / 2;
 
@@ -445,9 +442,9 @@ class ReceiptDialog extends StatelessWidget {
                           ],
                           if (order.taxAmount > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('CGST @ ${cgstRate.toStringAsFixed(1)}%', '$currency${_formatAmount(cgstAmount)}'),
+                            _buildReceiptRow('CGST', '$currency${_formatAmount(cgstAmount)}'),
                             const SizedBox(height: 3),
-                            _buildReceiptRow('SGST @ ${sgstRate.toStringAsFixed(1)}%', '$currency${_formatAmount(sgstAmount)}'),
+                            _buildReceiptRow('SGST', '$currency${_formatAmount(sgstAmount)}'),
                           ],
                           if (order.tipAmount > 0) ...[
                             const SizedBox(height: 3),

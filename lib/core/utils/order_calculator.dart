@@ -9,13 +9,20 @@ class OrderCalculationResult {
   final double orderDiscount;     // Applied coupon + manual discount
   final double totalDiscount;     // itemDiscounts + orderDiscount
   final double taxableAmount;     // (subtotal - orderDiscount).clamp(0.0, double.infinity)
-  final double taxAmount;         // GST calculated on taxable base proportional to each item's GST
+  final double taxAmount;         // GST calculated dynamically proportional to each item's GST
+  final double taxableSubtotal;   // Subtotal of items subject to GST (> 0%)
+  final double nonTaxableSubtotal;// Subtotal of items with No GST (0% or exempt)
+  final Map<double, double> taxBreakupByRate;      // rate -> tax amount (e.g. 5.0 -> 14.50)
+  final Map<double, double> taxableAmountByRate;  // rate -> taxable base (e.g. 5.0 -> 290.00)
+  final double cgst;              // Central GST (taxAmount / 2)
+  final double sgst;              // State GST (taxAmount / 2)
+  final double igst;              // Integrated GST (0.0)
   final double deliveryCharge;    // Delivery charge (if any)
   final double tipAmount;         // Tip amount
   final double roundOff;          // Optional roundoff difference
   final double totalPayableAmount;// (taxableAmount + taxAmount + deliveryCharge + tipAmount + roundOff).clamp(0.0, double.infinity)
 
-  const OrderCalculationResult({
+  OrderCalculationResult({
     required this.subtotal,
     required this.originalSubtotal,
     required this.itemDiscounts,
@@ -23,6 +30,13 @@ class OrderCalculationResult {
     required this.totalDiscount,
     required this.taxableAmount,
     required this.taxAmount,
+    this.taxableSubtotal = 0.0,
+    this.nonTaxableSubtotal = 0.0,
+    this.taxBreakupByRate = const {},
+    this.taxableAmountByRate = const {},
+    this.cgst = 0.0,
+    this.sgst = 0.0,
+    this.igst = 0.0,
     this.deliveryCharge = 0.0,
     required this.tipAmount,
     this.roundOff = 0.0,
@@ -31,7 +45,7 @@ class OrderCalculationResult {
 
   @override
   String toString() {
-    return 'OrderCalculationResult(subtotal: $subtotal, orderDiscount: $orderDiscount, taxableAmount: $taxableAmount, taxAmount: $taxAmount, tipAmount: $tipAmount, deliveryCharge: $deliveryCharge, roundOff: $roundOff, totalPayableAmount: $totalPayableAmount)';
+    return 'OrderCalculationResult(subtotal: $subtotal, orderDiscount: $orderDiscount, taxableAmount: $taxableAmount, taxAmount: $taxAmount, taxableSubtotal: $taxableSubtotal, nonTaxableSubtotal: $nonTaxableSubtotal, tipAmount: $tipAmount, deliveryCharge: $deliveryCharge, roundOff: $roundOff, totalPayableAmount: $totalPayableAmount)';
   }
 }
 
@@ -51,7 +65,7 @@ class OrderCalculator {
     bool isRounded = false,
   }) {
     if (items.isEmpty) {
-      return const OrderCalculationResult(
+      return OrderCalculationResult(
         subtotal: 0.0,
         originalSubtotal: 0.0,
         itemDiscounts: 0.0,
@@ -59,6 +73,13 @@ class OrderCalculator {
         totalDiscount: 0.0,
         taxableAmount: 0.0,
         taxAmount: 0.0,
+        taxableSubtotal: 0.0,
+        nonTaxableSubtotal: 0.0,
+        taxBreakupByRate: const {},
+        taxableAmountByRate: const {},
+        cgst: 0.0,
+        sgst: 0.0,
+        igst: 0.0,
         deliveryCharge: 0.0,
         tipAmount: 0.0,
         roundOff: 0.0,
@@ -124,16 +145,51 @@ class OrderCalculator {
     // 3. Calculate Taxable Amount (Subtotal - Order Discount)
     final double taxableAmount = (grossSubtotal - orderDiscount).clamp(0.0, double.infinity);
 
-    // 4. Calculate Tax/GST on the Discounted Taxable Base
+    // 4. Calculate Tax/GST Dynamically per Product
+    // Each product's tax is calculated based on its specific gstPercent:
+    // - If item.gstPercent == 0.0: No GST (0%)
+    // - If item.gstPercent > 0: Specific GST rate
+    // - If item.gstPercent == null: Inherit defaultTaxRate (or 0.0 if defaultTaxRate == 0)
     final double discountRatio = grossSubtotal > 0
         ? (1.0 - (orderDiscount / grossSubtotal)).clamp(0.0, 1.0)
         : 1.0;
     double taxAmount = 0.0;
+    double taxableSubtotal = 0.0;
+    double nonTaxableSubtotal = 0.0;
+    final Map<double, double> taxBreakupByRate = {};
+    final Map<double, double> taxableAmountByRate = {};
+
     for (final cartItem in items) {
-      final itemTaxable = cartItem.totalPrice * discountRatio;
-      final itemGst = cartItem.item.gstPercent ?? defaultTaxRate;
-      taxAmount += itemTaxable * (itemGst / 100.0);
+      final itemTaxableBase = cartItem.totalPrice * discountRatio;
+      double itemGstRate = 0.0;
+
+      if (cartItem.item.gstPercent != null) {
+        itemGstRate = cartItem.item.gstPercent!;
+      } else {
+        itemGstRate = defaultTaxRate;
+      }
+
+      if (itemGstRate < 0.0) {
+        itemGstRate = 0.0;
+      }
+
+      final double itemTax = itemTaxableBase * (itemGstRate / 100.0);
+      taxAmount += itemTax;
+
+      if (itemGstRate > 0.0) {
+        taxableSubtotal += itemTaxableBase;
+        taxBreakupByRate[itemGstRate] = (taxBreakupByRate[itemGstRate] ?? 0.0) + itemTax;
+        taxableAmountByRate[itemGstRate] = (taxableAmountByRate[itemGstRate] ?? 0.0) + itemTaxableBase;
+      } else {
+        nonTaxableSubtotal += itemTaxableBase;
+        taxBreakupByRate[0.0] = 0.0;
+        taxableAmountByRate[0.0] = (taxableAmountByRate[0.0] ?? 0.0) + itemTaxableBase;
+      }
     }
+
+    final double cgst = taxAmount / 2.0;
+    final double sgst = taxAmount / 2.0;
+    const double igst = 0.0;
 
     // 5. Clean Tip & Delivery Charges
     final double cleanTip = tipAmount.clamp(0.0, double.infinity);
@@ -149,7 +205,7 @@ class OrderCalculator {
     }
 
     if (kDebugMode) {
-      debugPrint('[OrderCalculator] Subtotal: ₹$grossSubtotal | Disc: ₹$orderDiscount | Taxable: ₹$taxableAmount | GST: ₹$taxAmount | Tip: ₹$cleanTip | Total: ₹$finalTotal');
+      debugPrint('[OrderCalculator] Subtotal: ₹$grossSubtotal | Disc: ₹$orderDiscount | TaxableBase: ₹$taxableAmount | GST: ₹$taxAmount (Taxable: ₹$taxableSubtotal, Non-Taxable: ₹$nonTaxableSubtotal) | Tip: ₹$cleanTip | Total: ₹$finalTotal');
     }
 
     return OrderCalculationResult(
@@ -160,6 +216,13 @@ class OrderCalculator {
       totalDiscount: totalDiscount,
       taxableAmount: taxableAmount,
       taxAmount: taxAmount,
+      taxableSubtotal: taxableSubtotal,
+      nonTaxableSubtotal: nonTaxableSubtotal,
+      taxBreakupByRate: taxBreakupByRate,
+      taxableAmountByRate: taxableAmountByRate,
+      cgst: cgst,
+      sgst: sgst,
+      igst: igst,
       deliveryCharge: cleanDelivery,
       tipAmount: cleanTip,
       roundOff: roundOff,

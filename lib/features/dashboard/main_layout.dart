@@ -109,6 +109,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     setState(() {
       _isSidebarOpen = !_isSidebarOpen;
       if (_isSidebarOpen) {
+        _isPosFullScreen = false;
         _sidebarController.forward();
       } else {
         _sidebarController.reverse();
@@ -118,7 +119,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
   void _openSidebar() {
     if (!_isSidebarOpen) {
-      setState(() => _isSidebarOpen = true);
+      setState(() {
+        _isSidebarOpen = true;
+        _isPosFullScreen = false;
+      });
       _sidebarController.forward();
     }
   }
@@ -692,6 +696,16 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           children: [
+                            // MENU TOGGLE BUTTON (HAMBURGER)
+                            IconButton(
+                              icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                              onPressed: _toggleSidebar,
+                              tooltip: 'Open / Close Navigation',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                            ),
+                            const SizedBox(width: 6),
+
                             // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
                             InkWell(
                               onTap: _toggleSidebar,
@@ -765,22 +779,23 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                 AnimatedBuilder(
                                   animation: _sidebarAnimation,
                                   builder: (context, child) {
-                                    final width = 270.0 * _sidebarAnimation.value;
                                     if (_sidebarAnimation.value <= 0.001) {
                                       return const SizedBox.shrink();
                                     }
                                     return SizedBox(
-                                      width: width,
+                                      width: 260.0 * _sidebarAnimation.value,
+                                      height: double.infinity,
                                       child: ClipRect(
-                                        child: OverflowBox(
+                                        child: Align(
                                           alignment: Alignment.topLeft,
-                                          minWidth: 270,
-                                          maxWidth: 270,
-                                          minHeight: 0,
-                                          maxHeight: double.infinity,
-                                          child: Opacity(
-                                            opacity: _sidebarAnimation.value.clamp(0.0, 1.0),
-                                            child: _buildSidebarContent(false),
+                                          widthFactor: _sidebarAnimation.value,
+                                          child: SizedBox(
+                                            width: 260,
+                                            height: double.infinity,
+                                            child: Opacity(
+                                              opacity: _sidebarAnimation.value.clamp(0.0, 1.0),
+                                              child: _buildSidebarContent(false),
+                                            ),
                                           ),
                                         ),
                                       ),

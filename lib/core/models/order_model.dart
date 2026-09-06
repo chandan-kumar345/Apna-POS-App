@@ -23,6 +23,12 @@ class CartItemModel {
   /// Total discount saved for this line item
   double get discountTotal => (item.price - item.effectivePrice).clamp(0.0, double.infinity) * quantity;
 
+  /// Effective GST rate for this item (e.g. 0.0 for No GST, 5.0, 12.0, etc.)
+  double get effectiveGstRate => item.gstPercent ?? 5.0;
+
+  /// Whether this item is explicitly tax-exempt / has 0% GST
+  bool get isTaxExempt => (item.gstPercent != null && item.gstPercent! <= 0.0);
+
   Map<String, dynamic> toJson() => {
         'item': item.toJson(),
         'quantity': quantity,
@@ -42,6 +48,9 @@ class CartItemModel {
     final double rawSale = (json['salePrice'] as num?)?.toDouble() ?? (json['effectivePrice'] as num?)?.toDouble() ?? 0.0;
     final double rawDisc = (json['discountPercent'] as num?)?.toDouble() ?? (json['discount'] as num?)?.toDouble() ?? 0.0;
     final bool hasDisc = json['hasDiscount'] == true || rawDisc > 0 || (rawSale > 0 && rawSale < rawPrice);
+    final double? rawGst = (json['gstPercent'] as num?)?.toDouble() ??
+        (json['taxPercentage'] as num?)?.toDouble() ??
+        (json['gst'] as num?)?.toDouble();
 
     final menuItem = MenuItemModel(
       id: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
@@ -52,6 +61,7 @@ class CartItemModel {
       salePrice: rawSale > 0 ? rawSale : null,
       hasDiscount: hasDisc,
       discountPercent: rawDisc,
+      gstPercent: rawGst,
       description: '',
       itemType: json['foodType'] == 'non_veg' ? 'Non-Veg' : json['foodType'] == 'egg' ? 'Egg' : 'Veg',
     );

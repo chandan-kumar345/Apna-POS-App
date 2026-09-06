@@ -34,7 +34,15 @@ const uploadVideoMulter = multer({
   },
 });
 
-router.use(authMiddleware);
+const optionalAuth = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authMiddleware(req, res, next);
+  }
+  next();
+};
+
+router.use(optionalAuth);
 
 router.post('/image', upload.single('image'), (req, res, next) =>
   uploadController.uploadImage(req, res, next)
