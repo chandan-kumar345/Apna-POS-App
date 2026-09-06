@@ -81,6 +81,39 @@ class DatabaseService extends ChangeNotifier {
   // Live in-cart totals per table (before KOT is sent)
   final Map<String, double> _liveCartTotals = {};
   final Map<String, List<CartItemModel>> _liveTableCarts = {};
+  final Map<String, Map<String, dynamic>> _liveTableDiscounts = {};
+
+  Map<String, dynamic>? getLiveTableDiscount(String tableName) {
+    if (_liveTableDiscounts.containsKey(tableName)) {
+      return _liveTableDiscounts[tableName];
+    }
+    for (final entry in _liveTableDiscounts.entries) {
+      if (entry.key.toLowerCase().trim() == tableName.toLowerCase().trim() || isSameTable(entry.key, tableName)) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  void setLiveTableDiscount(String tableName, {
+    String coupon = '',
+    double discountInput = 0.0,
+    String discountMode = 'percent',
+    double discountAmount = 0.0,
+  }) {
+    if (coupon.isEmpty && discountInput == 0.0 && discountAmount == 0.0) {
+      _liveTableDiscounts.remove(tableName);
+    } else {
+      _liveTableDiscounts[tableName] = {
+        'coupon': coupon,
+        'discountInput': discountInput,
+        'discountMode': discountMode,
+        'discountAmount': discountAmount,
+      };
+    }
+    _saveLiveTableCartsToPrefs();
+    notifyListeners();
+  }
 
   double getLiveCartTotal(String tableName) {
     final activeOrder = orders.where((o) =>
@@ -154,18 +187,58 @@ class DatabaseService extends ChangeNotifier {
   void shiftTableData(String sourceTable, String targetTable) {
     if (sourceTable.trim().toLowerCase() == targetTable.trim().toLowerCase()) return;
 
-    // 1. Shift Live Cart items & Totals
+    // 1. Shift Live Cart items & Totals (Merge if target already has items)
     final srcCart = getLiveTableCart(sourceTable);
     final srcTotal = getLiveCartTotal(sourceTable);
+    final dstCart = getLiveTableCart(targetTable);
 
     if (srcCart.isNotEmpty) {
-      setLiveTableCart(targetTable, srcCart);
-      setLiveCartTotal(targetTable, srcTotal);
+      if (dstCart.isEmpty) {
+        setLiveTableCart(targetTable, srcCart);
+        setLiveCartTotal(targetTable, srcTotal);
+      } else {
+        // Merge items into target cart by item id & note
+        final mergedCart = List<CartItemModel>.from(dstCart);
+        for (final srcItem in srcCart) {
+          final existingIdx = mergedCart.indexWhere(
+            (m) => m.item.id == srcItem.item.id && m.note == srcItem.note,
+          );
+          if (existingIdx != -1) {
+            mergedCart[existingIdx] = CartItemModel(
+              item: mergedCart[existingIdx].item,
+              quantity: mergedCart[existingIdx].quantity + srcItem.quantity,
+              note: mergedCart[existingIdx].note,
+            );
+          } else {
+            mergedCart.add(CartItemModel(
+              item: srcItem.item,
+              quantity: srcItem.quantity,
+              note: srcItem.note,
+            ));
+          }
+        }
+        setLiveTableCart(targetTable, mergedCart);
+        setLiveCartTotal(targetTable, (_liveCartTotals[targetTable] ?? 0.0) + srcTotal);
+      }
+    }
+
+    // 2. Shift applied percentage discount / promo code
+    final srcDiscount = getLiveTableDiscount(sourceTable);
+    final dstDiscount = getLiveTableDiscount(targetTable);
+    if (srcDiscount != null && dstDiscount == null) {
+      setLiveTableDiscount(
+        targetTable,
+        coupon: srcDiscount['coupon']?.toString() ?? '',
+        discountInput: (srcDiscount['discountInput'] as num?)?.toDouble() ?? 0.0,
+        discountMode: srcDiscount['discountMode']?.toString() ?? 'percent',
+        discountAmount: (srcDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0,
+      );
     }
     _liveTableCarts.remove(sourceTable);
     _liveCartTotals.remove(sourceTable);
+    _liveTableDiscounts.remove(sourceTable);
 
-    // 2. Shift Active pending / preparing Orders
+    // 3. Shift Active pending / preparing Orders
     final shiftedOrders = <OrderModel>[];
     for (int i = 0; i < orders.length; i++) {
       final o = orders[i];
@@ -177,7 +250,7 @@ class DatabaseService extends ChangeNotifier {
       }
     }
 
-    // 3. Update Table Statuses
+    // 4. Update Table Statuses
     final srcTbl = tables.where((t) => isSameTable(t.name, sourceTable)).firstOrNull;
     final dstTbl = tables.where((t) => isSameTable(t.name, targetTable)).firstOrNull;
 
@@ -185,9 +258,14 @@ class DatabaseService extends ChangeNotifier {
       updateTableStatus(srcTbl.id, TableStatus.free);
     }
     if (dstTbl != null) {
-      final newStatus = shiftedOrders.isNotEmpty
+      final hasKotOrders = orders.any((o) =>
+        isSameTable(o.tableNumber, targetTable) &&
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing),
+      );
+      final finalCart = getLiveTableCart(targetTable);
+      final newStatus = hasKotOrders
           ? TableStatus.runningKot
-          : (srcCart.isNotEmpty ? TableStatus.occupied : TableStatus.free);
+          : (finalCart.isNotEmpty ? TableStatus.occupied : TableStatus.free);
       updateTableStatus(dstTbl.id, newStatus);
     }
 
@@ -205,6 +283,7 @@ class DatabaseService extends ChangeNotifier {
       });
       await _prefs?.setString(_userKey('live_table_carts'), jsonEncode(rawMap));
       await _prefs?.setString(_userKey('live_cart_totals'), jsonEncode(_liveCartTotals));
+      await _prefs?.setString(_userKey('live_table_discounts'), jsonEncode(_liveTableDiscounts));
     } catch (_) {}
   }
 
@@ -231,6 +310,15 @@ class DatabaseService extends ChangeNotifier {
           }
         });
       }
+      final discountsJson = _prefs?.getString(_userKey('live_table_discounts'));
+      if (discountsJson != null && discountsJson.isNotEmpty) {
+        final Map<String, dynamic> rawDiscounts = jsonDecode(discountsJson);
+        rawDiscounts.forEach((key, val) {
+          if (val is Map) {
+            _liveTableDiscounts[key] = Map<String, dynamic>.from(val);
+          }
+        });
+      }
     } catch (_) {}
   }
 
@@ -240,8 +328,10 @@ class DatabaseService extends ChangeNotifier {
 
     _liveCartTotals.remove(tRef);
     _liveTableCarts.remove(tRef);
+    _liveTableDiscounts.remove(tRef);
     _liveCartTotals.remove('T-$tRef');
     _liveTableCarts.remove('T-$tRef');
+    _liveTableDiscounts.remove('T-$tRef');
 
     for (int i = 0; i < tables.length; i++) {
       final t = tables[i];

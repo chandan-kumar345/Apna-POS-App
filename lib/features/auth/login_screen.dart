@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -250,7 +249,14 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  // Empty text controllers (No prefilled default values)
+  // SharedPreferences Keys for Credential Saving
+  static const String _prefKeySavedEmail = 'apna_pos_saved_login_email';
+  static const String _prefKeySavedPassword = 'apna_pos_saved_login_password';
+  static const String _prefKeySavedPhone = 'apna_pos_saved_login_phone';
+  static const String _prefKeyRememberMe = 'apna_pos_remember_credentials';
+  static const String _prefKeyLoginMode = 'apna_pos_saved_login_mode';
+
+  // Empty text controllers
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -263,6 +269,212 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
+
+  Future<void> _loadSavedCredentials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final remember = prefs.getBool(_prefKeyRememberMe) ?? false;
+      final savedEmail = prefs.getString(_prefKeySavedEmail) ?? '';
+      final savedPassword = prefs.getString(_prefKeySavedPassword) ?? '';
+      final savedPhone = prefs.getString(_prefKeySavedPhone) ?? '';
+      final savedMode = prefs.getString(_prefKeyLoginMode) ?? 'email';
+
+      if (remember && mounted) {
+        setState(() {
+          _rememberMe = true;
+          if (savedEmail.isNotEmpty) _emailController.text = savedEmail;
+          if (savedPassword.isNotEmpty) _passwordController.text = savedPassword;
+          if (savedPhone.isNotEmpty) _phoneController.text = savedPhone;
+          _isEmailLogin = (savedMode == 'email');
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading saved credentials: $e');
+    }
+  }
+
+  Future<void> _saveOrClearCredentials(bool save) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (save) {
+        await prefs.setBool(_prefKeyRememberMe, true);
+        if (_isEmailLogin) {
+          await prefs.setString(_prefKeySavedEmail, _emailController.text.trim());
+          await prefs.setString(_prefKeySavedPassword, _passwordController.text.trim());
+          await prefs.setString(_prefKeyLoginMode, 'email');
+        } else {
+          await prefs.setString(_prefKeySavedPhone, _phoneController.text.trim());
+          await prefs.setString(_prefKeyLoginMode, 'phone');
+        }
+      } else {
+        await prefs.remove(_prefKeyRememberMe);
+        await prefs.remove(_prefKeySavedEmail);
+        await prefs.remove(_prefKeySavedPassword);
+        await prefs.remove(_prefKeySavedPhone);
+        await prefs.remove(_prefKeyLoginMode);
+      }
+    } catch (e) {
+      debugPrint('Error saving/clearing credentials: $e');
+    }
+  }
+
+  Future<void> _promptSaveCredentialsIfRequested({
+    required String identifier,
+    required VoidCallback onProceed,
+  }) async {
+    if (_rememberMe) {
+      await _saveOrClearCredentials(true);
+      onProceed();
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final alreadySaved = prefs.getBool(_prefKeyRememberMe) ?? false;
+    if (alreadySaved) {
+      onProceed();
+      return;
+    }
+
+    if (!mounted) {
+      onProceed();
+      return;
+    }
+
+    // Prompt user with option to save credentials on this device
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0066FF).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.vpn_key_rounded, color: Color(0xFF0066FF), size: 22),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'Save Credentials?',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Would you like Apna POS to save your login credentials on this device for faster sign-in next time?',
+              style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.account_circle_outlined, size: 20, color: Color(0xFF64748B)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      identifier,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF0F172A)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _saveOrClearCredentials(false);
+              onProceed();
+            },
+            child: const Text('Not Now', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _saveOrClearCredentials(true);
+              onProceed();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0066FF),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            child: const Text('Save Credentials', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openForgotPassword() {
+    final currentEmail = _emailController.text.trim();
+    if (ResponsiveLayoutHelper.isDesktop(context)) {
+      showForgotPasswordDialog(
+        context,
+        initialEmail: currentEmail,
+        onPasswordResetSuccess: (newEmail) {
+          setState(() {
+            _emailController.text = newEmail;
+            _isEmailLogin = true;
+            _passwordController.clear();
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFF0F172A),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              content: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 20),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Password updated successfully! Please enter your new password to sign in.',
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        },
+      );
+    } else {
+      Navigator.push(
+        context,
+        SlideUpPageRoute(
+          page: ForgotPasswordScreen(
+            initialEmail: currentEmail,
+          ),
+        ),
+      );
+    }
+  }
 
   final db = DatabaseService();
 
@@ -316,39 +528,6 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleGoogleSignIn() async {
-    final bool isDesktopPlatform = !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
-
-    if (isDesktopPlatform) {
-      // On Windows / Desktop, try Firebase provider or open smooth Google prompt dialog
-      setState(() => _isLoading = true);
-      try {
-        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        googleProvider.addScope('email');
-        googleProvider.addScope('profile');
-
-        final userCredential = await FirebaseAuth.instance.signInWithProvider(googleProvider);
-        final user = userCredential.user;
-        if (user != null && user.email != null) {
-          await _completeGoogleLogin(
-            user.email!,
-            user.displayName ?? user.email!.split('@').first,
-            user.photoURL,
-          );
-          return;
-        }
-      } catch (desktopErr) {
-        debugPrint('Desktop Firebase Google provider fallback to dialog: $desktopErr');
-        if (mounted) {
-          setState(() => _isLoading = false);
-          _showDesktopGoogleEmailPrompt();
-          return;
-        }
-      } finally {
-        if (mounted) setState(() => _isLoading = false);
-      }
-      return;
-    }
-
     setState(() => _isLoading = true);
     try {
       final GoogleSignInAccount? googleAccount = await _googleSignIn.signIn();
@@ -368,158 +547,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  // Windows Desktop Google Email Sign-In Prompt Dialog
-  void _showDesktopGoogleEmailPrompt() {
-    final googleEmailController = TextEditingController();
-    final googleNameController = TextEditingController();
-    String? dialogError;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          backgroundColor: Colors.white,
-          child: Container(
-            width: 440,
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    _buildGoogleColoredIcon(size: 26),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Sign in with Google',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.close, size: 20, color: Color(0xFF94A3B8)),
-                      onPressed: () => Navigator.pop(dialogCtx),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Enter your Google account email to securely sign in to Apna POS on Windows.',
-                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
-                ),
-                const SizedBox(height: 20),
-                const Text(
-                  'Google Email Address',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: googleEmailController,
-                  keyboardType: TextInputType.emailAddress,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: 'name@gmail.com',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    prefixIcon: const Icon(Icons.email_outlined, size: 18, color: Color(0xFF64748B)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF0066FF), width: 1.5),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  'Your Name (Optional)',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-                ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: googleNameController,
-                  decoration: InputDecoration(
-                    hintText: 'Full Name',
-                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                    prefixIcon: const Icon(Icons.person_outline, size: 18, color: Color(0xFF64748B)),
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: const BorderSide(color: Color(0xFF0066FF), width: 1.5),
-                    ),
-                  ),
-                ),
-                if (dialogError != null) ...[
-                  const SizedBox(height: 10),
-                  Text(
-                    dialogError!,
-                    style: const TextStyle(color: Colors.redAccent, fontSize: 12, fontWeight: FontWeight.w500),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  height: 44,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      final email = googleEmailController.text.trim();
-                      if (email.isEmpty || !email.contains('@')) {
-                        setDialogState(() => dialogError = 'Please enter a valid Google email address.');
-                        return;
-                      }
-                      final name = googleNameController.text.trim().isNotEmpty
-                          ? googleNameController.text.trim()
-                          : email.split('@').first;
-
-                      Navigator.pop(dialogCtx);
-                      await _completeGoogleLogin(email, name, null);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0066FF),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Sign In with Google Account',
-                      style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   // OTP Verification Popup Dialog for Phone Login
@@ -786,20 +813,25 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                           if (success) {
                                             Navigator.pop(context);
-                                            final rest = db.restaurant;
-                                            if (rest != null && rest.isOnboarded) {
-                                              Navigator.pushAndRemoveUntil(
-                                                context,
-                                                SlideUpPageRoute(page: const MainLayout()),
-                                                (route) => false,
-                                              );
-                                            } else {
-                                              Navigator.pushAndRemoveUntil(
-                                                context,
-                                                SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
-                                                (route) => false,
-                                              );
-                                            }
+                                            await _promptSaveCredentialsIfRequested(
+                                              identifier: firebaseRecipient,
+                                              onProceed: () {
+                                                final rest = db.restaurant;
+                                                if (rest != null && rest.isOnboarded) {
+                                                  Navigator.pushAndRemoveUntil(
+                                                    context,
+                                                    SlideUpPageRoute(page: const MainLayout()),
+                                                    (route) => false,
+                                                  );
+                                                } else {
+                                                  Navigator.pushAndRemoveUntil(
+                                                    context,
+                                                    SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+                                                    (route) => false,
+                                                  );
+                                                }
+                                              },
+                                            );
                                           } else {
                                             setDialogState(() {
                                               isVerifying = false;
@@ -958,37 +990,44 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        if (onboardingCompleted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            SlideUpPageRoute(page: const MainLayout()),
-            (route) => false,
-          );
-        } else {
-          Widget targetStepScreen = const CreateProfileScreen();
-          switch (currentStep) {
-            case 0:
-              targetStepScreen = const CreateProfileScreen();
-              break;
-            case 1:
-              targetStepScreen = const RestaurantOnboardingScreen();
-              break;
-            case 2:
-              targetStepScreen = const AddBusinessAddressScreen();
-              break;
-            case 3:
-            case 4:
-              targetStepScreen = const BusinessSettingsScreen();
-              break;
-            default:
-              targetStepScreen = const CreateProfileScreen();
+        void navigateToNext() {
+          if (onboardingCompleted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              SlideUpPageRoute(page: const MainLayout()),
+              (route) => false,
+            );
+          } else {
+            Widget targetStepScreen = const CreateProfileScreen();
+            switch (currentStep) {
+              case 0:
+                targetStepScreen = const CreateProfileScreen();
+                break;
+              case 1:
+                targetStepScreen = const RestaurantOnboardingScreen();
+                break;
+              case 2:
+                targetStepScreen = const AddBusinessAddressScreen();
+                break;
+              case 3:
+              case 4:
+                targetStepScreen = const BusinessSettingsScreen();
+                break;
+              default:
+                targetStepScreen = const CreateProfileScreen();
+            }
+            Navigator.pushAndRemoveUntil(
+              context,
+              SlideUpPageRoute(page: targetStepScreen),
+              (route) => false,
+            );
           }
-          Navigator.pushAndRemoveUntil(
-            context,
-            SlideUpPageRoute(page: targetStepScreen),
-            (route) => false,
-          );
         }
+
+        await _promptSaveCredentialsIfRequested(
+          identifier: email,
+          onProceed: navigateToNext,
+        );
         return;
       }
     } catch (e) {
@@ -1908,16 +1947,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                           ],
                                                         ),
                                                         TextButton(
-                                                          onPressed: () {
-                                                            Navigator.push(
-                                                              context,
-                                                              SlideUpPageRoute(
-                                                                page: ForgotPasswordScreen(
-                                                                  initialEmail: _emailController.text.trim(),
-                                                                ),
-                                                              ),
-                                                            );
-                                                          },
+                                                          onPressed: _openForgotPassword,
                                                           style: TextButton.styleFrom(
                                                             padding: EdgeInsets.zero,
                                                             minimumSize: Size.zero,
@@ -1940,105 +1970,43 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                               const SizedBox(height: 20),
 
-                                              // Primary Continue / Sign In Button with AnimatedSwitcher
+                                              // Primary Continue / Sign In Button
                                               SizedBox(
                                                 width: double.infinity,
                                                 height: 46,
                                                 child: ElevatedButton(
-                                                  onPressed: _isLoading ? null : _handleAuthAction,
+                                                  onPressed: _isLoading ? () {} : _handleAuthAction,
                                                   style: ElevatedButton.styleFrom(
                                                     backgroundColor: const Color(0xFF0066FF),
                                                     foregroundColor: Colors.white,
+                                                    disabledBackgroundColor: const Color(0xFF0066FF),
+                                                    disabledForegroundColor: Colors.white,
                                                     elevation: 0,
                                                     shape: RoundedRectangleBorder(
                                                       borderRadius: BorderRadius.circular(10),
                                                     ),
                                                   ),
-                                                  child: AnimatedSwitcher(
-                                                    duration: const Duration(milliseconds: 200),
-                                                    child: _isLoading
-                                                        ? const SizedBox(
-                                                            key: ValueKey('loading'),
-                                                            width: 20,
-                                                            height: 20,
-                                                            child: CircularProgressIndicator(
-                                                              color: Colors.white,
-                                                              strokeWidth: 2.2,
-                                                            ),
-                                                          )
-                                                        : Text(
-                                                            !_isEmailLogin ? 'Continue' : 'Sign In',
-                                                            key: ValueKey(!_isEmailLogin ? 'continue' : 'signin'),
-                                                            style: const TextStyle(
-                                                              fontSize: 15,
-                                                              fontWeight: FontWeight.w700,
-                                                            ),
+                                                  child: _isLoading
+                                                      ? const SizedBox(
+                                                          width: 20,
+                                                          height: 20,
+                                                          child: CircularProgressIndicator(
+                                                            strokeWidth: 2.2,
+                                                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                                           ),
-                                                  ),
-                                                ),
-                                              ),
-
-                                              const SizedBox(height: 16),
-
-                                              // Divider "— or —"
-                                              Row(
-                                                children: const [
-                                                  Expanded(
-                                                      child: Divider(
-                                                          color: Color(0xFFE2E8F0), thickness: 1)),
-                                                  Padding(
-                                                    padding: EdgeInsets.symmetric(horizontal: 12),
-                                                    child: Text(
-                                                      '— or —',
-                                                      style: TextStyle(
-                                                        fontSize: 12,
-                                                        fontWeight: FontWeight.w500,
-                                                        color: Color(0xFF94A3B8),
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  Expanded(
-                                                      child: Divider(
-                                                          color: Color(0xFFE2E8F0), thickness: 1)),
-                                                ],
-                                              ),
-
-                                              const SizedBox(height: 16),
-
-                                              // Google Sign In Button
-                                              SizedBox(
-                                                width: double.infinity,
-                                                height: 46,
-                                                child: OutlinedButton(
-                                                  onPressed: _isLoading ? null : _handleGoogleSignIn,
-                                                  style: OutlinedButton.styleFrom(
-                                                    backgroundColor: Colors.white,
-                                                    foregroundColor: const Color(0xFF334155),
-                                                    side: const BorderSide(
-                                                        color: Color(0xFFE2E8F0), width: 1.2),
-                                                    shape: RoundedRectangleBorder(
-                                                      borderRadius: BorderRadius.circular(10),
-                                                    ),
-                                                  ),
-                                                  child: Row(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      _buildGoogleColoredIcon(size: 18),
-                                                      const SizedBox(width: 10),
-                                                      const Text(
-                                                        'Sign in with Google',
-                                                        style: TextStyle(
-                                                          fontSize: 14,
-                                                          fontWeight: FontWeight.w600,
-                                                          color: Color(0xFF334155),
+                                                        )
+                                                      : Text(
+                                                          !_isEmailLogin ? 'Continue' : 'Sign In',
+                                                          style: const TextStyle(
+                                                            fontSize: 15,
+                                                            fontWeight: FontWeight.w700,
+                                                            color: Colors.white,
+                                                          ),
                                                         ),
-                                                      ),
-                                                    ],
-                                                  ),
                                                 ),
                                               ),
 
-                                              const SizedBox(height: 24),
+                                              const SizedBox(height: 20),
 
                                               // Footer Link matching Mockup: "New in Apna POS? Contact Us"
                                               Center(
@@ -2604,16 +2572,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ],
                                   ),
                                   TextButton(
-                                    onPressed: () {
-                                      Navigator.push(
-                                        context,
-                                        SlideUpPageRoute(
-                                          page: ForgotPasswordScreen(
-                                            initialEmail: _emailController.text.trim(),
-                                          ),
-                                        ),
-                                      );
-                                    },
+                                    onPressed: _openForgotPassword,
                                     style: TextButton.styleFrom(
 
                                       padding: EdgeInsets.zero,
@@ -2651,10 +2610,12 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ],
                               ),
                               child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleAuthAction,
+                                onPressed: _isLoading ? () {} : _handleAuthAction,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.transparent,
                                   shadowColor: Colors.transparent,
+                                  disabledBackgroundColor: Colors.transparent,
+                                  disabledForegroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(26),
                                   ),
@@ -2664,8 +2625,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                         width: 22,
                                         height: 22,
                                         child: CircularProgressIndicator(
-                                          color: Colors.white,
                                           strokeWidth: 2.5,
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
                                       )
                                     : Text(

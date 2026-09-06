@@ -437,13 +437,25 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                         LayoutBuilder(
                           builder: (context, constraints) {
                             final width = constraints.maxWidth;
-                            final cols = width >= 600 ? 5 : width >= 420 ? 4 : 3;
+                            final cols = width >= 1400
+                                ? 10
+                                : width >= 1150
+                                    ? 8
+                                    : width >= 900
+                                        ? 7
+                                        : width >= 720
+                                            ? 6
+                                            : width >= 540
+                                                ? 5
+                                                : width >= 380
+                                                    ? 4
+                                                    : 3;
                             return GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: cols,
-                            childAspectRatio: 1.0,
+                            childAspectRatio: width >= 600 ? 1.15 : 1.05,
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
@@ -467,31 +479,31 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
 
                             return InkWell(
                               onTap: () => _openPosForTable(table.name),
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(12),
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16), // SEMI CURVED CORNERS BOX
-                                  border: Border.all(color: statusColor, width: 2),
+                                  borderRadius: BorderRadius.circular(12), // SEMI CURVED CORNERS BOX
+                                  border: Border.all(color: statusColor, width: 1.5),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: statusColor.withOpacity(0.15),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 3),
+                                      color: statusColor.withOpacity(0.12),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
                                     ),
                                   ],
                                 ),
-                                padding: const EdgeInsets.all(7),
+                                padding: const EdgeInsets.all(6),
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     // 1) DROPDOWN SELECTOR AT THE VERY TOP OF TABLE BOX (DISABLED IF RUNNING KOT)
                                     Container(
-                                      height: 26,
+                                      height: 22,
                                       padding: const EdgeInsets.symmetric(horizontal: 4),
                                       decoration: BoxDecoration(
                                         color: statusColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(8),
+                                        borderRadius: BorderRadius.circular(6),
                                         border: Border.all(color: statusColor.withOpacity(0.5)),
                                       ),
                                       child: DropdownButtonHideUnderline(
@@ -500,7 +512,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                           dropdownColor: Colors.white,
                                           isDense: true,
                                           isExpanded: true,
-                                          icon: Icon(Icons.arrow_drop_down, color: isRunningKot ? const Color(0xFFEF4444) : statusColor, size: 16),
+                                          icon: Icon(Icons.arrow_drop_down, color: isRunningKot ? const Color(0xFFEF4444) : statusColor, size: 14),
                                           items: TableStatus.values.map((s) {
                                             final isKotOption = s == TableStatus.runningKot;
                                             return DropdownMenuItem(
@@ -513,9 +525,9 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                                 softWrap: false,
                                                 style: TextStyle(
                                                   color: _getStatusColor(s),
-                                                  fontSize: 11, // LARGER FONT SIZE FOR RUNNING KOT TEXT
+                                                  fontSize: 10,
                                                   fontWeight: FontWeight.w900,
-                                                  letterSpacing: 0.2,
+                                                  letterSpacing: 0.1,
                                                 ),
                                               ),
                                             );
@@ -532,19 +544,19 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                         ),
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 3),
 
                                     // 2) TABLE NAME & FLOOR (NO GUEST NO)
                                     Text(
                                       table.name,
-                                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     const SizedBox(height: 1),
                                     Text(
                                       table.floor,
-                                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.5, fontWeight: FontWeight.w500),
+                                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.0, fontWeight: FontWeight.w500),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
@@ -557,64 +569,64 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                       children: [
                                         if (activeAmount > 0)
                                           Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                                             decoration: BoxDecoration(
                                               color: statusColor.withOpacity(0.12),
-                                              borderRadius: BorderRadius.circular(6),
+                                              borderRadius: BorderRadius.circular(5),
                                               border: Border.all(color: statusColor.withOpacity(0.4)),
                                             ),
                                             child: Text(
                                               '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
-                                              style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 10),
+                                              style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9.5),
                                             ),
                                           )
                                         else
                                           const Text(
                                             'No Order',
-                                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.5, fontWeight: FontWeight.w600),
+                                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.0, fontWeight: FontWeight.w600),
                                           ),
 
                                         // IF PRODUCTS IN CART: SHOW ONLY VIEW ICON. ELSE: SHOW GREEN ADD TO CART ICON
                                         if (hasProductsInCart)
                                           InkWell(
                                             onTap: () => _openPosForTable(table.name),
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(6),
                                             child: Container(
-                                              width: 26,
-                                              height: 26,
+                                              width: 22,
+                                              height: 22,
                                               decoration: BoxDecoration(
                                                 color: statusColor,
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius: BorderRadius.circular(6),
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: statusColor.withOpacity(0.3),
-                                                    blurRadius: 4,
-                                                    offset: const Offset(0, 2),
+                                                    blurRadius: 3,
+                                                    offset: const Offset(0, 1),
                                                   ),
                                                 ],
                                               ),
-                                              child: const Icon(Icons.visibility_outlined, color: Colors.white, size: 16),
+                                              child: const Icon(Icons.visibility_outlined, color: Colors.white, size: 13),
                                             ),
                                           )
                                         else
                                           InkWell(
                                             onTap: () => _openPosForTable(table.name),
-                                            borderRadius: BorderRadius.circular(8),
+                                            borderRadius: BorderRadius.circular(6),
                                             child: Container(
-                                              width: 26,
-                                              height: 26,
+                                              width: 22,
+                                              height: 22,
                                               decoration: BoxDecoration(
                                                 color: const Color(0xFF10B981), // Emerald Green
-                                                borderRadius: BorderRadius.circular(8),
+                                                borderRadius: BorderRadius.circular(6),
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: const Color(0xFF10B981).withOpacity(0.3),
-                                                    blurRadius: 4,
-                                                    offset: const Offset(0, 2),
+                                                    blurRadius: 3,
+                                                    offset: const Offset(0, 1),
                                                   ),
                                                 ],
                                               ),
-                                              child: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 16),
+                                              child: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 13),
                                             ),
                                           ),
                                       ],
@@ -643,17 +655,17 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
 
   Widget _buildStatCard(String title, String value, String subtitle, IconData icon, Color color) {
     return Container(
-      width: 155,
-      padding: const EdgeInsets.all(10),
+      width: 140,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16), // SEMI CURVED CORNERS BOX
+        borderRadius: BorderRadius.circular(12), // SEMI CURVED CORNERS BOX
         border: Border.all(color: color.withOpacity(0.4), width: 1.5),
         boxShadow: [
           BoxShadow(
             color: color.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -663,14 +675,14 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11.5, fontWeight: FontWeight.bold)),
-              Icon(icon, color: color, size: 16),
+              Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+              Icon(icon, color: color, size: 15),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 2),
-          Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 9.5)),
+          const SizedBox(height: 3),
+          Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900)),
+          const SizedBox(height: 1),
+          Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 9)),
         ],
       ),
     );

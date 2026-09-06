@@ -438,7 +438,7 @@ class ReceiptDialog extends StatelessWidget {
                           _buildReceiptRow('Sub Total', '$currency${_formatAmount(order.subtotal)}'),
                           if (order.discountAmount > 0) ...[
                             const SizedBox(height: 3),
-                            _buildReceiptRow('Discount', '- $currency${_formatAmount(order.discountAmount)}'),
+                            _buildReceiptRow('Discount', '- $currency${_formatAmount(order.discountAmount)}', textColor: const Color(0xFF15803D)),
                           ],
                           if (order.taxAmount > 0) ...[
                             const SizedBox(height: 3),
@@ -648,7 +648,7 @@ class ReceiptDialog extends StatelessWidget {
     );
   }
 
-  Widget _buildReceiptRow(String title, String val, {bool isBold = false}) {
+  Widget _buildReceiptRow(String title, String val, {bool isBold = false, Color? textColor}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -657,7 +657,7 @@ class ReceiptDialog extends StatelessWidget {
           style: TextStyle(
             fontSize: isBold ? 11.5 : 11,
             fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-            color: const Color(0xFF000000),
+            color: textColor ?? const Color(0xFF000000),
           ),
         ),
         Text(
@@ -665,7 +665,7 @@ class ReceiptDialog extends StatelessWidget {
           style: TextStyle(
             fontSize: isBold ? 11.5 : 11,
             fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
-            color: const Color(0xFF000000),
+            color: textColor ?? const Color(0xFF000000),
           ),
         ),
       ],

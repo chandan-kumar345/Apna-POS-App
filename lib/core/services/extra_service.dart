@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import '../models/extra_model.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
+import '../utils/order_calculator.dart';
 
 class ExtraService {
   final ApiClient _apiClient = ApiClient();
@@ -37,45 +38,83 @@ class ExtraService {
     }
   }
 
-  /// Validate coupon code against subtotal via API
+  /// Validate coupon/promo code against subtotal via API or dynamic percentage parser
   Future<CouponValidationResult> validateCoupon({
     required String code,
     required double subtotal,
+    List<dynamic>? availableCoupons,
   }) async {
+    final cleanCode = code.trim();
+    if (cleanCode.isEmpty) {
+      return CouponValidationResult(
+        isValid: false,
+        message: 'Please enter a valid promo code or percentage (e.g. 10%, SAVE20)',
+        discountAmount: 0.0,
+      );
+    }
+
     try {
       final response = await _apiClient.post(
         ApiEndpoints.validateCoupon,
         data: {
-          'code': code.trim(),
+          'code': cleanCode,
           'subtotal': subtotal,
         },
       );
 
       if (response != null && response['data'] != null) {
-        return CouponValidationResult.fromJson(
+        final result = CouponValidationResult.fromJson(
           response['data'] as Map<String, dynamic>,
         );
+        if (result.isValid) {
+          return result;
+        }
       }
     } catch (e) {
-      debugPrint('[ExtraService.validateCoupon] API error: $e');
+      debugPrint('[ExtraService.validateCoupon] API note: $e');
     }
 
-    // Local fallback if offline
-    final cleanCode = code.trim().toUpperCase();
-    if (cleanCode.isEmpty) {
+    // Local dynamic percentage parsing & offline validation
+    final upper = cleanCode.toUpperCase();
+    final double percent = OrderCalculator.parsePromoDiscountPercent(
+      cleanCode,
+      availableCoupons: availableCoupons,
+    );
+
+    if (percent > 0) {
+      final double discount = (subtotal * (percent / 100.0)).clamp(0.0, subtotal);
+      final percentFormatted = percent.truncateToDouble() == percent
+          ? percent.toStringAsFixed(0)
+          : percent.toStringAsFixed(1);
       return CouponValidationResult(
-        isValid: false,
-        message: 'Please enter a valid coupon code',
-        discountAmount: 0.0,
+        isValid: true,
+        message: 'Promo "$cleanCode" applied! $percentFormatted% off (-₹${discount.toStringAsFixed(2)}) before GST',
+        discountAmount: discount,
+        extra: ExtraModel(
+          id: 'promo_$cleanCode',
+          name: cleanCode,
+          code: cleanCode,
+          discountType: 'percent',
+          value: percent,
+        ),
       );
     }
 
-    double discount = 0.0;
-    if (cleanCode == 'SAVE50') {
-      discount = (subtotal * 0.50).clamp(0.0, subtotal);
-    } else if (cleanCode == 'FLAT100') {
+    if (upper == 'FLAT100') {
       if (subtotal >= 499) {
-        discount = 100.0.clamp(0.0, subtotal);
+        final discount = 100.0.clamp(0.0, subtotal);
+        return CouponValidationResult(
+          isValid: true,
+          message: 'Coupon "FLAT100" applied! ₹100 flat discount off before GST',
+          discountAmount: discount,
+          extra: ExtraModel(
+            id: 'local_FLAT100',
+            name: 'FLAT100',
+            code: 'FLAT100',
+            discountType: 'flat',
+            value: 100.0,
+          ),
+        );
       } else {
         return CouponValidationResult(
           isValid: false,
@@ -83,22 +122,12 @@ class ExtraService {
           discountAmount: 0.0,
         );
       }
-    } else if (cleanCode == 'WELCOME10') {
-      discount = (subtotal * 0.10).clamp(0.0, subtotal);
-    } else {
-      discount = 50.0.clamp(0.0, subtotal);
     }
 
     return CouponValidationResult(
-      isValid: true,
-      message: 'Coupon "$cleanCode" applied!',
-      discountAmount: discount,
-      extra: ExtraModel(
-        id: 'local_$cleanCode',
-        name: cleanCode,
-        code: cleanCode,
-        value: discount,
-      ),
+      isValid: false,
+      message: 'Invalid promo code. Enter a percentage (e.g. 10%, 20%) or coupon code.',
+      discountAmount: 0.0,
     );
   }
 }

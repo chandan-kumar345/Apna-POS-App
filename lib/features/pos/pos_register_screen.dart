@@ -56,6 +56,52 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   double _discountAmount = 0.0;
   double _tipAmount = 0.0;
   String _appliedCoupon = '';
+  final TextEditingController _promoCodeController = TextEditingController();
+
+  void _resetDiscountAndPromoState() {
+    _appliedCoupon = '';
+    _promoCodeController.clear();
+    _discountInputValue = 0.0;
+    _discountAmount = 0.0;
+    _discountMode = 'percent';
+    _selectedDiscountProductType = null;
+    _loyaltyDiscountAmount = 0.0;
+    _redeemedLoyaltyStageId = null;
+    _redeemedLoyaltyPoints = 0;
+    _tipAmount = 0.0;
+  }
+
+  void _saveCurrentDraft() {
+    String? draftKey;
+    if (_selectedOrderType == OrderType.dineIn) {
+      if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+        draftKey = _selectedTable!;
+      }
+    } else if (_selectedOrderType == OrderType.takeaway) {
+      draftKey = _activeRunningOrderId ?? 'Takeaway';
+    } else if (_selectedOrderType == OrderType.delivery) {
+      draftKey = _activeRunningOrderId ?? 'Delivery';
+    }
+
+    if (draftKey != null && draftKey.isNotEmpty) {
+      if (_cartItems.isNotEmpty) {
+        db.setLiveTableCart(draftKey, List.from(_cartItems));
+        db.setLiveCartTotal(draftKey, cartTotal);
+      } else {
+        db.setLiveTableCart(draftKey, []);
+        db.setLiveCartTotal(draftKey, 0.0);
+      }
+      db.setLiveTableDiscount(
+        draftKey,
+        coupon: _appliedCoupon,
+        discountInput: _discountInputValue,
+        discountMode: _discountMode,
+        discountAmount: computedDiscountAmount,
+      );
+    }
+  }
+
+  void _saveCurrentTableDraft() => _saveCurrentDraft();
   String _discountMode = 'percent';
   double _discountInputValue = 0.0;
   String? _selectedDiscountProductType;
@@ -156,6 +202,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   @override
   void dispose() {
+    _promoCodeController.dispose();
     db.removeListener(_onDbChange);
     super.dispose();
   }
@@ -173,11 +220,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   void _loadCartForTable(String tableName, {bool openCartModal = false}) {
+    // Save draft of current active table/context if switching
+    if (_selectedTable != tableName || _selectedOrderType != OrderType.dineIn) {
+      _saveCurrentDraft();
+    }
+
     setState(() {
       _selectedTable = tableName;
       _selectedOrderType = OrderType.dineIn;
       _cartItems.clear();
-      _discountAmount = 0.0;
+      _resetDiscountAndPromoState();
       _activeRunningOrderId = null;
       _activeRunningOrderNumber = null;
       _customerName = '';
@@ -190,19 +242,26 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
       if (activeOrder != null && activeOrder.items.isNotEmpty) {
         _cartItems.addAll(activeOrder.items);
-        _discountAmount = activeOrder.discountAmount;
         _activeRunningOrderId = activeOrder.id;
         _activeRunningOrderNumber = activeOrder.orderNumber;
         _customerName = activeOrder.customerName ?? '';
         _customerPhone = activeOrder.customerPhone ?? '';
       } else {
-        final tbl = db.tables.where((t) => isSameTable(t.name, tableName)).firstOrNull;
-        if (tbl != null && tbl.status != TableStatus.free) {
-          final savedCart = db.getLiveTableCart(tableName);
-          if (savedCart.isNotEmpty) {
-            _cartItems.addAll(savedCart);
-          }
+        final savedCart = db.getLiveTableCart(tableName);
+        if (savedCart.isNotEmpty) {
+          _cartItems.addAll(savedCart);
         }
+      }
+
+      final savedDiscount = db.getLiveTableDiscount(tableName);
+      if (savedDiscount != null) {
+        _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
+        _promoCodeController.text = _appliedCoupon;
+        _discountInputValue = (savedDiscount['discountInput'] as num?)?.toDouble() ?? 0.0;
+        _discountMode = savedDiscount['discountMode']?.toString() ?? 'percent';
+        _discountAmount = (savedDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0;
+      } else if (activeOrder != null && activeOrder.discountAmount > 0) {
+        _discountAmount = activeOrder.discountAmount;
       }
     });
 
@@ -768,6 +827,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     items: _cartItems,
     defaultTaxRate: (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0),
     appliedCoupon: _appliedCoupon,
+    availableCoupons: db.extras,
     discountInputValue: _discountInputValue,
     discountMode: _discountMode,
     selectedDiscountProductType: _selectedDiscountProductType,
@@ -775,6 +835,81 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     tipAmount: _tipAmount,
     deliveryCharge: 0.0,
   );
+
+  void _applyPromoCode(String code, StateSetter setStateCart) {
+    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final clean = code.trim();
+    if (clean.isEmpty) {
+      setStateCart(() {
+        _appliedCoupon = '';
+        _promoCodeController.clear();
+        _discountInputValue = 0.0;
+        _discountAmount = 0.0;
+      });
+      setState(() {
+        _appliedCoupon = '';
+        _discountInputValue = 0.0;
+        _discountAmount = 0.0;
+      });
+      _saveCurrentDraft();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Promo code cleared.'),
+          duration: Duration(seconds: 1),
+          backgroundColor: Color(0xFF051C48),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final percent = OrderCalculator.parsePromoDiscountPercent(clean, availableCoupons: db.extras);
+    final isFlat = clean.toUpperCase().startsWith('FLAT') && !clean.endsWith('%');
+
+    if (percent > 0 || isFlat) {
+      setStateCart(() {
+        _appliedCoupon = clean;
+        _promoCodeController.text = clean;
+        _discountInputValue = percent;
+        _discountMode = isFlat ? 'flat' : 'percent';
+        _discountAmount = 0.0;
+      });
+      setState(() {
+        _appliedCoupon = clean;
+        _discountInputValue = percent;
+        _discountMode = isFlat ? 'flat' : 'percent';
+        _discountAmount = 0.0;
+      });
+      _saveCurrentDraft();
+      final discount = computedDiscountAmount;
+      final percentFormatted = percent.truncateToDouble() == percent
+          ? percent.toStringAsFixed(0)
+          : percent.toStringAsFixed(1);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            percent > 0
+                ? 'Promo code "$clean" applied: $percentFormatted% off (-$currency${discount.toStringAsFixed(2)}) before GST'
+                : 'Promo code "$clean" applied! (-$currency${discount.toStringAsFixed(2)})',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          duration: const Duration(seconds: 2),
+          backgroundColor: const Color(0xFF051C48),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid promo code. Enter a percentage (e.g. 10%, 20%) or coupon code.'),
+          duration: Duration(seconds: 2),
+          backgroundColor: Color(0xFFDC2626),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
 
   int get totalCartItemCount => _cartItems.fold(0, (sum, i) => sum + i.quantity);
   double get cartSubtotal => currentOrderCalculation.subtotal;
@@ -2004,7 +2139,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       final activeId = _activeRunningOrderId;
 
       _cartItems.clear();
-      _discountAmount = 0.0;
+      _resetDiscountAndPromoState();
       _activeRunningOrderId = null;
       _activeRunningOrderNumber = null;
       _customerName = '';
@@ -2052,19 +2187,37 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     });
   }
 
+  Widget _buildStatusLegendDot(Color color, String label) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+        ),
+      ],
+    );
+  }
+
   /// Dynamically shift all cart items, orders, and details from current table to new table
-  Future<void> _shiftTable(String newTableName, StateSetter setStateModal) async {
+  Future<void> _shiftTable(String newTableName, [StateSetter? setStateModal]) async {
     final oldTable = _selectedTable;
     if (oldTable == null || oldTable.isEmpty || isSameTable(oldTable, newTableName)) {
       _switchTable(newTableName, setStateModal);
       return;
     }
 
-    // 1. Sync any active in-memory cart items to old table first
-    if (_cartItems.isNotEmpty) {
-      db.setLiveTableCart(oldTable, List.from(_cartItems));
-      db.setLiveCartTotal(oldTable, cartTotal);
-    }
+    // 1. Sync any active in-memory cart items & discount to old table first
+    _saveCurrentTableDraft();
 
     // 2. Perform full data migration in local database
     db.shiftTableData(oldTable, newTableName);
@@ -2083,34 +2236,37 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     });
     _loadCartForTable(newTableName);
 
-    setStateModal(() {});
+    if (setStateModal != null) {
+      setStateModal(() {});
+    }
     setState(() {});
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Table shifted from $oldTable to $newTableName with all items'),
+          content: Row(
+            children: [
+              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Table shifted from $oldTable to $newTableName with all items & discounts'),
+              ),
+            ],
+          ),
           backgroundColor: const Color(0xFF00A86B),
           behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 2),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
   }
 
-  void _switchTable(String newTableName, StateSetter setStateModal) {
+  void _switchTable(String newTableName, [StateSetter? setStateModal]) {
     final oldTable = _selectedTable;
 
-    if (oldTable != null && oldTable.isNotEmpty && oldTable.trim().toLowerCase() != newTableName.trim().toLowerCase()) {
-      final oldActiveOrder = db.orders.where((o) =>
-        ((o.tableNumber?.trim().toLowerCase() ?? '') == oldTable.trim().toLowerCase() ||
-         'T-${o.tableNumber}'.toLowerCase() == oldTable.trim().toLowerCase()) &&
-        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-      ).firstOrNull;
-
-      if (oldActiveOrder == null && _cartItems.isNotEmpty) {
-        db.setLiveTableCart(oldTable, List.from(_cartItems));
-        db.setLiveCartTotal(oldTable, cartTotal);
+    if (oldTable != null && oldTable.isNotEmpty && !isSameTable(oldTable, newTableName)) {
+      _saveCurrentDraft();
+      if (_cartItems.isNotEmpty) {
         final oldTbl = db.tables.where((t) => isSameTable(t.name, oldTable)).firstOrNull;
         if (oldTbl != null && oldTbl.status == TableStatus.free) {
           db.updateTableStatus(oldTbl.id, TableStatus.occupied);
@@ -2119,289 +2275,640 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
 
     _loadCartForTable(newTableName);
-    setStateModal(() {});
+    if (setStateModal != null) {
+      setStateModal(() {});
+    }
     setState(() {});
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(Icons.swap_horiz_rounded, color: Colors.white, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('Switched to Table $newTableName'),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFF051C48),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
-  void _showChangeTableFloorWiseModal(StateSetter setStateModal) {
-    showModalBottomSheet(
+  Future<void> _handleTableSelection({
+    required BuildContext dialogCtx,
+    required TableModel targetTable,
+    required bool isShiftMode,
+    required bool hasActiveOrderOrCart,
+    required String currentTable,
+    StateSetter? setStateCart,
+  }) async {
+    if (isSameTable(targetTable.name, currentTable)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Table ${targetTable.name} is already active'),
+          backgroundColor: const Color(0xFF051C48),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+
+    if (dialogCtx.mounted) {
+      Navigator.pop(dialogCtx);
+    }
+
+    // Direct shift/switch without confirmation popup
+    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty) {
+      await _shiftTable(targetTable.name, setStateCart);
+    } else {
+      _switchTable(targetTable.name, setStateCart);
+    }
+  }
+
+  void _showChangeTableDialog([StateSetter? setStateCart]) {
+    final currentTable = _selectedTable ?? '';
+    final hasActiveOrderOrCart = _cartItems.isNotEmpty ||
+        _activeRunningOrderId != null ||
+        (currentTable.isNotEmpty && _isTableRunningKot(currentTable));
+
+    showDialog(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) {
+      barrierDismissible: true,
+      builder: (dialogCtx) {
         String activeFloorTab = 'All';
+        String searchQuery = '';
+        bool isShiftMode = hasActiveOrderOrCart;
 
         return StatefulBuilder(
-          builder: (context, setFloorState) {
-            final floors = ['All', ...db.tables.map((t) => t.floor).toSet()];
-            final filteredTables = activeFloorTab == 'All'
-                ? db.tables
-                : db.tables.where((t) => t.floor == activeFloorTab).toList();
+          builder: (context, setModalState) {
+            final allFloors = [
+              'All',
+              ...db.tables.map((t) => t.floor.trim()).where((f) => f.isNotEmpty).toSet(),
+            ];
 
+            final filteredTables = db.tables.where((t) {
+              final matchesFloor = activeFloorTab == 'All' || t.floor.trim().toLowerCase() == activeFloorTab.toLowerCase();
+              final matchesSearch = searchQuery.isEmpty ||
+                  t.name.toLowerCase().contains(searchQuery.toLowerCase()) ||
+                  t.tableNumber.toString().contains(searchQuery);
+              return matchesFloor && matchesSearch;
+            }).toList();
+
+            // Sort tables numerically and alphabetically
+            filteredTables.sort((a, b) {
+              final numA = a.tableNumber > 0
+                  ? a.tableNumber
+                  : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+              final numB = b.tableNumber > 0
+                  ? b.tableNumber
+                  : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+              if (numA != numB) return numA.compareTo(numB);
+              return a.name.compareTo(b.name);
+            });
+
+            // Group by floor for clean sections
             final Map<String, List<TableModel>> tablesByFloor = {};
             for (var t in filteredTables) {
-              tablesByFloor.putIfAbsent(t.floor, () => []).add(t);
-            }
-            for (var floorList in tablesByFloor.values) {
-              floorList.sort((a, b) {
-                final numA = a.tableNumber > 0
-                    ? a.tableNumber
-                    : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
-                final numB = b.tableNumber > 0
-                    ? b.tableNumber
-                    : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
-                if (numA != numB) {
-                  return numA.compareTo(numB);
-                }
-                return a.name.compareTo(b.name);
-              });
+              tablesByFloor.putIfAbsent(t.floor.trim().isEmpty ? 'General' : t.floor.trim(), () => []).add(t);
             }
 
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.75,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black26, blurRadius: 25, offset: Offset(0, -8)),
-                ],
+            final mediaWidth = MediaQuery.of(context).size.width;
+            final isDesktop = mediaWidth >= 768;
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: isDesktop ? 32 : 12,
+                vertical: isDesktop ? 24 : 16,
               ),
-              child: Column(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 4,
-                    margin: const EdgeInsets.only(top: 10, bottom: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(10),
+              child: Container(
+                width: isDesktop ? 920 : double.infinity,
+                height: isDesktop ? 700 : MediaQuery.of(context).size.height * 0.88,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.black26,
+                      blurRadius: 30,
+                      offset: Offset(0, 10),
                     ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48)),
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Select Table (Floor-Wise)',
-                          style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                        ),
-                        const Spacer(),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(color: Color(0xFFE2E8F0), height: 1),
-
-                  // Floor Filter Tabs
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    child: Row(
-                      children: [
-                        const Text(
-                          'Floor:',
-                          style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(width: 8),
-                        ...floors.map((flr) {
-                          final isSel = activeFloorTab == flr;
-                          return Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: ChoiceChip(
-                              label: Text(flr),
-                              labelStyle: TextStyle(
-                                color: isSel ? Colors.white : const Color(0xFF475569),
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                              selected: isSel,
-                              selectedColor: const Color(0xFF051C48),
-                              backgroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
-                              onSelected: (_) => setFloorState(() => activeFloorTab = flr),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // 1. Header Bar
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF051C48),
+                        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(7),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                          );
-                        }),
-                      ],
+                            child: const Icon(
+                              Icons.table_restaurant_rounded,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Text(
+                                  'Change / Shift Table',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  currentTable.isNotEmpty
+                                      ? (hasActiveOrderOrCart
+                                          ? 'Current: Table $currentTable • ${_cartItems.length} items (₹${cartTotal.toStringAsFixed(0)})'
+                                          : 'Current: Table $currentTable (Empty)')
+                                      : 'No table currently selected',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.8),
+                                    fontSize: 12,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            tooltip: 'Close',
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
 
-                  // Floor-wise Table Grid View (Seat text removed, amount displayed as plain text without button)
-                  Expanded(
-                    child: ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                      itemCount: tablesByFloor.keys.length,
-                      itemBuilder: (context, floorIdx) {
-                        final floorName = tablesByFloor.keys.elementAt(floorIdx);
-                        final floorTables = tablesByFloor[floorName]!;
-
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                    // 2. Action Mode Selector (When active items or active orders exist)
+                    if (hasActiveOrderOrCart && currentTable.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFEFF6FF),
+                          border: Border(bottom: BorderSide(color: Color(0xFFDBEAFE))),
+                        ),
+                        child: Row(
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4, bottom: 6, top: 4),
-                              child: Row(
-                                children: [
-                                  Container(
-                                    width: 4,
-                                    height: 15,
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF051C48),
-                                      borderRadius: BorderRadius.circular(4),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setModalState(() => isShiftMode = true),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: isShiftMode ? const Color(0xFF00A86B) : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: isShiftMode ? const Color(0xFF00A86B) : const Color(0xFFCBD5E1),
+                                      width: isShiftMode ? 1.5 : 1.0,
                                     ),
+                                    boxShadow: isShiftMode
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            )
+                                          ]
+                                        : null,
                                   ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    floorName,
-                                    style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    '(${floorTables.length} Tables)',
-                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 3,
-                                childAspectRatio: 0.92,
-                                crossAxisSpacing: 8,
-                                mainAxisSpacing: 8,
-                              ),
-                              itemCount: floorTables.length,
-                              itemBuilder: (context, idx) {
-                                final table = floorTables[idx];
-                                final isCurrentSelected = _selectedTable == table.name;
-                                final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
-                                final statusColor = _getTableStatusColor(validStatus);
-
-                                final activeOrder = validStatus == TableStatus.free
-                                    ? null
-                                    : db.orders.where((o) => ((o.tableNumber?.trim().toLowerCase() ?? '') == table.name.trim().toLowerCase() || 'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
-                                final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
-                                final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
-                                final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
-                                final hasProducts = validStatus != TableStatus.free && activeAmount > 0;
-
-                                return InkWell(
-                                  onTap: () {
-                                    _shiftTable(table.name, setStateModal);
-                                    Navigator.pop(context);
-                                  },
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      color: isCurrentSelected ? const Color(0xFFE0F2FE) : Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(
-                                        color: isCurrentSelected ? const Color(0xFF0284C7) : statusColor,
-                                        width: isCurrentSelected ? 2.5 : 2.0,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.drive_file_move_rounded,
+                                        size: 16,
+                                        color: isShiftMode ? Colors.white : const Color(0xFF00A86B),
                                       ),
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: statusColor.withValues(alpha: 0.12),
-                                          blurRadius: 5,
-                                          offset: const Offset(0, 2),
-                                        ),
-                                      ],
-                                    ),
-                                    padding: const EdgeInsets.all(6),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        // Status Pill Badge (Top)
-                                        Row(
-                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Flexible(
-                                              child: Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: statusColor.withValues(alpha: 0.12),
-                                                  borderRadius: BorderRadius.circular(6),
-                                                ),
-                                                child: Text(
-                                                  _getTableStatusLabel(validStatus),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                  style: TextStyle(
-                                                    color: statusColor,
-                                                    fontSize: 9.5,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
+                                            Text(
+                                              'Shift Order to New Table',
+                                              style: TextStyle(
+                                                color: isShiftMode ? Colors.white : const Color(0xFF0F172A),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12.5,
                                               ),
+                                              maxLines: 1,
                                             ),
-                                            if (isCurrentSelected)
-                                              const Icon(Icons.check_circle_rounded, color: Color(0xFF0284C7), size: 14),
-                                          ],
-                                        ),
-
-                                        // Middle Table Icon & Title (Flexible / Expanded)
-                                        Expanded(
-                                          child: Center(
-                                            child: Column(
-                                              mainAxisAlignment: MainAxisAlignment.center,
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(Icons.table_restaurant_rounded, color: statusColor, size: 22),
-                                                const SizedBox(height: 2),
-                                                Text(
-                                                  _getFullTableTitle(table.name),
-                                                  textAlign: TextAlign.center,
-                                                  style: const TextStyle(
-                                                    fontWeight: FontWeight.bold,
-                                                    fontSize: 12.5,
-                                                    color: Color(0xFF0F172A),
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow: TextOverflow.ellipsis,
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-
-                                        // Bottom Amount Text
-                                        if (hasProducts)
-                                          Center(
-                                            child: Text(
-                                              '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w900,
-                                                color: Color(0xFF051C48),
+                                            Text(
+                                              'Moves active cart & KOT, frees Table $currentTable',
+                                              style: TextStyle(
+                                                color: isShiftMode ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF64748B),
+                                                fontSize: 10.5,
                                               ),
                                               maxLines: 1,
                                               overflow: TextOverflow.ellipsis,
                                             ),
-                                          ),
-                                      ],
-                                    ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: InkWell(
+                                onTap: () => setModalState(() => isShiftMode = false),
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  decoration: BoxDecoration(
+                                    color: !isShiftMode ? const Color(0xFF051C48) : Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: !isShiftMode ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+                                      width: !isShiftMode ? 1.5 : 1.0,
+                                    ),
+                                    boxShadow: !isShiftMode
+                                        ? [
+                                            BoxShadow(
+                                              color: const Color(0xFF051C48).withValues(alpha: 0.25),
+                                              blurRadius: 4,
+                                              offset: const Offset(0, 2),
+                                            )
+                                          ]
+                                        : null,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.swap_horiz_rounded,
+                                        size: 16,
+                                        color: !isShiftMode ? Colors.white : const Color(0xFF051C48),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Flexible(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              'Switch Table (Keep Order)',
+                                              style: TextStyle(
+                                                color: !isShiftMode ? Colors.white : const Color(0xFF0F172A),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12.5,
+                                              ),
+                                              maxLines: 1,
+                                            ),
+                                            Text(
+                                              'Saves Table $currentTable draft, views new table',
+                                              style: TextStyle(
+                                                color: !isShiftMode ? Colors.white.withValues(alpha: 0.9) : const Color(0xFF64748B),
+                                                fontSize: 10.5,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                    // 3. Search & Floor Filters
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: Row(
+                        children: [
+                          // Search Box
+                          Expanded(
+                            flex: 2,
+                            child: SizedBox(
+                              height: 36,
+                              child: TextField(
+                                onChanged: (v) => setModalState(() => searchQuery = v.trim()),
+                                decoration: InputDecoration(
+                                  hintText: 'Search table name or number...',
+                                  hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                                  prefixIcon: const Icon(Icons.search_rounded, size: 18, color: Color(0xFF64748B)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                  ),
+                                  enabledBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                  ),
+                                  focusedBorder: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(10),
+                                    borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                                  ),
+                                ),
+                                style: const TextStyle(fontSize: 12.5),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          // Floor Chips
+                          Expanded(
+                            flex: 3,
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              physics: const BouncingScrollPhysics(),
+                              child: Row(
+                                children: allFloors.map((flr) {
+                                  final isSel = activeFloorTab == flr;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 6),
+                                    child: ChoiceChip(
+                                      label: Text(flr),
+                                      labelStyle: TextStyle(
+                                        color: isSel ? Colors.white : const Color(0xFF475569),
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 11.5,
+                                      ),
+                                      selected: isSel,
+                                      selectedColor: const Color(0xFF051C48),
+                                      backgroundColor: Colors.white,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+                                      visualDensity: VisualDensity.compact,
+                                      onSelected: (_) => setModalState(() => activeFloorTab = flr),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Status Legend Row
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 4),
+                      child: Row(
+                        children: [
+                          _buildStatusLegendDot(const Color(0xFF10B981), 'Free'),
+                          const SizedBox(width: 12),
+                          _buildStatusLegendDot(const Color(0xFF051C48), 'Occupied'),
+                          const SizedBox(width: 12),
+                          _buildStatusLegendDot(const Color(0xFFEF4444), 'Running KOT'),
+                          const SizedBox(width: 12),
+                          _buildStatusLegendDot(const Color(0xFF8B5CF6), 'Reserved'),
+                        ],
+                      ),
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+
+                    // 4. Tables List / Grid
+                    Expanded(
+                      child: filteredTables.isEmpty
+                          ? Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.table_restaurant_outlined, size: 48, color: Colors.grey.shade400),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'No tables found matching criteria',
+                                    style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            )
+                          : ListView.builder(
+                              physics: const BouncingScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              itemCount: tablesByFloor.keys.length,
+                              itemBuilder: (context, floorIdx) {
+                                final floorName = tablesByFloor.keys.elementAt(floorIdx);
+                                final floorTables = tablesByFloor[floorName]!;
+
+                                return Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 4,
+                                            height: 14,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF051C48),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            floorName,
+                                            style: const TextStyle(
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w900,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            '(${floorTables.length} Tables)',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w600,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    LayoutBuilder(
+                                      builder: (context, constraints) {
+                                        final width = constraints.maxWidth;
+                                        final cols = width >= 800 ? 6 : width >= 600 ? 5 : width >= 440 ? 4 : 3;
+                                        return GridView.builder(
+                                          shrinkWrap: true,
+                                          physics: const NeverScrollableScrollPhysics(),
+                                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                            crossAxisCount: cols,
+                                            childAspectRatio: 1.12,
+                                            crossAxisSpacing: 8,
+                                            mainAxisSpacing: 8,
+                                          ),
+                                          itemCount: floorTables.length,
+                                          itemBuilder: (context, idx) {
+                                            final table = floorTables[idx];
+                                            final isCurrentSelected = isSameTable(table.name, currentTable);
+                                            final validStatus = TableStatus.values.contains(table.status)
+                                                ? table.status
+                                                : TableStatus.free;
+                                            final statusColor = _getTableStatusColor(validStatus);
+
+                                            final activeOrder = validStatus == TableStatus.free
+                                                ? null
+                                                : db.orders.where((o) =>
+                                                    (isSameTable(o.tableNumber, table.name) ||
+                                                     'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) &&
+                                                    (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+                                                  ).firstOrNull;
+                                            final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
+                                            final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
+                                            final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
+
+                                            return InkWell(
+                                              onTap: () => _handleTableSelection(
+                                                dialogCtx: dialogCtx,
+                                                targetTable: table,
+                                                isShiftMode: isShiftMode,
+                                                hasActiveOrderOrCart: hasActiveOrderOrCart,
+                                                currentTable: currentTable,
+                                                setStateCart: setStateCart,
+                                              ),
+                                              borderRadius: BorderRadius.circular(14),
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: isCurrentSelected ? const Color(0xFFEFF6FF) : Colors.white,
+                                                  borderRadius: BorderRadius.circular(14),
+                                                  border: Border.all(
+                                                    color: isCurrentSelected
+                                                        ? const Color(0xFF0284C7)
+                                                        : statusColor.withValues(alpha: 0.65),
+                                                    width: isCurrentSelected ? 2.2 : 1.4,
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: statusColor.withValues(alpha: 0.1),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(0, 2),
+                                                    ),
+                                                  ],
+                                                ),
+                                                padding: const EdgeInsets.all(7),
+                                                child: Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                  children: [
+                                                    // Header Row: Status badge & Current indicator
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Container(
+                                                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                          decoration: BoxDecoration(
+                                                            color: statusColor.withValues(alpha: 0.12),
+                                                            borderRadius: BorderRadius.circular(5),
+                                                          ),
+                                                          child: Text(
+                                                            _getTableStatusLabel(validStatus),
+                                                            style: TextStyle(
+                                                              color: statusColor,
+                                                              fontWeight: FontWeight.w900,
+                                                              fontSize: 9.5,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        if (isCurrentSelected)
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                            decoration: BoxDecoration(
+                                                              color: const Color(0xFF0284C7),
+                                                              borderRadius: BorderRadius.circular(4),
+                                                            ),
+                                                            child: const Text(
+                                                              'CURRENT',
+                                                              style: TextStyle(
+                                                                color: Colors.white,
+                                                                fontWeight: FontWeight.bold,
+                                                                fontSize: 8,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                    // Table Name
+                                                    Text(
+                                                      table.name,
+                                                      style: TextStyle(
+                                                        fontSize: 14,
+                                                        fontWeight: FontWeight.bold,
+                                                        color: isCurrentSelected ? const Color(0xFF0369A1) : const Color(0xFF0F172A),
+                                                      ),
+                                                      maxLines: 1,
+                                                      overflow: TextOverflow.ellipsis,
+                                                    ),
+                                                    // Table Info / Active Amount
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Text(
+                                                          table.floor.isNotEmpty ? table.floor : 'Floor',
+                                                          style: const TextStyle(
+                                                            fontSize: 9.5,
+                                                            color: Color(0xFF64748B),
+                                                            fontWeight: FontWeight.w500,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                        if (activeAmount > 0)
+                                                          Text(
+                                                            '₹${activeAmount.toStringAsFixed(0)}',
+                                                            style: TextStyle(
+                                                              fontSize: 11,
+                                                              fontWeight: FontWeight.w900,
+                                                              color: statusColor,
+                                                            ),
+                                                          ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                    const SizedBox(height: 12),
+                                  ],
                                 );
                               },
                             ),
-                            const SizedBox(height: 10),
-                          ],
-                        );
-                      },
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             );
           },
@@ -2409,6 +2916,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       },
     );
   }
+
 
   void _showAddCustomerDialog(StateSetter setStateModal) {
     showDialog(
@@ -2883,6 +3391,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                               final result = await db.extraService.validateCoupon(
                                                 code: rawCode,
                                                 subtotal: cartSubtotal,
+                                                availableCoupons: db.extras,
                                               );
                                               if (context.mounted) {
                                                 setDialogState(() {
@@ -3149,11 +3658,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                                   setState(() {
                                     _appliedCoupon = tempCoupon;
+                                    _promoCodeController.text = tempCoupon;
                                     _discountMode = tempDiscountMode;
                                     _discountInputValue = discountVal;
                                     _tipAmount = tipVal;
                                     _discountAmount = 0.0; // reset manual override so getter calculates
                                   });
+                                  _saveCurrentDraft();
 
                                   setStateModal(() {});
                                   Navigator.pop(context);
@@ -3232,7 +3743,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
           const SizedBox(height: 2),
           InkWell(
-            onTap: () => _showChangeTableFloorWiseModal(setStateCart),
+            onTap: () => _showChangeTableDialog(setStateCart),
             borderRadius: BorderRadius.circular(10),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
@@ -3383,32 +3894,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           }).toList(),
           onChanged: (val) {
             if (val != null) {
-              if (val != _selectedOrderType) {
-                if (val == OrderType.takeaway) {
-                  _selectedTable = null;
-                } else if (val == OrderType.delivery) {
-                  _selectedTable = null;
-                  if (_customerPhone.isNotEmpty && !_hasDeliveryAddress) {
-                    final cust = db.getCustomerByPhone(_customerPhone);
-                    if (cust != null && cust.address.isNotEmpty) {
-                      _setDeliveryAddressFromCustomer(cust.address);
-                    }
-                  }
-                } else if (val == OrderType.dineIn) {
-                  if (_selectedTable == null || _selectedTable!.isEmpty) {
-                    final nextTable = db.getNextAvailableTableSequence();
-                    _selectedTable = nextTable?.name ?? 'T-1';
+              _switchOrderType(val, setStateCart);
+              if (val == OrderType.delivery && !_hasDeliveryAddress) {
+                if (_customerPhone.isNotEmpty) {
+                  final cust = db.getCustomerByPhone(_customerPhone);
+                  if (cust != null && cust.address.isNotEmpty) {
+                    _setDeliveryAddressFromCustomer(cust.address);
                   }
                 }
-              }
-              setStateCart(() {
-                _selectedOrderType = val;
-              });
-              setState(() {
-                _selectedOrderType = val;
-              });
-              if (val == OrderType.delivery && !_hasDeliveryAddress) {
-                _showDeliveryAddressDialog(setStateCart);
+                if (!_hasDeliveryAddress) {
+                  _showDeliveryAddressDialog(setStateCart);
+                }
               }
             }
           },
@@ -3611,7 +4107,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   if (_selectedOrderType == OrderType.dineIn) ...[
                     const SizedBox(height: 5),
                     InkWell(
-                      onTap: () => _openTablesSelectionDialog(setStateCart),
+                      onTap: () => _showChangeTableDialog(setStateCart),
                       borderRadius: BorderRadius.circular(8),
                       child: Container(
                         height: 32,
@@ -4103,7 +4599,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        _appliedCoupon.isNotEmpty ? 'Discount (${_appliedCoupon.toUpperCase()}):' : 'Discount:',
+                        _appliedCoupon.isNotEmpty
+                            ? (currentOrderCalculation.appliedCouponPercent > 0
+                                ? 'Discount (${_appliedCoupon.toUpperCase()} • ${currentOrderCalculation.appliedCouponPercent.toStringAsFixed(currentOrderCalculation.appliedCouponPercent.truncateToDouble() == currentOrderCalculation.appliedCouponPercent ? 0 : 1)}%):'
+                                : 'Discount (${_appliedCoupon.toUpperCase()}):')
+                            : (_discountMode == 'percent' && _discountInputValue > 0
+                                ? 'Discount (${_discountInputValue.toStringAsFixed(0)}%):'
+                                : 'Discount:'),
                         style: const TextStyle(fontSize: 12.0, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
                       ),
                       Text(
@@ -4176,88 +4678,117 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
         ),
 
-        // Desktop Promo Code Row
-        if (isDesktopPanel)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
+        // Promo Code Row (Desktop & Mobile)
+        Padding(
+          padding: EdgeInsets.symmetric(horizontal: isDesktopPanel ? 14 : 16, vertical: 4),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _appliedCoupon.isNotEmpty ? const Color(0xFF0066FF) : const Color(0xFFCBD5E1),
+                      width: _appliedCoupon.isNotEmpty ? 1.4 : 1.0,
                     ),
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 8),
-                        const Icon(Icons.sell_outlined, size: 14, color: Color(0xFF94A3B8)),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: TextField(
-                            onChanged: (val) {
-                              _appliedCoupon = val.trim();
-                            },
-                            onSubmitted: (val) {
-                              setStateCart(() => _appliedCoupon = val.trim());
-                              setState(() {});
-                            },
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                            decoration: const InputDecoration(
-                              hintText: 'Enter promo code',
-                              hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                              isDense: true,
-                              border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(vertical: 6),
+                    boxShadow: _appliedCoupon.isNotEmpty
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF0066FF).withValues(alpha: 0.08),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                        ),
-                        InkWell(
-                          onTap: () {
-                            setStateCart(() {});
-                            setState(() {});
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                            margin: const EdgeInsets.only(right: 3),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF051C48),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text('Apply', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                          ),
-                        ),
-                      ],
-                    ),
+                          ]
+                        : null,
                   ),
-                ),
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: () => _showExtraBenefitDialog(setStateCart),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 36,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: Center(
-                      child: Text(
-                        (computedDiscountAmount > 0 || _tipAmount > 0)
-                            ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount).toStringAsFixed(0)})'
-                            : 'Extra\'s',
-                        style: const TextStyle(color: Color(0xFF051C48), fontSize: 11.5, fontWeight: FontWeight.bold),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.sell_outlined,
+                        size: 15,
+                        color: _appliedCoupon.isNotEmpty ? const Color(0xFF0066FF) : const Color(0xFF94A3B8),
                       ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: TextField(
+                          controller: _promoCodeController,
+                          onChanged: (val) {
+                            if (val.trim().isEmpty && _appliedCoupon.isNotEmpty) {
+                              setStateCart(() => _appliedCoupon = '');
+                              setState(() => _appliedCoupon = '');
+                            }
+                          },
+                          onSubmitted: (val) => _applyPromoCode(val, setStateCart),
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                          decoration: InputDecoration(
+                            hintText: 'Enter promo code (e.g. 10%, SAVE20)',
+                            hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                            isDense: true,
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            suffixIcon: _appliedCoupon.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.cancel_rounded, size: 16, color: Color(0xFF94A3B8)),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                    onPressed: () {
+                                      _promoCodeController.clear();
+                                      setStateCart(() => _appliedCoupon = '');
+                                      setState(() => _appliedCoupon = '');
+                                    },
+                                    tooltip: 'Remove promo code',
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => _applyPromoCode(_promoCodeController.text, setStateCart),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          margin: const EdgeInsets.only(right: 3),
+                          decoration: BoxDecoration(
+                            color: _appliedCoupon.isNotEmpty ? const Color(0xFF10B981) : const Color(0xFF051C48),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            _appliedCoupon.isNotEmpty ? 'Applied' : 'Apply',
+                            style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+              InkWell(
+                onTap: () => _showExtraBenefitDialog(setStateCart),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 38,
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                  ),
+                  child: Center(
+                    child: Text(
+                      (computedDiscountAmount > 0 || _tipAmount > 0)
+                          ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount).toStringAsFixed(0)})'
+                          : 'Extra\'s',
+                      style: const TextStyle(color: Color(0xFF051C48), fontSize: 11.5, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
 
         // Bottom Action Buttons
         Padding(
@@ -4393,18 +4924,78 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  void _switchOrderType(OrderType type, [StateSetter? setStateCart]) {
+    if (_selectedOrderType == type) return;
+    _saveCurrentDraft();
+
+    void updateState() {
+      _selectedOrderType = type;
+      _activeRunningOrderId = null;
+      _activeRunningOrderNumber = null;
+      _cartItems.clear();
+      _resetDiscountAndPromoState();
+
+      if (type == OrderType.dineIn) {
+        if (_selectedTable == null || _selectedTable!.isEmpty) {
+          final nextTable = db.getNextAvailableTableSequence();
+          _selectedTable = nextTable?.name ?? 'T-1';
+        }
+        final targetTable = _selectedTable!;
+        final activeOrder = db.orders.where((o) =>
+          isSameTable(o.tableNumber, targetTable) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        ).firstOrNull;
+        if (activeOrder != null && activeOrder.items.isNotEmpty) {
+          _cartItems.addAll(activeOrder.items);
+          _activeRunningOrderId = activeOrder.id;
+          _activeRunningOrderNumber = activeOrder.orderNumber;
+          _customerName = activeOrder.customerName ?? '';
+          _customerPhone = activeOrder.customerPhone ?? '';
+        } else {
+          final savedCart = db.getLiveTableCart(targetTable);
+          if (savedCart.isNotEmpty) {
+            _cartItems.addAll(savedCart);
+          }
+        }
+        final savedDiscount = db.getLiveTableDiscount(targetTable);
+        if (savedDiscount != null) {
+          _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
+          _promoCodeController.text = _appliedCoupon;
+          _discountInputValue = (savedDiscount['discountInput'] as num?)?.toDouble() ?? 0.0;
+          _discountMode = savedDiscount['discountMode']?.toString() ?? 'percent';
+          _discountAmount = (savedDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0;
+        } else if (activeOrder != null && activeOrder.discountAmount > 0) {
+          _discountAmount = activeOrder.discountAmount;
+        }
+      } else {
+        _selectedTable = null;
+        final key = type == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+        final savedCart = db.getLiveTableCart(key);
+        if (savedCart.isNotEmpty) {
+          _cartItems.addAll(savedCart);
+        }
+        final savedDiscount = db.getLiveTableDiscount(key);
+        if (savedDiscount != null) {
+          _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
+          _promoCodeController.text = _appliedCoupon;
+          _discountInputValue = (savedDiscount['discountInput'] as num?)?.toDouble() ?? 0.0;
+          _discountMode = savedDiscount['discountMode']?.toString() ?? 'percent';
+          _discountAmount = (savedDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0;
+        }
+      }
+    }
+
+    if (setStateCart != null) {
+      setStateCart(updateState);
+    }
+    setState(updateState);
+  }
+
   Widget _buildDesktopSegmentItem(String title, OrderType type, StateSetter setStateCart) {
     final isSelected = _selectedOrderType == type;
     return Expanded(
       child: GestureDetector(
-        onTap: () {
-          setStateCart(() {
-            _selectedOrderType = type;
-          });
-          setState(() {
-            _selectedOrderType = type;
-          });
-        },
+        onTap: () => _switchOrderType(type, setStateCart),
         child: Container(
           decoration: BoxDecoration(
             color: isSelected ? Colors.white : Colors.transparent,
@@ -4654,16 +5245,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           });
         }
 
-        // Reset cart state immediately
+        // Reset cart state and promo discount state immediately for the next order
         setState(() {
           _cartItems.clear();
-          _discountAmount = 0.0;
-          _tipAmount = 0.0;
-          _appliedCoupon = '';
-          _discountInputValue = 0.0;
-          _redeemedLoyaltyStageId = null;
-          _redeemedLoyaltyPoints = 0;
-          _loyaltyDiscountAmount = 0.0;
+          _resetDiscountAndPromoState();
           _currentCustomerLoyalty = null;
           _selectedTable = null;
           _customerName = '';
@@ -4833,7 +5418,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   } else if (order.status == OrderStatus.preparing) {
                     statusBg = const Color(0xFFFEF3C7);
                     statusText = const Color(0xFFB45309);
-                    statusLabel = 'On Cooking';
+                    statusLabel = 'Cooking';
                   } else if (order.status == OrderStatus.cancelled) {
                     statusBg = const Color(0xFFFEE2E2);
                     statusText = const Color(0xFFB91C1C);
@@ -4851,6 +5436,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
                   return InkWell(
                     onTap: () {
+                      _saveCurrentDraft();
                       if (order.tableNumber != null && order.tableNumber!.isNotEmpty) {
                         _loadCartForTable(order.tableNumber!);
                       } else {
@@ -4858,12 +5444,26 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           _selectedOrderType = order.orderType;
                           _selectedTable = order.tableNumber;
                           _cartItems.clear();
+                          _resetDiscountAndPromoState();
                           _cartItems.addAll(order.items);
-                          _discountAmount = order.discountAmount;
                           _activeRunningOrderId = order.id;
                           _activeRunningOrderNumber = order.orderNumber;
                           _customerName = order.customerName ?? '';
                           _customerPhone = order.customerPhone ?? '';
+                          _deliveryAddress = order.deliveryAddress ?? '';
+
+                          final draftKey = order.id;
+                          final typeKey = order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+                          final savedDiscount = db.getLiveTableDiscount(draftKey) ?? db.getLiveTableDiscount(typeKey);
+                          if (savedDiscount != null) {
+                            _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
+                            _promoCodeController.text = _appliedCoupon;
+                            _discountInputValue = (savedDiscount['discountInput'] as num?)?.toDouble() ?? 0.0;
+                            _discountMode = savedDiscount['discountMode']?.toString() ?? 'percent';
+                            _discountAmount = (savedDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0;
+                          } else if (order.discountAmount > 0) {
+                            _discountAmount = order.discountAmount;
+                          }
                         });
                       }
                     },
@@ -5088,39 +5688,66 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
     showDialog(
       context: context,
-      builder: (dialogCtx) => Scaffold(
+      builder: (dialogCtx) => Dialog(
         backgroundColor: const Color(0xFFF8FAFC),
-        appBar: AppBar(
-          backgroundColor: const Color(0xFF051C48),
-          elevation: 0,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-            onPressed: () => Navigator.pop(dialogCtx),
-          ),
-          title: const Text(
-            'Dining Tables Layout',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-          ),
-        ),
-        body: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          child: TableManagementScreen(
-            onTakeOrder: (tableName) {
-              if (_selectedTable != tableName) {
-                _loadCartForTable(tableName);
-              }
-              setState(() {
-                _selectedTable = tableName;
-                _selectedOrderType = OrderType.dineIn;
-              });
-              if (setStateCart != null) {
-                setStateCart(() {
-                  _selectedTable = tableName;
-                  _selectedOrderType = OrderType.dineIn;
-                });
-              }
-              Navigator.pop(dialogCtx);
-            },
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        clipBehavior: Clip.antiAlias,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200, maxHeight: 780),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF051C48),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 22),
+                        SizedBox(width: 10),
+                        Text(
+                          'Dining Tables Layout',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16.5),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                      onPressed: () => Navigator.pop(dialogCtx),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: TableManagementScreen(
+                    onTakeOrder: (tableName) {
+                      if (_selectedTable != tableName) {
+                        _loadCartForTable(tableName);
+                      }
+                      setState(() {
+                        _selectedTable = tableName;
+                        _selectedOrderType = OrderType.dineIn;
+                      });
+                      if (setStateCart != null) {
+                        setStateCart(() {
+                          _selectedTable = tableName;
+                          _selectedOrderType = OrderType.dineIn;
+                        });
+                      }
+                      Navigator.pop(dialogCtx);
+                    },
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       ),

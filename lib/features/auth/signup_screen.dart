@@ -668,10 +668,12 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
             ],
           ),
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _handleSignup,
+            onPressed: _isLoading ? () {} : _handleSignup,
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.transparent,
               shadowColor: Colors.transparent,
+              disabledBackgroundColor: Colors.transparent,
+              disabledForegroundColor: Colors.white,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(26),
               ),

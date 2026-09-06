@@ -7,6 +7,8 @@ class OrderCalculationResult {
   final double originalSubtotal;  // Sum of (original price * quantity)
   final double itemDiscounts;     // originalSubtotal - subtotal
   final double orderDiscount;     // Applied coupon + manual discount
+  final double appliedCouponPercent; // Percentage discount from promo code (e.g. 10.0 for 10%)
+  final String appliedCouponCode;    // e.g. "SAVE10" or "10%"
   final double totalDiscount;     // itemDiscounts + orderDiscount
   final double taxableAmount;     // (subtotal - orderDiscount).clamp(0.0, double.infinity)
   final double taxAmount;         // GST calculated dynamically proportional to each item's GST
@@ -27,6 +29,8 @@ class OrderCalculationResult {
     required this.originalSubtotal,
     required this.itemDiscounts,
     required this.orderDiscount,
+    this.appliedCouponPercent = 0.0,
+    this.appliedCouponCode = '',
     required this.totalDiscount,
     required this.taxableAmount,
     required this.taxAmount,
@@ -45,17 +49,99 @@ class OrderCalculationResult {
 
   @override
   String toString() {
-    return 'OrderCalculationResult(subtotal: $subtotal, orderDiscount: $orderDiscount, taxableAmount: $taxableAmount, taxAmount: $taxAmount, taxableSubtotal: $taxableSubtotal, nonTaxableSubtotal: $nonTaxableSubtotal, tipAmount: $tipAmount, deliveryCharge: $deliveryCharge, roundOff: $roundOff, totalPayableAmount: $totalPayableAmount)';
+    return 'OrderCalculationResult(subtotal: $subtotal, orderDiscount: $orderDiscount, appliedPercent: $appliedCouponPercent%, taxableAmount: $taxableAmount, taxAmount: $taxAmount, taxableSubtotal: $taxableSubtotal, nonTaxableSubtotal: $nonTaxableSubtotal, tipAmount: $tipAmount, deliveryCharge: $deliveryCharge, roundOff: $roundOff, totalPayableAmount: $totalPayableAmount)';
   }
 }
 
 /// Centralized single total calculation engine ensuring 100% mathematical consistency
 /// across POS Cart, Payment Checkout, Database, API, and Invoices.
 class OrderCalculator {
+  /// Parses percentage discount from any promo code string or numeric input.
+  /// Examples:
+  /// - "10%", "15.5%", "20" -> 10.0, 15.5, 20.0
+  /// - "SAVE10", "SAVE20", "SAVE50" -> 10.0, 20.0, 50.0
+  /// - "WELCOME10", "PROMO15", "DISC25", "OFF30", "FESTIVAL20" -> 10.0, 15.0, 25.0, 30.0, 20.0
+  /// - Matches ExtraModel in availableCoupons (if provided)
+  static double parsePromoDiscountPercent(String? rawCode, {List<dynamic>? availableCoupons}) {
+    if (rawCode == null) return 0.0;
+    final clean = rawCode.trim();
+    if (clean.isEmpty) return 0.0;
+
+    // 1. Direct percentage string, e.g. "10%", "15.5 %", "20%"
+    final directPercentMatch = RegExp(r'^(\\d+(?:\\.\\d+)?)\\s*%\\s*$$').firstMatch(clean);
+    if (directPercentMatch != null) {
+      final val = double.tryParse(directPercentMatch.group(1)!);
+      if (val != null && val > 0) {
+        return val.clamp(0.0, 100.0);
+      }
+    }
+
+    // 2. Direct plain number entered as promo code, e.g. "10", "15", "20", "50"
+    final plainNumber = double.tryParse(clean);
+    if (plainNumber != null && plainNumber > 0 && plainNumber <= 100) {
+      return plainNumber;
+    }
+
+    // 3. Match against available extra / coupon models (from Database / API)
+    if (availableCoupons != null) {
+      final cleanUpper = clean.toUpperCase();
+      for (final extra in availableCoupons) {
+        try {
+          final code = (extra.code ?? extra.name ?? '').toString().trim().toUpperCase();
+          if (code.isNotEmpty && (code == cleanUpper || code == clean)) {
+            final discType = (extra.discountType ?? 'percent').toString();
+            final numVal = (extra.value as num?)?.toDouble() ?? 0.0;
+            if (discType == 'percent' && numVal > 0) {
+              return numVal.clamp(0.0, 100.0);
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 4. Standard known coupon codes
+    final upper = clean.toUpperCase();
+    if (upper == 'SAVE50') return 50.0;
+    if (upper == 'SAVE20') return 20.0;
+    if (upper == 'SAVE15') return 15.0;
+    if (upper == 'SAVE10') return 10.0;
+    if (upper == 'SAVE5') return 5.0;
+    if (upper == 'WELCOME10') return 10.0;
+    if (upper == 'WELCOME20') return 20.0;
+
+    // 5. Embedded percentage in promo code words (e.g. "OFF20", "PROMO15", "DISC25", "FESTIVAL30", "SPECIAL10")
+    final regex = RegExp(
+      r'(?:SAVE|OFF|DISC|DISCOUNT|PROMO|EXTRA|SPECIAL|WELCOME|DEAL|FESTIVAL|FLAT|NEW|CODE|FOOD|EAT)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*%?',
+      caseSensitive: false,
+    );
+    final match = regex.firstMatch(upper);
+    if (match != null && match.group(1) != null) {
+      final parsed = double.tryParse(match.group(1)!);
+      if (parsed != null && parsed > 0 && parsed <= 100) {
+        return parsed;
+      }
+    }
+
+    // 6. Generic promo codes without numbers (default to 10% promotional discount)
+    if (upper.contains('SAVE') ||
+        upper.contains('PROMO') ||
+        upper.contains('DISCOUNT') ||
+        upper.contains('OFF') ||
+        upper.contains('COUPON') ||
+        upper.contains('OFFER') ||
+        upper.contains('WELCOME') ||
+        upper.contains('SPECIAL')) {
+      return 10.0;
+    }
+
+    return 0.0;
+  }
+
   static OrderCalculationResult calculate({
     required List<CartItemModel> items,
     double defaultTaxRate = 5.0,
     String? appliedCoupon,
+    List<dynamic>? availableCoupons,
     double discountInputValue = 0.0,
     String discountMode = 'percent', // 'percent' or 'flat'
     String? selectedDiscountProductType,
@@ -70,6 +156,8 @@ class OrderCalculator {
         originalSubtotal: 0.0,
         itemDiscounts: 0.0,
         orderDiscount: 0.0,
+        appliedCouponPercent: 0.0,
+        appliedCouponCode: '',
         totalDiscount: 0.0,
         taxableAmount: 0.0,
         taxAmount: 0.0,
@@ -96,27 +184,57 @@ class OrderCalculator {
     }
     final double itemDiscounts = (originalGrossSubtotal - grossSubtotal).clamp(0.0, double.infinity);
 
-    // 2. Calculate Order-level / Extra Discount
+    // 2. Calculate Order-level Promo Code / Extra Percentage Discount (Applied Before GST)
     double orderDiscount = 0.0;
+    double appliedCouponPercent = 0.0;
+    String appliedCouponCode = '';
+
     if (manualDiscountOverride > 0) {
       orderDiscount = manualDiscountOverride;
     } else {
-      final coupon = (appliedCoupon ?? '').trim().toUpperCase();
+      final coupon = (appliedCoupon ?? '').trim();
       if (coupon.isNotEmpty) {
-        if (coupon == 'SAVE50') {
-          orderDiscount = grossSubtotal * 0.50;
-        } else if (coupon == 'FLAT100') {
-          orderDiscount = 100.0;
-        } else if (coupon == 'WELCOME10') {
-          orderDiscount = grossSubtotal * 0.10;
-        } else {
-          orderDiscount = 50.0;
+        appliedCouponCode = coupon;
+        final upperCoupon = coupon.toUpperCase();
+
+        // Check if flat coupon code (e.g. FLAT100, FLAT500)
+        if (upperCoupon.startsWith('FLAT') && !upperCoupon.endsWith('%')) {
+          final flatNumMatch = RegExp(r'^FLAT\\s*(\\d+(?:\\.\\d+)?)\$\$').firstMatch(upperCoupon);
+          if (flatNumMatch != null) {
+            final flatVal = double.tryParse(flatNumMatch.group(1)!);
+            if (flatVal != null && flatVal > 100) {
+              orderDiscount = flatVal;
+            }
+          }
+        }
+
+        if (orderDiscount <= 0) {
+          appliedCouponPercent = parsePromoDiscountPercent(coupon, availableCoupons: availableCoupons);
+          if (appliedCouponPercent > 0) {
+            orderDiscount = grossSubtotal * (appliedCouponPercent / 100.0);
+          } else {
+            // Check if coupon matched an extra with flat discount
+            if (availableCoupons != null) {
+              for (final extra in availableCoupons) {
+                final code = (extra.code ?? extra.name ?? '').toString().trim().toUpperCase();
+                if (code.isNotEmpty && code == upperCoupon) {
+                  final discType = (extra.discountType ?? 'percent').toString();
+                  final numVal = (extra.value as num?)?.toDouble() ?? 0.0;
+                  if (discType != 'percent' && numVal > 0) {
+                    orderDiscount = numVal;
+                    break;
+                  }
+                }
+              }
+            }
+          }
         }
       } else if (discountInputValue > 0) {
         if (selectedDiscountProductType == null ||
             selectedDiscountProductType == 'Select Product Type' ||
             selectedDiscountProductType == 'All Products') {
           if (discountMode == 'percent') {
+            appliedCouponPercent = discountInputValue;
             orderDiscount = grossSubtotal * (discountInputValue / 100.0);
           } else {
             orderDiscount = discountInputValue;
@@ -132,6 +250,7 @@ class OrderCalculator {
             }
           }
           if (discountMode == 'percent') {
+            appliedCouponPercent = discountInputValue;
             orderDiscount = eligibleSubtotal * (discountInputValue / 100.0);
           } else {
             orderDiscount = discountInputValue.clamp(0.0, eligibleSubtotal);
@@ -143,10 +262,11 @@ class OrderCalculator {
     final double totalDiscount = itemDiscounts + orderDiscount;
 
     // 3. Calculate Taxable Amount (Subtotal - Order Discount)
+    // The discount is deducted BEFORE GST is calculated.
     final double taxableAmount = (grossSubtotal - orderDiscount).clamp(0.0, double.infinity);
 
     // 4. Calculate Tax/GST Dynamically per Product
-    // Each product's tax is calculated based on its specific gstPercent:
+    // Each product's tax is calculated based on its specific gstPercent on its net discounted price base:
     // - If item.gstPercent == 0.0: No GST (0%)
     // - If item.gstPercent > 0: Specific GST rate
     // - If item.gstPercent == null: Inherit defaultTaxRate (or 0.0 if defaultTaxRate == 0)
@@ -205,7 +325,7 @@ class OrderCalculator {
     }
 
     if (kDebugMode) {
-      debugPrint('[OrderCalculator] Subtotal: ₹$grossSubtotal | Disc: ₹$orderDiscount | TaxableBase: ₹$taxableAmount | GST: ₹$taxAmount (Taxable: ₹$taxableSubtotal, Non-Taxable: ₹$nonTaxableSubtotal) | Tip: ₹$cleanTip | Total: ₹$finalTotal');
+      debugPrint('[OrderCalculator] Subtotal: ₹\$grossSubtotal | PromoDisc: ₹\$orderDiscount (\${appliedCouponPercent > 0 ? "\$appliedCouponPercent%" : "custom"}) | TaxableBase: ₹\$taxableAmount | GST: ₹\$taxAmount (Taxable: ₹\$taxableSubtotal, Non-Taxable: ₹\$nonTaxableSubtotal) | Tip: ₹\$cleanTip | Total: ₹\$finalTotal');
     }
 
     return OrderCalculationResult(
@@ -213,6 +333,8 @@ class OrderCalculator {
       originalSubtotal: originalGrossSubtotal,
       itemDiscounts: itemDiscounts,
       orderDiscount: orderDiscount,
+      appliedCouponPercent: appliedCouponPercent,
+      appliedCouponCode: appliedCouponCode,
       totalDiscount: totalDiscount,
       taxableAmount: taxableAmount,
       taxAmount: taxAmount,
