@@ -241,7 +241,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       ).firstOrNull;
 
       if (activeOrder != null && activeOrder.items.isNotEmpty) {
-        _cartItems.addAll(activeOrder.items);
+        _cartItems.addAll(activeOrder.items.map((i) => i.clone()));
         _activeRunningOrderId = activeOrder.id;
         _activeRunningOrderNumber = activeOrder.orderNumber;
         _customerName = activeOrder.customerName ?? '';
@@ -249,7 +249,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       } else {
         final savedCart = db.getLiveTableCart(tableName);
         if (savedCart.isNotEmpty) {
-          _cartItems.addAll(savedCart);
+          _cartItems.addAll(savedCart.map((i) => i.clone()));
         }
       }
 
@@ -295,13 +295,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       return;
     }
 
-    // If order is already active Running KOT, show KotDialog directly
+    // If order is already active Running KOT and cart is empty, show KotDialog in reprint mode
     if (activeOrder != null && _cartItems.isEmpty) {
       showDialog(
         context: context,
         builder: (_) => KotDialog(
           order: activeOrder,
-          onPrintKot: () {
+          isReprint: true,
+          onLegacyPrintKot: () {
             if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
               final tbl = db.tables.where((t) =>
                 isSameTable(t.name, _selectedTable) ||
@@ -325,7 +326,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final tempOrder = OrderModel(
       id: _activeRunningOrderId ?? (activeOrder?.id ?? 'KOT-${DateTime.now().millisecondsSinceEpoch}'),
       orderNumber: _activeRunningOrderNumber ?? (activeOrder?.orderNumber ?? 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}'),
-      items: List.from(_cartItems),
+      items: _cartItems.map((i) => i.clone()).toList(),
       subtotal: calc.subtotal,
       taxAmount: calc.taxAmount,
       discountAmount: calc.orderDiscount,
@@ -342,13 +343,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       customerPhone: _customerPhone,
     );
 
-    // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT is clicked)
+    // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT succeeds)
     showDialog(
       context: context,
       builder: (_) => KotDialog(
         order: tempOrder,
-        onPrintKot: () async {
-          // WHEN USER CLICKS PRINT KOT IN POPUP:
+        onPrintKot: (updatedOrder) async {
+          // Sync sent kotQuantity back to in-memory cart items
+          for (int i = 0; i < _cartItems.length; i++) {
+            final match = updatedOrder.items.where((ui) => ui.item.id == _cartItems[i].item.id || ui.item.name == _cartItems[i].item.name).firstOrNull;
+            if (match != null) {
+              _cartItems[i].kotQuantity = match.kotQuantity;
+            } else {
+              _cartItems[i].kotQuantity = _cartItems[i].quantity;
+            }
+          }
+
           // If active order already exists, update in-place with status: preparing. Else create new order.
           OrderModel newOrder;
           if (_activeRunningOrderId != null || activeOrder != null) {
@@ -356,7 +366,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             final orderNumToUpdate = _activeRunningOrderNumber ?? activeOrder?.orderNumber;
 
             newOrder = await db.saveAndPrintOrder(
-              items: List.from(_cartItems),
+              items: _cartItems.map((i) => i.clone()).toList(),
               tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
               deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
               orderType: _selectedOrderType,
@@ -374,7 +384,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             db.updateOrderStatus(newOrder.id, OrderStatus.preparing);
           } else {
             newOrder = await db.createOrder(
-              items: List.from(_cartItems),
+              items: _cartItems.map((i) => i.clone()).toList(),
               tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
               deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
               orderType: _selectedOrderType,
@@ -401,6 +411,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
             }
 
+            db.setLiveTableCart(_selectedTable!, _cartItems);
             db.setLiveCartTotal(_selectedTable!, newOrder.totalAmount);
           }
 
@@ -489,6 +500,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _cartItems[existingIndex].quantity--;
         if (_cartItems[existingIndex].quantity <= 0) {
           _cartItems.removeAt(existingIndex);
+        } else if (_cartItems[existingIndex].kotQuantity > _cartItems[existingIndex].quantity) {
+          _cartItems[existingIndex].kotQuantity = _cartItems[existingIndex].quantity;
         }
       }
       _syncTableStatusWithCart();
@@ -663,6 +676,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           ? v.discountPercent
                           : (v.price > 0 && v.salePrice != null && v.salePrice! < v.price ? ((v.price - v.salePrice!) / v.price * 100) : 0.0);
 
+                      final defaultGstRate = (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0);
                       final variantId = '${item.id}_var_${v.name}';
                       final variantItem = MenuItemModel(
                         id: variantId,
@@ -675,8 +689,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         discountPercent: vDiscPercent,
                         description: item.description,
                         imageUrl: item.imageUrl,
+                        images: item.images,
+                        videoUrl: item.videoUrl,
                         emoji: item.emoji,
                         itemType: item.itemType,
+                        gstPercent: item.gstPercent ?? defaultGstRate,
+                        trackInventory: item.trackInventory,
                       );
 
                       final vQty = _getItemCartQuantity(variantItem);
@@ -2332,7 +2350,324 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
+  void _showChangeTableFloorWiseModal([StateSetter? setStateModal]) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalCtx) {
+        String activeFloorTab = 'All';
+
+        return StatefulBuilder(
+          builder: (context, setFloorState) {
+            final floors = ['All', ...db.tables.map((t) => t.floor.trim()).where((f) => f.isNotEmpty).toSet()];
+            final filteredTables = activeFloorTab == 'All'
+                ? db.tables
+                : db.tables.where((t) => t.floor.trim().toLowerCase() == activeFloorTab.trim().toLowerCase()).toList();
+
+            final Map<String, List<TableModel>> tablesByFloor = {};
+            for (var t in filteredTables) {
+              tablesByFloor.putIfAbsent(t.floor.trim().isEmpty ? 'General' : t.floor.trim(), () => []).add(t);
+            }
+            for (var floorList in tablesByFloor.values) {
+              floorList.sort((a, b) {
+                final numA = a.tableNumber > 0
+                    ? a.tableNumber
+                    : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+                final numB = b.tableNumber > 0
+                    ? b.tableNumber
+                    : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+                if (numA != numB) {
+                  return numA.compareTo(numB);
+                }
+                return a.name.compareTo(b.name);
+              });
+            }
+
+            return Container(
+              height: MediaQuery.of(context).size.height * 0.78,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black26, blurRadius: 25, offset: Offset(0, -8)),
+                ],
+              ),
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                child: Column(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 4,
+                      margin: const EdgeInsets.only(top: 10, bottom: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFCBD5E1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48), size: 18),
+                          ),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Select / Change Table',
+                            style: TextStyle(fontSize: 16.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            onPressed: () => Navigator.pop(modalCtx),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(color: Color(0xFFE2E8F0), height: 1),
+
+                    // Floor Filter Tabs
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Floor:',
+                            style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          ...floors.map((flr) {
+                            final isSel = activeFloorTab == flr;
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 6),
+                              child: ChoiceChip(
+                                label: Text(flr),
+                                labelStyle: TextStyle(
+                                  color: isSel ? Colors.white : const Color(0xFF475569),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                                selected: isSel,
+                                selectedColor: const Color(0xFF051C48),
+                                backgroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+                                onSelected: (_) => setFloorState(() => activeFloorTab = flr),
+                              ),
+                            );
+                          }),
+                        ],
+                      ),
+                    ),
+
+                    // Floor-wise Table Grid View
+                    Expanded(
+                      child: ListView.builder(
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        itemCount: tablesByFloor.keys.length,
+                        itemBuilder: (context, floorIdx) {
+                          final floorName = tablesByFloor.keys.elementAt(floorIdx);
+                          final floorTables = tablesByFloor[floorName]!;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(left: 4, bottom: 6, top: 4),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 4,
+                                      height: 15,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF051C48),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      floorName,
+                                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '(${floorTables.length} Tables)',
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 3,
+                                  childAspectRatio: 0.92,
+                                  crossAxisSpacing: 8,
+                                  mainAxisSpacing: 8,
+                                ),
+                                itemCount: floorTables.length,
+                                itemBuilder: (context, idx) {
+                                  final table = floorTables[idx];
+                                  final isCurrentSelected = _selectedTable == table.name;
+                                  final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
+                                  final statusColor = _getTableStatusColor(validStatus);
+
+                                  final activeOrder = validStatus == TableStatus.free
+                                      ? null
+                                      : db.orders.where((o) => ((o.tableNumber?.trim().toLowerCase() ?? '') == table.name.trim().toLowerCase() || 'T-${o.tableNumber}'.toLowerCase() == table.name.trim().toLowerCase()) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
+                                  final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
+                                  final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
+                                  final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
+                                  final hasProducts = validStatus != TableStatus.free && activeAmount > 0;
+
+                                  return InkWell(
+                                    onTap: () {
+                                      final currentTable = _selectedTable ?? '';
+                                      final hasActiveOrderOrCart = _cartItems.isNotEmpty ||
+                                          _activeRunningOrderId != null ||
+                                          (currentTable.isNotEmpty && _isTableRunningKot(currentTable)) ||
+                                          (currentTable.isNotEmpty && db.getLiveTableCart(currentTable).isNotEmpty) ||
+                                          (currentTable.isNotEmpty && db.orders.any((o) => isSameTable(o.tableNumber, currentTable) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)));
+
+                                      _handleTableSelection(
+                                        dialogCtx: modalCtx,
+                                        targetTable: table,
+                                        isShiftMode: hasActiveOrderOrCart,
+                                        hasActiveOrderOrCart: hasActiveOrderOrCart,
+                                        currentTable: currentTable,
+                                        setStateCart: setStateModal,
+                                      );
+                                    },
+                                    borderRadius: BorderRadius.circular(16),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: isCurrentSelected ? const Color(0xFFE0F2FE) : Colors.white,
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(
+                                          color: isCurrentSelected ? const Color(0xFF0284C7) : statusColor,
+                                          width: isCurrentSelected ? 2.5 : 2.0,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: statusColor.withValues(alpha: 0.12),
+                                            blurRadius: 5,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      padding: const EdgeInsets.all(6),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          // Status Pill Badge (Top)
+                                          Row(
+                                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Flexible(
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: statusColor.withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: Text(
+                                                    _getTableStatusLabel(validStatus),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                    style: TextStyle(
+                                                      color: statusColor,
+                                                      fontSize: 9.5,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                              if (isCurrentSelected)
+                                                const Icon(Icons.check_circle_rounded, color: Color(0xFF0284C7), size: 14),
+                                            ],
+                                          ),
+
+                                          // Middle Table Icon & Title
+                                          Expanded(
+                                            child: Center(
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Icon(Icons.table_restaurant_rounded, color: statusColor, size: 22),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    _getFullTableTitle(table.name),
+                                                    textAlign: TextAlign.center,
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 12.5,
+                                                      color: Color(0xFF0F172A),
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ),
+
+                                          // Bottom Amount Text
+                                          if (hasProducts)
+                                            Center(
+                                              child: Text(
+                                                '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Color(0xFF051C48),
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showChangeTableDialog([StateSetter? setStateCart]) {
+    final mediaWidth = MediaQuery.of(context).size.width;
+    if (mediaWidth < 768) {
+      _showChangeTableFloorWiseModal(setStateCart ?? setState);
+      return;
+    }
+
     final currentTable = _selectedTable ?? '';
     final hasActiveOrderOrCart = _cartItems.isNotEmpty ||
         _activeRunningOrderId != null ||
@@ -4328,30 +4663,35 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       ),
                                     ],
                                     const SizedBox(width: 6),
-                                    if (cItem.item.gstPercent != null && cItem.item.gstPercent! <= 0)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFDCFCE7),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: const Text(
-                                          'No GST',
-                                          style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
-                                        ),
-                                      )
-                                    else if (cItem.item.gstPercent != null && cItem.item.gstPercent! > 0)
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFF1F5F9),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          'GST ${cItem.item.gstPercent!.toStringAsFixed(0)}%',
-                                          style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
-                                        ),
-                                      ),
+                                    Builder(
+                                      builder: (context) {
+                                        final double effectiveGst = cItem.item.gstPercent ?? ((db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0));
+                                        if (effectiveGst <= 0) {
+                                          return Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFDCFCE7),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: const Text(
+                                              'No GST',
+                                              style: TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Color(0xFF15803D)),
+                                            ),
+                                          );
+                                        }
+                                        return Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF1F5F9),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'GST ${effectiveGst.toStringAsFixed(0)}%',
+                                            style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                                          ),
+                                        );
+                                      },
+                                    ),
                                   ],
                                 ),
                               ],
@@ -4414,19 +4754,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         // Add Customer & Extra's Buttons (Mobile only)
         if (!isDesktopPanel)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
             child: Row(
               children: [
                 Expanded(
                   child: InkWell(
                     onTap: () => _showAddCustomerDialog(setStateCart),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      height: 50,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: const Color(0xFF051C48),
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFF051C48).withValues(alpha: 0.2),
@@ -4437,8 +4777,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.account_circle_outlined, color: Colors.white, size: 20),
-                          const SizedBox(width: 6),
+                          const Icon(Icons.account_circle_outlined, color: Colors.white, size: 18),
+                          const SizedBox(width: 5),
                           Expanded(
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -4449,7 +4789,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 12.5,
+                                    fontSize: 12,
                                   ),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -4459,7 +4799,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     _customerPhone,
                                     style: const TextStyle(
                                       color: Colors.white70,
-                                      fontSize: 10,
+                                      fontSize: 9.5,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
@@ -4477,10 +4817,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   _showAddCustomerDialog(setStateCart);
                                 }
                               },
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(12),
                               child: Container(
-                                width: 26,
-                                height: 26,
+                                width: 24,
+                                height: 24,
                                 decoration: BoxDecoration(
                                   color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
                                       ? const Color(0xFF00A86B)
@@ -4490,7 +4830,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     color: (_customerPhone.isNotEmpty || _customerName.isNotEmpty)
                                         ? const Color(0xFF5EEAD4)
                                         : Colors.white24,
-                                    width: 1.2,
+                                    width: 1.0,
                                   ),
                                 ),
                                 child: Center(
@@ -4501,7 +4841,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                           ? Colors.white
                                           : Colors.white38,
                                       fontWeight: FontWeight.w900,
-                                      fontSize: 12,
+                                      fontSize: 11,
                                     ),
                                   ),
                                 ),
@@ -4518,13 +4858,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 Expanded(
                   child: InkWell(
                     onTap: () => _showExtraBenefitDialog(setStateCart),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      height: 50,
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      height: 44,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: const Color(0xFF051C48), width: 1.2),
                       ),
                       child: Row(
@@ -4535,9 +4875,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               color: Color(0xFF051C48),
                               shape: BoxShape.circle,
                             ),
-                            child: const Icon(Icons.sell_outlined, color: Colors.white, size: 11),
+                            child: const Icon(Icons.sell_outlined, color: Colors.white, size: 10),
                           ),
-                          const SizedBox(width: 6),
+                          const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               (computedDiscountAmount > 0 || _tipAmount > 0)
@@ -4546,7 +4886,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               style: const TextStyle(
                                 color: Color(0xFF051C48),
                                 fontWeight: FontWeight.bold,
-                                fontSize: 12.5,
+                                fontSize: 12,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -4563,12 +4903,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
         // Price Summary Card
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: isDesktopPanel ? 14 : 16, vertical: 4),
+          padding: EdgeInsets.symmetric(horizontal: isDesktopPanel ? 14 : 14, vertical: 3),
           child: Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFE2E8F0)),
               boxShadow: [
                 BoxShadow(
@@ -4585,16 +4925,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   children: [
                     Text(
                       'Sub total',
-                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                      style: const TextStyle(fontSize: 12.0, color: Color(0xFF64748B)),
                     ),
                     Text(
                       '$currency${cartSubtotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                      style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                     ),
                   ],
                 ),
                 if (computedDiscountAmount > 0) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -4606,29 +4946,29 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             : (_discountMode == 'percent' && _discountInputValue > 0
                                 ? 'Discount (${_discountInputValue.toStringAsFixed(0)}%):'
                                 : 'Discount:'),
-                        style: const TextStyle(fontSize: 12.0, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
                       ),
                       Text(
                         '- $currency${computedDiscountAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF10B981)),
                       ),
                     ],
                   ),
                 ],
                 if (_tipAmount > 0) ...[
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 2),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tip:', style: TextStyle(fontSize: 12.0, color: Color(0xFF00A896), fontWeight: FontWeight.bold)),
+                      const Text('Tip:', style: TextStyle(fontSize: 11.5, color: Color(0xFF00A896), fontWeight: FontWeight.bold)),
                       Text(
                         '+ $currency${_tipAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.bold, color: Color(0xFF00A896)),
+                        style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF00A896)),
                       ),
                     ],
                   ),
                 ],
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Builder(
                   builder: (context) {
                     final bool isNonGst = db.restaurant?.billingType == 'Non-GST';
@@ -4646,18 +4986,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       children: [
                         Text(
                           taxLabel,
-                          style: const TextStyle(fontSize: 12.0, color: Color(0xFF64748B)),
+                          style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
                         ),
                         Text(
                           '+ $currency${cartTax.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                         ),
                       ],
                     );
                   },
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 5),
+                  padding: EdgeInsets.symmetric(vertical: 4),
                   child: Divider(color: Color(0xFFE2E8F0), height: 1),
                 ),
                 Row(
@@ -4665,11 +5005,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   children: [
                     const Text(
                       'Total amount',
-                      style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
                     Text(
                       '$currency${cartTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                      style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
                     ),
                   ],
                 ),
@@ -4678,13 +5018,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
         ),
 
-        // Promo Code Row (Desktop & Mobile)
-        Padding(
-          padding: EdgeInsets.symmetric(horizontal: isDesktopPanel ? 14 : 16, vertical: 4),
-          child: Row(
-            children: [
-              Expanded(
-                child: Container(
+        // Promo Code Row (Desktop Only)
+        if (isDesktopPanel)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Container(
                   height: 38,
                   decoration: BoxDecoration(
                     color: Colors.white,
@@ -4791,59 +5132,59 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         ),
 
         // Bottom Action Buttons
-        Padding(
-          padding: EdgeInsets.fromLTRB(isDesktopPanel ? 14 : 14, 6, isDesktopPanel ? 14 : 14, isDesktopPanel ? 14 : 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Primary "Proceed payment" Action Button (Matching Reference UI)
-              SizedBox(
-                width: double.infinity,
-                height: 46,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: _cartItems.isEmpty
-                          ? [const Color(0xFF94A3B8), const Color(0xFF64748B)]
-                          : [const Color(0xFF051C48), const Color(0xFF0A2E7A)],
+        if (isDesktopPanel)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 6, 14, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Primary "Proceed payment" Action Button (Matching Reference UI)
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: _cartItems.isEmpty
+                            ? [const Color(0xFF94A3B8), const Color(0xFF64748B)]
+                            : [const Color(0xFF051C48), const Color(0xFF0A2E7A)],
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: _cartItems.isEmpty
+                          ? []
+                          : [
+                              BoxShadow(
+                                color: const Color(0xFF051C48).withValues(alpha: 0.3),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                     ),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: _cartItems.isEmpty
-                        ? []
-                        : [
-                            BoxShadow(
-                              color: const Color(0xFF051C48).withValues(alpha: 0.3),
-                              blurRadius: 8,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                  ),
-                  child: ElevatedButton(
-                    onPressed: _cartItems.isEmpty
-                        ? null
-                        : () {
-                            _checkoutOrder(cartContext: isDesktopPanel ? null : context);
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.payment_rounded, color: Colors.white, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          isDesktopPanel ? 'Proceed payment ($currency${cartTotal.toStringAsFixed(2)})' : 'Settle',
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14.5),
-                        ),
-                      ],
+                    child: ElevatedButton(
+                      onPressed: _cartItems.isEmpty
+                          ? null
+                          : () {
+                              _checkoutOrder(cartContext: null);
+                            },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.payment_rounded, color: Colors.white, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Proceed payment ($currency${cartTotal.toStringAsFixed(2)})',
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14.5),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-              if (isDesktopPanel) ...[
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -4887,7 +5228,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           onPressed: _cartItems.isEmpty
                               ? null
                               : () async {
-                                  await _handleSaveAndPrint(setStateCart, isDesktopPanel ? null : context);
+                                  await _handleSaveAndPrint(setStateCart, null);
                                 },
                           style: OutlinedButton.styleFrom(
                             side: BorderSide(
@@ -4917,9 +5258,146 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   ],
                 ),
               ],
-            ],
+            ),
+          )
+        else
+          // Mobile Action Buttons: KOT | Save & Print | Settle
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+            child: Row(
+              children: [
+                // 1) KOT Button
+                Expanded(
+                  flex: 2,
+                  child: SizedBox(
+                    height: 46,
+                    child: OutlinedButton(
+                      onPressed: _cartItems.isEmpty
+                          ? null
+                          : () async {
+                              await _sendKotOrder(setStateCart);
+                            },
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: _cartItems.isEmpty ? const Color(0xFFCBD5E1) : const Color(0xFF051C48),
+                          width: 1.4,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          'KOT',
+                          style: TextStyle(
+                            color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // 2) Save & Print Button (Between KOT and Settle)
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 46,
+                    child: OutlinedButton(
+                      onPressed: _cartItems.isEmpty
+                          ? null
+                          : () async {
+                              await _handleSaveAndPrint(setStateCart, context);
+                            },
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(
+                          color: _cartItems.isEmpty ? const Color(0xFFCBD5E1) : const Color(0xFF051C48),
+                          width: 1.4,
+                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                      ),
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.print_outlined,
+                              size: 16,
+                              color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Save & Print',
+                              style: TextStyle(
+                                color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+
+                // 3) Settle Button
+                Expanded(
+                  flex: 3,
+                  child: SizedBox(
+                    height: 46,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: _cartItems.isEmpty
+                              ? [const Color(0xFF94A3B8), const Color(0xFF64748B)]
+                              : [const Color(0xFF051C48), const Color(0xFF0A2E7A)],
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                        boxShadow: _cartItems.isEmpty
+                            ? []
+                            : [
+                                BoxShadow(
+                                  color: const Color(0xFF051C48).withValues(alpha: 0.3),
+                                  blurRadius: 6,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: _cartItems.isEmpty
+                            ? null
+                            : () {
+                                _checkoutOrder(cartContext: context);
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                        child: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            'Settle',
+                            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
       ],
     );
   }
@@ -5033,7 +5511,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         return StatefulBuilder(
           builder: (context, setStateModal) {
             return Container(
-              height: MediaQuery.of(context).size.height * 0.80, // Cart screen slid down slightly for comfortable top spacing
+              height: MediaQuery.of(context).size.height * 0.78,
               decoration: const BoxDecoration(
                 color: Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
@@ -5041,7 +5519,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   BoxShadow(color: Colors.black26, blurRadius: 30, offset: Offset(0, -10)),
                 ],
               ),
-              child: _buildCartPanelContent(setStateCart: setStateModal, isDesktopPanel: false),
+              child: SafeArea(
+                top: false,
+                bottom: true,
+                child: _buildCartPanelContent(setStateCart: setStateModal, isDesktopPanel: false),
+              ),
             );
           },
         );
@@ -5307,22 +5789,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           // Header Row
           Row(
             children: [
-              if (widget.onOpenDrawer != null) ...[
-                InkWell(
-                  onTap: widget.onOpenDrawer,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
-                    ),
-                    child: const Icon(Icons.menu_rounded, size: 18, color: Color(0xFF051C48)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-              ],
               const Text(
                 'Order queues',
                 style: TextStyle(
@@ -5772,7 +6238,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         padding: EdgeInsets.fromLTRB(16, isDesktop ? 10 : 4, 16, 8),
         child: Row(
           children: [
-            if (widget.onOpenDrawer != null) ...[
+            if (widget.onOpenDrawer != null && isDesktop) ...[
               IconButton(
                 icon: const Icon(Icons.menu_rounded, color: Color(0xFF051C48), size: 24),
                 onPressed: widget.onOpenDrawer,
@@ -6217,7 +6683,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               ),
                             ] else ...[
                               Text(
-                                '$currency${item.price.toStringAsFixed(0)}',
+                                '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
                                 style: TextStyle(
                                   color: const Color(0xFF051C48),
                                   fontWeight: FontWeight.w900,
@@ -6225,21 +6691,25 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 ),
                               ),
                             ],
-                            const Spacer(),
-                            if (item.category.isNotEmpty)
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  item.category,
-                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.0, fontWeight: FontWeight.w600),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                            if (isDesktop && item.category.isNotEmpty) ...[
+                              const Spacer(),
+                              Flexible(
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF1F5F9),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                                  ),
+                                  child: Text(
+                                    item.category,
+                                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.0, fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
                               ),
+                            ],
                           ],
                         ),
                       ],
@@ -6361,7 +6831,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
           itemCount: filteredItems.length,
           itemBuilder: (context, index) {
-            return _buildProductCard(filteredItems[index], showImages: showImages, currency: currency, isDesktop: isDesktop);
+            return RepaintBoundary(
+              child: _buildProductCard(filteredItems[index], showImages: showImages, currency: currency, isDesktop: isDesktop),
+            );
           },
         );
       },
@@ -6372,21 +6844,31 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   Widget build(BuildContext context) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
 
-    // Deduplicate in-memory items safely for display
+    // Deduplicate in-memory items safely for display & fast O(N) category lookup
     final seenProductNames = <String>{};
     final uniqueItems = <MenuItemModel>[];
+    final activeCategoriesSet = <String>{};
+
     for (final item in db.menuItems) {
       final key = item.name.trim().toLowerCase();
       if (key.isNotEmpty && !seenProductNames.contains(key)) {
         seenProductNames.add(key);
         uniqueItems.add(item);
+        final cat = item.category.trim();
+        if (cat.isNotEmpty) {
+          activeCategoriesSet.add(cat.toLowerCase());
+        }
       }
     }
 
     // Only display categories that have products assigned to them
-    final categoriesWithProducts = db.categories.where((cat) {
-      return uniqueItems.any((item) => item.category.trim().toLowerCase() == cat.trim().toLowerCase());
-    }).toList();
+    final categoriesWithProducts = <String>[];
+    for (final cat in db.categories) {
+      final catTrim = cat.trim();
+      if (catTrim.isNotEmpty && activeCategoriesSet.contains(catTrim.toLowerCase()) && !categoriesWithProducts.contains(catTrim)) {
+        categoriesWithProducts.add(catTrim);
+      }
+    }
 
     // Include any categories directly present in uniqueItems
     for (final item in uniqueItems) {

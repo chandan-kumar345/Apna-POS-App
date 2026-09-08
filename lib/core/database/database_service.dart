@@ -177,7 +177,7 @@ class DatabaseService extends ChangeNotifier {
     if (items.isEmpty) {
       _liveTableCarts.remove(tableName);
     } else {
-      _liveTableCarts[tableName] = items.map((i) => CartItemModel(item: i.item, quantity: i.quantity, note: i.note)).toList();
+      _liveTableCarts[tableName] = items.map((i) => i.clone()).toList();
     }
     _saveLiveTableCartsToPrefs();
     notifyListeners();
@@ -208,13 +208,10 @@ class DatabaseService extends ChangeNotifier {
               item: mergedCart[existingIdx].item,
               quantity: mergedCart[existingIdx].quantity + srcItem.quantity,
               note: mergedCart[existingIdx].note,
+              kotQuantity: mergedCart[existingIdx].kotQuantity + srcItem.kotQuantity,
             );
           } else {
-            mergedCart.add(CartItemModel(
-              item: srcItem.item,
-              quantity: srcItem.quantity,
-              note: srcItem.note,
-            ));
+            mergedCart.add(srcItem.clone());
           }
         }
         setLiveTableCart(targetTable, mergedCart);
@@ -295,7 +292,7 @@ class DatabaseService extends ChangeNotifier {
         rawMap.forEach((key, val) {
           if (val is List) {
             _liveTableCarts[key] = val
-                .whereType<Map<String, dynamic>>()
+                .whereType<Map>()
                 .map((j) => CartItemModel.fromJson(j))
                 .toList();
           }
@@ -415,7 +412,7 @@ class DatabaseService extends ChangeNotifier {
           activeItemCount: activeOrder.items.length,
         );
         _liveCartTotals[tbl.name] = activeOrder.totalAmount;
-        _liveTableCarts[tbl.name] = List.from(activeOrder.items);
+        _liveTableCarts[tbl.name] = activeOrder.items.map((i) => i.clone()).toList();
       } else {
         // No active pending/preparing order exists for this table
         final hasDraftCart = _liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty;
@@ -2396,7 +2393,12 @@ class DatabaseService extends ChangeNotifier {
             if (idx >= 0) {
               orders[idx] = serverOrder.copyWith(
                 isSynced: true,
-                items: serverOrder.items.isNotEmpty ? serverOrder.items : List.from(items),
+                items: serverOrder.items.isNotEmpty
+                    ? serverOrder.items.map((si) {
+                        final localMatch = items.where((li) => li.item.name == si.item.name || (li.item.id.isNotEmpty && li.item.id == si.item.id)).firstOrNull;
+                        return si.copyWith(kotQuantity: localMatch?.kotQuantity ?? (si.kotQuantity > 0 ? si.kotQuantity : si.quantity));
+                      }).toList()
+                    : List.from(items),
                 qrIntentUrl: resolvedQr,
               );
               await _saveOrdersToPrefs();

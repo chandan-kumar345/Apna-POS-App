@@ -7,12 +7,25 @@ class CartItemModel {
   final MenuItemModel item;
   int quantity;
   String? note;
+  int? _kotQuantity;
+
+  int get kotQuantity => _kotQuantity ?? 0;
+  set kotQuantity(int? value) {
+    _kotQuantity = value ?? 0;
+  }
 
   CartItemModel({
     required this.item,
     this.quantity = 1,
     this.note,
-  });
+    int? kotQuantity,
+  }) : _kotQuantity = kotQuantity ?? 0;
+
+  /// Quantity that has not yet been sent/printed to the kitchen
+  int get pendingKotQuantity => (quantity - kotQuantity).clamp(0, quantity);
+
+  /// Whether there are new or increased units of this item waiting to be sent to kitchen
+  bool get hasPendingKot => pendingKotQuantity > 0;
 
   /// Total price calculated using the effective sale price of the item/variant
   double get totalPrice => item.effectivePrice * quantity;
@@ -29,18 +42,42 @@ class CartItemModel {
   /// Whether this item is explicitly tax-exempt / has 0% GST
   bool get isTaxExempt => (item.gstPercent != null && item.gstPercent! <= 0.0);
 
+  CartItemModel clone() => CartItemModel(
+        item: item,
+        quantity: quantity,
+        note: note,
+        kotQuantity: kotQuantity,
+      );
+
+  CartItemModel copyWith({
+    MenuItemModel? item,
+    int? quantity,
+    String? note,
+    int? kotQuantity,
+  }) {
+    return CartItemModel(
+      item: item ?? this.item,
+      quantity: quantity ?? this.quantity,
+      note: note ?? this.note,
+      kotQuantity: kotQuantity ?? this.kotQuantity,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
         'item': item.toJson(),
         'quantity': quantity,
         'note': note,
+        'kotQuantity': kotQuantity,
       };
 
-  factory CartItemModel.fromJson(Map<String, dynamic> json) {
+  factory CartItemModel.fromJson(Map<dynamic, dynamic> json) {
+    final int parsedKotQty = (json['kotQuantity'] as num?)?.toInt() ?? 0;
     if (json['item'] != null && json['item'] is Map) {
       return CartItemModel(
-        item: MenuItemModel.fromJson(json['item']),
+        item: MenuItemModel.fromJson(Map<String, dynamic>.from(json['item'] as Map)),
         quantity: (json['quantity'] as num?)?.toInt() ?? 1,
         note: json['note']?.toString(),
+        kotQuantity: parsedKotQty,
       );
     }
     // Flat item structure returned from backend Order / Sale
@@ -69,6 +106,7 @@ class CartItemModel {
       item: menuItem,
       quantity: (json['quantity'] as num?)?.toInt() ?? 1,
       note: json['note']?.toString(),
+      kotQuantity: parsedKotQty,
     );
   }
 }
@@ -156,7 +194,7 @@ class OrderModel {
         'qrImageUrl': qrImageUrl,
       };
 
-  factory OrderModel.fromJson(Map<String, dynamic> json) {
+  factory OrderModel.fromJson(Map<dynamic, dynamic> json) {
     final rawPm = (json['paymentMethod'] ?? 'Cash').toString();
     final rawPs = (json['paymentStatus'] ?? '').toString().toLowerCase();
     final bool rawIsPaid = json['isPaid'] == true || rawPs == 'paid' || json['status'] == 'completed';
@@ -176,7 +214,7 @@ class OrderModel {
         orElse: () => OrderStatus.pending,
       ),
       items: (json['items'] as List<dynamic>?)
-              ?.map((i) => i is Map ? CartItemModel.fromJson(Map<String, dynamic>.from(i)) : null)
+              ?.map((i) => i is Map ? CartItemModel.fromJson(i) : null)
               .whereType<CartItemModel>()
               .toList() ??
           [],

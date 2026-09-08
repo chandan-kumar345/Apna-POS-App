@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart' show Color;
 import 'package:flutter/services.dart' show rootBundle;
@@ -15,6 +16,8 @@ import 'package:intl/intl.dart';
 import '../models/order_model.dart';
 import '../models/restaurant_model.dart';
 import '../models/user_model.dart';
+import '../network/api_endpoints.dart';
+import '../database/database_service.dart';
 
 class BluetoothPrinterService {
   static final BluetoothPrinterService _instance = BluetoothPrinterService._internal();
@@ -314,51 +317,126 @@ class BluetoothPrinterService {
     return null;
   }
 
-  /// Loads company / restaurant logo from network, local file, or base64 and optimizes for 58mm thermal print
+  /// Loads company / restaurant profile logo from network, local file, asset or base64 and optimizes for thermal print
   Future<img.Image?> _loadCompanyLogo({UserModel? user, RestaurantModel? restaurant}) async {
     try {
-      final photoPath = user?.profilePhotoPath ?? '';
+      String photoPath = user?.profilePhotoPath?.trim() ?? '';
+      if (photoPath.isEmpty) {
+        final dbUser = DatabaseService().currentUser;
+        photoPath = dbUser?.profilePhotoPath?.trim() ?? '';
+      }
+
       Uint8List? imageBytes;
 
       if (photoPath.isNotEmpty) {
-        if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
-          try {
-            final response = await http.get(Uri.parse(photoPath)).timeout(const Duration(seconds: 3));
-            if (response.statusCode == 200) {
-              imageBytes = response.bodyBytes;
-            }
-          } catch (_) {}
-        } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
+        // 1. Local filesystem path check (handles Windows / Android absolute paths & file:// URIs)
+        try {
+          final cleanPath = photoPath.replaceFirst('file://', '');
+          final file = File(cleanPath);
+          if (file.existsSync()) {
+            imageBytes = await file.readAsBytes();
+          }
+        } catch (_) {}
+
+        // 2. Base64 encoded image check
+        if (imageBytes == null && (photoPath.startsWith('data:image') || (photoPath.length > 60 && !photoPath.startsWith('http') && !photoPath.startsWith('/') && !photoPath.contains('\\')))) {
           try {
             final cleanBase64 = photoPath.contains(',') ? photoPath.split(',').last : photoPath;
-            imageBytes = base64Decode(cleanBase64);
+            imageBytes = base64Decode(cleanBase64.trim());
           } catch (_) {}
-        } else if (photoPath.startsWith('assets/')) {
+        }
+
+        // 3. Asset path check
+        if (imageBytes == null && photoPath.startsWith('assets/')) {
           try {
             final byteData = await rootBundle.load(photoPath);
             imageBytes = byteData.buffer.asUint8List();
           } catch (_) {}
-        } else {
-          final file = File(photoPath);
-          if (file.existsSync()) {
-            imageBytes = await file.readAsBytes();
+        }
+
+        // 4. Remote HTTP / Server media URL check (resolves relative server paths like /uploads/...)
+        if (imageBytes == null) {
+          final resolvedUrl = ApiEndpoints.resolveMediaUrl(photoPath);
+          if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+            try {
+              final response = await http.get(Uri.parse(resolvedUrl)).timeout(const Duration(seconds: 5));
+              if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+                imageBytes = response.bodyBytes;
+              }
+            } catch (e) {
+              if (kDebugMode) print('[_loadCompanyLogo] Error downloading logo from $resolvedUrl: $e');
+            }
           }
+        }
+      }
+
+      // 5. Fallback to bundled brand logo if user logo is not found or failed to load
+      if (imageBytes == null || imageBytes.isEmpty) {
+        for (final fallbackAsset in ['assets/images/apna_pos_brand_logo.png', 'assets/images/logo.png', 'assets/images/logoq.png']) {
+          try {
+            final byteData = await rootBundle.load(fallbackAsset);
+            imageBytes = byteData.buffer.asUint8List();
+            if (imageBytes.isNotEmpty) break;
+          } catch (_) {}
         }
       }
 
       if (imageBytes != null && imageBytes.isNotEmpty) {
         final decoded = img.decodeImage(imageBytes);
         if (decoded != null) {
-          // Resize for 58mm printer: width 160 dots max (fits centered neatly on 384 dot width paper)
-          final resized = img.copyResize(decoded, width: 160);
-          final grayscale = img.grayscale(resized);
-          return grayscale;
+          return _formatCircularLogo(decoded, targetSize: 320, borderWidth: 4.0);
         }
       }
     } catch (e) {
       if (kDebugMode) print('[_loadCompanyLogo] Error loading logo: $e');
     }
     return null;
+  }
+
+  /// Formats an image into a circle with a crisp outline border line on a solid white background
+  img.Image _formatCircularLogo(img.Image src, {int targetSize = 320, double borderWidth = 4.0}) {
+    // 1. Crop to center square so aspect ratio stays 1:1
+    final minDim = src.width < src.height ? src.width : src.height;
+    final srcX = (src.width - minDim) ~/ 2;
+    final srcY = (src.height - minDim) ~/ 2;
+    final squareCrop = img.copyCrop(src, x: srcX, y: srcY, width: minDim, height: minDim);
+
+    // 2. Resize to target size (320x320 dots, multiple of 8)
+    final resized = img.copyResize(
+      squareCrop,
+      width: targetSize,
+      height: targetSize,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    // 3. Composite onto solid white background to eliminate PNG transparency blackness
+    final canvas = img.Image(width: targetSize, height: targetSize);
+    img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
+    img.compositeImage(canvas, resized);
+
+    // 4. Apply circular mask and crisp circular outline border
+    final double center = targetSize / 2.0;
+    final double outerRadius = center - 4.0; // 156.0 for 320 size (leaves 4px white margin)
+    final double innerRadius = outerRadius - borderWidth; // 152.0 (4px solid black circular line)
+
+    for (int y = 0; y < targetSize; y++) {
+      for (int x = 0; x < targetSize; x++) {
+        final double dx = (x + 0.5) - center;
+        final double dy = (y + 0.5) - center;
+        final double dist = math.sqrt(dx * dx + dy * dy);
+
+        if (dist > outerRadius) {
+          // Outside the circular frame -> clean white paper background
+          canvas.setPixelRgba(x, y, 255, 255, 255, 255);
+        } else if (dist >= innerRadius) {
+          // Circular border line -> solid black stroke
+          canvas.setPixelRgba(x, y, 0, 0, 0, 255);
+        }
+        // Inside innerRadius: preserves the crisp logo image
+      }
+    }
+
+    return img.grayscale(canvas);
   }
 
   /// Print Thermal Bill Receipt for 58mm Mobile Thermal Printer
@@ -380,33 +458,31 @@ class BluetoothPrinterService {
       List<int> bytes = [];
 
       final restName = _toAscii(restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Store');
-      final restAddress = _toAscii(restaurant?.address.isNotEmpty == true ? restaurant!.address : 'Main Market, City Center');
       final restPhone = _toAscii(restaurant?.phone.isNotEmpty == true ? restaurant!.phone : '+91 98765 43210');
       final gstNumber = _toAscii(restaurant?.gstNumber.isNotEmpty == true ? restaurant!.gstNumber : '');
       final safeCurrency = (currency == '₹' || currency.contains('₹')) ? 'Rs.' : _toAscii(currency);
       final double cgstAmount = order.taxAmount / 2;
       final double sgstAmount = order.taxAmount / 2;
 
-      // 1. Company Logo Raster (Centered on 58mm thermal roll)
+      // 1. Company Logo Raster (Centered on 58mm thermal roll, enlarged & crisp)
       try {
         final logoImage = await _loadCompanyLogo(user: user, restaurant: restaurant);
         if (logoImage != null) {
           bytes += generator.imageRaster(logoImage, align: PosAlign.center);
+          bytes += generator.feed(1);
         }
       } catch (e) {
         if (kDebugMode) print('Error printing logo: $e');
       }
 
-      // 2. Restaurant Header Info (Standard Size1 to avoid 58mm text wrapping)
+      // 2. Restaurant Header Info (Standard Size1)
       bytes += generator.text(
-        restName.toLowerCase(),
+        restName,
         styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
       );
-      if (restaurant?.tagline != null && restaurant!.tagline.isNotEmpty) {
-        bytes += generator.text(_toAscii(restaurant.tagline), styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
+      if (restPhone.isNotEmpty) {
+        bytes += generator.text('Mob: $restPhone', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
       }
-      bytes += generator.text(restAddress, styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
-      bytes += generator.text('Mob: $restPhone', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
 
       // 3. Order Details
       final orderTypeStr = order.orderType == OrderType.dineIn
@@ -434,11 +510,9 @@ class BluetoothPrinterService {
 
       bytes += generator.text('Bill: #${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center, bold: true));
       bytes += generator.text('Invoice: #INV-${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center));
-      bytes += generator.text('Order No: #${_toAscii(order.id.isNotEmpty ? order.id : order.orderNumber)}', styles: const PosStyles(align: PosAlign.center));
       if (gstNumber.isNotEmpty) {
         bytes += generator.text('GST: #$gstNumber', styles: const PosStyles(align: PosAlign.center, bold: true));
       }
-      bytes += generator.text('Pay To : $restName', styles: const PosStyles(align: PosAlign.center, bold: true));
 
       if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
         bytes += generator.text('Delivery Address: ${_toAscii(order.deliveryAddress!)}', styles: const PosStyles(align: PosAlign.center));
@@ -606,11 +680,13 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Print Kitchen Order Ticket (KOT) Thermal Receipt
+  /// Print Kitchen Order Ticket (KOT) Thermal Receipt for Single KOT Thermal Printer
   Future<bool> printKOT({
     required OrderModel order,
     RestaurantModel? restaurant,
     String? kotNumber,
+    bool isReprint = false,
+    List<CartItemModel>? customItemsToPrint,
   }) async {
     bool connected = await isConnected();
     if (!connected) {
@@ -623,7 +699,7 @@ class BluetoothPrinterService {
       final generator = Generator(PaperSize.mm58, profile);
       List<int> bytes = [];
 
-      final restName = restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Moti Mahal';
+      final restName = restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Kitchen';
 
       final dt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
       final formattedDateTime = DateFormat('dd-MM-yyyy,hh:mm:ss a').format(dt).toLowerCase();
@@ -640,9 +716,13 @@ class BluetoothPrinterService {
               : 'Dine In-Table 01')
           : orderTypeStr;
 
-      // 1. Header: KOT (Centered & Bold)
+      // 1. Header: KOT or REPRINT (Centered & Bold)
+      final String headerTitle = isReprint
+          ? '*** KOT REPRINT ***'
+          : ((kotNumber != null && kotNumber.isNotEmpty) ? 'KOT #$kotNumber' : 'KOT');
+
       bytes += generator.text(
-        'KOT',
+        headerTitle,
         styles: const PosStyles(
           align: PosAlign.center,
           bold: true,
@@ -653,7 +733,7 @@ class BluetoothPrinterService {
 
       // 2. Restaurant Name (Centered & Bold)
       bytes += generator.text(
-        restName,
+        _toAscii(restName),
         styles: const PosStyles(
           align: PosAlign.center,
           bold: true,
@@ -683,7 +763,13 @@ class BluetoothPrinterService {
         ),
       );
 
-      // 5. Date & Time (31-08-2026,11:49:19 pm)
+      // 5. Order Number & Date Time
+      if (order.orderNumber.isNotEmpty) {
+        bytes += generator.text(
+          'Order: #${_toAscii(order.orderNumber)}',
+          styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1),
+        );
+      }
       bytes += generator.text(
         formattedDateTime,
         styles: const PosStyles(
@@ -718,12 +804,30 @@ class BluetoothPrinterService {
       // 8. Dashed Line Divider
       bytes += generator.hr(ch: '-');
 
-      // 9. Items List
-      for (int i = 0; i < order.items.length; i++) {
-        final cartItem = order.items[i];
+      // 9. Items List (Resolve pending delta items or full reprint list)
+      final List<CartItemModel> itemsToPrint = customItemsToPrint ??
+          (isReprint
+              ? order.items
+              : (order.items.any((i) => i.pendingKotQuantity > 0)
+                  ? order.items.where((i) => i.pendingKotQuantity > 0).toList()
+                  : order.items));
+
+      for (int i = 0; i < itemsToPrint.length; i++) {
+        final cartItem = itemsToPrint[i];
         final sn = '${i + 1}';
-        final itemName = cartItem.item.name;
-        final qty = '${cartItem.quantity}';
+        final itemName = _toAscii(cartItem.item.name);
+
+        // Format quantity: if increased on existing sent item, format as +X, else normal qty
+        String qtyStr;
+        if (isReprint) {
+          qtyStr = '${cartItem.quantity}';
+        } else if (cartItem.kotQuantity > 0 && cartItem.pendingKotQuantity > 0) {
+          qtyStr = '+${cartItem.pendingKotQuantity}';
+        } else if (cartItem.pendingKotQuantity > 0) {
+          qtyStr = '${cartItem.pendingKotQuantity}';
+        } else {
+          qtyStr = '${cartItem.quantity}';
+        }
 
         bytes += generator.row([
           PosColumn(
@@ -737,7 +841,7 @@ class BluetoothPrinterService {
             styles: const PosStyles(align: PosAlign.left),
           ),
           PosColumn(
-            text: qty,
+            text: qtyStr,
             width: 2,
             styles: const PosStyles(align: PosAlign.right, bold: true),
           ),
@@ -745,7 +849,7 @@ class BluetoothPrinterService {
 
         if (cartItem.note != null && cartItem.note!.trim().isNotEmpty) {
           bytes += generator.text(
-            '  * Note: ${cartItem.note!.trim()}',
+            '  * Note: ${_toAscii(cartItem.note!.trim())}',
             styles: const PosStyles(
               align: PosAlign.left,
               fontType: PosFontType.fontB,

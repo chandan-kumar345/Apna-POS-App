@@ -2,8 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:math' as math;
-import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
@@ -140,212 +138,6 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
 
 
-  // ══════════════════════════════════════════════════════
-  //  PREMIUM SUBSCRIPTION DIALOG
-  // ══════════════════════════════════════════════════════
-  void _showSubscriptionDialog(String featureName) {
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 540),
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.18),
-                    blurRadius: 32,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header gradient banner
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text('👑', style: TextStyle(fontSize: 40)),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'Premium Feature',
-                          style: TextStyle(fontSize: 19, fontWeight: FontWeight.w900, color: Colors.white),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '$featureName is a premium feature.\nSubscribe to unlock full access.',
-                          style: const TextStyle(fontSize: 12.5, color: Color(0xFFB0C4DE)),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Plan cards
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        _buildPlanCard(
-                          '⚡ Monthly Plan',
-                          '₹999 / mo',
-                          'All premium features for 30 days',
-                          const Color(0xFF051C48),
-                        ),
-                        const SizedBox(height: 10),
-                        _buildPlanCard(
-                          '🔥 Annual Plan',
-                          '₹7,999 / yr',
-                          'Save 33% • Best value for growing businesses',
-                          const Color(0xFFF59E0B),
-                          isHighlighted: true,
-                        ),
-
-                        const SizedBox(height: 14),
-
-                        // What's included
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFE2E8F0)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Premium includes:',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                              ),
-                              const SizedBox(height: 6),
-                              for (final f in [
-                                '👑  Loyalty & Rewards Program',
-                                '📢  Marketing Campaign Tools',
-                                '📦  Inventory & Stock Management',
-                                '📊  Advanced Analytics & Reports',
-                                '🔔  Priority Customer Support',
-                              ])
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 3),
-                                  child: Text(f, style: const TextStyle(fontSize: 11.5, color: Color(0xFF334155))),
-                                ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        // Subscribe button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 44,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.pop(ctx);
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => SubscriptionScreen(sourceFeature: featureName.toLowerCase()),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF051C48),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              elevation: 0,
-                            ),
-                            child: const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Text('👑', style: TextStyle(fontSize: 15)),
-                                SizedBox(width: 8),
-                                Text(
-                                  'Explore Plans & Upgrade',
-                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13.5),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text(
-                            'Maybe Later',
-                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPlanCard(String title, String price, String subtitle, Color color, {bool isHighlighted = false}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isHighlighted ? color.withOpacity(0.08) : Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isHighlighted ? color : const Color(0xFFE2E8F0),
-          width: isHighlighted ? 2 : 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: color)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              price,
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: color),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildProfileAvatarImage(double size) {
     final user = db.currentUser;
     final photoPath = user?.profilePhotoPath;
@@ -391,18 +183,11 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   }
 
   Widget _buildFallbackInitial(double size) {
-    final user = db.currentUser;
-    final displayName = (user?.name.isNotEmpty == true)
-        ? user!.name
-        : (db.restaurant?.name.isNotEmpty == true ? db.restaurant!.name : 'A');
     return Center(
-      child: Text(
-        displayName.isNotEmpty ? displayName[0].toUpperCase() : 'A',
-        style: TextStyle(
-          color: const Color(0xFF051C48),
-          fontWeight: FontWeight.bold,
-          fontSize: size * 0.45,
-        ),
+      child: Icon(
+        Icons.person_rounded,
+        color: const Color(0xFF1D4ED8),
+        size: size * 0.62,
       ),
     );
   }
@@ -410,145 +195,208 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   Widget _buildSidebarContent(bool isSmallScreen) {
     final rest = db.restaurant;
     final user = db.currentUser;
-    final companyName = rest?.name ?? user?.companyName ?? 'My Business';
 
     return Container(
-      margin: const EdgeInsets.all(10),
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 14),
+      margin: isSmallScreen
+          ? const EdgeInsets.all(10)
+          : const EdgeInsets.fromLTRB(10, 10, 0, 10),
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: const [
-          BoxShadow(color: Colors.black45, blurRadius: 20, offset: Offset(2, 4)),
+          BoxShadow(color: Color(0x0A000000), blurRadius: 16, offset: Offset(0, 4)),
         ],
       ),
       child: Column(
         children: [
-          // Profile / Brand Header
-          Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF00C2FF), width: 2),
-                ),
-                child: _buildProfileAvatarImage(40),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      companyName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.3,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const Text(
-                      'Store Management',
-                      style: TextStyle(
-                        color: Color(0xFF00C2FF),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 22),
-                onPressed: _closeSidebar,
-              ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Divider(color: Color(0xFF334155), height: 1),
-          const SizedBox(height: 12),
-
-          // Navigation Items (10 Items)
+          // Navigation Items (11 Items)
           Expanded(
             child: ListView(
+              physics: const BouncingScrollPhysics(),
               padding: EdgeInsets.zero,
               children: [
-                _buildNavItem(0, 'Dashboard', Icons.dashboard_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(1, 'POS', Icons.point_of_sale_rounded, badge: '${db.menuItems.length}', isSmallScreen: isSmallScreen),
-                _buildNavItem(2, 'Tables', Icons.table_restaurant_rounded, badge: '${db.tables.where((t) => t.status != TableStatus.free).length}', isSmallScreen: isSmallScreen),
-                _buildNavItem(3, 'My Orders', Icons.receipt_long_rounded, badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}', isSmallScreen: isSmallScreen),
-                _buildNavItem(4, 'Menu & Categories', Icons.restaurant_menu_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(5, 'Inventory', Icons.inventory_2_rounded, isPremium: true, isSmallScreen: isSmallScreen),
-                _buildNavItem(6, 'Sales Report', Icons.bar_chart_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(7, 'CRM', Icons.people_alt_rounded, isSmallScreen: isSmallScreen),
-                _buildNavItem(8, 'Loyalty', Icons.card_giftcard_rounded, isPremium: true, isSmallScreen: isSmallScreen),
-                _buildNavItem(9, 'Campaign', Icons.campaign_rounded, isPremium: true, isSmallScreen: isSmallScreen),
-                _buildNavItem(10, 'Business Setting', Icons.settings_rounded, isSmallScreen: isSmallScreen),
+                _buildNavItem(
+                  index: 0,
+                  title: 'Dashboard',
+                  icon: Icons.home_rounded,
+                  iconColor: const Color(0xFF1D4ED8),
+                  iconBgColor: const Color(0xFFEBF2FE),
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 1,
+                  title: 'POS',
+                  icon: Icons.point_of_sale_rounded,
+                  iconColor: const Color(0xFF1D4ED8),
+                  iconBgColor: const Color(0xFFDCEBFE),
+                  badge: '${db.menuItems.length}',
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 2,
+                  title: 'Tables',
+                  icon: Icons.table_restaurant_rounded,
+                  iconColor: const Color(0xFF10B981),
+                  iconBgColor: const Color(0xFFDCFCE7),
+                  badge: '${db.tables.where((t) => t.status != TableStatus.free).length}',
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 3,
+                  title: 'My Orders',
+                  icon: Icons.receipt_long_rounded,
+                  iconColor: const Color(0xFF7C3AED),
+                  iconBgColor: const Color(0xFFF3E8FF),
+                  badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}',
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 4,
+                  title: 'Menu & Categories',
+                  icon: Icons.dinner_dining_rounded,
+                  iconColor: const Color(0xFFEA580C),
+                  iconBgColor: const Color(0xFFFFEDD5),
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 5,
+                  title: 'Inventory',
+                  icon: Icons.inventory_2_rounded,
+                  iconColor: const Color(0xFFEA580C),
+                  iconBgColor: const Color(0xFFFFEDD5),
+                  isPremium: true,
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 6,
+                  title: 'Sales Report',
+                  icon: Icons.bar_chart_rounded,
+                  iconColor: const Color(0xFF0284C7),
+                  iconBgColor: const Color(0xFFE0F2FE),
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 7,
+                  title: 'CRM',
+                  icon: Icons.people_alt_rounded,
+                  iconColor: const Color(0xFFDB2777),
+                  iconBgColor: const Color(0xFFFCE7F3),
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 8,
+                  title: 'Loyalty',
+                  icon: Icons.card_giftcard_rounded,
+                  iconColor: const Color(0xFFD97706),
+                  iconBgColor: const Color(0xFFFEF08A),
+                  isPremium: true,
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 9,
+                  title: 'Campaign',
+                  icon: Icons.campaign_rounded,
+                  iconColor: const Color(0xFFEA580C),
+                  iconBgColor: const Color(0xFFFFE4E6),
+                  isPremium: true,
+                  isSmallScreen: isSmallScreen,
+                ),
+                _buildNavItem(
+                  index: 10,
+                  title: 'Business Setting',
+                  icon: Icons.settings_rounded,
+                  iconColor: const Color(0xFF475569),
+                  iconBgColor: const Color(0xFFF1F5F9),
+                  isSmallScreen: isSmallScreen,
+                ),
               ],
             ),
           ),
 
-          const Divider(color: Color(0xFF334155), height: 1),
-          const SizedBox(height: 12),
+          const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
+          const SizedBox(height: 10),
 
-          // User Profile & Logout
-          Row(
-            children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
-                  boxShadow: const [
-                    BoxShadow(color: Colors.black26, blurRadius: 4),
-                  ],
+          // User Profile & Logout Bottom Row (Matches exact screenshot layout)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFDBEAFE),
+                    shape: BoxShape.circle,
+                  ),
+                  child: ClipOval(
+                    child: _buildProfileAvatarImage(46),
+                  ),
                 ),
-                child: _buildProfileAvatarImage(36),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      (user?.name.isNotEmpty == true)
-                          ? user!.name
-                          : (rest?.name.isNotEmpty == true
-                              ? rest!.name
-                              : 'Owner'),
-                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      user?.role ?? 'Owner',
-                      style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
-                    ),
-                  ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        (user?.name.isNotEmpty == true)
+                            ? user!.name
+                            : (rest?.name.isNotEmpty == true
+                                ? rest!.name
+                                : 'Kundan Lal'),
+                        style: const TextStyle(
+                          color: Color(0xFF0F172A),
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 0.1,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        (user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : 'owner',
+                        style: const TextStyle(
+                          color: Color(0xFF64748B),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.logout_rounded, color: Color(0xFFEF4444), size: 20),
-                tooltip: 'Sign Out',
-                onPressed: () async {
-                  await AuthService().logout();
-                  if (mounted) {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                      (route) => false,
-                    );
-                  }
-                },
-              ),
-            ],
+                const SizedBox(width: 6),
+                InkWell(
+                  onTap: () async {
+                    await AuthService().logout();
+                    if (mounted) {
+                      Navigator.pushAndRemoveUntil(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
+                      );
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(14),
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFE4E6),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.logout_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 22,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -696,15 +544,17 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           children: [
-                            // MENU TOGGLE BUTTON (HAMBURGER)
-                            IconButton(
-                              icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
-                              onPressed: _toggleSidebar,
-                              tooltip: 'Open / Close Navigation',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                            ),
-                            const SizedBox(width: 6),
+                            // MENU TOGGLE BUTTON (HAMBURGER) - Only shown on desktop/large screens
+                            if (!isSmallScreen) ...[
+                              IconButton(
+                                icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
+                                onPressed: _toggleSidebar,
+                                tooltip: 'Open / Close Navigation',
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
 
                             // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
                             InkWell(
@@ -873,10 +723,17 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                       if (_sidebarAnimation.value <= 0.001 && !_isSidebarOpen) {
                         return const SizedBox.shrink();
                       }
+                      final isHeaderVisible = !((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8);
+                      final sidebarTopOffset = isHeaderVisible ? 58.0 : 0.0;
+
                       return Stack(
                         children: [
                           // Smooth Backdrop Fade Overlay
-                          Positioned.fill(
+                          Positioned(
+                            left: 0,
+                            right: 0,
+                            top: sidebarTopOffset,
+                            bottom: 0,
                             child: GestureDetector(
                               onTap: _closeSidebar,
                               child: Opacity(
@@ -888,7 +745,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                           // Smooth Sliding Sidebar
                           Positioned(
                             left: 0,
-                            top: 0,
+                            top: sidebarTopOffset,
                             bottom: 0,
                             width: 280,
                             child: SlideTransition(
@@ -925,16 +782,23 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildNavItem(int index, String title, IconData icon,
-      {String? badge, Color? badgeColor, bool isPremium = false, bool isSmallScreen = false}) {
+  Widget _buildNavItem({
+    required int index,
+    required String title,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBgColor,
+    String? badge,
+    bool isPremium = false,
+    bool isSmallScreen = false,
+  }) {
     final isSelected = _selectedIndex == index;
 
-    // ── PREMIUM NAV ITEM: animated shimmer border + 3D orbit crown ──
-    if (isPremium) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: GestureDetector(
-          onTap: () {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 3),
+      child: InkWell(
+        onTap: () {
+          if (isPremium) {
             if (isSmallScreen) _closeSidebar();
             Navigator.push(
               context,
@@ -953,147 +817,97 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 ),
               ),
             );
-          },
-          child: AnimatedBuilder(
-            animation: _shimmerController,
-            builder: (context, child) {
-              final angle = _shimmerController.value * 2 * math.pi;
-              final glowPulse = (math.sin(angle) + 1) / 2; // 0..1
-              return Container(
-                // subtle 1.5px gradient border
-                padding: const EdgeInsets.all(1.5),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: const [
-                      Color(0xFFFFE57F), // soft gold
-                      Color(0xFFFFF9C4), // very pale shine
-                      Color(0xFFFFCC80), // light amber
-                      Color(0xFFFFE57F), // soft gold
-                    ],
-                    transform: GradientRotation(angle),
-                  ),
-                  borderRadius: BorderRadius.circular(13),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Color.fromRGBO(255, 230, 100, 0.12 + 0.18 * glowPulse),
-                      blurRadius: 6 + 5 * glowPulse,
-                      spreadRadius: 0,
-                    ),
-                  ],
-                ),
-                child: child,
-              );
-            },
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          } else {
+            _selectTab(index);
+            if (isSmallScreen) {
+              _closeSidebar();
+            }
+          }
+        },
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
               decoration: BoxDecoration(
-                // Lighter background — soft warm dark navy with a hint of amber
-                color: const Color(0xFF1C1A0E).withOpacity(0.35),
-                borderRadius: BorderRadius.circular(12),
+                color: isSelected
+                    ? const Color(0xFFEBF3FE)
+                    : (isPremium ? const Color(0xFFFEF7DC) : Colors.transparent),
+                borderRadius: BorderRadius.circular(16),
               ),
               child: Row(
                 children: [
-                  Icon(icon, color: const Color(0xFFFFE082), size: 18), // light gold icon
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 4),
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: iconBgColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      icon,
+                      color: iconColor,
+                      size: 21,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
                       title,
-                      style: const TextStyle(
-                        color: Color(0xFFFFF8E1), // very light cream-gold text
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                      style: TextStyle(
+                        color: isSelected
+                            ? const Color(0xFF1D4ED8)
+                            : (isPremium ? const Color(0xFF92400E) : const Color(0xFF0F172A)),
+                        fontWeight: isSelected
+                            ? FontWeight.w900
+                            : (isPremium ? FontWeight.w800 : FontWeight.w700),
+                        fontSize: 14.5,
+                        letterSpacing: 0.1,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  const SizedBox(width: 6),
-                  // Crown: static (no spin)
-                  const Text('👑', style: TextStyle(fontSize: 20)),
+                  if (isPremium)
+                    const Text('👑', style: TextStyle(fontSize: 19))
+                  else if (badge != null && badge != '0')
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF1D4ED8)
+                            : const Color(0xFFE2E8F0),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        badge,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : const Color(0xFF475569),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
-        ),
-      );
-    }
-
-    // ── REGULAR NAV ITEM ──
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: InkWell(
-        onTap: () {
-          _selectTab(index);
-          if (isSmallScreen) {
-            _closeSidebar();
-          }
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? const Color(0xFF0052FF).withOpacity(0.35)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: isSelected
-                ? Border.all(color: const Color(0xFF00C2FF), width: 1.2)
-                : Border.all(color: Colors.transparent),
-            boxShadow: isSelected
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF00C2FF).withOpacity(0.18),
-                      blurRadius: 10,
-                      offset: const Offset(0, 2),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: isSelected ? 3 : 0,
-                height: 16,
-                margin: EdgeInsets.only(right: isSelected ? 8 : 0),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF00C2FF),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Icon(
-                icon,
-                color: isSelected
-                    ? const Color(0xFF00C2FF)
-                    : const Color(0xFF94A3B8),
-                size: 18,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.w500,
-                    fontSize: 13,
+            if (isSelected)
+              Positioned(
+                left: 0,
+                top: 8,
+                bottom: 8,
+                child: Container(
+                  width: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1D4ED8),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              if (badge != null) ...[
-                GlassBadge(
-                  label: badge,
-                  color: badgeColor ??
-                      (isSelected
-                          ? const Color(0xFF00C2FF)
-                          : const Color(0xFF0052FF)),
-                  fontSize: 9,
-                ),
-              ],
-            ],
-          ),
+          ],
         ),
       ),
     );

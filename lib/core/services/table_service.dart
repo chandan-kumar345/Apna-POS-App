@@ -12,7 +12,7 @@ class TableService {
       final response = await _apiClient.get(ApiEndpoints.tables);
       if (response != null && response['data'] != null && response['data']['tables'] != null) {
         final raw = response['data']['tables'] as List<dynamic>;
-        return raw.map((t) => TableModel.fromJson(t as Map<String, dynamic>)).toList();
+        return raw.whereType<Map>().map((t) => TableModel.fromJson(Map<String, dynamic>.from(t))).toList();
       }
       return [];
     } catch (e) {
@@ -37,7 +37,7 @@ class TableService {
       );
 
       if (response != null && response['data'] != null && response['data']['table'] != null) {
-        return TableModel.fromJson(response['data']['table'] as Map<String, dynamic>);
+        return TableModel.fromJson(Map<String, dynamic>.from(response['data']['table'] as Map));
       }
       return table;
     } catch (e) {
@@ -71,9 +71,9 @@ class TableService {
       if (response != null && response['data'] != null) {
         if (response['data']['tables'] != null) {
           final raw = response['data']['tables'] as List<dynamic>;
-          return raw.map((t) => TableModel.fromJson(t as Map<String, dynamic>)).toList();
+          return raw.whereType<Map>().map((t) => TableModel.fromJson(Map<String, dynamic>.from(t))).toList();
         } else if (response['data']['table'] != null) {
-          return [TableModel.fromJson(response['data']['table'] as Map<String, dynamic>)];
+          return [TableModel.fromJson(Map<String, dynamic>.from(response['data']['table'] as Map))];
         }
       }
       return [];

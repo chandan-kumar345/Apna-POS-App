@@ -9,7 +9,7 @@ import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 
-enum OrderDateFilter { allTime, today, yesterday, thisWeek, thisMonth, custom }
+enum OrderDateFilter { allTime, today, yesterday, thisWeek, thisMonth, thisYear, custom }
 
 class OrdersScreen extends StatefulWidget {
   final Function(String tableName)? onOpenPosForTable;
@@ -32,8 +32,11 @@ class OrdersScreen extends StatefulWidget {
 class _OrdersScreenState extends State<OrdersScreen> {
   final db = DatabaseService();
 
-  // Date Filter matching Sales Report Screen
+  // Date Filter matching Sales Report & Dashboard Screen
   OrderDateFilter _selectedDateFilter = OrderDateFilter.allTime;
+  String _dashboardFilter = 'All Time';
+  DateTime? _customStartDate;
+  DateTime? _customEndDate;
   DateTimeRange? _customDateRange;
 
   // REMOVED 'All' OPTION; DEFAULT TO 'DineIn' & 'Preparing'
@@ -249,13 +252,505 @@ class _OrdersScreenState extends State<OrdersScreen> {
         final monthEnd = nextMonth.subtract(const Duration(milliseconds: 1));
         return orderDate.isAfter(monthStart.subtract(const Duration(milliseconds: 1))) &&
             orderDate.isBefore(monthEnd.add(const Duration(milliseconds: 1)));
+      case OrderDateFilter.thisYear:
+        final yearStart = DateTime(now.year, 1, 1);
+        final yearEnd = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+        return orderDate.isAfter(yearStart.subtract(const Duration(milliseconds: 1))) &&
+            orderDate.isBefore(yearEnd.add(const Duration(milliseconds: 1)));
       case OrderDateFilter.custom:
-        if (_customDateRange == null) return true;
-        final start = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
-        final end = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999);
+        if (_customDateRange == null && (_customStartDate == null || _customEndDate == null)) return true;
+        final start = _customDateRange != null
+            ? DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day)
+            : DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
+        final end = _customDateRange != null
+            ? DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999)
+            : DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 23, 59, 59, 999);
         return orderDate.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
             orderDate.isBefore(end.add(const Duration(milliseconds: 1)));
     }
+  }
+
+  void _syncDateFilterFromDashboardString(String val) {
+    if (val == 'Today') {
+      _selectedDateFilter = OrderDateFilter.today;
+    } else if (val == 'Yesterday') {
+      _selectedDateFilter = OrderDateFilter.yesterday;
+    } else if (val == 'Week' || val == 'This Week') {
+      _selectedDateFilter = OrderDateFilter.thisWeek;
+    } else if (val == 'Month' || val == 'This Month') {
+      _selectedDateFilter = OrderDateFilter.thisMonth;
+    } else if (val == 'Year' || val == 'This Year') {
+      _selectedDateFilter = OrderDateFilter.thisYear;
+    } else if (val == 'All Time') {
+      _selectedDateFilter = OrderDateFilter.allTime;
+    }
+  }
+
+  Widget _buildPresetChip(String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Custom Date Range TO or FROM Popup Dialog matching Dashboard
+  Future<void> _showCustomDateRangeDialog() async {
+    DateTime tempStart = _customStartDate ?? (_customDateRange?.start ?? DateTime.now().subtract(const Duration(days: 7)));
+    DateTime tempEnd = _customEndDate ?? (_customDateRange?.end ?? DateTime.now());
+
+    final result = await showDialog<Map<String, DateTime>>(
+      context: context,
+      builder: (BuildContext ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final fromStr = DateFormat('dd MMM yyyy').format(tempStart);
+            final toStr = DateFormat('dd MMM yyyy').format(tempEnd);
+
+            void selectPreset(Duration duration) {
+              final now = DateTime.now();
+              setDialogState(() {
+                tempEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                tempStart = DateTime(now.year, now.month, now.day).subtract(duration);
+              });
+            }
+
+            void selectThisMonth() {
+              final now = DateTime.now();
+              setDialogState(() {
+                tempStart = DateTime(now.year, now.month, 1);
+                tempEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+              });
+            }
+
+            return Dialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              backgroundColor: Colors.white,
+              elevation: 10,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Dialog Header
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE0F2FE),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: const Icon(
+                                    Icons.date_range_rounded,
+                                    color: Color(0xFF0284C7),
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                const Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Custom Date Range',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Select FROM & TO filter dates',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF64748B),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                              onPressed: () => Navigator.of(ctx).pop(),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Quick Preset Chips (Wrapped)
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildPresetChip('Today', () => selectPreset(Duration.zero)),
+                            _buildPresetChip('Last 7 Days', () => selectPreset(const Duration(days: 6))),
+                            _buildPresetChip('Last 30 Days', () => selectPreset(const Duration(days: 29))),
+                            _buildPresetChip('This Month', selectThisMonth),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // FROM & TO Date Boxes
+                        LayoutBuilder(
+                          builder: (context, boxConstraints) {
+                            final isNarrow = boxConstraints.maxWidth < 340;
+                            final fromBox = InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: tempStart,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: const ColorScheme.light(
+                                        primary: Color(0xFF0284C7),
+                                        onPrimary: Colors.white,
+                                        onSurface: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    tempStart = picked;
+                                    if (tempEnd.isBefore(tempStart)) {
+                                      tempEnd = picked;
+                                    }
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF0284C7)),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'FROM DATE',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF0284C7),
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      fromStr,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+
+                            final toBox = InkWell(
+                              onTap: () async {
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: tempEnd,
+                                  firstDate: DateTime(2020),
+                                  lastDate: DateTime(2100),
+                                  builder: (context, child) => Theme(
+                                    data: Theme.of(context).copyWith(
+                                      colorScheme: const ColorScheme.light(
+                                        primary: Color(0xFF0284C7),
+                                        onPrimary: Colors.white,
+                                        onSurface: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    child: child!,
+                                  ),
+                                );
+                                if (picked != null) {
+                                  setDialogState(() {
+                                    tempEnd = picked;
+                                    if (tempStart.isAfter(tempEnd)) {
+                                      tempStart = picked;
+                                    }
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Row(
+                                      children: [
+                                        Icon(Icons.event_outlined, size: 12, color: Color(0xFF0284C7)),
+                                        SizedBox(width: 4),
+                                        Text(
+                                          'TO DATE',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Color(0xFF0284C7),
+                                            letterSpacing: 0.5,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      toStr,
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+
+                            if (isNarrow) {
+                              return Column(
+                                children: [
+                                  fromBox,
+                                  const SizedBox(height: 8),
+                                  toBox,
+                                ],
+                              );
+                            }
+
+                            return Row(
+                              children: [
+                                Expanded(child: fromBox),
+                                const SizedBox(width: 10),
+                                Expanded(child: toBox),
+                              ],
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 20),
+
+                        // Action Buttons
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.of(ctx).pop(),
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF64748B),
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              ),
+                              child: const Text('Cancel'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: () {
+                                Navigator.of(ctx).pop({
+                                  'start': tempStart,
+                                  'end': tempEnd,
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0284C7),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              child: const Text(
+                                'Apply Filter',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (result != null) {
+      setState(() {
+        _customStartDate = result['start'];
+        _customEndDate = result['end'];
+        _customDateRange = DateTimeRange(start: result['start']!, end: result['end']!);
+        _dashboardFilter = 'Custom Date';
+        _selectedDateFilter = OrderDateFilter.custom;
+      });
+    }
+  }
+
+  /// Dropdown Pill Button matching Dashboard design
+  Widget _buildDropdownPill({
+    required String value,
+    required ValueChanged<String> onChanged,
+  }) {
+    String displayValue = value;
+    if (value == 'Custom Date' &&
+        _customStartDate != null &&
+        _customEndDate != null) {
+      displayValue =
+          '${DateFormat('d MMM').format(_customStartDate!)} - ${DateFormat('d MMM').format(_customEndDate!)}';
+    } else if (_selectedDateFilter == OrderDateFilter.today) {
+      displayValue = 'Today';
+    } else if (_selectedDateFilter == OrderDateFilter.yesterday) {
+      displayValue = 'Yesterday';
+    } else if (_selectedDateFilter == OrderDateFilter.thisWeek) {
+      displayValue = 'This Week';
+    } else if (_selectedDateFilter == OrderDateFilter.thisMonth) {
+      displayValue = 'This Month';
+    } else if (_selectedDateFilter == OrderDateFilter.thisYear) {
+      displayValue = 'This Year';
+    } else if (_selectedDateFilter == OrderDateFilter.allTime) {
+      displayValue = 'All Time';
+    }
+
+    final options = [
+      {'value': 'Today', 'label': 'Today'},
+      {'value': 'Yesterday', 'label': 'Yesterday'},
+      {'value': 'Week', 'label': 'This Week'},
+      {'value': 'Month', 'label': 'This Month'},
+      {'value': 'Year', 'label': 'This Year'},
+      {'value': 'All Time', 'label': 'All Time'},
+      {'value': 'Custom Date', 'label': 'Custom Date Range'},
+    ];
+
+    return PopupMenuButton<String>(
+      initialValue: value,
+      color: Colors.white,
+      elevation: 6,
+      onSelected: (val) async {
+        if (val == 'Custom Date') {
+          await _showCustomDateRangeDialog();
+        } else {
+          onChanged(val);
+        }
+      },
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+      ),
+      itemBuilder: (context) => options.map((opt) {
+        final optVal = opt['value'] as String;
+        final optLabel = opt['label'] as String;
+        final isSelected = value == optVal ||
+            (optVal == 'Week' && value == 'This Week') ||
+            (optVal == 'Month' && value == 'This Month') ||
+            (optVal == 'Year' && value == 'This Year');
+
+        return PopupMenuItem<String>(
+          value: optVal,
+          child: Row(
+            children: [
+              Icon(
+                isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
+                size: 15,
+                color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                optLabel,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                  color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x0A0052FF),
+              blurRadius: 8,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.date_range_rounded,
+              size: 14,
+              color: Color(0xFF0284C7),
+            ),
+            const SizedBox(width: 5),
+            Text(
+              displayValue,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(width: 3),
+            const Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 14,
+              color: Color(0xFF64748B),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _pickCustomDateRange() async {
@@ -286,7 +781,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (picked != null) {
       setState(() {
         _customDateRange = picked;
+        _customStartDate = picked.start;
+        _customEndDate = picked.end;
         _selectedDateFilter = OrderDateFilter.custom;
+        _dashboardFilter = 'Custom Date';
       });
     }
   }
@@ -301,8 +799,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
         return 'This Week';
       case OrderDateFilter.thisMonth:
         return 'This Month';
+      case OrderDateFilter.thisYear:
+        return 'This Year';
       case OrderDateFilter.custom:
-        if (_customDateRange != null) {
+        if (_customStartDate != null && _customEndDate != null) {
+          final fmt = DateFormat('d MMM');
+          return '${fmt.format(_customStartDate!)} - ${fmt.format(_customEndDate!)}';
+        } else if (_customDateRange != null) {
           final fmt = DateFormat('d MMM');
           return '${fmt.format(_customDateRange!.start)} - ${fmt.format(_customDateRange!.end)}';
         }
@@ -334,6 +837,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
         onSelected: (_) {
           setState(() {
             _selectedDateFilter = filter;
+            if (filter == OrderDateFilter.today) {
+              _dashboardFilter = 'Today';
+            } else if (filter == OrderDateFilter.yesterday) {
+              _dashboardFilter = 'Yesterday';
+            } else if (filter == OrderDateFilter.thisWeek) {
+              _dashboardFilter = 'Week';
+            } else if (filter == OrderDateFilter.thisMonth) {
+              _dashboardFilter = 'Month';
+            } else if (filter == OrderDateFilter.thisYear) {
+              _dashboardFilter = 'Year';
+            } else if (filter == OrderDateFilter.allTime) {
+              _dashboardFilter = 'All Time';
+            }
           });
         },
       ),
@@ -367,6 +883,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   _buildDateFilterChip('Yesterday', OrderDateFilter.yesterday),
                   _buildDateFilterChip('This Week', OrderDateFilter.thisWeek),
                   _buildDateFilterChip('This Month', OrderDateFilter.thisMonth),
+                  _buildDateFilterChip('This Year', OrderDateFilter.thisYear),
                   Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ChoiceChip(
@@ -479,52 +996,72 @@ class _OrdersScreenState extends State<OrdersScreen> {
         return Scaffold(
           backgroundColor: const Color(0xFFF8FAFC),
           body: SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Bar: Clean Title with Back & Refresh Action
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
-                  child: Row(
-                    children: [
-                      if (Navigator.of(context).canPop() || widget.showBackButton) ...[
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF051C48), size: 20),
-                          tooltip: 'Back',
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      const Expanded(
-                        child: Text(
-                          'All Received Orders',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0F172A),
-                            letterSpacing: 0.3,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: _isManualRefreshing ? null : _refreshOrders,
-                        icon: _isManualRefreshing
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
-                              )
-                            : const Icon(Icons.refresh_rounded, color: Color(0xFF051C48), size: 22),
-                        tooltip: 'Refresh Orders from Server',
-                      ),
-                    ],
-                  ),
-                ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 900;
 
-                // Date Filter Bar (Matches Sales Report Screen)
-                _buildDateFilterBar(),
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Bar: Clean Title with Date Filter Pill on Mobile & Refresh Action
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+                      child: Row(
+                        children: [
+                          if (Navigator.of(context).canPop() || widget.showBackButton) ...[
+                            IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Color(0xFF051C48), size: 20),
+                              tooltip: 'Back',
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          Expanded(
+                            child: Text(
+                              'All Received Orders',
+                              style: TextStyle(
+                                fontSize: isMobile ? 18 : 20,
+                                fontWeight: FontWeight.w900,
+                                color: const Color(0xFF0F172A),
+                                letterSpacing: 0.3,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (isMobile) ...[
+                            const SizedBox(width: 6),
+                            _buildDropdownPill(
+                              value: _dashboardFilter,
+                              onChanged: (val) {
+                                setState(() {
+                                  _dashboardFilter = val;
+                                  _syncDateFilterFromDashboardString(val);
+                                });
+                              },
+                            ),
+                          ],
+                          const SizedBox(width: 6),
+                          IconButton(
+                            onPressed: _isManualRefreshing ? null : _refreshOrders,
+                            icon: _isManualRefreshing
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF051C48)),
+                                  )
+                                : const Icon(Icons.refresh_rounded, color: Color(0xFF051C48), size: 22),
+                            tooltip: 'Refresh Orders from Server',
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    // Date Filter Bar (Matches Sales Report Screen on Desktop only)
+                    if (!isMobile)
+                      _buildDateFilterBar(),
 
                 // 1) Order Type Section Chips (NO 'All' OPTION)
                 SizedBox(
@@ -680,7 +1217,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                           ),
                                         ],
                                       ),
-                                    padding: const EdgeInsets.all(11),
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: isWide ? 11 : 9,
+                                      vertical: isWide ? 11 : 8,
+                                    ),
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisSize: MainAxisSize.min,
@@ -691,13 +1231,20 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                             Flexible(
                                               child: Text(
                                                 '#${order.orderNumber}',
-                                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                                style: TextStyle(
+                                                  fontSize: isWide ? 14 : 12.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: const Color(0xFF0F172A),
+                                                ),
                                                 overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
-                                            const SizedBox(width: 6),
+                                            const SizedBox(width: 5),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isWide ? 6 : 5,
+                                                vertical: isWide ? 3 : 2,
+                                              ),
                                               decoration: BoxDecoration(
                                                 color: const Color(0xFF051C48).withOpacity(0.08),
                                                 borderRadius: BorderRadius.circular(7),
@@ -705,26 +1252,40 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                               ),
                                               child: Text(
                                                 '${_getOrderTypeLabel(order.orderType)}${order.tableNumber != null && order.orderType == OrderType.dineIn ? " (${order.tableNumber})" : ""}',
-                                                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                                style: TextStyle(
+                                                  fontSize: isWide ? 10 : 9,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: const Color(0xFF051C48),
+                                                ),
                                               ),
                                             ),
                                             if (order.printCount > 0) ...[
                                               const SizedBox(width: 4),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: isWide ? 5 : 4,
+                                                  vertical: isWide ? 2 : 1.5,
+                                                ),
                                                 decoration: BoxDecoration(
                                                   color: const Color(0xFF051C48).withOpacity(0.06),
                                                   borderRadius: BorderRadius.circular(6),
                                                 ),
                                                 child: Text(
                                                   'P#${order.printCount}',
-                                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                                  style: TextStyle(
+                                                    fontSize: isWide ? 9.5 : 8.5,
+                                                    fontWeight: FontWeight.bold,
+                                                    color: const Color(0xFF051C48),
+                                                  ),
                                                 ),
                                               ),
                                             ],
                                             const Spacer(),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isWide ? 6 : 5,
+                                                vertical: isWide ? 3 : 2,
+                                              ),
                                               decoration: BoxDecoration(
                                                 color: order.isPaid
                                                     ? const Color(0xFF10B981).withOpacity(0.12)
@@ -740,14 +1301,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                                 order.isPaid ? 'PAID' : 'UNPAID',
                                                 style: TextStyle(
                                                   color: order.isPaid ? const Color(0xFF10B981) : const Color(0xFFD97706),
-                                                  fontSize: 9.5,
+                                                  fontSize: isWide ? 9.5 : 8.5,
                                                   fontWeight: FontWeight.w900,
                                                 ),
                                               ),
                                             ),
                                             const SizedBox(width: 4),
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isWide ? 8 : 6,
+                                                vertical: isWide ? 3 : 2,
+                                              ),
                                               decoration: BoxDecoration(
                                                 color: statusColor.withOpacity(0.12),
                                                 borderRadius: BorderRadius.circular(9),
@@ -755,45 +1319,61 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                               ),
                                               child: Text(
                                                 _getStatusLabel(effectiveStatus),
-                                                style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w900),
+                                                style: TextStyle(
+                                                  color: statusColor,
+                                                  fontSize: isWide ? 10 : 9,
+                                                  fontWeight: FontWeight.w900,
+                                                ),
                                               ),
                                             ),
                                           ],
                                         ),
 
-                                        const SizedBox(height: 7),
+                                        SizedBox(height: isWide ? 7 : 5),
                                         const Divider(color: Color(0xFFF1F5F9), height: 1),
-                                        const SizedBox(height: 7),
+                                        SizedBox(height: isWide ? 7 : 5),
 
                                         // Items list — Column, no fixed height
                                         ...order.items.map((item) => Padding(
-                                              padding: const EdgeInsets.only(bottom: 3),
+                                              padding: EdgeInsets.only(bottom: isWide ? 3 : 2),
                                               child: Row(
                                                 children: [
                                                   Text(
                                                     '${item.quantity}×',
-                                                    style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF051C48), fontSize: 12),
+                                                    style: TextStyle(
+                                                      fontWeight: FontWeight.w900,
+                                                      color: const Color(0xFF051C48),
+                                                      fontSize: isWide ? 12 : 11,
+                                                    ),
                                                   ),
-                                                  const SizedBox(width: 5),
+                                                  SizedBox(width: isWide ? 5 : 4),
                                                   Expanded(
                                                     child: Text(
                                                       item.item.name,
-                                                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12, fontWeight: FontWeight.w600),
+                                                      style: TextStyle(
+                                                        color: const Color(0xFF0F172A),
+                                                        fontSize: isWide ? 12 : 11,
+                                                        fontWeight: FontWeight.w600,
+                                                      ),
                                                       maxLines: 1,
                                                       overflow: TextOverflow.ellipsis,
                                                     ),
                                                   ),
                                                   Text(
                                                     '$currency ${item.totalPrice.toStringAsFixed(0)}',
-                                                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 11.5, fontWeight: FontWeight.bold),
+                                                    style: TextStyle(
+                                                      color: const Color(0xFF64748B),
+                                                      fontSize: isWide ? 11.5 : 10.5,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
                                                   ),
                                                 ],
                                               ),
                                             )),
 
-                                        const SizedBox(height: 7),
+                                        SizedBox(height: isWide ? 7 : 5),
                                         const Divider(color: Color(0xFFF1F5F9), height: 1),
-                                        const SizedBox(height: 7),
+                                        SizedBox(height: isWide ? 7 : 5),
 
                                         // Footer: Total & Action Buttons
                                         Row(
@@ -801,164 +1381,186 @@ class _OrdersScreenState extends State<OrdersScreen> {
                                             Column(
                                               crossAxisAlignment: CrossAxisAlignment.start,
                                               children: [
-                                                const Text('Total', style: TextStyle(color: Color(0xFF64748B), fontSize: 10)),
+                                                Text(
+                                                  'Total',
+                                                  style: TextStyle(
+                                                    color: const Color(0xFF64748B),
+                                                    fontSize: isWide ? 10 : 9,
+                                                  ),
+                                                ),
                                                 Text(
                                                   '$currency ${order.totalAmount.toStringAsFixed(0)}',
-                                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF051C48)),
+                                                  style: TextStyle(
+                                                    fontSize: isWide ? 14 : 13,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: const Color(0xFF051C48),
+                                                  ),
                                                 ),
                                               ],
                                             ),
-                                            const Spacer(),
-                                            if (order.tableNumber != null &&
-                                                 order.tableNumber!.trim().isNotEmpty &&
-                                                 (effectiveStatus == OrderStatus.pending ||
-                                                     effectiveStatus == OrderStatus.preparing))
-                                               Padding(
-                                                 padding: const EdgeInsets.only(right: 5),
-                                                 child: InkWell(
-                                                   onTap: () {
-                                                     if (widget.onOpenPosForTable != null) {
-                                                       widget.onOpenPosForTable!(order.tableNumber!);
-                                                     }
-                                                   },
-                                                   borderRadius: BorderRadius.circular(8),
-                                                   child: Container(
-                                                     height: 29,
-                                                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                     decoration: BoxDecoration(
-                                                       color: const Color(0xFF051C48).withOpacity(0.08),
-                                                       borderRadius: BorderRadius.circular(8),
-                                                       border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                                     ),
-                                                     alignment: Alignment.center,
-                                                     child: const Row(
-                                                       mainAxisSize: MainAxisSize.min,
-                                                       children: [
-                                                         Icon(Icons.point_of_sale_rounded, size: 12, color: Color(0xFF051C48)),
-                                                         SizedBox(width: 3),
-                                                         Text('POS', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                       ],
-                                                     ),
-                                                   ),
-                                                 ),
-                                               ),
-                                             // KOT Button
-                                             InkWell(
-                                               onTap: () async {
-                                                 final printerService = BluetoothPrinterService();
-                                                 final bool isConnected = await printerService.isConnected();
-                                                 if (!context.mounted) return;
+                                            const SizedBox(width: 8),
+                                            // Action buttons neatly scrolled horizontally if narrow
+                                            Flexible(
+                                              child: SingleChildScrollView(
+                                                scrollDirection: Axis.horizontal,
+                                                reverse: true,
+                                                child: Row(
+                                                  mainAxisSize: MainAxisSize.min,
+                                                  children: [
+                                                    if (order.tableNumber != null &&
+                                                        order.tableNumber!.trim().isNotEmpty &&
+                                                        (effectiveStatus == OrderStatus.pending ||
+                                                            effectiveStatus == OrderStatus.preparing))
+                                                      Padding(
+                                                        padding: EdgeInsets.only(right: isWide ? 5 : 3.5),
+                                                        child: InkWell(
+                                                          onTap: () {
+                                                            if (widget.onOpenPosForTable != null) {
+                                                              widget.onOpenPosForTable!(order.tableNumber!);
+                                                            }
+                                                          },
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          child: Container(
+                                                            height: isWide ? 29 : 26,
+                                                            padding: EdgeInsets.symmetric(horizontal: isWide ? 8 : 5.5),
+                                                            decoration: BoxDecoration(
+                                                              color: const Color(0xFF051C48).withOpacity(0.08),
+                                                              borderRadius: BorderRadius.circular(8),
+                                                              border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                                                            ),
+                                                            alignment: Alignment.center,
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Icon(Icons.point_of_sale_rounded, size: isWide ? 12 : 10.5, color: const Color(0xFF051C48)),
+                                                                SizedBox(width: isWide ? 3 : 2),
+                                                                Text('POS', style: TextStyle(color: const Color(0xFF051C48), fontSize: isWide ? 11 : 9.5, fontWeight: FontWeight.bold)),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    // KOT Button
+                                                    InkWell(
+                                                      onTap: () async {
+                                                        final printerService = BluetoothPrinterService();
+                                                        final bool isConnected = await printerService.isConnected();
+                                                        if (!context.mounted) return;
 
-                                                 if (isConnected) {
-                                                   ScaffoldMessenger.of(context).showSnackBar(
-                                                     const SnackBar(
-                                                       content: Text('Printing KOT Ticket...'),
-                                                       backgroundColor: Color(0xFFD97706),
-                                                       duration: Duration(seconds: 2),
-                                                     ),
-                                                   );
-                                                   final rest = DatabaseService().restaurant;
-                                                   final success = await printerService.printKOT(order: order, restaurant: rest);
-                                                   if (context.mounted && !success) {
-                                                     PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                                                   }
-                                                 } else {
-                                                   final bool reconnected = await printerService.autoConnectSavedPrinter();
-                                                   if (reconnected) {
-                                                     final rest = DatabaseService().restaurant;
-                                                     await printerService.printKOT(order: order, restaurant: rest);
-                                                   } else if (context.mounted) {
-                                                     PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                                                   }
-                                                 }
-                                               },
-                                               borderRadius: BorderRadius.circular(8),
-                                               child: Container(
-                                                 height: 29,
-                                                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                 decoration: BoxDecoration(
-                                                   color: const Color(0xFFD97706).withOpacity(0.08),
-                                                   borderRadius: BorderRadius.circular(8),
-                                                   border: Border.all(color: const Color(0xFFD97706).withOpacity(0.4)),
-                                                 ),
-                                                 alignment: Alignment.center,
-                                                 child: const Row(
-                                                   mainAxisSize: MainAxisSize.min,
-                                                   children: [
-                                                     Icon(Icons.soup_kitchen_rounded, size: 12, color: Color(0xFFD97706)),
-                                                     SizedBox(width: 3),
-                                                     Text('KOT', style: TextStyle(color: Color(0xFFD97706), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                   ],
-                                                 ),
-                                               ),
-                                             ),
-                                             const SizedBox(width: 5),
-                                             // Bill Button
-                                             InkWell(
-                                               onTap: () => showDialog(
-                                                 context: context,
-                                                 useRootNavigator: true,
-                                                 barrierDismissible: true,
-                                                 builder: (_) => ReceiptDialog(order: order, currency: currency),
-                                               ),
-                                               borderRadius: BorderRadius.circular(8),
-                                               child: Container(
-                                                 height: 29,
-                                                 padding: const EdgeInsets.symmetric(horizontal: 8),
-                                                 decoration: BoxDecoration(
-                                                   color: const Color(0xFF051C48).withOpacity(0.08),
-                                                   borderRadius: BorderRadius.circular(8),
-                                                   border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
-                                                 ),
-                                                 alignment: Alignment.center,
-                                                 child: const Row(
-                                                   mainAxisSize: MainAxisSize.min,
-                                                   children: [
-                                                     Icon(Icons.receipt_rounded, size: 12, color: Color(0xFF051C48)),
-                                                     SizedBox(width: 3),
-                                                     Text('Bill', style: TextStyle(color: Color(0xFF051C48), fontSize: 11, fontWeight: FontWeight.bold)),
-                                                   ],
-                                                 ),
-                                               ),
-                                             ),
-                                             if (effectiveStatus == OrderStatus.pending ||
-                                                 effectiveStatus == OrderStatus.preparing ||
-                                                 effectiveStatus == OrderStatus.ready) ...[
-                                               const SizedBox(width: 5),
-                                               // Status Transition Button (Accept / Mark Ready / Settle)
-                                               InkWell(
-                                                 onTap: () {
-                                                   if (effectiveStatus == OrderStatus.pending) {
-                                                     db.updateOrderStatus(order.id, OrderStatus.preparing);
-                                                   } else if (effectiveStatus == OrderStatus.preparing) {
-                                                     db.updateOrderStatus(order.id, OrderStatus.ready);
-                                                   } else if (effectiveStatus == OrderStatus.ready) {
-                                                     _settleOrderFromList(order);
-                                                   }
-                                                   setState(() {});
-                                                 },
-                                                 borderRadius: BorderRadius.circular(8),
-                                                 child: Container(
-                                                   height: 29,
-                                                   padding: const EdgeInsets.symmetric(horizontal: 9),
-                                                   decoration: BoxDecoration(
-                                                     color: effectiveStatus == OrderStatus.preparing
-                                                         ? const Color(0xFF10B981)
-                                                         : (effectiveStatus == OrderStatus.ready
-                                                             ? const Color(0xFFD97706)
-                                                             : const Color(0xFF051C48)),
-                                                     borderRadius: BorderRadius.circular(8),
-                                                   ),
-                                                   alignment: Alignment.center,
-                                                   child: Text(
-                                                     effectiveStatus == OrderStatus.pending
-                                                         ? 'Accept'
-                                                         : (effectiveStatus == OrderStatus.preparing ? 'Mark Ready' : 'Settle'),
-                                                     style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                                                   ),
-                                                 ),
-                                               ),
-                                             ],
+                                                        if (isConnected) {
+                                                          ScaffoldMessenger.of(context).showSnackBar(
+                                                            const SnackBar(
+                                                              content: Text('Printing KOT Ticket...'),
+                                                              backgroundColor: Color(0xFFD97706),
+                                                              duration: Duration(seconds: 2),
+                                                            ),
+                                                          );
+                                                          final rest = DatabaseService().restaurant;
+                                                          final success = await printerService.printKOT(order: order, restaurant: rest, isReprint: true);
+                                                          if (context.mounted && !success) {
+                                                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                          }
+                                                        } else {
+                                                          final bool reconnected = await printerService.autoConnectSavedPrinter();
+                                                          if (reconnected) {
+                                                            final rest = DatabaseService().restaurant;
+                                                            await printerService.printKOT(order: order, restaurant: rest, isReprint: true);
+                                                          } else if (context.mounted) {
+                                                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                                                          }
+                                                        }
+                                                      },
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      child: Container(
+                                                        height: isWide ? 29 : 26,
+                                                        padding: EdgeInsets.symmetric(horizontal: isWide ? 8 : 5.5),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFFD97706).withOpacity(0.08),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(color: const Color(0xFFD97706).withOpacity(0.4)),
+                                                        ),
+                                                        alignment: Alignment.center,
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Icon(Icons.soup_kitchen_rounded, size: isWide ? 12 : 10.5, color: const Color(0xFFD97706)),
+                                                            SizedBox(width: isWide ? 3 : 2),
+                                                            Text('KOT', style: TextStyle(color: const Color(0xFFD97706), fontSize: isWide ? 11 : 9.5, fontWeight: FontWeight.bold)),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    SizedBox(width: isWide ? 5 : 3.5),
+                                                    // Bill Button
+                                                    InkWell(
+                                                      onTap: () => showDialog(
+                                                        context: context,
+                                                        useRootNavigator: true,
+                                                        barrierDismissible: true,
+                                                        builder: (_) => ReceiptDialog(order: order, currency: currency),
+                                                      ),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      child: Container(
+                                                        height: isWide ? 29 : 26,
+                                                        padding: EdgeInsets.symmetric(horizontal: isWide ? 8 : 5.5),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFF051C48).withOpacity(0.08),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(color: const Color(0xFF051C48).withOpacity(0.3)),
+                                                        ),
+                                                        alignment: Alignment.center,
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: [
+                                                            Icon(Icons.receipt_rounded, size: isWide ? 12 : 10.5, color: const Color(0xFF051C48)),
+                                                            SizedBox(width: isWide ? 3 : 2),
+                                                            Text('Bill', style: TextStyle(color: const Color(0xFF051C48), fontSize: isWide ? 11 : 9.5, fontWeight: FontWeight.bold)),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    if (effectiveStatus == OrderStatus.pending ||
+                                                        effectiveStatus == OrderStatus.preparing ||
+                                                        effectiveStatus == OrderStatus.ready) ...[
+                                                      SizedBox(width: isWide ? 5 : 3.5),
+                                                      // Status Transition Button (Accept / Mark Ready / Settle)
+                                                      InkWell(
+                                                        onTap: () {
+                                                          if (effectiveStatus == OrderStatus.pending) {
+                                                            db.updateOrderStatus(order.id, OrderStatus.preparing);
+                                                          } else if (effectiveStatus == OrderStatus.preparing) {
+                                                            db.updateOrderStatus(order.id, OrderStatus.ready);
+                                                          } else if (effectiveStatus == OrderStatus.ready) {
+                                                            _settleOrderFromList(order);
+                                                          }
+                                                          setState(() {});
+                                                        },
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        child: Container(
+                                                          height: isWide ? 29 : 26,
+                                                          padding: EdgeInsets.symmetric(horizontal: isWide ? 9 : 6.5),
+                                                          decoration: BoxDecoration(
+                                                            color: effectiveStatus == OrderStatus.preparing
+                                                                ? const Color(0xFF10B981)
+                                                                : (effectiveStatus == OrderStatus.ready
+                                                                    ? const Color(0xFFD97706)
+                                                                    : const Color(0xFF051C48)),
+                                                            borderRadius: BorderRadius.circular(8),
+                                                          ),
+                                                          alignment: Alignment.center,
+                                                          child: Text(
+                                                            effectiveStatus == OrderStatus.pending
+                                                                ? 'Accept'
+                                                                : (effectiveStatus == OrderStatus.preparing ? 'Mark Ready' : 'Settle'),
+                                                            style: TextStyle(color: Colors.white, fontSize: isWide ? 11 : 9.5, fontWeight: FontWeight.bold),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
                                           ],
                                         ),
                                       ],
@@ -997,11 +1599,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
                   ),
                 ),
               ],
-            ),
-          ),
-        );
-      },
+            );
+          },
+        ),
+      ),
     );
+  },
+);
   }
 
   Widget _buildStatusPill(String filterKey, String label, int count, Color color) {

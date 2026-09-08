@@ -32,13 +32,13 @@ class ResponsiveLayoutHelper {
 
   /// Calculates dynamic product grid column count based on available width in POS screen
   static int getPosGridColumnCount(double availableWidth, {bool showImages = true}) {
-    if (availableWidth >= 1350) {
+    if (availableWidth >= 1400) {
       return 6;
-    } else if (availableWidth >= 580) {
+    } else if (availableWidth >= 1050) {
       return 5;
-    } else if (availableWidth >= 420) {
+    } else if (availableWidth >= 780) {
       return 4;
-    } else if (availableWidth >= 300) {
+    } else if (availableWidth >= 500) {
       return 3;
     } else {
       return 2;
@@ -48,11 +48,11 @@ class ResponsiveLayoutHelper {
   /// Calculates optimal card aspect ratio for product grid
   static double getPosChildAspectRatio(double availableWidth, bool showImages) {
     if (availableWidth >= 1200) {
-      return showImages ? 0.95 : 1.50;
-    } else if (availableWidth >= 580) {
-      return showImages ? 0.92 : 1.40;
+      return showImages ? 0.88 : 1.45;
+    } else if (availableWidth >= 750) {
+      return showImages ? 0.86 : 1.35;
     } else {
-      return showImages ? 0.88 : 1.30;
+      return showImages ? 0.84 : 1.25;
     }
   }
 }
