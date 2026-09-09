@@ -37,6 +37,7 @@ class PaymentModal extends StatefulWidget {
 class _PaymentModalState extends State<PaymentModal> {
   String _selectedMethod = 'Cash'; // Default: Cash option visible first
   bool _isUpiPaymentConfirmed = false;
+  bool _isSubmitting = false; // Lock to prevent duplicate submissions
   String? _upiTransactionRef;
   Timer? _upiPollingTimer;
 
@@ -45,8 +46,6 @@ class _PaymentModalState extends State<PaymentModal> {
   PaymentQrResult? _dynamicQrResult;
   int _upiExpirySeconds = 300; // 5 minutes countdown
   Timer? _expiryCountdownTimer;
-  final _manualUtrController = TextEditingController();
-  bool _showManualUtr = false;
 
   // Cash controller
   final _cashTenderedController = TextEditingController();
@@ -77,7 +76,6 @@ class _PaymentModalState extends State<PaymentModal> {
     _splitCashCtrl.dispose();
     _splitCardCtrl.dispose();
     _splitUpiCtrl.dispose();
-    _manualUtrController.dispose();
     super.dispose();
   }
 
@@ -177,7 +175,8 @@ class _PaymentModalState extends State<PaymentModal> {
     String? utr,
     String? paymentId,
   }) async {
-    if (_isUpiPaymentConfirmed) return;
+    if (_isUpiPaymentConfirmed || _isSubmitting) return;
+    _isSubmitting = true;
     _stopUpiPolling();
     _stopExpiryCountdown();
 
@@ -199,22 +198,12 @@ class _PaymentModalState extends State<PaymentModal> {
     ));
   }
 
-  void _submitManualUtrPayment(double roundedAmount, double roundOff) {
-    final utrText = _manualUtrController.text.trim();
-    if (utrText.isEmpty) {
-      setState(() {
-        _errorMessage = 'Please enter the 12-digit UPI UTR / Ref Number';
-      });
-      return;
-    }
-    _onUpiPaymentAutoVerified(roundedAmount, roundOff, utr: utrText);
-  }
-
   void _validateAndSubmitPayment(
     BuildContext context,
     double payableAmount,
     double roundOff,
   ) async {
+    if (_isSubmitting) return;
     _clearError();
     final String rawCashText = _cashTenderedController.text.trim();
     final double? parsedCash = double.tryParse(rawCashText);
@@ -231,6 +220,7 @@ class _PaymentModalState extends State<PaymentModal> {
     void showError(String msg) {
       setState(() {
         _errorMessage = msg;
+        _isSubmitting = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -277,6 +267,10 @@ class _PaymentModalState extends State<PaymentModal> {
       }
     }
 
+    setState(() {
+      _isSubmitting = true;
+    });
+
     String finalMethod = _selectedMethod;
     if (_selectedMethod == 'Cash') {
       finalMethod = 'Cash (Rec: ${widget.currency}${cashTendered.toStringAsFixed(0)})';
@@ -319,12 +313,6 @@ class _PaymentModalState extends State<PaymentModal> {
       case OrderType.dineIn:
         return const Color(0xFF0284C7); // Sky Blue / Navy
     }
-  }
-
-  String _formatTimer(int seconds) {
-    final min = (seconds ~/ 60).toString().padLeft(2, '0');
-    final sec = (seconds % 60).toString().padLeft(2, '0');
-    return '$min:$sec';
   }
 
   @override
@@ -809,16 +797,16 @@ class _PaymentModalState extends State<PaymentModal> {
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton.icon(
-                            onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
+                            onPressed: _isSubmitting ? null : () => _validateAndSubmitPayment(context, payableAmount, roundOff),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF051C48),
+                              backgroundColor: _isSubmitting ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                               elevation: 0,
                             ),
                             icon: const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
                             label: Text(
-                              'Payment Done • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                              _isSubmitting ? 'Processing Payment...' : 'Payment Done • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
                               style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                             ),
                           ),
@@ -945,9 +933,9 @@ class _PaymentModalState extends State<PaymentModal> {
                 // Submit / Confirm Button (Hidden for UPI automated polling unless fallback)
                 if (_selectedMethod != 'UPI') ...[
                   ElevatedButton(
-                    onPressed: () => _validateAndSubmitPayment(context, payableAmount, roundOff),
+                    onPressed: _isSubmitting ? null : () => _validateAndSubmitPayment(context, payableAmount, roundOff),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF051C48),
+                      backgroundColor: _isSubmitting ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       elevation: 0,
@@ -955,12 +943,25 @@ class _PaymentModalState extends State<PaymentModal> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Complete Payment • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
+                        if (_isSubmitting) ...[
+                          const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          ),
+                          const SizedBox(width: 10),
+                          const Text(
+                            'Processing Payment...',
+                            style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                        ] else ...[
+                          const Icon(Icons.check_circle_outline_rounded, color: Colors.white, size: 18),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Complete Payment • ${widget.currency}${payableAmount.toStringAsFixed(2)}',
+                            style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ],
                     ),
                   ),

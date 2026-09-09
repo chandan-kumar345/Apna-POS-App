@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiEndpoints {
   /// Current local development LAN IP (auto-updated to your machine's IP)
-  static const String defaultLanIp = '172.16.2.4';
+  static const String defaultLanIp = '172.16.2.2';
   static const int defaultPort = 5000;
 
   /// Compile-time environment variable support e.g. flutter run --dart-define=API_URL=https://api.apnapos.com/api/v1
@@ -91,12 +91,14 @@ class ApiEndpoints {
     final bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
     final primaryCandidates = [
       'http://$defaultLanIp:$defaultPort/api/v1',
+      'http://172.16.2.2:$defaultPort/api/v1',
+      'http://172.16.2.3:$defaultPort/api/v1',
+      'http://172.16.2.4:$defaultPort/api/v1',
       if (isDesktop) 'http://127.0.0.1:$defaultPort/api/v1',
       if (isDesktop) 'http://localhost:$defaultPort/api/v1',
       if (Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
       'http://127.0.0.1:$defaultPort/api/v1',
       'http://localhost:$defaultPort/api/v1',
-      'http://172.16.2.3:$defaultPort/api/v1',
       productionApiUrl,
       cloudflareTunnelUrl,
       publicTunnelUrl,
@@ -113,7 +115,7 @@ class ApiEndpoints {
     // 5. Dynamic Subnet Auto-Discovery (if primary candidates failed)
     if (!kIsWeb) {
       final subnetCandidates = _generateSubnetCandidates();
-      final dynamicResolved = await _scanCandidatesParallel(subnetCandidates, timeoutMs: 500);
+      final dynamicResolved = await _scanCandidatesParallel(subnetCandidates, timeoutMs: 600);
       if (dynamicResolved != null) {
         _resolvedBaseUrl = dynamicResolved;
         debugPrint('[ApiEndpoints] Auto-discovered backend on subnet: $dynamicResolved');
@@ -157,7 +159,7 @@ class ApiEndpoints {
     }
 
     return completer.future.timeout(
-      const Duration(milliseconds: 1200),
+      const Duration(milliseconds: 1500),
       onTimeout: () => null,
     );
   }
@@ -169,7 +171,7 @@ class ApiEndpoints {
     final parts = defaultLanIp.split('.');
     if (parts.length == 4) {
       final prefix = '${parts[0]}.${parts[1]}.${parts[2]}';
-      for (int i = 2; i <= 20; i++) {
+      for (int i = 1; i <= 25; i++) {
         final ip = '$prefix.$i';
         if (ip != defaultLanIp) {
           list.add('http://$ip:$defaultPort/api/v1');
@@ -177,9 +179,10 @@ class ApiEndpoints {
       }
     }
     // Also add common 192.168.1.x and 192.168.0.x candidates
-    for (int i = 2; i <= 15; i++) {
+    for (int i = 1; i <= 20; i++) {
       list.add('http://192.168.1.$i:$defaultPort/api/v1');
       list.add('http://192.168.0.$i:$defaultPort/api/v1');
+      list.add('http://192.168.29.$i:$defaultPort/api/v1');
     }
     return list;
   }
@@ -231,14 +234,53 @@ class ApiEndpoints {
     return 'http://127.0.0.1:$defaultPort/api/v1';
   }
 
-  /// Resolve relative or local media URL (image / video) into an absolute URL
+  /// Resolve relative, asset, or local media URL (image / video) into a playable/renderable path or absolute URL
   static String resolveMediaUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
-    final trimmed = url.trim();
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    var trimmed = url.trim();
+
+    // 1. Asset path
+    if (trimmed.startsWith('assets/')) {
       return trimmed;
     }
-    // Local device file path exists on disk
+
+    // 2. file:// URI
+    if (trimmed.startsWith('file://')) {
+      try {
+        final uri = Uri.parse(trimmed);
+        trimmed = uri.toFilePath();
+      } catch (_) {
+        trimmed = trimmed.replaceFirst('file://', '');
+      }
+    }
+
+    // 3. Local disk file path (Windows drive letter e.g. C:\, D:\ or Unix /data/, /storage/, /var/mobile/)
+    final bool isWindowsAbsolute = RegExp(r'^[a-zA-Z]:[/\\]').hasMatch(trimmed);
+    final bool isMobileAbsolute = trimmed.startsWith('/data/') ||
+        trimmed.startsWith('/storage/') ||
+        trimmed.startsWith('/private/') ||
+        trimmed.startsWith('/var/mobile/');
+
+    if (isWindowsAbsolute || isMobileAbsolute) {
+      return trimmed;
+    }
+
+    // 4. Remote HTTP/HTTPS URL
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // Dynamic host rewrite: if URL points to localhost:5000 or 127.0.0.1:5000 but running on Android device or other LAN IP,
+      // rewrite to active baseUrl server host so image can actually be fetched
+      final serverBase = baseUrl.replaceAll('/api/v1', '').replaceAll(RegExp(r'/+$'), '');
+      if (trimmed.contains('localhost:$defaultPort') || trimmed.contains('127.0.0.1:$defaultPort')) {
+        if (!serverBase.contains('localhost') && !serverBase.contains('127.0.0.1')) {
+          return trimmed
+              .replaceAll('http://localhost:$defaultPort', serverBase)
+              .replaceAll('http://127.0.0.1:$defaultPort', serverBase);
+        }
+      }
+      return trimmed;
+    }
+
+    // 5. Existing local file check
     if (!kIsWeb) {
       try {
         if (File(trimmed).existsSync()) {
@@ -246,7 +288,8 @@ class ApiEndpoints {
         }
       } catch (_) {}
     }
-    // Server relative path (e.g. /uploads/products/123.jpg or uploads/products/123.jpg)
+
+    // 6. Server relative path (e.g. /uploads/products/123.jpg or uploads/products/123.jpg)
     final serverBase = baseUrl.replaceAll('/api/v1', '').replaceAll(RegExp(r'/+$'), '');
     final path = trimmed.startsWith('/') ? trimmed : '/$trimmed';
     return '$serverBase$path';
@@ -407,7 +450,7 @@ class ApiEndpoints {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0284C7).withOpacity(0.1),
+                            color: const Color(0xFF0284C7).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(Icons.dns_rounded, color: Color(0xFF0284C7), size: 20),

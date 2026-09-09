@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
@@ -8,12 +9,43 @@ import '../../../core/models/menu_item_model.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../../../core/services/youtube_service.dart';
 
-/// A high-performance media widget for POS product cards and dish listings.
+/// Enum representing the type of media item in the product slide deck
+enum PosMediaType { video, image, placeholder }
+
+/// Data model representing an individual slide item
+class PosMediaItem {
+  final PosMediaType type;
+  final String url;
+  final String? previewThumbnail;
+  final String? title;
+
+  const PosMediaItem({
+    required this.type,
+    this.url = '',
+    this.previewThumbnail,
+    this.title,
+  });
+}
+
+/// Custom ScrollBehavior enabling mouse-drag and touch-drag across Android and Windows
+class PosMediaScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      };
+}
+
+/// A high-performance mixed-media widget for POS product cards and dish listings.
 /// Supports:
-/// 1. Sequential Video -> Image auto-slide playback (Plays video first, then transitions to auto-sliding images, then loops)
-/// 2. Video-only playback (muted looping)
-/// 3. Multi-image auto-sliding carousel (with staggered timer and indicator dots)
-/// 4. Single static image or emoji fallback
+/// 1. Direct & YouTube video streaming with seamless auto-play for Android & Windows
+/// 2. Mixed-media slide deck (Videos + Multiple Images)
+/// 3. Interactive Touch Swipe (Android) & Mouse Drag (Windows)
+/// 4. Interactive Pill Pagination Dots (tap-to-jump)
+/// 5. Automatic pause/play on slide change to conserve system resources
+/// 6. Graceful fallback to YouTube thumbnails, local images, or placeholder
 class PosProductMediaBox extends StatefulWidget {
   final MenuItemModel item;
   final BoxFit fit;
@@ -21,7 +53,9 @@ class PosProductMediaBox extends StatefulWidget {
   final double? height;
   final BorderRadius? borderRadius;
   final bool showDots;
+  final bool showArrows;
   final bool isMini;
+  final bool autoSlide;
   final VoidCallback? onTap;
 
   const PosProductMediaBox({
@@ -32,7 +66,9 @@ class PosProductMediaBox extends StatefulWidget {
     this.height,
     this.borderRadius,
     this.showDots = true,
+    this.showArrows = false,
     this.isMini = false,
+    this.autoSlide = true,
     this.onTap,
   });
 
@@ -41,28 +77,27 @@ class PosProductMediaBox extends StatefulWidget {
 }
 
 class _PosProductMediaBoxState extends State<PosProductMediaBox> {
-  // Video Player State
+  final List<PosMediaItem> _mediaList = [];
+  PageController? _pageController;
+  int _currentPage = 0;
+
+  // Video Streaming State
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
+  bool _isVideoLoading = false;
   bool _isVideoError = false;
 
-  // Carousel & Sequencing State
-  // Mode: 0 = Showing Video, 1 = Showing Images
-  int _activeMode = 0; // 0 = video, 1 = images
-  int _currentImageIndex = 0;
-  Timer? _imageSlideTimer;
-  Timer? _staggerTimer;
-  PageController? _pageController;
-  bool _hasBothVideoAndImages = false;
-
-  List<String> _resolvedImages = [];
-  String _resolvedVideoUrl = '';
+  // Auto-Slide Timers
+  Timer? _autoSlideTimer;
+  Timer? _resumeAutoSlideTimer;
+  bool _isUserInteracting = false;
+  bool _isVideoFinishingSlide = false;
 
   @override
   void initState() {
     super.initState();
-    _extractMedia();
-    _initializePlayback();
+    _buildMediaList();
+    _initController();
   }
 
   @override
@@ -72,271 +107,356 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         oldWidget.item.imageUrl != widget.item.imageUrl ||
         oldWidget.item.images.length != widget.item.images.length ||
         oldWidget.item.id != widget.item.id) {
-      _cleanupControllers();
-      _extractMedia();
-      _initializePlayback();
+      _cleanup();
+      _buildMediaList();
+      _initController();
     }
   }
 
-  void _extractMedia() {
-    // 1. Resolve image list
-    final List<String> list = [];
-    if (widget.item.images.isNotEmpty) {
-      for (final img in widget.item.images) {
-        final resolved = ApiEndpoints.resolveMediaUrl(img);
-        if (resolved.isNotEmpty && !list.contains(resolved)) {
-          list.add(resolved);
+  void _buildMediaList() {
+    _mediaList.clear();
+
+    final rawVideo = widget.item.videoUrl.trim();
+    final hasVideo = rawVideo.isNotEmpty;
+
+    // 1. Determine video thumbnail if available
+    String? videoThumbnail;
+    if (hasVideo) {
+      if (YouTubeService.isYouTubeUrl(rawVideo)) {
+        final videoId = YouTubeService.extractVideoId(rawVideo);
+        if (videoId != null && videoId.isNotEmpty) {
+          videoThumbnail = YouTubeService.getThumbnailUrl(videoId);
+        }
+      } else if (widget.item.imageUrl.trim().isNotEmpty) {
+        videoThumbnail = ApiEndpoints.resolveMediaUrl(widget.item.imageUrl.trim());
+      } else if (widget.item.images.isNotEmpty) {
+        for (final img in widget.item.images) {
+          final res = ApiEndpoints.resolveMediaUrl(img);
+          if (res.isNotEmpty) {
+            videoThumbnail = res;
+            break;
+          }
         }
       }
     }
+
+    // 2. Add Video Item first if product has video
+    if (hasVideo) {
+      _mediaList.add(PosMediaItem(
+        type: PosMediaType.video,
+        url: rawVideo,
+        previewThumbnail: videoThumbnail,
+        title: 'Video Preview',
+      ));
+    }
+
+    // 3. Add Images
+    final List<String> uniqueImages = [];
+    if (widget.item.images.isNotEmpty) {
+      for (final img in widget.item.images) {
+        final resolved = ApiEndpoints.resolveMediaUrl(img);
+        if (resolved.isNotEmpty && !uniqueImages.contains(resolved)) {
+          uniqueImages.add(resolved);
+        }
+      }
+    }
+
     if (widget.item.imageUrl.trim().isNotEmpty) {
       final primary = ApiEndpoints.resolveMediaUrl(widget.item.imageUrl.trim());
-      if (primary.isNotEmpty && !list.contains(primary)) {
-        list.insert(0, primary);
-      }
-    }
-    _resolvedImages = list;
-
-    // 2. Resolve video URL
-    final rawVideo = widget.item.videoUrl.trim();
-    _resolvedVideoUrl = YouTubeService.isYouTubeUrl(rawVideo)
-        ? rawVideo
-        : ApiEndpoints.resolveMediaUrl(rawVideo);
-
-    // 3. If no image exists but YouTube URL exists, auto-fallback to YouTube thumbnail
-    if (_resolvedImages.isEmpty &&
-        _resolvedVideoUrl.isNotEmpty &&
-        YouTubeService.isYouTubeUrl(_resolvedVideoUrl)) {
-      final videoId = YouTubeService.extractVideoId(_resolvedVideoUrl);
-      if (videoId != null && videoId.isNotEmpty) {
-        _resolvedImages = [YouTubeService.getThumbnailUrl(videoId)];
+      if (primary.isNotEmpty && !uniqueImages.contains(primary)) {
+        uniqueImages.insert(0, primary);
       }
     }
 
-    _hasBothVideoAndImages = _resolvedVideoUrl.isNotEmpty && _resolvedImages.isNotEmpty;
+    for (final imgUrl in uniqueImages) {
+      _mediaList.add(PosMediaItem(
+        type: PosMediaType.image,
+        url: imgUrl,
+        title: 'Product Image',
+      ));
+    }
+
+    // 4. Fallback if no images or video
+    if (_mediaList.isEmpty) {
+      _mediaList.add(const PosMediaItem(
+        type: PosMediaType.placeholder,
+      ));
+    }
   }
 
-  void _initializePlayback() {
-    _currentImageIndex = 0;
+  void _initController() {
+    _currentPage = 0;
     _pageController?.dispose();
-    if (_resolvedImages.length > 1) {
+    if (_mediaList.length > 1) {
       _pageController = PageController(initialPage: 0);
     } else {
       _pageController = null;
     }
 
-    if (_resolvedVideoUrl.isNotEmpty) {
-      // Start with Video playback
-      _activeMode = 0;
-      _initVideoPlayer();
-    } else if (_resolvedImages.length > 1) {
-      // No video, start image carousel
-      _activeMode = 1;
-      _startImageCarousel();
-    } else {
-      // 0 or 1 image
-      _activeMode = 1;
+    // If initial slide is video, initialize stream
+    if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
+      _initVideoStream(_mediaList[0].url);
+    } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
+      _scheduleAutoSlideForImages();
     }
   }
 
-  Future<void> _initVideoPlayer() async {
-    if (_resolvedVideoUrl.isEmpty) return;
+  Future<void> _initVideoStream(String videoUrl) async {
+    if (_videoController != null || _isVideoLoading) return;
+    var cleanUrl = videoUrl.trim();
+    if (cleanUrl.isEmpty) return;
+
+    if (cleanUrl.startsWith('"') && cleanUrl.endsWith('"')) {
+      cleanUrl = cleanUrl.substring(1, cleanUrl.length - 1).trim();
+    }
+    if (cleanUrl.startsWith("'") && cleanUrl.endsWith("'")) {
+      cleanUrl = cleanUrl.substring(1, cleanUrl.length - 1).trim();
+    }
+
+    _isVideoLoading = true;
+    _isVideoError = false;
 
     if (!kIsWeb && Platform.isWindows) {
       try {
         WindowsVideoPlayer.registerWith();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[PosProductMediaBox] WindowsVideoPlayer init: $e');
+      }
     }
 
     try {
-      String streamTarget = _resolvedVideoUrl;
-      if (YouTubeService.isYouTubeUrl(_resolvedVideoUrl)) {
-        final resolved = await YouTubeService.resolveStreamUrl(_resolvedVideoUrl);
-        if (resolved != null && resolved.isNotEmpty) {
-          streamTarget = resolved;
+      VideoPlayerController controller;
+
+      // 1. YouTube Video
+      if (YouTubeService.isYouTubeUrl(cleanUrl)) {
+        final streamUrl = await YouTubeService.resolveStreamUrl(cleanUrl);
+        if (streamUrl == null || streamUrl.isEmpty) {
+          throw Exception('Could not extract playable YouTube stream');
         }
-      } else {
-        streamTarget = ApiEndpoints.resolveMediaUrl(_resolvedVideoUrl);
-      }
-
-      // Windows Media Foundation IPv4 fix: replace localhost with 127.0.0.1
-      if (streamTarget.contains('localhost:')) {
-        streamTarget = streamTarget.replaceAll('localhost:', '127.0.0.1:');
-      }
-
-      if (!mounted) return;
-
-      bool isLocalFile = false;
-      if (!kIsWeb) {
-        try {
-          if (File(streamTarget).existsSync()) {
-            isLocalFile = true;
-          }
-        } catch (_) {}
-      }
-
-      if (isLocalFile) {
-        _videoController = VideoPlayerController.file(
-          File(streamTarget),
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        controller = VideoPlayerController.networkUrl(
+          Uri.parse(streamUrl),
         );
-      } else {
-        final uri = Uri.tryParse(streamTarget);
-        if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
-          _videoController = VideoPlayerController.networkUrl(
-            uri,
-            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          );
+      }
+      // 2. Asset Video
+      else if (cleanUrl.startsWith('assets/')) {
+        controller = VideoPlayerController.asset(cleanUrl);
+      }
+      // 3. Direct HTTP/HTTPS Video
+      else if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
+        var netUrl = cleanUrl;
+        if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
+          netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
+        }
+        controller = VideoPlayerController.networkUrl(
+          Uri.parse(netUrl),
+        );
+      }
+      // 4. Local File Path
+      else {
+        String filePath = cleanUrl;
+        if (filePath.startsWith('file://')) {
+          try {
+            filePath = Uri.parse(filePath).toFilePath();
+          } catch (_) {
+            filePath = filePath.replaceFirst('file://', '');
+          }
+        }
+
+        final file = File(filePath);
+        if (file.existsSync()) {
+          controller = VideoPlayerController.file(file);
         } else {
-          _videoController = VideoPlayerController.file(
-            File(streamTarget),
-            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-          );
+          final resolved = ApiEndpoints.resolveMediaUrl(cleanUrl);
+          if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+            var netUrl = resolved;
+            if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
+              netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
+            }
+            controller = VideoPlayerController.networkUrl(Uri.parse(netUrl));
+          } else {
+            final fallbackFile = File(resolved);
+            if (fallbackFile.existsSync()) {
+              controller = VideoPlayerController.file(fallbackFile);
+            } else {
+              throw Exception('Video file not found: $cleanUrl');
+            }
+          }
         }
       }
 
-      await _videoController!.initialize();
+      await controller.initialize();
+      await controller.setVolume(0.0);
+
+      final shouldLoop = _mediaList.length <= 1 || !widget.autoSlide;
+      await controller.setLooping(shouldLoop);
+
       if (!mounted) {
-        _videoController?.dispose();
+        controller.dispose();
         return;
       }
 
-      // Mute for auto-play inside grid cards (required for browser and OS autoplay)
-      await _videoController!.setVolume(0.0);
-
-      if (_hasBothVideoAndImages) {
-        // Non-looping: listen for completion to switch to images
-        await _videoController!.setLooping(false);
-      } else {
-        // Video only: loop indefinitely
-        await _videoController!.setLooping(true);
-      }
+      _videoController = controller;
       _videoController!.addListener(_videoListener);
 
-      await _videoController!.play();
+      // Auto-play immediately if active slide is currently on Video
+      if (_mediaList.isNotEmpty && _currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.video) {
+        try {
+          await _videoController!.play();
+        } catch (_) {}
+      }
 
       if (mounted) {
         setState(() {
           _isVideoInitialized = true;
+          _isVideoLoading = false;
           _isVideoError = false;
         });
       }
     } catch (e) {
-      debugPrint('[PosProductMediaBox] Video init error (${widget.item.name}): $e');
+      debugPrint('[PosProductMediaBox] Video stream error (${widget.item.name}): $e');
       if (mounted) {
         setState(() {
           _isVideoError = true;
+          _isVideoLoading = false;
           _isVideoInitialized = false;
-          _activeMode = 1; // Fallback to images
         });
-        if (_resolvedImages.length > 1) {
-          _startImageCarousel();
+        if (_mediaList.length > 1) {
+          _scheduleAutoSlideForImages();
         }
       }
     }
   }
 
   void _videoListener() {
-    if (_videoController == null || !_videoController!.value.isInitialized) return;
+    if (!mounted || _videoController == null || !_videoController!.value.isInitialized) return;
 
     final val = _videoController!.value;
     if (val.hasError) {
       debugPrint('[PosProductMediaBox] Video playback error: ${val.errorDescription}');
-      if (mounted && _activeMode == 0) {
+      if (!_isVideoError) {
         setState(() {
           _isVideoError = true;
-          _activeMode = 1;
         });
-        if (_resolvedImages.length > 1) {
-          _startImageCarousel();
+        if (_mediaList.length > 1) {
+          _scheduleAutoSlideForImages();
         }
       }
       return;
     }
 
-    // Check if video reached its end
-    if (val.isCompleted ||
-        (val.duration > Duration.zero && val.position >= val.duration - const Duration(milliseconds: 250))) {
-      // Transition from Video to Images!
-      _onVideoFinished();
+    // Detect when video has played fully from start to finish
+    if (widget.autoSlide &&
+        _mediaList.length > 1 &&
+        !widget.isMini &&
+        !_isUserInteracting &&
+        !_isVideoFinishingSlide &&
+        _mediaList.isNotEmpty &&
+        _currentPage < _mediaList.length &&
+        _mediaList[_currentPage].type == PosMediaType.video) {
+      final position = val.position;
+      final duration = val.duration;
+
+      final bool hasActuallyPlayed = position > const Duration(milliseconds: 500);
+      final bool reachedEnd = duration > const Duration(milliseconds: 500) &&
+          position >= (duration - const Duration(milliseconds: 200));
+      final bool isCompleted = val.isCompleted && hasActuallyPlayed;
+
+      if (isCompleted || (hasActuallyPlayed && reachedEnd)) {
+        _onVideoCompleted();
+      }
     }
   }
 
-  void _onVideoFinished() {
-    if (!mounted || !_hasBothVideoAndImages) return;
+  void _onVideoCompleted() {
+    if (_isVideoFinishingSlide || !mounted || _mediaList.length <= 1 || _isUserInteracting) return;
+    _isVideoFinishingSlide = true;
 
-    _videoController?.pause();
+    // Small delay on final frame before sliding smoothly to next slide
+    Future.delayed(const Duration(milliseconds: 200), () {
+      if (!mounted || _isUserInteracting || _mediaList.length <= 1) {
+        _isVideoFinishingSlide = false;
+        return;
+      }
+      final nextIndex = (_currentPage + 1) % _mediaList.length;
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.animateToPage(
+          nextIndex,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.fastOutSlowIn,
+        );
+      }
+      _isVideoFinishingSlide = false;
+    });
+  }
+
+  void _onPageChanged(int index) {
+    if (!mounted) return;
     setState(() {
-      _activeMode = 1; // Switch to images mode
-      _currentImageIndex = 0;
+      _currentPage = index;
     });
 
-    if (_pageController != null && _pageController!.hasClients) {
-      _pageController!.jumpToPage(0);
-    }
-
-    // Start auto-slide through images
-    _startImageCarousel(isSequentialFromVideo: true);
-  }
-
-  void _startImageCarousel({bool isSequentialFromVideo = false}) {
-    _imageSlideTimer?.cancel();
-    _staggerTimer?.cancel();
-
-    if (_resolvedImages.length <= 1) return;
-
-    // Fast initial start (0ms if from video, otherwise 200-600ms)
-    final int staggerMs = isSequentialFromVideo ? 0 : ((widget.item.id.hashCode.abs() % 400) + 150);
-
-    _staggerTimer = Timer(Duration(milliseconds: staggerMs), () {
-      if (!mounted) return;
-      // Fast snappy interval (2.0s per slide)
-      _imageSlideTimer = Timer.periodic(const Duration(milliseconds: 2000), (timer) {
-        if (!mounted) return;
-
-        if (_currentImageIndex + 1 < _resolvedImages.length) {
-          _currentImageIndex++;
-          if (_pageController != null && _pageController!.hasClients) {
-            _pageController!.animateToPage(
-              _currentImageIndex,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeInOutCubic,
-            );
-          } else {
-            setState(() {});
-          }
-        } else {
-          // Reached last image!
-          if (_hasBothVideoAndImages && _videoController != null && _isVideoInitialized) {
-            // Loop back to video
-            timer.cancel();
-            setState(() {
-              _activeMode = 0; // Switch to video
-              _currentImageIndex = 0;
-            });
-            _videoController!.seekTo(Duration.zero);
+    final currentMedia = _mediaList[index];
+    if (currentMedia.type == PosMediaType.video) {
+      _autoSlideTimer?.cancel();
+      _isVideoFinishingSlide = false;
+      if (_videoController != null && _isVideoInitialized) {
+        _videoController!.seekTo(Duration.zero).then((_) {
+          if (mounted && _currentPage == index) {
             _videoController!.play();
-          } else {
-            // Loop back to first image smoothly
-            _currentImageIndex = 0;
-            if (_pageController != null && _pageController!.hasClients) {
-              _pageController!.animateToPage(
-                0,
-                duration: const Duration(milliseconds: 400),
-                curve: Curves.easeInOutCubic,
-              );
-            } else {
-              setState(() {});
-            }
           }
-        }
-      });
+        });
+      } else if (!_isVideoLoading) {
+        _initVideoStream(currentMedia.url);
+      }
+    } else {
+      // Pause video when viewing image slides to conserve CPU/GPU/network bandwidth
+      _videoController?.pause();
+      if (widget.autoSlide && !_isUserInteracting && _mediaList.length > 1 && !widget.isMini) {
+        _scheduleAutoSlideForImages();
+      }
+    }
+  }
+
+  void _scheduleAutoSlideForImages() {
+    _autoSlideTimer?.cancel();
+    if (_mediaList.length <= 1 || widget.isMini) return;
+
+    // If currently on video slide, do NOT slide via timer; let the video play fully first!
+    if (_mediaList[_currentPage].type == PosMediaType.video) return;
+
+    _autoSlideTimer = Timer(const Duration(milliseconds: 2800), () {
+      if (!mounted || _isUserInteracting || _mediaList.length <= 1) return;
+      final nextIndex = (_currentPage + 1) % _mediaList.length;
+      if (_pageController != null && _pageController!.hasClients) {
+        _pageController!.animateToPage(
+          nextIndex,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.fastOutSlowIn,
+        );
+      }
     });
   }
 
-  void _cleanupControllers() {
-    _imageSlideTimer?.cancel();
-    _staggerTimer?.cancel();
+  void _pauseAutoSlideTemporarily() {
+    _isUserInteracting = true;
+    _autoSlideTimer?.cancel();
+    _resumeAutoSlideTimer?.cancel();
+
+    // Resume auto-slide after 5 seconds of idle inactivity
+    _resumeAutoSlideTimer = Timer(const Duration(seconds: 5), () {
+      if (!mounted) return;
+      _isUserInteracting = false;
+      if (_mediaList[_currentPage].type == PosMediaType.image) {
+        _scheduleAutoSlideForImages();
+      } else if (_mediaList[_currentPage].type == PosMediaType.video && _videoController != null && _isVideoInitialized) {
+        _videoController!.play();
+      }
+    });
+  }
+
+  void _cleanup() {
+    _autoSlideTimer?.cancel();
+    _resumeAutoSlideTimer?.cancel();
     _pageController?.dispose();
     _pageController = null;
     if (_videoController != null) {
@@ -345,12 +465,13 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       _videoController = null;
     }
     _isVideoInitialized = false;
+    _isVideoLoading = false;
     _isVideoError = false;
   }
 
   @override
   void dispose() {
-    _cleanupControllers();
+    _cleanup();
     super.dispose();
   }
 
@@ -358,94 +479,86 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
   Widget build(BuildContext context) {
     Widget content;
 
-    if (_activeMode == 0 && _isVideoInitialized && _videoController != null && !_isVideoError) {
-      // 1. Render Video with hardware-accelerated FittedBox
-      final size = _videoController!.value.size;
-      final double vWidth = size.width > 0 ? size.width : 160;
-      final double vHeight = size.height > 0 ? size.height : 100;
-
+    if (_mediaList.isEmpty || _mediaList.first.type == PosMediaType.placeholder) {
+      content = _buildPlaceholderFallback();
+    } else if (_mediaList.length == 1) {
+      // Single Item (Video or Image)
+      content = _buildSlideItem(_mediaList.first, 0);
+    } else {
+      // Multi-Item Slide Deck (Videos + Images)
       content = Stack(
         fit: StackFit.expand,
         children: [
-          // Background fallback image while video loads/buffers
-          if (_resolvedImages.isNotEmpty)
-            _buildSingleImage(_resolvedImages.first),
-          SizedBox.expand(
-            child: FittedBox(
-              fit: widget.fit,
-              clipBehavior: Clip.hardEdge,
-              child: SizedBox(
-                width: vWidth,
-                height: vHeight,
-                child: VideoPlayer(_videoController!),
-              ),
+          // 1. Gesture-enabled PageView with Touch & Mouse Drag Support
+          ScrollConfiguration(
+            behavior: PosMediaScrollBehavior(),
+            child: PageView.builder(
+              controller: _pageController,
+              itemCount: _mediaList.length,
+              physics: const BouncingScrollPhysics(),
+              onPageChanged: _onPageChanged,
+              itemBuilder: (context, index) {
+                return _buildSlideItem(_mediaList[index], index);
+              },
             ),
           ),
-        ],
-      );
-    } else if (_resolvedImages.isNotEmpty) {
-      // 2. Render Image (Single or Multi-image Slide PageView)
-      if (_resolvedImages.length > 1) {
-        content = Stack(
-          fit: StackFit.expand,
-          children: [
-            PageView.builder(
-              controller: _pageController,
-              itemCount: _resolvedImages.length,
-              physics: const BouncingScrollPhysics(),
-              onPageChanged: (index) {
-                setState(() {
-                  _currentImageIndex = index;
-                });
-              },
-              itemBuilder: (context, index) {
-                final imagePath = _resolvedImages[index];
-                return _buildSingleImage(imagePath, key: ValueKey('slide_${widget.item.id}_$index'));
-              },
-            ),
-            // Multi-image slide indicator pill dots
-            if (widget.showDots && !widget.isMini)
-              Positioned(
-                bottom: 4,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: List.generate(_resolvedImages.length, (index) {
-                        final isSelected = index == _currentImageIndex;
-                        return AnimatedContainer(
+
+          // 2. Slide Indicator Dots (Tap to jump directly to any slide)
+          if (widget.showDots && !widget.isMini && _mediaList.length > 1)
+            Positioned(
+              bottom: 4,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.45),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Colors.black26,
+                        blurRadius: 4,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: List.generate(_mediaList.length, (index) {
+                      final isSelected = index == _currentPage;
+                      final isVideo = _mediaList[index].type == PosMediaType.video;
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          _pauseAutoSlideTemporarily();
+                          _pageController?.animateToPage(
+                            index,
+                            duration: const Duration(milliseconds: 300),
+                            curve: Curves.easeInOutCubic,
+                          );
+                        },
+                        child: AnimatedContainer(
                           duration: const Duration(milliseconds: 250),
                           curve: Curves.easeOutCubic,
-                          margin: const EdgeInsets.symmetric(horizontal: 2),
-                          width: isSelected ? 12 : 4,
-                          height: 4,
+                          margin: const EdgeInsets.symmetric(horizontal: 2.5),
+                          width: isSelected ? (isVideo ? 18 : 14) : 5,
+                          height: 5,
                           decoration: BoxDecoration(
-                            color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(2),
+                            color: isSelected
+                                ? (isVideo ? const Color(0xFF38BDF8) : Colors.white)
+                                : Colors.white.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(2.5),
                           ),
-                        );
-                      }),
-                    ),
+                        ),
+                      );
+                    }),
                   ),
                 ),
               ),
-          ],
-        );
-      } else {
-        // Single static image
-        final String imagePath = _resolvedImages.first;
-        content = _buildSingleImage(imagePath, key: ValueKey('single_${widget.item.id}'));
-      }
-    } else {
-      // 3. Fallback Emoji
-      content = _buildEmojiFallback();
+            ),
+        ],
+      );
     }
 
     if (widget.borderRadius != null) {
@@ -462,11 +575,136 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     );
   }
 
-  Widget _buildSingleImage(String imagePath, {Key? key}) {
-    final fallback = _buildEmojiFallback();
-    final resolved = ApiEndpoints.resolveMediaUrl(imagePath);
+  Widget _buildSlideItem(PosMediaItem mediaItem, int index) {
+    if (mediaItem.type == PosMediaType.video) {
+      return _buildVideoSlide(mediaItem);
+    } else if (mediaItem.type == PosMediaType.image) {
+      return _buildImageSlide(mediaItem.url, key: ValueKey('slide_img_${widget.item.id}_$index'));
+    } else {
+      return _buildPlaceholderFallback();
+    }
+  }
+
+  Widget _buildVideoSlide(PosMediaItem mediaItem) {
+    // If not yet initializing or initialized, kick off stream auto-play immediately
+    if (!_isVideoInitialized && !_isVideoLoading && !_isVideoError) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_isVideoLoading && !_isVideoInitialized && !_isVideoError) {
+          _initVideoStream(mediaItem.url);
+        }
+      });
+    }
+
+    // Build guaranteed base thumbnail / dish photo
+    // Even while video buffers or on any transient delay, this guarantees 0 blank box
+    String? thumb = mediaItem.previewThumbnail;
+    if (thumb == null || thumb.isEmpty) {
+      if (widget.item.imageUrl.trim().isNotEmpty) {
+        thumb = ApiEndpoints.resolveMediaUrl(widget.item.imageUrl.trim());
+      } else if (widget.item.images.isNotEmpty) {
+        for (final img in widget.item.images) {
+          final res = ApiEndpoints.resolveMediaUrl(img);
+          if (res.isNotEmpty) {
+            thumb = res;
+            break;
+          }
+        }
+      }
+    }
+
+    final Widget baseThumb = (thumb != null && thumb.isNotEmpty)
+        ? _buildImageSlide(thumb, key: ValueKey('vid_thumb_${widget.item.id}'))
+        : _buildPlaceholderFallback();
+
+    // 1. If Video is initialized and ready
+    if (_isVideoInitialized && _videoController != null && !_isVideoError) {
+      // Auto-play if not already playing and not completed
+      if (!_videoController!.value.isPlaying &&
+          !_videoController!.value.isCompleted &&
+          _mediaList.isNotEmpty &&
+          _mediaList[_currentPage].type == PosMediaType.video) {
+        try {
+          _videoController!.play();
+        } catch (_) {}
+      }
+
+      final double vWidth = _videoController!.value.size.width > 0
+          ? _videoController!.value.size.width
+          : (_videoController!.value.aspectRatio > 0 ? _videoController!.value.aspectRatio * 200 : 320);
+      final double vHeight = _videoController!.value.size.height > 0
+          ? _videoController!.value.size.height
+          : 200;
+
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          // Guaranteed background photo (underneath video)
+          baseThumb,
+
+          // Smooth High Quality Video Render
+          SizedBox.expand(
+            child: FittedBox(
+              fit: widget.fit,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: vWidth,
+                height: vHeight,
+                child: VideoPlayer(_videoController!),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 2. If Loading or Initializing: show preview thumbnail with subtle buffer indicator
+    if (_isVideoLoading || (!_isVideoInitialized && !_isVideoError)) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          baseThumb,
+          Container(
+            color: Colors.black.withValues(alpha: 0.12),
+            child: const Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.0,
+                  color: Color(0xFF38BDF8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return baseThumb;
+  }
+
+  Widget _buildImageSlide(String imagePath, {Key? key}) {
+    final fallback = _buildPlaceholderFallback();
+    final trimmed = imagePath.trim();
+    if (trimmed.isEmpty) return fallback;
+
+    // 1. Asset Image
+    if (trimmed.startsWith('assets/')) {
+      return Image.asset(
+        trimmed,
+        key: key,
+        fit: widget.fit,
+        width: double.infinity,
+        height: double.infinity,
+        errorBuilder: (context, error, stackTrace) => fallback,
+      );
+    }
+
+    // 2. Resolve via ApiEndpoints
+    final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
     if (resolved.isEmpty) return fallback;
 
+    // 3. Network URL
     if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
       return Image.network(
         resolved,
@@ -475,11 +713,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         width: double.infinity,
         height: double.infinity,
         errorBuilder: (context, error, stackTrace) {
-          debugPrint('[PosProductMediaBox] Image network error for "$resolved": $error');
-          // Try local fallback if original image was a local path
+          debugPrint('[PosProductMediaBox] Image network load failed for "$resolved": $error');
           if (!kIsWeb) {
             try {
-              final file = File(imagePath);
+              final file = File(trimmed);
               if (file.existsSync()) {
                 return Image.file(
                   file,
@@ -496,6 +733,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         },
       );
     } else if (!kIsWeb) {
+      // 4. Local File
       try {
         final file = File(resolved);
         if (file.existsSync()) {
@@ -513,13 +751,25 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     return fallback;
   }
 
-  Widget _buildEmojiFallback() {
-    final String fallbackEmoji =
-        widget.item.emoji.trim().isNotEmpty ? widget.item.emoji.trim() : '🥘';
-    return Center(
-      child: Text(
-        fallbackEmoji,
-        style: TextStyle(fontSize: widget.isMini ? 18 : 26),
+  /// Package Box Placeholder Image when product has no images or image fails to load
+  Widget _buildPlaceholderFallback() {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      color: const Color(0xFFF1F5F9),
+      padding: EdgeInsets.all(widget.isMini ? 3.0 : 6.0),
+      child: Center(
+        child: Image.asset(
+          'assets/images/product_placeholder.png',
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Icon(
+              Icons.inventory_2_outlined,
+              size: widget.isMini ? 18 : 32,
+              color: const Color(0xFF94A3B8),
+            );
+          },
+        ),
       ),
     );
   }

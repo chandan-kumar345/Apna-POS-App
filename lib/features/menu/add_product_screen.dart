@@ -908,14 +908,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
         finalVideoUrl = _selectedVideoPath!.trim();
       }
 
-      // Try uploading file if path exists
+      // Upload video to Cloudflare R2 bucket
       if (_selectedVideoPath != null &&
           _selectedVideoPath!.isNotEmpty &&
           !_selectedVideoPath!.startsWith('http')) {
         try {
           final file = File(_selectedVideoPath!);
           if (file.existsSync()) {
-            final uploadedVideo = await UploadService().uploadVideo(file);
+            final uploadedVideo = await UploadService().uploadVideo(file, folder: 'products/videos');
             if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
               finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);
             }
@@ -928,6 +928,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           final uploadedVideo = await UploadService().uploadVideoBytes(
             _selectedVideoBytes!,
             fileName: _selectedVideoFileName ?? 'video_${DateTime.now().millisecondsSinceEpoch}.mp4',
+            folder: 'products/videos',
           );
           if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
             finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);

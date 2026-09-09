@@ -2,14 +2,15 @@ const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/cl
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const env = require('../config/env');
 
 class StorageService {
   constructor() {
-    this.accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-    this.accessKeyId = process.env.R2_ACCESS_KEY_ID;
-    this.secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-    this.bucketName = process.env.R2_BUCKET_NAME || 'apna-pos-media';
-    this.publicDomain = process.env.R2_PUBLIC_DOMAIN; // e.g. https://pub-xxxx.r2.dev or https://media.yourdomain.com
+    this.accountId = env.CLOUDFLARE_ACCOUNT_ID || process.env.CLOUDFLARE_ACCOUNT_ID;
+    this.accessKeyId = env.R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID;
+    this.secretAccessKey = env.R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY;
+    this.bucketName = env.R2_BUCKET_NAME || process.env.R2_BUCKET_NAME || 'apna-pos-media';
+    this.publicDomain = env.R2_PUBLIC_DOMAIN || process.env.R2_PUBLIC_DOMAIN; // e.g. https://pub-xxxx.r2.dev or https://media.yourdomain.com
 
     if (this.accountId && this.accessKeyId && this.secretAccessKey) {
       this.client = new S3Client({
@@ -49,11 +50,12 @@ class StorageService {
     const key = `${folder}/${cleanFileName}`;
 
     if (this.isConfigured) {
+      const resolvedMime = mimeType || (ext === '.mp4' ? 'video/mp4' : (ext === '.webm' ? 'video/webm' : (ext === '.mov' ? 'video/quicktime' : 'application/octet-stream')));
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,
         Body: fileBuffer,
-        ContentType: mimeType || 'application/octet-stream',
+        ContentType: resolvedMime,
       });
 
       await this.client.send(command);

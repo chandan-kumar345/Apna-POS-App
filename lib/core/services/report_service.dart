@@ -287,8 +287,10 @@ class ReportService {
       }
     }
 
-    // Filter local completed orders
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    // Filter local completed orders with deduplication
+    final settled = _db.deduplicateOrdersList(
+      _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList(),
+    );
     return settled;
   }
 
@@ -317,7 +319,9 @@ class ReportService {
     }
 
     // Local summary computation
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final settled = _db.deduplicateOrdersList(
+      _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList(),
+    );
     double totalRev = 0;
     double cash = 0;
     double upi = 0;
@@ -379,7 +383,9 @@ class ReportService {
     }
 
     // Local top products calculation
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final settled = _db.deduplicateOrdersList(
+      _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList(),
+    );
     final Map<String, TopProductData> map = {};
     for (final o in settled) {
       for (final item in o.items) {
@@ -412,13 +418,15 @@ class ReportService {
       if (e != null) end = DateTime(e.year, e.month, e.day, 23, 59, 59, 999);
     }
 
-    final settled = _db.orders.where((o) {
+    final rawSettled = _db.orders.where((o) {
       if (o.status != OrderStatus.completed && !o.isPaid) return false;
       final oDate = o.createdDateTime.toLocal();
       if (start != null && oDate.isBefore(start)) return false;
       if (end != null && oDate.isAfter(end)) return false;
       return true;
     }).toList();
+
+    final settled = _db.deduplicateOrdersList(rawSettled);
 
     double totalRev = 0;
     double totalTax = 0;

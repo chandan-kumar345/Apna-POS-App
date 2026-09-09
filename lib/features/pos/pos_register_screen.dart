@@ -108,6 +108,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   String _customerPhone = '';
   String _customerName = '';
 
+  // Concurrency & Debounce Locks to prevent duplicate order generation
+  bool _isProcessingCheckout = false;
+  bool _isProcessingSaveAndPrint = false;
+  bool _isProcessingKot = false;
+
   // Loyalty Program & Points State
   final LoyaltyService _loyaltyService = LoyaltyService();
   bool _isLoyaltyActive = false;
@@ -275,155 +280,162 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Future<void> _sendKotOrder([StateSetter? setStateModal]) async {
-    // Check if table or takeaway/delivery already has a Running KOT active order in DB
-    final activeOrder = (_activeRunningOrderId != null && _activeRunningOrderId!.isNotEmpty)
-        ? db.orders.where((o) => o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId).firstOrNull
-        : (_selectedOrderType == OrderType.dineIn && _selectedTable != null
-            ? db.orders.where((o) =>
-                isSameTable(o.tableNumber, _selectedTable) &&
-                (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-              ).firstOrNull
-            : db.orders.where((o) =>
-                o.orderType == _selectedOrderType &&
-                (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-              ).firstOrNull);
+    if (_isProcessingKot) return;
+    _isProcessingKot = true;
 
-    if (_cartItems.isEmpty && activeOrder == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please add items to cart to view/generate KOT!')),
+    try {
+      // Check if table or takeaway/delivery already has a Running KOT active order in DB
+      final activeOrder = (_activeRunningOrderId != null && _activeRunningOrderId!.isNotEmpty)
+          ? db.orders.where((o) => o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId).firstOrNull
+          : (_selectedOrderType == OrderType.dineIn && _selectedTable != null
+              ? db.orders.where((o) =>
+                  isSameTable(o.tableNumber, _selectedTable) &&
+                  (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+                ).firstOrNull
+              : db.orders.where((o) =>
+                  o.orderType == _selectedOrderType &&
+                  (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+                ).firstOrNull);
+
+      if (_cartItems.isEmpty && activeOrder == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please add items to cart to view/generate KOT!')),
+        );
+        return;
+      }
+
+      // If order is already active Running KOT and cart is empty, show KotDialog in reprint mode
+      if (activeOrder != null && _cartItems.isEmpty) {
+        showDialog(
+          context: context,
+          builder: (_) => KotDialog(
+            order: activeOrder,
+            isReprint: true,
+            onLegacyPrintKot: () {
+              if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
+                final tbl = db.tables.where((t) =>
+                  isSameTable(t.name, _selectedTable) ||
+                  t.tableNumber.toString() == _selectedTable
+                ).firstOrNull;
+                if (tbl != null) {
+                  db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+                }
+              }
+              if (setStateModal != null) setStateModal(() {});
+              setState(() {});
+            },
+          ),
+        );
+        return;
+      }
+
+      final calc = currentOrderCalculation;
+
+      // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
+      final tempOrder = OrderModel(
+        id: _activeRunningOrderId ?? (activeOrder?.id ?? 'KOT-${DateTime.now().millisecondsSinceEpoch}'),
+        orderNumber: _activeRunningOrderNumber ?? (activeOrder?.orderNumber ?? 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}'),
+        items: _cartItems.map((i) => i.clone()).toList(),
+        subtotal: calc.subtotal,
+        taxAmount: calc.taxAmount,
+        discountAmount: calc.orderDiscount,
+        tipAmount: calc.tipAmount,
+        deliveryCharge: calc.deliveryCharge,
+        totalAmount: calc.totalPayableAmount,
+        tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+        deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+        orderType: _selectedOrderType,
+        paymentMethod: 'KOT Pending',
+        status: OrderStatus.preparing,
+        createdAt: activeOrder?.createdAt ?? DateTime.now().toIso8601String(),
+        customerName: _customerName,
+        customerPhone: _customerPhone,
       );
-      return;
-    }
 
-    // If order is already active Running KOT and cart is empty, show KotDialog in reprint mode
-    if (activeOrder != null && _cartItems.isEmpty) {
+      // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT succeeds)
       showDialog(
         context: context,
         builder: (_) => KotDialog(
-          order: activeOrder,
-          isReprint: true,
-          onLegacyPrintKot: () {
+          order: tempOrder,
+          onPrintKot: (updatedOrder) async {
+            // Sync sent kotQuantity back to in-memory cart items
+            for (int i = 0; i < _cartItems.length; i++) {
+              final match = updatedOrder.items.where((ui) => ui.item.id == _cartItems[i].item.id || ui.item.name == _cartItems[i].item.name).firstOrNull;
+              if (match != null) {
+                _cartItems[i].kotQuantity = match.kotQuantity;
+              } else {
+                _cartItems[i].kotQuantity = _cartItems[i].quantity;
+              }
+            }
+
+            // If active order already exists, update in-place with status: preparing. Else create new order.
+            OrderModel newOrder;
+            if (_activeRunningOrderId != null || activeOrder != null) {
+              final orderIdToUpdate = _activeRunningOrderId ?? activeOrder?.id;
+              final orderNumToUpdate = _activeRunningOrderNumber ?? activeOrder?.orderNumber;
+
+              newOrder = await db.saveAndPrintOrder(
+                items: _cartItems.map((i) => i.clone()).toList(),
+                tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+                deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+                orderType: _selectedOrderType,
+                subtotalOverride: calc.subtotal,
+                discountAmount: calc.orderDiscount,
+                taxAmountOverride: calc.taxAmount,
+                tipAmount: calc.tipAmount,
+                deliveryCharge: calc.deliveryCharge,
+                totalAmount: calc.totalPayableAmount,
+                existingOrderId: orderIdToUpdate,
+                existingOrderNumber: orderNumToUpdate,
+                customerName: _customerName,
+                customerPhone: _customerPhone,
+              );
+              db.updateOrderStatus(newOrder.id, OrderStatus.preparing);
+            } else {
+              newOrder = await db.createOrder(
+                items: _cartItems.map((i) => i.clone()).toList(),
+                tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+                deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+                orderType: _selectedOrderType,
+                subtotalOverride: calc.subtotal,
+                discountAmount: calc.orderDiscount,
+                taxAmountOverride: calc.taxAmount,
+                tipAmount: calc.tipAmount,
+                deliveryCharge: calc.deliveryCharge,
+                totalAmount: calc.totalPayableAmount,
+                paymentMethod: 'KOT Pending',
+                status: OrderStatus.preparing,
+                customerName: _customerName,
+                customerPhone: _customerPhone,
+              );
+            }
+
             if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
               final tbl = db.tables.where((t) =>
                 isSameTable(t.name, _selectedTable) ||
                 t.tableNumber.toString() == _selectedTable
               ).firstOrNull;
+
               if (tbl != null) {
-                db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+                db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
               }
+
+              db.setLiveTableCart(_selectedTable!, _cartItems);
+              db.setLiveCartTotal(_selectedTable!, newOrder.totalAmount);
             }
+
+            setState(() {
+              _activeRunningOrderId = newOrder.id;
+              _activeRunningOrderNumber = newOrder.orderNumber;
+            });
             if (setStateModal != null) setStateModal(() {});
             setState(() {});
           },
         ),
       );
-      return;
+    } finally {
+      _isProcessingKot = false;
     }
-
-    final calc = currentOrderCalculation;
-
-    // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
-    final tempOrder = OrderModel(
-      id: _activeRunningOrderId ?? (activeOrder?.id ?? 'KOT-${DateTime.now().millisecondsSinceEpoch}'),
-      orderNumber: _activeRunningOrderNumber ?? (activeOrder?.orderNumber ?? 'KOT-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}'),
-      items: _cartItems.map((i) => i.clone()).toList(),
-      subtotal: calc.subtotal,
-      taxAmount: calc.taxAmount,
-      discountAmount: calc.orderDiscount,
-      tipAmount: calc.tipAmount,
-      deliveryCharge: calc.deliveryCharge,
-      totalAmount: calc.totalPayableAmount,
-      tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-      deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-      orderType: _selectedOrderType,
-      paymentMethod: 'KOT Pending',
-      status: OrderStatus.preparing,
-      createdAt: activeOrder?.createdAt ?? DateTime.now().toIso8601String(),
-      customerName: _customerName,
-      customerPhone: _customerPhone,
-    );
-
-    // OPEN KOT POPUP (Table status changes to Running KOT ONLY when Print KOT succeeds)
-    showDialog(
-      context: context,
-      builder: (_) => KotDialog(
-        order: tempOrder,
-        onPrintKot: (updatedOrder) async {
-          // Sync sent kotQuantity back to in-memory cart items
-          for (int i = 0; i < _cartItems.length; i++) {
-            final match = updatedOrder.items.where((ui) => ui.item.id == _cartItems[i].item.id || ui.item.name == _cartItems[i].item.name).firstOrNull;
-            if (match != null) {
-              _cartItems[i].kotQuantity = match.kotQuantity;
-            } else {
-              _cartItems[i].kotQuantity = _cartItems[i].quantity;
-            }
-          }
-
-          // If active order already exists, update in-place with status: preparing. Else create new order.
-          OrderModel newOrder;
-          if (_activeRunningOrderId != null || activeOrder != null) {
-            final orderIdToUpdate = _activeRunningOrderId ?? activeOrder?.id;
-            final orderNumToUpdate = _activeRunningOrderNumber ?? activeOrder?.orderNumber;
-
-            newOrder = await db.saveAndPrintOrder(
-              items: _cartItems.map((i) => i.clone()).toList(),
-              tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-              orderType: _selectedOrderType,
-              subtotalOverride: calc.subtotal,
-              discountAmount: calc.orderDiscount,
-              taxAmountOverride: calc.taxAmount,
-              tipAmount: calc.tipAmount,
-              deliveryCharge: calc.deliveryCharge,
-              totalAmount: calc.totalPayableAmount,
-              existingOrderId: orderIdToUpdate,
-              existingOrderNumber: orderNumToUpdate,
-              customerName: _customerName,
-              customerPhone: _customerPhone,
-            );
-            db.updateOrderStatus(newOrder.id, OrderStatus.preparing);
-          } else {
-            newOrder = await db.createOrder(
-              items: _cartItems.map((i) => i.clone()).toList(),
-              tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-              orderType: _selectedOrderType,
-              subtotalOverride: calc.subtotal,
-              discountAmount: calc.orderDiscount,
-              taxAmountOverride: calc.taxAmount,
-              tipAmount: calc.tipAmount,
-              deliveryCharge: calc.deliveryCharge,
-              totalAmount: calc.totalPayableAmount,
-              paymentMethod: 'KOT Pending',
-              status: OrderStatus.preparing,
-              customerName: _customerName,
-              customerPhone: _customerPhone,
-            );
-          }
-
-          if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
-            final tbl = db.tables.where((t) =>
-              isSameTable(t.name, _selectedTable) ||
-              t.tableNumber.toString() == _selectedTable
-            ).firstOrNull;
-
-            if (tbl != null) {
-              db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
-            }
-
-            db.setLiveTableCart(_selectedTable!, _cartItems);
-            db.setLiveCartTotal(_selectedTable!, newOrder.totalAmount);
-          }
-
-          setState(() {
-            _activeRunningOrderId = newOrder.id;
-            _activeRunningOrderNumber = newOrder.orderNumber;
-          });
-          if (setStateModal != null) setStateModal(() {});
-          setState(() {});
-        },
-      ),
-    );
   }
 
   void _syncTableStatusWithCart() {
@@ -5161,7 +5173,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             ],
                     ),
                     child: ElevatedButton(
-                      onPressed: _cartItems.isEmpty
+                      onPressed: (_cartItems.isEmpty || _isProcessingCheckout)
                           ? null
                           : () {
                               _checkoutOrder(cartContext: null);
@@ -5373,7 +5385,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               ],
                       ),
                       child: ElevatedButton(
-                        onPressed: _cartItems.isEmpty
+                        onPressed: (_cartItems.isEmpty || _isProcessingCheckout)
                             ? null
                             : () {
                                 _checkoutOrder(cartContext: context);
@@ -5532,45 +5544,48 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   Future<void> _handleSaveAndPrint([StateSetter? setStateModal, BuildContext? callerContext]) async {
-    if (_cartItems.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add items to cart before Save & Print!'),
-          backgroundColor: Color(0xFFD97706),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    final currency = db.restaurant?.currencySymbol ?? '₹';
-    final calc = currentOrderCalculation;
-    final targetContext = callerContext ?? context;
-
-    // Resolve existing active table / takeaway / delivery order ID if not in state
-    if (_activeRunningOrderId == null) {
-      if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
-        final activeOrder = db.orders.where((o) =>
-          isSameTable(o.tableNumber, _selectedTable) &&
-          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-        ).firstOrNull;
-        if (activeOrder != null) {
-          _activeRunningOrderId = activeOrder.id;
-          _activeRunningOrderNumber = activeOrder.orderNumber;
-        }
-      } else {
-        final activeOrder = db.orders.where((o) =>
-          o.orderType == _selectedOrderType &&
-          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
-        ).firstOrNull;
-        if (activeOrder != null) {
-          _activeRunningOrderId = activeOrder.id;
-          _activeRunningOrderNumber = activeOrder.orderNumber;
-        }
-      }
-    }
+    if (_isProcessingSaveAndPrint) return;
+    _isProcessingSaveAndPrint = true;
 
     try {
+      if (_cartItems.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please add items to cart before Save & Print!'),
+            backgroundColor: Color(0xFFD97706),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      final currency = db.restaurant?.currencySymbol ?? '₹';
+      final calc = currentOrderCalculation;
+      final targetContext = callerContext ?? context;
+
+      // Resolve existing active table / takeaway / delivery order ID if not in state
+      if (_activeRunningOrderId == null) {
+        if (_selectedOrderType == OrderType.dineIn && _selectedTable != null) {
+          final activeOrder = db.orders.where((o) =>
+            isSameTable(o.tableNumber, _selectedTable) &&
+            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+          ).firstOrNull;
+          if (activeOrder != null) {
+            _activeRunningOrderId = activeOrder.id;
+            _activeRunningOrderNumber = activeOrder.orderNumber;
+          }
+        } else {
+          final activeOrder = db.orders.where((o) =>
+            o.orderType == _selectedOrderType &&
+            (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+          ).firstOrNull;
+          if (activeOrder != null) {
+            _activeRunningOrderId = activeOrder.id;
+            _activeRunningOrderNumber = activeOrder.orderNumber;
+          }
+        }
+      }
+
       final savedOrder = await db.saveAndPrintOrder(
         existingOrderId: _activeRunningOrderId,
         existingOrderNumber: _activeRunningOrderNumber,
@@ -5599,169 +5614,178 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
       // DO NOT clear cart, DO NOT mark as paid, DO NOT close modal.
       // Instantly show ReceiptDialog with generated invoice and dynamic QR
-      showDialog(
-        context: targetContext,
-        builder: (_) => ReceiptDialog(
-          order: savedOrder,
-          currency: currency,
-        ),
-      );
+      if (mounted) {
+        showDialog(
+          context: targetContext,
+          builder: (_) => ReceiptDialog(
+            order: savedOrder,
+            currency: currency,
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(targetContext).showSnackBar(
+        ScaffoldMessenger.of(callerContext ?? context).showSnackBar(
           SnackBar(
             content: Text('Save & Print error: $e'),
             backgroundColor: Colors.redAccent,
           ),
         );
       }
+    } finally {
+      _isProcessingSaveAndPrint = false;
     }
   }
 
   Future<void> _checkoutOrder({BuildContext? cartContext}) async {
-    if (_cartItems.isEmpty) return;
+    if (_isProcessingCheckout || _cartItems.isEmpty) return;
+    _isProcessingCheckout = true;
 
-    final currency = db.restaurant?.currencySymbol ?? '₹';
-    final calc = currentOrderCalculation;
-    final tempOrderId = _activeRunningOrderId ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    final tempOrderNumber = _activeRunningOrderNumber ?? (db.orders.length + 1).toString().padLeft(4, '0');
+    try {
+      final currency = db.restaurant?.currencySymbol ?? '₹';
+      final calc = currentOrderCalculation;
+      final tempOrderId = _activeRunningOrderId ?? 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
+      final tempOrderNumber = _activeRunningOrderNumber ?? (db.orders.length + 1).toString().padLeft(4, '0');
 
-    final previewOrder = OrderModel(
-      id: tempOrderId,
-      orderNumber: tempOrderNumber,
-      items: List.from(_cartItems),
-      tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-      deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-      orderType: _selectedOrderType,
-      subtotal: calc.subtotal,
-      discountAmount: calc.orderDiscount,
-      taxAmount: calc.taxAmount,
-      tipAmount: calc.tipAmount,
-      deliveryCharge: calc.deliveryCharge,
-      totalAmount: calc.totalPayableAmount,
-      paymentMethod: 'Cash',
-      paymentStatus: 'pending',
-      isPaid: false,
-      status: OrderStatus.pending,
-      customerName: _customerName,
-      customerPhone: _customerPhone,
-      createdAt: DateTime.now().toIso8601String(),
-    );
+      final previewOrder = OrderModel(
+        id: tempOrderId,
+        orderNumber: tempOrderNumber,
+        items: List.from(_cartItems),
+        tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+        deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+        orderType: _selectedOrderType,
+        subtotal: calc.subtotal,
+        discountAmount: calc.orderDiscount,
+        taxAmount: calc.taxAmount,
+        tipAmount: calc.tipAmount,
+        deliveryCharge: calc.deliveryCharge,
+        totalAmount: calc.totalPayableAmount,
+        paymentMethod: 'Cash',
+        paymentStatus: 'pending',
+        isPaid: false,
+        status: OrderStatus.pending,
+        customerName: _customerName,
+        customerPhone: _customerPhone,
+        createdAt: DateTime.now().toIso8601String(),
+      );
 
-    final modalResult = await showDialog<dynamic>(
-      context: context,
-      useRootNavigator: true,
-      builder: (_) => PaymentModal(
-        order: previewOrder,
-        currency: currency,
-      ),
-    );
+      final modalResult = await showDialog<dynamic>(
+        context: context,
+        useRootNavigator: true,
+        builder: (_) => PaymentModal(
+          order: previewOrder,
+          currency: currency,
+        ),
+      );
 
-    if (modalResult != null) {
-      final String resultMethod = modalResult is PaymentModalResult
-          ? modalResult.paymentMethod
-          : modalResult.toString();
-      final double? roundOff = modalResult is PaymentModalResult ? modalResult.roundOff : null;
-      final double? totalAmount = modalResult is PaymentModalResult ? modalResult.totalAmount : null;
+      if (modalResult != null) {
+        final String resultMethod = modalResult is PaymentModalResult
+            ? modalResult.paymentMethod
+            : modalResult.toString();
+        final double? roundOff = modalResult is PaymentModalResult ? modalResult.roundOff : null;
+        final double? totalAmount = modalResult is PaymentModalResult ? modalResult.totalAmount : null;
 
-      if (resultMethod.isNotEmpty) {
-        // If order was already saved in DB (via KOT or Save&Print), settle it; otherwise create completed order
-        final existingKotIndex = db.orders.indexWhere((o) =>
-          (_activeRunningOrderId != null && (o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId)) ||
-          (_selectedOrderType == OrderType.dineIn && _selectedTable != null &&
-           isSameTable(o.tableNumber, _selectedTable) &&
-           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) ||
-          (_selectedOrderType != OrderType.dineIn &&
-           o.orderType == _selectedOrderType &&
-           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing))
-        );
-
-        OrderModel completedOrder;
-        if (existingKotIndex >= 0) {
-          final targetKotOrder = db.orders[existingKotIndex];
-          completedOrder = await db.settleOrder(
-            orderId: targetKotOrder.id,
-            paymentMethod: resultMethod,
-            totalAmount: totalAmount ?? calc.totalPayableAmount,
-            roundOff: roundOff ?? 0.0,
+        if (resultMethod.isNotEmpty) {
+          // If order was already saved in DB (via KOT or Save&Print), settle it; otherwise create completed order
+          final existingKotIndex = db.orders.indexWhere((o) =>
+            (_activeRunningOrderId != null && (o.id == _activeRunningOrderId || o.orderNumber == _activeRunningOrderId)) ||
+            (_selectedOrderType == OrderType.dineIn && _selectedTable != null &&
+             isSameTable(o.tableNumber, _selectedTable) &&
+             (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)) ||
+            (_selectedOrderType != OrderType.dineIn &&
+             o.orderType == _selectedOrderType &&
+             (o.status == OrderStatus.pending || o.status == OrderStatus.preparing))
           );
-        } else {
-          // CREATE FINALIZED COMPLETED ORDER ATOMICALLY
-          completedOrder = await db.createOrder(
-            items: List.from(_cartItems),
-            tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
-            deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
-            orderType: _selectedOrderType,
-            subtotalOverride: calc.subtotal,
-            discountAmount: calc.orderDiscount,
-            taxAmountOverride: calc.taxAmount,
-            tipAmount: calc.tipAmount,
-            deliveryCharge: calc.deliveryCharge,
-            paymentMethod: resultMethod,
-            status: OrderStatus.completed,
-            customerName: _customerName,
-            customerPhone: _customerPhone,
-            roundOff: roundOff ?? 0.0,
-            totalAmount: totalAmount ?? calc.totalPayableAmount,
-          );
-        }
 
-        // Robustly free table on settlement
-        final targetTableStr = _selectedTable ?? completedOrder.tableNumber;
-        if (targetTableStr != null && targetTableStr.isNotEmpty) {
-          db.clearTableCartAndFree(targetTableStr);
-        }
+          OrderModel completedOrder;
+          if (existingKotIndex >= 0) {
+            final targetKotOrder = db.orders[existingKotIndex];
+            completedOrder = await db.settleOrder(
+              orderId: targetKotOrder.id,
+              paymentMethod: resultMethod,
+              totalAmount: totalAmount ?? calc.totalPayableAmount,
+              roundOff: roundOff ?? 0.0,
+            );
+          } else {
+            // CREATE FINALIZED COMPLETED ORDER ATOMICALLY
+            completedOrder = await db.createOrder(
+              items: List.from(_cartItems),
+              tableNumber: _selectedOrderType == OrderType.dineIn ? (_selectedTable ?? 'T1') : null,
+              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : null,
+              orderType: _selectedOrderType,
+              subtotalOverride: calc.subtotal,
+              discountAmount: calc.orderDiscount,
+              taxAmountOverride: calc.taxAmount,
+              tipAmount: calc.tipAmount,
+              deliveryCharge: calc.deliveryCharge,
+              paymentMethod: resultMethod,
+              status: OrderStatus.completed,
+              customerName: _customerName,
+              customerPhone: _customerPhone,
+              roundOff: roundOff ?? 0.0,
+              totalAmount: totalAmount ?? calc.totalPayableAmount,
+            );
+          }
 
-        // Deduct redeemed loyalty points asynchronously in background (non-blocking)
-        if (_redeemedLoyaltyStageId != null && _redeemedLoyaltyPoints > 0 && _customerPhone.isNotEmpty) {
-          _loyaltyService.redeemLoyaltyPoints(
-            phone: _customerPhone,
-            stageId: _redeemedLoyaltyStageId!,
-            discountAmount: _loyaltyDiscountAmount,
-            pointsToRedeem: _redeemedLoyaltyPoints,
-            orderId: completedOrder.id,
-            orderNumber: completedOrder.orderNumber,
-          ).catchError((e) {
-            debugPrint('[_checkoutOrder] Loyalty redemption sync error: $e');
-            return null;
+          // Robustly free table on settlement
+          final targetTableStr = _selectedTable ?? completedOrder.tableNumber;
+          if (targetTableStr != null && targetTableStr.isNotEmpty) {
+            db.clearTableCartAndFree(targetTableStr);
+          }
+
+          // Deduct redeemed loyalty points asynchronously in background (non-blocking)
+          if (_redeemedLoyaltyStageId != null && _redeemedLoyaltyPoints > 0 && _customerPhone.isNotEmpty) {
+            _loyaltyService.redeemLoyaltyPoints(
+              phone: _customerPhone,
+              stageId: _redeemedLoyaltyStageId!,
+              discountAmount: _loyaltyDiscountAmount,
+              pointsToRedeem: _redeemedLoyaltyPoints,
+              orderId: completedOrder.id,
+              orderNumber: completedOrder.orderNumber,
+            ).catchError((e) {
+              debugPrint('[_checkoutOrder] Loyalty redemption sync error: $e');
+              return null;
+            });
+          }
+
+          // Reset cart state and promo discount state immediately for the next order
+          setState(() {
+            _cartItems.clear();
+            _resetDiscountAndPromoState();
+            _currentCustomerLoyalty = null;
+            _selectedTable = null;
+            _customerName = '';
+            _customerPhone = '';
+            _deliveryAddress = '';
+            _deliveryLandmark = '';
+            _deliveryCity = '';
+            _deliveryState = '';
+            _deliveryPincode = '';
+            _activeRunningOrderId = null;
+            _activeRunningOrderNumber = null;
           });
-        }
 
-        // Reset cart state and promo discount state immediately for the next order
-        setState(() {
-          _cartItems.clear();
-          _resetDiscountAndPromoState();
-          _currentCustomerLoyalty = null;
-          _selectedTable = null;
-          _customerName = '';
-          _customerPhone = '';
-          _deliveryAddress = '';
-          _deliveryLandmark = '';
-          _deliveryCity = '';
-          _deliveryState = '';
-          _deliveryPincode = '';
-          _activeRunningOrderId = null;
-          _activeRunningOrderNumber = null;
-        });
+          // Close the cart screen modal when payment is successfully done
+          if (cartContext != null && cartContext.mounted) {
+            Navigator.pop(cartContext);
+          }
 
-        // Close the cart screen modal when payment is successfully done
-        if (cartContext != null && cartContext.mounted) {
-          Navigator.pop(cartContext);
-        }
-
-        // Instantly display the thermal receipt dialog with zero latency
-        if (mounted) {
-          showGeneralDialog(
-            context: context,
-            useRootNavigator: true,
-            barrierDismissible: true,
-            barrierLabel: 'Thermal Bill Receipt',
-            barrierColor: Colors.black54,
-            transitionDuration: const Duration(milliseconds: 100),
-            pageBuilder: (ctx, anim1, anim2) => ReceiptDialog(order: completedOrder, currency: currency),
-          );
+          // Instantly display the thermal receipt dialog with zero latency
+          if (mounted) {
+            showGeneralDialog(
+              context: context,
+              useRootNavigator: true,
+              barrierDismissible: true,
+              barrierLabel: 'Thermal Bill Receipt',
+              barrierColor: Colors.black54,
+              transitionDuration: const Duration(milliseconds: 100),
+              pageBuilder: (ctx, anim1, anim2) => ReceiptDialog(order: completedOrder, currency: currency),
+            );
+          }
         }
       }
+    } finally {
+      _isProcessingCheckout = false;
     }
   }
 

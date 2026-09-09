@@ -5,7 +5,22 @@ import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
 
 class FirestoreService {
+  static final FirestoreService _instance = FirestoreService._internal();
+  factory FirestoreService() => _instance;
+
+  FirestoreService._internal() {
+    try {
+      FirebaseAuth.instance.authStateChanges().listen((user) {
+        // Reset permission error flag when auth state changes (e.g. login/logout)
+        _hasPermissionError = false;
+      });
+    } catch (_) {}
+  }
+
+  static bool _hasPermissionError = false;
+
   FirebaseFirestore? get _db {
+    if (_hasPermissionError) return null;
     try {
       return FirebaseFirestore.instance;
     } catch (e) {
@@ -20,6 +35,7 @@ class FirestoreService {
 
   /// Save or update user profile in Firestore
   Future<void> saveUser(UserModel user) async {
+    if (_hasPermissionError) return;
     try {
       final currentFbUser = FirebaseAuth.instance.currentUser;
       if (currentFbUser == null) {
@@ -28,10 +44,7 @@ class FirestoreService {
       }
 
       final db = _db;
-      if (db == null) {
-        debugPrint('[FirestoreService] FirebaseFirestore is null or not initialized.');
-        return;
-      }
+      if (db == null) return;
       
       final data = user.toJson();
       // Sanitize large base64/blob strings to prevent Android SQLite CursorWindow (2MB) crash
@@ -39,32 +52,37 @@ class FirestoreService {
         data['profilePhotoPath'] = '';
       }
 
-      final docId = user.id.isNotEmpty
-          ? user.id
-          : (currentFbUser.uid.isNotEmpty ? currentFbUser.uid : 'usr_${DateTime.now().millisecondsSinceEpoch}');
+      final docId = currentFbUser.uid.isNotEmpty
+          ? currentFbUser.uid
+          : (user.id.isNotEmpty ? user.id : 'usr_${DateTime.now().millisecondsSinceEpoch}');
 
       await db.collection(usersCollection).doc(docId).set(
         data,
         SetOptions(merge: true),
       );
-      debugPrint('[FirestoreService] User $docId successfully saved to Firestore (Collection: $usersCollection)');
+      debugPrint('[FirestoreService] User $docId successfully saved to Firestore');
 
-      // If Firebase Auth has a different UID than user.id (e.g. MongoDB ID), also link/save under currentUser.uid
-      final fbUid = currentFbUser.uid;
-      if (fbUid.isNotEmpty && fbUid != docId) {
-        await db.collection(usersCollection).doc(fbUid).set(
-          data,
-          SetOptions(merge: true),
-        );
-        debugPrint('[FirestoreService] User duplicate linked to Firestore with Firebase Auth UID: $fbUid');
+      // If user.id is also set and different from docId, link it if permissible
+      if (user.id.isNotEmpty && user.id != docId && !_hasPermissionError) {
+        try {
+          await db.collection(usersCollection).doc(user.id).set(
+            data,
+            SetOptions(merge: true),
+          );
+        } catch (_) {}
       }
     } catch (e) {
-      debugPrint('[FirestoreService] Error saving user to Firestore (non-fatal): $e');
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Firestore user sync paused (non-fatal): $e');
     }
   }
 
   /// Get user from Firestore
   Future<UserModel?> getUser(String userId) async {
+    if (_hasPermissionError) return null;
     try {
       if (FirebaseAuth.instance.currentUser == null) return null;
       final db = _db;
@@ -75,13 +93,18 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting user from Firestore: $e');
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Error getting user from Firestore (non-fatal): $e');
       return null;
     }
   }
 
   /// Save or update restaurant details in Firestore
   Future<void> saveRestaurant(RestaurantModel restaurant) async {
+    if (_hasPermissionError) return;
     try {
       if (FirebaseAuth.instance.currentUser == null) return;
       final db = _db;
@@ -100,14 +123,19 @@ class FirestoreService {
         data,
         SetOptions(merge: true),
       );
-      debugPrint('Restaurant ${restaurant.id} saved to Firestore');
+      debugPrint('[FirestoreService] Restaurant ${restaurant.id} saved to Firestore');
     } catch (e) {
-      debugPrint('Error saving restaurant to Firestore (non-fatal): $e');
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Firestore restaurant sync paused (non-fatal): $e');
     }
   }
 
   /// Get restaurant from Firestore
   Future<RestaurantModel?> getRestaurant(String restaurantId) async {
+    if (_hasPermissionError) return null;
     try {
       final db = _db;
       if (db == null) return null;
@@ -117,7 +145,11 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting restaurant from Firestore: $e');
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Error getting restaurant from Firestore (non-fatal): $e');
       return null;
     }
   }

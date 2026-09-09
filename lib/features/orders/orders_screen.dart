@@ -1020,7 +1020,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
                           ],
                           Expanded(
                             child: Text(
-                              'All Received Orders',
+                              'My Orders',
                               style: TextStyle(
                                 fontSize: isMobile ? 18 : 20,
                                 fontWeight: FontWeight.w900,

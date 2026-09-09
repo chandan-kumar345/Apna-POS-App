@@ -3,7 +3,6 @@ import 'package:flutter/foundation.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class YouTubeService {
-  static final Map<String, String> _streamUrlCache = {};
   static final Map<String, Video?> _videoDetailsCache = {};
 
   static final RegExp _ytRegex = RegExp(
@@ -56,6 +55,8 @@ class YouTubeService {
     }
   }
 
+  static final Map<String, ({String url, DateTime timestamp})> _streamCache = {};
+
   /// Resolves direct progressive/muxed MP4 stream URL playable in VideoPlayerController
   static Future<String?> resolveStreamUrl(String url) async {
     final cleanUrl = url.trim();
@@ -71,34 +72,47 @@ class YouTubeService {
       return cleanUrl;
     }
 
-    if (_streamUrlCache.containsKey(videoId)) {
-      return _streamUrlCache[videoId];
+    // Check cache (valid for 3 hours)
+    if (_streamCache.containsKey(videoId)) {
+      final entry = _streamCache[videoId]!;
+      if (DateTime.now().difference(entry.timestamp).inHours < 3) {
+        return entry.url;
+      } else {
+        _streamCache.remove(videoId);
+      }
     }
 
     final yt = YoutubeExplode();
     try {
       final manifest = await yt.videos.streamsClient.getManifest(videoId);
-      // Prefer muxed MP4 streams (both video + audio) for universal Windows/Android/iOS playback
       StreamInfo? selectedStream;
-      if (manifest.muxed.isNotEmpty) {
-        final mp4Streams = manifest.muxed.where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4')).toList();
-        if (mp4Streams.isNotEmpty) {
-          selectedStream = mp4Streams.withHighestBitrate();
-        } else {
-          selectedStream = manifest.muxed.withHighestBitrate();
-        }
-      } else if (manifest.videoOnly.isNotEmpty) {
-        final mp4Video = manifest.videoOnly.where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4')).toList();
+
+      // 1. Prioritize MP4 muxed stream (video + audio) for native Windows MF / Android playback
+      final mp4Muxed = manifest.muxed
+          .where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4'))
+          .toList();
+      if (mp4Muxed.isNotEmpty) {
+        selectedStream = mp4Muxed.withHighestBitrate();
+      }
+
+      // 2. If no MP4 muxed, use MP4 video-only stream (perfect for muted POS dish playback)
+      if (selectedStream == null && manifest.videoOnly.isNotEmpty) {
+        final mp4Video = manifest.videoOnly
+            .where((s) => s.container == StreamContainer.mp4 || s.codec.mimeType.contains('mp4'))
+            .toList();
         if (mp4Video.isNotEmpty) {
           selectedStream = mp4Video.withHighestBitrate();
-        } else {
-          selectedStream = manifest.videoOnly.withHighestBitrate();
         }
       }
 
+      // 3. Fallback to any muxed or video-only stream
+      selectedStream ??= manifest.muxed.isNotEmpty
+          ? manifest.muxed.withHighestBitrate()
+          : (manifest.videoOnly.isNotEmpty ? manifest.videoOnly.withHighestBitrate() : null);
+
       if (selectedStream != null) {
         final streamUrl = selectedStream.url.toString();
-        _streamUrlCache[videoId] = streamUrl;
+        _streamCache[videoId] = (url: streamUrl, timestamp: DateTime.now());
         return streamUrl;
       }
     } catch (e) {

@@ -551,7 +551,11 @@ class DatabaseService extends ChangeNotifier {
     if (ordersJson != null && ordersJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(ordersJson);
-        orders = raw.map((e) => OrderModel.fromJson(e)).toList();
+        orders = deduplicateOrdersList(raw.map((e) => OrderModel.fromJson(e)).toList());
+        // If duplicates were purged on load, save clean state back to prefs immediately
+        if (orders.length != raw.length) {
+          _saveOrdersToPrefs();
+        }
       } catch (e) {
         orders = [];
       }
@@ -772,7 +776,7 @@ class DatabaseService extends ChangeNotifier {
           }
         }
 
-        final mergedOrders = orderMap.values.toList();
+        final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
         mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
 
         if (orders.length != mergedOrders.length ||
@@ -994,7 +998,7 @@ class DatabaseService extends ChangeNotifier {
             }
           }
 
-          final mergedOrders = orderMap.values.toList();
+          final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
           mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
           orders = mergedOrders;
           await _saveOrdersToPrefs();
@@ -2075,18 +2079,51 @@ class DatabaseService extends ChangeNotifier {
     final double finalTotalAmount = totalAmount ?? computedTotal;
 
     final now = DateTime.now();
+
+    // Rapid-duplicate guard: If an identical order was just created in the last 4 seconds, return it
+    final recentDuplicate = orders.where((o) {
+      if ((o.totalAmount - finalTotalAmount).abs() > 0.01) return false;
+      if (o.orderType != orderType) return false;
+      if (tableNumber != null && o.tableNumber != null && !isSameTable(o.tableNumber, tableNumber)) return false;
+      final diff = now.difference(o.createdDateTime).inSeconds.abs();
+      if (diff > 4) return false;
+      if (o.items.length != items.length) return false;
+      for (int i = 0; i < items.length; i++) {
+        if (o.items[i].item.name != items[i].item.name || o.items[i].quantity != items[i].quantity) {
+          return false;
+        }
+      }
+      return true;
+    }).firstOrNull;
+
+    if (recentDuplicate != null) {
+      debugPrint('[DatabaseService.createOrder] Blocked duplicate order creation: returning existing order #${recentDuplicate.orderNumber}');
+      return recentDuplicate;
+    }
+
     final year = now.year.toString();
     final month = now.month.toString().padLeft(2, '0');
     final day = now.day.toString().padLeft(2, '0');
     final hour = now.hour.toString().padLeft(2, '0');
     final min = now.minute.toString().padLeft(2, '0');
+    final sec = now.second.toString().padLeft(2, '0');
     String tSuffix = 'TK';
     if (tableNumber != null && tableNumber.isNotEmpty) {
       final cleanNum = tableNumber.replaceAll(RegExp(r'[^0-9]'), '');
       tSuffix = cleanNum.isNotEmpty ? 'T$cleanNum' : tableNumber;
     }
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
-    final orderNum = '$year$month$day-$hour$min-$tSuffix';
+
+    // Ensure strictly unique order number
+    String orderNum = '$year$month$day-$hour$min-$tSuffix';
+    if (orders.any((o) => o.orderNumber == orderNum)) {
+      orderNum = '$year$month$day-$hour$min$sec-$tSuffix';
+    }
+    int dupCounter = 1;
+    while (orders.any((o) => o.orderNumber == orderNum)) {
+      orderNum = '$year$month$day-$hour$min$sec-$tSuffix-$dupCounter';
+      dupCounter++;
+    }
 
     final bool isPaymentCompleted = (status == OrderStatus.completed) ||
         paymentMethod.toLowerCase().contains('cash') ||
@@ -2121,6 +2158,7 @@ class DatabaseService extends ChangeNotifier {
     );
 
     orders.insert(0, newOrder);
+    orders = deduplicateOrdersList(orders);
     _saveOrdersToPrefs();
 
     // If customer phone is present, automatically save/update customer in CRM & local DB
@@ -2458,36 +2496,23 @@ class DatabaseService extends ChangeNotifier {
       orders.insert(0, completedOrder);
     }
 
-    // Also mark any other duplicate running orders for this table or takeaway/delivery as completed
+    // Remove any stale / duplicate pending draft orders for this table or takeaway/delivery
     final settledTable = completedOrder.tableNumber;
     if (settledTable != null && settledTable.isNotEmpty) {
-      for (int i = 0; i < orders.length; i++) {
-        if (isSameTable(orders[i].tableNumber, settledTable) &&
-            (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing || orders[i].status == OrderStatus.ready)) {
-          orders[i] = orders[i].copyWith(
-            status: OrderStatus.completed,
-            paymentStatus: 'paid',
-            isPaid: true,
-            paymentMethod: paymentMethod,
-            totalAmount: totalAmount,
-          );
-        }
-      }
+      orders.removeWhere((o) =>
+          o.id != completedOrder.id &&
+          o.orderNumber != completedOrder.orderNumber &&
+          isSameTable(o.tableNumber, settledTable) &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready));
     } else {
-      for (int i = 0; i < orders.length; i++) {
-        if (orders[i].orderType == completedOrder.orderType &&
-            orders[i].id != completedOrder.id &&
-            (orders[i].status == OrderStatus.pending || orders[i].status == OrderStatus.preparing || orders[i].status == OrderStatus.ready)) {
-          orders[i] = orders[i].copyWith(
-            status: OrderStatus.completed,
-            paymentStatus: 'paid',
-            isPaid: true,
-            paymentMethod: paymentMethod,
-            totalAmount: totalAmount,
-          );
-        }
-      }
+      orders.removeWhere((o) =>
+          o.id != completedOrder.id &&
+          o.orderNumber != completedOrder.orderNumber &&
+          o.orderType == completedOrder.orderType &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready));
     }
+
+    orders = deduplicateOrdersList(orders);
 
     // Free table if dineIn
     clearTableCartAndFree(completedOrder.tableNumber);
@@ -2661,7 +2686,60 @@ class DatabaseService extends ChangeNotifier {
     return res.isPaid;
   }
 
+  /// Deduplicate order list ensuring 1 order = 1 bill, purging rapid duplicate taps and identical bills
+  List<OrderModel> deduplicateOrdersList(List<OrderModel> sourceOrders) {
+    if (sourceOrders.isEmpty) return [];
+
+    final List<OrderModel> result = [];
+    final Set<String> seenIds = {};
+    final Set<String> seenOrderNumbers = {};
+
+    for (final order in sourceOrders) {
+      final cleanId = order.id.trim();
+      final cleanOrderNum = order.orderNumber.trim();
+
+      // 1. Check ID collision
+      if (cleanId.isNotEmpty && seenIds.contains(cleanId)) {
+        continue; // Skip duplicate ID
+      }
+
+      // 2. Check Order Number collision (if non-empty and valid)
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && seenOrderNumbers.contains(cleanOrderNum)) {
+        continue; // Skip duplicate Order Number
+      }
+
+      // 3. Check rapid-succession duplicate collision (same table/orderType, same amount, created within 5s)
+      bool isRapidDuplicate = false;
+      for (final existing in result) {
+        final sameType = existing.orderType == order.orderType;
+        final sameAmount = (existing.totalAmount - order.totalAmount).abs() < 0.01;
+        final sameTableOrNone = (existing.tableNumber == null && order.tableNumber == null) ||
+            (existing.tableNumber != null && order.tableNumber != null && isSameTable(existing.tableNumber, order.tableNumber));
+        if (sameType && sameAmount && sameTableOrNone) {
+          final diffSec = existing.createdDateTime.difference(order.createdDateTime).inSeconds.abs();
+          if (diffSec <= 5) {
+            if (existing.items.length == order.items.length) {
+              isRapidDuplicate = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (isRapidDuplicate) {
+        continue;
+      }
+
+      if (cleanId.isNotEmpty) seenIds.add(cleanId);
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000') seenOrderNumbers.add(cleanOrderNum);
+      result.add(order);
+    }
+
+    return result;
+  }
+
   Future<void> _saveOrdersToPrefs() async {
+    orders = deduplicateOrdersList(orders);
     await _prefs?.setString(_userKey('orders'), jsonEncode(orders.map((e) => e.toJson()).toList()));
   }
 

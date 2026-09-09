@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ProductVariant {
   final String name;
   final double price;
@@ -165,12 +167,24 @@ class MenuItemModel {
     final resolvedId = (json['id'] ?? json['_id'] ?? json['productId'] ?? '').toString();
     final resolvedProductId = (json['productId'] ?? resolvedId).toString();
     final resolvedName = (json['name'] ?? json['title'] ?? '').toString();
-    final resolvedImage = (json['imageUrl'] ?? json['image'] ?? '').toString();
-    final resolvedVideo = (json['videoUrl'] ?? json['video'] ?? '').toString();
+    final resolvedImage = (json['imageUrl'] ?? json['image'] ?? json['img'] ?? json['photo'] ?? json['photoUrl'] ?? json['thumbnail'] ?? json['thumbnailUrl'] ?? '').toString();
+    final resolvedVideo = (json['videoUrl'] ?? json['video'] ?? json['video_url'] ?? '').toString();
 
     List<String> imagesList = [];
     if (json['images'] is List) {
-      imagesList = (json['images'] as List).map((e) => (e ?? '').toString()).where((s) => s.isNotEmpty).toList();
+      imagesList = (json['images'] as List).map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
+    } else if (json['images'] is String && (json['images'] as String).trim().isNotEmpty) {
+      final str = (json['images'] as String).trim();
+      if (str.startsWith('[') && str.endsWith(']')) {
+        try {
+          final decoded = jsonDecode(str);
+          if (decoded is List) {
+            imagesList = decoded.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
+          }
+        } catch (_) {}
+      } else {
+        imagesList = str.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      }
     }
     if (imagesList.isEmpty && resolvedImage.isNotEmpty) {
       imagesList = [resolvedImage];

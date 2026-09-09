@@ -8,7 +8,6 @@ import '../../core/widgets/food_type_icon.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import 'add_product_screen.dart';
-import '../pos/widgets/pos_product_media_box.dart';
 
 class MenuManagementScreen extends StatefulWidget {
   const MenuManagementScreen({super.key});
@@ -773,19 +772,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  Widget _buildProductImage(MenuItemModel dish) {
-    return PosProductMediaBox(
-      key: ValueKey('menu_media_${dish.id}_${dish.imageUrl}_${dish.videoUrl}_${dish.images.length}'),
-      item: dish,
-      width: 40,
-      height: 40,
-      fit: BoxFit.cover,
-      borderRadius: BorderRadius.circular(8),
-      isMini: true,
-      showDots: false,
-    );
-  }
-
   Widget _buildProductCard(MenuItemModel dish) {
     final currency = db.restaurant?.currencySymbol ?? '₹';
     final double displayPrice = dish.variants.isNotEmpty ? dish.variants.first.price : dish.price;
@@ -809,19 +795,15 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         children: [
           Row(
             children: [
-              // Product Photo + FoodType Overlay Badge
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _buildProductImage(dish),
-                  ),
-                  Positioned(
-                    top: 1,
-                    left: 1,
-                    child: FoodTypeIcon(itemType: dish.itemType, size: 11),
-                  ),
-                ],
+              // Clean FoodType Leading Indicator
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF051C48).withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.15)),
+                ),
+                child: FoodTypeIcon(itemType: dish.itemType, size: 14),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -830,8 +812,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   children: [
                     Row(
                       children: [
-                        FoodTypeIcon(itemType: dish.itemType, size: 11),
-                        const SizedBox(width: 4),
                         Flexible(
                           child: Text(
                             dish.name,
