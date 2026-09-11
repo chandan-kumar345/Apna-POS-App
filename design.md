@@ -23,10 +23,12 @@ This document serves as the authoritative UI/UX Design System and Screen Specifi
 | `primaryBlue` | `#0052FF` | Main brand electric blue, primary action buttons, active tab indicators |
 | `primaryNavy` | `#0A1435` | Dark surface background, header bars, card containers |
 | `primaryCyan` | `#00C2FF` | Active input borders, focused item outlines, highlight glows |
-| `accentNeonGreen` | `#10B981` | Success state, free table status, completed orders, online indicator |
-| `accentAmber` | `#F59E0B` | Warning state, occupied table status, pending KDS orders, low stock |
-| `accentRose` | `#F43F5E` | Error state, reserved table status, cancelled orders, void item |
-| `statusBilled` | `#06B6D4` | Billed table status, generated invoice indicator |
+| `tableFree` | `#10B981` | Emerald Green - Table is free and ready for new guests |
+| `tableOccupied` | `#051C48` | Deep Navy / Blue - User has added products to table cart (draft order) |
+| `tableRunningKot`| `#EF4444` | Vivid Red - Active KOT order printed and running in kitchen |
+| `tableBilled` | `#06B6D4` | Cyan - Bill generated / awaiting final payment |
+| `tableReserved` | `#8B5CF6` | Soft Purple - Table reserved for upcoming party |
+| `accentAmber` | `#F59E0B` | Warning state, pending notifications, low stock badge |
 | `surfaceDark` | `#071126` | Main background surface for POS dark mode |
 | `surfaceCard` | `#0F1E3D` | Card container background with sub-border |
 
@@ -196,10 +198,14 @@ This section defines the exact UI structure, visual wireframe layout, components
 ### Screen 5: POS Billing Terminal (`PosTerminalScreen` - Cashier Main View)
 - **Purpose**: Core high-speed point-of-sale billing screen for cashiers to browse items, apply discounts, select table/order type, and generate bills.
 - **Layout Architecture**:
-  - **Header Bar**: Shift Status, Search Bar (`Ctrl+F`), Order Type Toggle Pills (**Dine-In**, **Takeaway**, **Delivery**), Customer Selection Pill ("+ Add Customer").
+  - **Header Bar**: Shift Status, Search Bar (`Ctrl+F`), View Mode Switcher (**Grid with Images** / **Compact without Images**), Order Type Toggle Pills (**Dine-In**, **Takeaway**, **Delivery**), Customer Selection Pill ("+ Add Customer").
   - **Left Section (65% width) - Item Catalog**:
     - **Category Bar**: Horizontal scrollable pill tags (All Items, Starters, Main Course, Beverages, Desserts, Combos).
-    - **Item Grid**: Responsive cards with item image thumbnail, title, price tag (`₹180`), stock badge, and quick "+" tap button.
+    - **Dual View Modes**:
+      - **Grid View (With Images)**: Visual cards with item image thumbnail, veg/non-veg tag, item title, price tag (`₹180`), stock badge, and quick "+" tap button.
+      - **Compact View (Without Images)**: 
+        - **Android / Mobile Wrapped Flow**: Laid out in a flexible `Wrap(spacing: 8, runSpacing: 8)` container with dynamic column widths (2 columns on phones, 3 on phablets `≥ 460px`, and 4 on tablets `≥ 680px`), allowing cards to wrap naturally.
+        - **Height & Centering**: Box height constrained to `64px` on mobile and `72px` on desktop. Item title and price are centered vertically and horizontally for maximum readability during high-volume rush hours.
   - **Right Section (35% width) - Active Cart & Billing Panel**:
     - **Cart Header**: Selected Table / Order #ID, Clear Cart button.
     - **Item List**: Scrollable list with title, quantity increment/decrement (`- 1 +`), price, and modifier sub-labels.
@@ -208,19 +214,20 @@ This section defines the exact UI structure, visual wireframe layout, components
       - GST (5%): `₹27.00`
       - Discount Pill: `- ₹50.00`
       - **Grand Total**: `₹517.00` (Large Hero font `24px`)
-    - **Action Buttons**: "Hold Order", "KOT Print", and "PAY NOW" (`₹517.00`) full-width gradient button (`#0052FF`).
+    - **Action Buttons**: "Hold Order", "KOT Print" (transitions table to `runningKot` `#EF4444`), and "PAY NOW" (`₹517.00`) full-width gradient button (`#0052FF`).
 
 ---
 
 ### Screen 6: Floor Plan & Table Management (`TableManagementScreen`)
-- **Purpose**: Visual table layout management screen for restaurants to view table status, allocate seating, generate bills, and transfer/merge tables.
+- **Purpose**: Visual table layout management screen for restaurants to view real-time table status across all connected devices, allocate seating, generate bills, and transfer/merge tables.
 - **Layout Architecture**:
-  - **Top Action Bar**: Floor Zone Selector (Ground Floor, First Floor, Rooftop, AC Hall), Filter Status Pills (All, Free, Occupied, Billed, Reserved), "Add Table" Button.
+  - **Top Action Bar**: Floor Zone Selector (Ground Floor, First Floor, Rooftop, AC Hall), Filter Status Pills (All, Free, Occupied, Running KOT, Billed, Reserved), "Add Table" Button.
   - **Main Canvas Grid (Interactive Floor Layout)**:
-    - **Free Tables**: Emerald Green border (`#10B981`), white background, "Table 04 (4 Seats)" label, "FREE" pill.
-    - **Occupied Tables**: Amber glowing border (`#F59E0B`), elapsed timer ("42 mins"), current order value (`₹1,240`), items count.
-    - **Billed Tables**: Cyan glowing border (`#06B6D4`), "BILLED - Awaiting Payment" badge, print invoice icon.
-    - **Reserved Tables**: Rose Red border (`#F43F5E`), customer name & reservation time.
+    - **Free Tables**: Emerald Green theme (`#10B981`), "FREE" pill badge, table name & seat capacity.
+    - **Occupied Tables**: Deep Navy theme (`#051C48`), "OCCUPIED" pill badge, draft items count, and live draft subtotal.
+    - **Running KOT Tables**: Vivid Red theme (`#EF4444`), "KOT RUNNING" pill badge, elapsed timer ("42 mins"), active order value (`₹1,240`), items count.
+    - **Billed Tables**: Cyan theme (`#06B6D4`), "BILLED - Awaiting Payment" badge, print invoice icon.
+    - **Reserved Tables**: Soft Purple theme (`#8B5CF6`), customer name & reservation time.
   - **Table Tap Context Drawer**: Bottom modal displaying Order Summary, KOT Items, "Transfer Table", "Merge Table", "Add Items", and "Settle Bill".
 
 ---
@@ -313,11 +320,29 @@ This section defines the exact UI structure, visual wireframe layout, components
 All popups and dialog overlays in Apna POS follow standard glassmorphism containers with cyan borders.
 
 ### 5.1 Payment Processing Overlay (`PaymentModal`)
-- **Header**: Payable Amount `₹517.00` (Hero Font).
-- **Payment Method Tabs**: **UPI Quick QR**, **Cash**, **Card / POS Machine**, **Split Payment**.
-- **UPI Tab View**: Auto-generated dynamic UPI QR Code with store UPI ID, copy link button, and auto-detect payment listener.
-- **Cash Tab View**: Quick Tendered Cash Buttons (`₹500`, `₹1000`, `Exact`), Change Due Display (`₹83.00`).
-- **Complete Transaction Button**: Full-width `#10B981` Green Gradient Pill Button ("CONFIRM & PRINT RECEIPT").
+- **Visual Presentation & Backdrop Blur**:
+  - Semi-transparent scrim (`Color(0x52000000)`).
+  - Premium frosted glass background blur effect applied using `BackdropFilter(filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0))`.
+- **Responsive & Compact Container Layout (Android & Windows)**:
+  - **Compact Centered Card**: `maxWidth: 450px`, rounded corners (`BorderRadius.circular(20)`), elevation soft shadow.
+  - **SingleChildScrollView**: Responsive scrolling for smooth adaptability on small phones and wide desktop screens alike.
+- **Top Payable Summary Banner**:
+  - Soft pastel light-blue container (`#F1F6FD`, border `#E2EDF9`, `BorderRadius.circular(16)`).
+  - Left side: Uppercase `TOTAL PAYABLE` header in slate (`#475569`) with sub-breakdown (`Sub: ₹... | Tax: ₹... | Rnd: +₹...` in amber `#D97706`).
+  - Middle: Vertical separator divider (`#D0E1F9`).
+  - Right side: Large payable total in royal blue (`#0044CC`, `24px`, bold `w900`) and subtle `Exact: ₹...` slate subtitle.
+- **Payment Method Selector Cards (4 Squircle Cards)**:
+  - 4 pastel cards (`Cash`, `UPI`, `Card`, `Split`):
+    - **Cash**: `#EFF6FF` container, `#DBEAFE` rounded squircle icon box, `#1D4ED8` icon & text, active border `#2563EB` (2px).
+    - **UPI**: `#FAF5FF` container, `#F3E8FF` rounded squircle icon box, `#9333EA` icon & `#6B21A8` text, active border `#9333EA` (2px).
+    - **Card**: `#ECFDF5` container, `#D1FAE5` rounded squircle icon box, `#059669` icon & `#065F46` text, active border `#059669` (2px).
+    - **Split**: `#FFF7ED` container, `#FFEDD5` rounded squircle icon box, `#EA580C` icon & `#7C2D12` text, active border `#EA580C` (2px).
+  - **No Checkmark/Tick Icon Badge**: Selected state is purely indicated by active color border, subtle drop glow, and typography.
+- **Dynamic Content & Actions**:
+  - Dynamic QR code generation with 5-minute countdown and auto-verification polling.
+  - Cash tendered calculation with auto change/deficit display.
+  - Split multi-mode payment calculator.
+  - Full-width royal blue CTA button (`#1D4ED8`): "Complete Payment • ₹...".
 
 ### 5.2 Split Bill Modal (`SplitBillModal`)
 - **Split Modes**: **Split Equally** (2, 3, 4 ways) or **Split by Items**.

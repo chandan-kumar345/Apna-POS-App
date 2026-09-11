@@ -49,6 +49,9 @@ class BluetoothPrinterService {
 
   /// Check if Bluetooth is powered ON on the mobile device
   Future<bool> isBluetoothOn() async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      return true;
+    }
     try {
       final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
       return enabled;
@@ -60,6 +63,9 @@ class BluetoothPrinterService {
 
   /// Check if Bluetooth printer is currently connected
   Future<bool> isConnected() async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      return false;
+    }
     try {
       final bool connected = await PrintBluetoothThermal.connectionStatus;
       return connected;
@@ -84,6 +90,9 @@ class BluetoothPrinterService {
 
   /// Get list of paired Bluetooth devices on the mobile device
   Future<List<BluetoothInfo>> getBondedDevices() async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      return [];
+    }
     try {
       await requestPermissions();
       final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;

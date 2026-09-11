@@ -1,14 +1,21 @@
 // Apna POS Server Entrypoint
+const http = require('http');
 const app = require('./app');
 const env = require('./config/env');
 const { connectDB } = require('./config/db');
 const cronService = require('./services/cronService');
+const socketService = require('./services/socketService');
 
 const startServer = async () => {
   try {
-    const server = app.listen(env.PORT, '0.0.0.0', () => {
+    const server = http.createServer(app);
+
+    // Initialize Socket.IO with the HTTP Server
+    socketService.init(server);
+
+    server.listen(env.PORT, '0.0.0.0', () => {
       console.log(`================================================`);
-      console.log(` Apna POS Backend Server Running`);
+      console.log(` Apna POS Backend Server Running (with Socket.IO)`);
       console.log(` Environment: ${env.NODE_ENV}`);
       console.log(` Port:        ${env.PORT}`);
       console.log(` Local:       http://localhost:${env.PORT}/api/v1/health`);

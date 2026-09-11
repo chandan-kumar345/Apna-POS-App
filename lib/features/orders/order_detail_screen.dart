@@ -232,7 +232,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final rest = _db.restaurant;
       final success = await printerService.printKOT(order: _order!, restaurant: rest, isReprint: true);
       if (mounted && !success) {
-        PrinterSelectionDialog.show(context, orderToPrint: _order!, currency: currency);
+        PrinterSelectionDialog.show(context, orderToPrint: _order!, isKot: true, currency: currency);
       }
     } else {
       final bool reconnected = await printerService.autoConnectSavedPrinter();
@@ -240,7 +240,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         final rest = _db.restaurant;
         await printerService.printKOT(order: _order!, restaurant: rest, isReprint: true);
       } else if (mounted) {
-        PrinterSelectionDialog.show(context, orderToPrint: _order!, currency: currency);
+        PrinterSelectionDialog.show(context, orderToPrint: _order!, isKot: true, currency: currency);
       }
     }
   }

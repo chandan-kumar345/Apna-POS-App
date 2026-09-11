@@ -89,19 +89,23 @@ class TableModel {
     String? activeOrderNumber,
     double? activeOrderTotal,
     int? activeItemCount,
+    bool clearOrderId = false,
   }) {
+    final effectiveStatus = status ?? this.status;
+    final isNowFree = effectiveStatus == TableStatus.free;
+
     return TableModel(
       id: id,
       tableNumber: tableNumber,
       name: name,
       floor: floor,
       capacity: capacity,
-      status: status ?? this.status,
-      currentOrderId: currentOrderId ?? this.currentOrderId,
-      occupiedSince: occupiedSince ?? this.occupiedSince,
-      activeOrderNumber: activeOrderNumber ?? this.activeOrderNumber,
-      activeOrderTotal: activeOrderTotal ?? this.activeOrderTotal,
-      activeItemCount: activeItemCount ?? this.activeItemCount,
+      status: effectiveStatus,
+      currentOrderId: (clearOrderId || isNowFree) ? null : (currentOrderId ?? this.currentOrderId),
+      occupiedSince: isNowFree ? null : (occupiedSince ?? this.occupiedSince),
+      activeOrderNumber: isNowFree ? null : (activeOrderNumber ?? this.activeOrderNumber),
+      activeOrderTotal: isNowFree ? 0.0 : (activeOrderTotal ?? this.activeOrderTotal),
+      activeItemCount: isNowFree ? 0 : (activeItemCount ?? this.activeItemCount),
     );
   }
 }

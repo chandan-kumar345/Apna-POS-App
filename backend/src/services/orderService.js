@@ -9,6 +9,7 @@ const Business = require('../models/Business');
 const PrintLog = require('../models/PrintLog');
 const notificationService = require('./notificationService');
 const loyaltyService = require('./loyaltyService');
+const tableService = require('./tableService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
@@ -147,6 +148,7 @@ class OrderService {
             this._getTableQuery(businessId, existingOrder.tableNumber),
             { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
           );
+          tableService.emitTableUpdateForTable(businessId, existingOrder.tableNumber);
         }
 
         // Award Loyalty points if customer phone is present
@@ -433,6 +435,7 @@ class OrderService {
           }
         );
       }
+      tableService.emitTableUpdateForTable(businessId, order.tableNumber);
     }
 
     // 9. Deduct Inventory & Create Sale/Invoice Record if completed
@@ -653,6 +656,7 @@ class OrderService {
           this._getTableQuery(businessId, order.tableNumber),
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
+        tableService.emitTableUpdateForTable(businessId, order.tableNumber);
       }
 
       // Upsert Sale record
@@ -704,6 +708,7 @@ class OrderService {
           this._getTableQuery(businessId, order.tableNumber),
           { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
         );
+        tableService.emitTableUpdateForTable(businessId, order.tableNumber);
       }
 
       // Remove any Sale record associated with cancelled order
@@ -770,6 +775,7 @@ class OrderService {
         this._getTableQuery(businessId, order.tableNumber),
         { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
       );
+      tableService.emitTableUpdateForTable(businessId, order.tableNumber);
     }
 
     // Update customer lifetime spend
@@ -997,6 +1003,7 @@ class OrderService {
           },
         }
       );
+      tableService.emitTableUpdateForTable(bId, order.tableNumber);
     }
 
     // Determine printNumber sequence for this order
@@ -1173,6 +1180,7 @@ class OrderService {
         this._getTableQuery(bId, order.tableNumber),
         { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
       );
+      tableService.emitTableUpdateForTable(bId, order.tableNumber);
 
       // Also resolve any duplicate pending/preparing orders for this table so none remain stuck in preparing
       const cleanTable = order.tableNumber.toString().replace('T-', '').trim();

@@ -6418,6 +6418,103 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  Widget _buildWithoutImageTopRightBadge({
+    required int qty,
+    required bool hasVariants,
+    required int variantsCount,
+    required bool isDiscounted,
+    required double discountPct,
+    required String category,
+    required bool isDesktop,
+  }) {
+    if (qty > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF051C48),
+          borderRadius: BorderRadius.circular(5),
+          boxShadow: const [
+            BoxShadow(color: Colors.black26, blurRadius: 2),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 9),
+            const SizedBox(width: 2),
+            Text(
+              '$qty',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (hasVariants) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF051C48).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          '$variantsCount Var',
+          style: const TextStyle(
+            color: Color(0xFF051C48),
+            fontSize: 8.5,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }
+
+    if (isDiscounted && discountPct > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          '${discountPct.toStringAsFixed(0)}% OFF',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 8,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+    }
+
+    if (category.isNotEmpty) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Text(
+          category,
+          style: const TextStyle(
+            color: Color(0xFF64748B),
+            fontSize: 8.5,
+            fontWeight: FontWeight.w600,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
+  }
+
   Widget _buildProductCard(MenuItemModel item, {required bool showImages, required String currency, bool isDesktop = false}) {
     final qty = _getItemCartQuantity(item);
     final isSelected = qty > 0;
@@ -6459,6 +6556,130 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
     }
 
+    // ──────────────────────────────────────────────────────────────────────────
+    // 1) WITHOUT IMAGE COMPACT CARD (Centered Name & Price, Reduced Box Height)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (!showImages) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.8 : 1.0,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected ? const Color(0x1F051C48) : const Color(0x06000000),
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: handleItemTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: Stack(
+                children: [
+                  // Top-Left: Food Type (Veg / Non-Veg) Icon
+                  Positioned(
+                    top: 2,
+                    left: 2,
+                    child: _buildFoodTypeIcon(item.itemType),
+                  ),
+
+                  // Top-Right: In-Cart Qty Badge / Variant Count / Discount / Category Pill
+                  Positioned(
+                    top: 2,
+                    right: 2,
+                    child: _buildWithoutImageTopRightBadge(
+                      qty: qty,
+                      hasVariants: hasVariants,
+                      variantsCount: item.variants.length,
+                      isDiscounted: isDiscounted,
+                      discountPct: displayDiscountPct,
+                      category: item.category,
+                      isDesktop: isDesktop,
+                    ),
+                  ),
+
+                  // Center Content: Product Name and Price (Centered!)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 16, 4, 2),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Text(
+                            item.name,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isDesktop ? 13.0 : 12.5,
+                              color: const Color(0xFF0F172A),
+                              height: 1.18,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 3),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (isDiscounted) ...[
+                                Text(
+                                  '$currency${displaySalePrice.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    color: const Color(0xFF051C48),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: isDesktop ? 13.5 : 13.0,
+                                  ),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$currency${displayOriginalPrice.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 10,
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    color: const Color(0xFF051C48),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: isDesktop ? 13.5 : 13.0,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // 2) WITH IMAGE CARD LAYOUT
+    // ──────────────────────────────────────────────────────────────────────────
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
@@ -6495,178 +6716,119 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (showImages) ...[
-                          // Image fills upper space
-                          Expanded(
-                            child: Stack(
-                              children: [
-                                Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: _buildPosProductImage(item),
-                                  ),
+                        // Image fills upper space
+                        Expanded(
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
-                                // FoodType Badge (Top Right)
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: _buildPosProductImage(item),
+                                ),
+                              ),
+                              // FoodType Badge (Top Right)
+                              Positioned(
+                                top: 3,
+                                right: 3,
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(5),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 3,
+                                      ),
+                                    ],
+                                  ),
+                                  child: _buildFoodTypeIcon(item.itemType),
+                                ),
+                              ),
+                              // In-Cart Qty Badge (Desktop), Variants Badge or Discount Ribbon (Top Left)
+                              if (qty > 0 && isDesktop)
                                 Positioned(
                                   top: 3,
-                                  right: 3,
+                                  left: 3,
                                   child: Container(
-                                    padding: const EdgeInsets.all(2),
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
+                                      color: const Color(0xFF051C48),
                                       borderRadius: BorderRadius.circular(5),
                                       boxShadow: const [
                                         BoxShadow(
-                                          color: Colors.black12,
+                                          color: Colors.black26,
                                           blurRadius: 3,
                                         ),
                                       ],
                                     ),
-                                    child: _buildFoodTypeIcon(item.itemType),
-                                  ),
-                                ),
-                                // In-Cart Qty Badge (Desktop), Variants Badge or Discount Ribbon (Top Left)
-                                if (qty > 0 && isDesktop)
-                                  Positioned(
-                                    top: 3,
-                                    left: 3,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF051C48),
-                                        borderRadius: BorderRadius.circular(5),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Colors.black26,
-                                            blurRadius: 3,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 9),
+                                        const SizedBox(width: 2),
+                                        Text(
+                                          '$qty',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 9.5,
+                                            fontWeight: FontWeight.w900,
                                           ),
-                                        ],
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 9),
-                                          const SizedBox(width: 2),
-                                          Text(
-                                            '$qty',
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9.5,
-                                              fontWeight: FontWeight.w900,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                else if (hasVariants)
-                                  Positioned(
-                                    top: 3,
-                                    left: 3,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF051C48).withValues(alpha: 0.85),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        '${item.variants.length} Var',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.w800,
                                         ),
-                                      ),
-                                    ),
-                                  )
-                                else if (isDiscounted && displayDiscountPct > 0)
-                                  Positioned(
-                                    top: 3,
-                                    left: 3,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFF10B981),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        '${displayDiscountPct.toStringAsFixed(0)}% OFF',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 8,
-                                          fontWeight: FontWeight.w900,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                        ] else ...[
-                          // Non-image top row
-                          Row(
-                            children: [
-                              _buildFoodTypeIcon(item.itemType),
-                              const Spacer(),
-                              if (qty > 0 && isDesktop)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF051C48),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '${qty}x in cart',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w800,
+                                      ],
                                     ),
                                   ),
                                 )
                               else if (hasVariants)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF051C48).withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '${item.variants.length} Var',
-                                    style: const TextStyle(
-                                      color: Color(0xFF051C48),
-                                      fontSize: 8.5,
-                                      fontWeight: FontWeight.w800,
+                                Positioned(
+                                  top: 3,
+                                  left: 3,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF051C48).withValues(alpha: 0.85),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${item.variants.length} Var',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
                                     ),
                                   ),
                                 )
                               else if (isDiscounted && displayDiscountPct > 0)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFF10B981),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    '${displayDiscountPct.toStringAsFixed(0)}% OFF',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.w900,
+                                Positioned(
+                                  top: 3,
+                                  left: 3,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF10B981),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '${displayDiscountPct.toStringAsFixed(0)}% OFF',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 8,
+                                        fontWeight: FontWeight.w900,
+                                      ),
                                     ),
                                   ),
                                 ),
                             ],
                           ),
-                          const SizedBox(height: 3),
-                        ],
+                        ),
+                        const SizedBox(height: 4),
 
                         // Product Name
                         Text(
@@ -6835,14 +6997,49 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final bool showImages = (db.restaurant?.posViewMode ?? 'with_image') != 'without_image' &&
         (db.restaurant?.showItemImages ?? true);
 
+    // ANDROID / MOBILE: Wrapped Product Boxes layout for Without Images mode
+    if (!isDesktop && !showImages) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final double availableWidth = constraints.maxWidth;
+          final int cols = availableWidth >= 680 ? 4 : (availableWidth >= 460 ? 3 : 2);
+          const double spacing = 8.0;
+          final double itemWidth = (availableWidth - (spacing * (cols - 1)) - 8) / cols;
+
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(4, 4, 4, 90),
+            child: Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: filteredItems.map((item) {
+                return SizedBox(
+                  width: itemWidth,
+                  height: 84,
+                  child: RepaintBoundary(
+                    child: _buildProductCard(
+                      item,
+                      showImages: false,
+                      currency: currency,
+                      isDesktop: false,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          );
+        },
+      );
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final int columnCount = isDesktop
             ? ResponsiveLayoutHelper.getPosGridColumnCount(constraints.maxWidth, showImages: showImages)
-            : 3;
+            : (showImages ? 3 : (constraints.maxWidth >= 500 ? 4 : (constraints.maxWidth >= 360 ? 3 : 2)));
         final double aspectRatio = isDesktop
             ? ResponsiveLayoutHelper.getPosChildAspectRatio(constraints.maxWidth, showImages)
-            : (showImages ? 0.60 : 0.82);
+            : (showImages ? 0.58 : 1.70);
 
         return GridView.builder(
           physics: const BouncingScrollPhysics(),

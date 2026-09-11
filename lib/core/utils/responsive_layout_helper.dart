@@ -45,14 +45,14 @@ class ResponsiveLayoutHelper {
     }
   }
 
-  /// Calculates optimal card aspect ratio for product grid
+  /// Calculates optimal card aspect ratio for product grid (lower ratio = taller card height)
   static double getPosChildAspectRatio(double availableWidth, bool showImages) {
     if (availableWidth >= 1200) {
-      return showImages ? 0.88 : 1.45;
+      return showImages ? 0.80 : 1.90;
     } else if (availableWidth >= 750) {
-      return showImages ? 0.86 : 1.35;
+      return showImages ? 0.78 : 1.80;
     } else {
-      return showImages ? 0.84 : 1.25;
+      return showImages ? 0.76 : 1.70;
     }
   }
 }

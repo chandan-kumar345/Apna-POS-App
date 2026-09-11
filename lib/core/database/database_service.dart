@@ -26,6 +26,7 @@ import '../services/report_service.dart';
 import '../services/dashboard_service.dart';
 import '../services/payment_service.dart';
 import '../services/print_log_service.dart';
+import '../services/socket_service.dart';
 import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -34,7 +35,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 class DatabaseService extends ChangeNotifier {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
-  DatabaseService._internal();
+  DatabaseService._internal() {
+    _initSocketListeners();
+  }
 
   SharedPreferences? _prefs;
   IAuthRepository get authRepository => AuthRepositoryFactory.instance;
@@ -52,6 +55,7 @@ class DatabaseService extends ChangeNotifier {
   ReportService get reportService => ReportService();
   DashboardService get dashboardService => DashboardService();
   PrintLogService get printLogService => PrintLogService();
+  SocketService get socketService => SocketService();
   
   ProductService get _productService => productService;
   OrderService get _orderService => orderService;
@@ -59,6 +63,7 @@ class DatabaseService extends ChangeNotifier {
   InventoryService get _inventoryService => inventoryService;
   CustomerService get _customerService => customerService;
   ExtraService get _extraService => extraService;
+  SocketService get _socketService => socketService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -415,20 +420,34 @@ class DatabaseService extends ChangeNotifier {
         _liveTableCarts[tbl.name] = activeOrder.items.map((i) => i.clone()).toList();
       } else {
         // No active pending/preparing order exists for this table
-        final hasDraftCart = _liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty;
+        final hasDraftCart = (_liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty) ||
+            (_liveTableCarts.containsKey('T-${tbl.tableNumber}') && _liveTableCarts['T-${tbl.tableNumber}']!.isNotEmpty);
         if (!hasDraftCart) {
-          tables[i] = tbl.copyWith(
-            status: TableStatus.free,
-            currentOrderId: null,
-            activeOrderNumber: null,
-            activeOrderTotal: 0.0,
-            activeItemCount: 0,
-            occupiedSince: null,
-          );
+          if (tbl.status != TableStatus.reserved) {
+            tables[i] = tbl.copyWith(
+              status: TableStatus.free,
+              currentOrderId: null,
+              activeOrderNumber: null,
+              activeOrderTotal: 0.0,
+              activeItemCount: 0,
+              occupiedSince: null,
+            );
+          }
           _liveCartTotals.remove(tbl.name);
           _liveTableCarts.remove(tbl.name);
           _liveCartTotals.remove('T-${tbl.tableNumber}');
           _liveTableCarts.remove('T-${tbl.tableNumber}');
+        } else {
+          // Has draft cart products before KOT is printed -> status is Occupied
+          if (tbl.status == TableStatus.free) {
+            final cartItems = getLiveTableCart(tbl.name);
+            final cartTotal = getLiveCartTotal(tbl.name);
+            tables[i] = tbl.copyWith(
+              status: TableStatus.occupied,
+              activeOrderTotal: cartTotal,
+              activeItemCount: cartItems.length,
+            );
+          }
         }
       }
     }
@@ -686,6 +705,11 @@ class DatabaseService extends ChangeNotifier {
     _isInitialized = true;
     notifyListeners();
 
+    // Connect real-time socket client if user has an active business
+    if (currentUser != null && currentUser!.restaurantId.isNotEmpty) {
+      _socketService.connect(businessId: currentUser!.restaurantId);
+    }
+
     // Start real-time background auto-sync across devices
     startAutoSync();
 
@@ -695,6 +719,105 @@ class DatabaseService extends ChangeNotifier {
 
   Timer? _autoSyncTimer;
   bool _isSilentSyncing = false;
+
+  void _initSocketListeners() {
+    _socketService.onTableUpdated = (updatedTable) {
+      final idx = tables.indexWhere((t) =>
+          (t.id.isNotEmpty && t.id == updatedTable.id) ||
+          t.tableNumber == updatedTable.tableNumber ||
+          isSameTable(t.name, updatedTable.name));
+
+      if (idx >= 0) {
+        tables[idx] = updatedTable;
+      } else {
+        tables.add(updatedTable);
+        _sortTablesSequentially();
+      }
+
+      if (updatedTable.status == TableStatus.free) {
+        _liveCartTotals.remove(updatedTable.name);
+        _liveTableCarts.remove(updatedTable.name);
+        _liveCartTotals.remove('T-${updatedTable.tableNumber}');
+        _liveTableCarts.remove('T-${updatedTable.tableNumber}');
+      } else if (updatedTable.activeOrderTotal > 0) {
+        setLiveCartTotal(updatedTable.name, updatedTable.activeOrderTotal);
+      }
+
+      _saveTablesToPrefs();
+      notifyListeners();
+    };
+
+    _socketService.onTablesBatchUpdated = (updatedList) {
+      for (final updatedTable in updatedList) {
+        final idx = tables.indexWhere((t) =>
+            (t.id.isNotEmpty && t.id == updatedTable.id) ||
+            t.tableNumber == updatedTable.tableNumber ||
+            isSameTable(t.name, updatedTable.name));
+
+        if (idx >= 0) {
+          tables[idx] = updatedTable;
+        } else {
+          tables.add(updatedTable);
+        }
+
+        if (updatedTable.status == TableStatus.free) {
+          _liveCartTotals.remove(updatedTable.name);
+          _liveTableCarts.remove(updatedTable.name);
+          _liveCartTotals.remove('T-${updatedTable.tableNumber}');
+          _liveTableCarts.remove('T-${updatedTable.tableNumber}');
+        } else if (updatedTable.activeOrderTotal > 0) {
+          setLiveCartTotal(updatedTable.name, updatedTable.activeOrderTotal);
+        }
+      }
+      _saveTablesToPrefs();
+      notifyListeners();
+    };
+
+    _socketService.onTableCreated = (newTable) {
+      final idx = tables.indexWhere((t) =>
+          (t.id.isNotEmpty && t.id == newTable.id) ||
+          (t.tableNumber == newTable.tableNumber && isSameTable(t.name, newTable.name)));
+
+      if (idx >= 0) {
+        tables[idx] = newTable;
+      } else {
+        tables.add(newTable);
+        _sortTablesSequentially();
+      }
+      _saveTablesToPrefs();
+      notifyListeners();
+    };
+
+    _socketService.onTableDeleted = (deletedTableId) {
+      tables.removeWhere((t) =>
+          t.id == deletedTableId ||
+          t.tableNumber.toString() == deletedTableId ||
+          isSameTable(t.name, deletedTableId));
+      _saveTablesToPrefs();
+      notifyListeners();
+    };
+
+    _socketService.onReconnected = () {
+      debugPrint('[DatabaseService] Socket reconnected. Synchronizing tables for live multi-device state...');
+      _tableService.fetchTables().then((remoteTables) {
+        if (remoteTables.isNotEmpty) {
+          tables = remoteTables;
+          for (final t in remoteTables) {
+            if (t.status == TableStatus.free) {
+              _liveCartTotals.remove(t.name);
+              _liveTableCarts.remove(t.name);
+            } else if (t.activeOrderTotal > 0) {
+              setLiveCartTotal(t.name, t.activeOrderTotal);
+            }
+          }
+          _saveTablesToPrefs();
+          notifyListeners();
+        }
+      }).catchError((e) {
+        debugPrint('[DatabaseService] Reconnect table sync error: $e');
+      });
+    };
+  }
 
   /// Starts periodic background auto-sync for live tables and active orders across devices
   void startAutoSync({Duration interval = const Duration(seconds: 4)}) {
@@ -872,6 +995,12 @@ class DatabaseService extends ChangeNotifier {
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
             );
             await _saveRestaurantToPrefs();
+          }
+
+          // Connect real-time Socket.IO room for this business
+          final activeBizId = currentUser?.restaurantId ?? restaurant?.id;
+          if (activeBizId != null && activeBizId.isNotEmpty) {
+            _socketService.connect(businessId: activeBizId);
           }
         }
       } catch (e) {
@@ -1465,6 +1594,7 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> logout() async {
     stopAutoSync();
+    _socketService.disconnect();
     ProductService.clearPosCache();
     currentUser = null;
     restaurant = null;

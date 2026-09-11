@@ -192,7 +192,7 @@ class _KotDialogState extends State<KotDialog> {
                       Expanded(
                         child: Text(
                           item.item.name,
-                          style: const TextStyle(fontSize: 14, color: Color(0xFF4A5568)),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF2D3748)),
                         ),
                       ),
                       Text(
@@ -248,7 +248,6 @@ class _KotDialogState extends State<KotDialog> {
                                   }
 
                                   // 3. Attempt thermal printer output if printer is available (non-blocking)
-                                  bool printedSuccessfully = false;
                                   try {
                                     final printerService = BluetoothPrinterService();
                                     bool isConnected = await printerService.isConnected();
@@ -257,8 +256,8 @@ class _KotDialogState extends State<KotDialog> {
                                     }
 
                                     if (isConnected) {
-                                      printedSuccessfully = await printerService.printKOT(
-                                        order: widget.order,
+                                      await printerService.printKOT(
+                                        order: updatedOrder,
                                         restaurant: db.restaurant,
                                         isReprint: widget.isReprint || pendingItems.isEmpty,
                                         customItemsToPrint: displayItems,
@@ -269,26 +268,9 @@ class _KotDialogState extends State<KotDialog> {
                                   }
 
                                   if (!context.mounted) return;
-
-                                  if (printedSuccessfully) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('KOT Printed via Thermal Printer & Table set to Running KOT!'),
-                                        backgroundColor: Color(0xFF051C48),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Running KOT created & Table updated!'),
-                                        backgroundColor: Color(0xFF051C48),
-                                        duration: Duration(seconds: 2),
-                                      ),
-                                    );
-                                  }
-
                                   Navigator.pop(context, true);
+
+                                  // KOT order state and printing completed without intrusive SnackBar
                                 } catch (e) {
                                   debugPrint('KOT error: $e');
                                 } finally {

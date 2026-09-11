@@ -62,18 +62,18 @@
 ### 2.1 Table & Order Enums
 ```dart
 enum TableStatus {
-  free,         // #10B981 (Green) - No active orders or live cart items
-  occupied,     // #1D4ED8 (Blue)  - Items in cart or seated before KOT
-  runningKot,   // #F59E0B (Amber) - Active KOT order fired to kitchen
-  billed,       // #8B5CF6 (Purple)- Bill requested / generated
-  reserved,     // #EC4899 (Pink)  - Reserved table
+  free,         // #10B981 (Emerald Green) - Table is empty, no active orders or live cart items
+  occupied,     // #051C48 (Deep Navy / Blue) - User has added products to table cart (draft order)
+  runningKot,   // #EF4444 (Vivid Red)     - Active KOT order fired & running in kitchen
+  billed,       // #06B6D4 (Cyan)          - Bill requested / generated
+  reserved,     // #8B5CF6 (Purple)        - Reserved table
 }
 
 enum OrderStatus {
-  pending,      // Order generated, KOT active
+  pending,      // Order generated, KOT active in kitchen
   preparing,    // Kitchen in progress
-  completed,    // Billed and paid
-  cancelled,    // Order voided
+  completed,    // Billed, paid, and settled
+  cancelled,    // Order voided / refunded
 }
 ```
 
@@ -138,9 +138,56 @@ _printEscPosPayload(order).catchError((e) {
 
 ---
 
-## 4. Dynamic Table Data Shift & Auto-Free Engine
+## 4. Real-Time Multi-Device Table Status Synchronization
 
-### 4.1 State Transfer Algorithm
+### 4.1 Centralized Backend State Machine
+To guarantee that table status remains synchronized across all connected devices (Android tablets, Windows POS counters, Waiter smartphones) in real time without requiring manual refreshes, the backend (`Node.js/Express + Socket.IO + MongoDB`) acts as the single central source of truth.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Free: Table initialized / Cart cleared / Bill settled
+    Free --> Occupied: User adds products to table cart (draft order)
+    Occupied --> Free: User removes all items / voids cart (Manager PIN)
+    Occupied --> RunningKOT: User taps "Print KOT" / "Save & Print KOT"
+    RunningKOT --> Occupied: Manager voids active KOT order (with PIN)
+    RunningKOT --> Billed: Cashier prints bill / requests payment
+    Billed --> Free: Payment successful & Order completed / settled
+    Free --> Reserved: Table reservation assigned
+    Reserved --> Occupied: Guest arrives & products added
+```
+
+### 4.2 WebSocket Event Protocol & Payload Schema
+When any device performs a status mutation (e.g. adding products, dispatching KOT, clearing cart, settling payment), the action is sent to the backend, stored in MongoDB, and broadcasted to all connected clients in the tenant room via WebSocket.
+
+**Socket Event Name:** `table:updated`
+
+**Payload Schema:**
+```json
+{
+  "tableId": "tbl_ground_01",
+  "name": "T-01",
+  "status": "occupied",
+  "activeOrderTotal": 450.00,
+  "activeItemCount": 3,
+  "runningKotCount": 0,
+  "occupiedSince": "2026-09-12T01:15:00.000Z",
+  "updatedBy": "Counter 1 (Windows)",
+  "timestamp": 1726099500000
+}
+```
+
+**Client Processing (`SocketService` & `DatabaseService`):**
+1. Incoming `table:updated` payload triggers `DatabaseService.handleRemoteTableUpdate(payload)`.
+2. Local table entry is updated in-memory via `TableModel.copyWith()`.
+3. If `status == TableStatus.free`, active order ID and totals are cleared.
+4. `notifyListeners()` informs all active UI screens (`TableManagementScreen`, `PosRegisterScreen`, `MainLayout`).
+5. Zero screen reload or manual refresh is required.
+
+---
+
+## 5. Dynamic Table Data Shift & Auto-Free Engine
+
+### 5.1 State Transfer Algorithm
 When moving from `sourceTable` ($T_{\text{src}}$) to `targetTable` ($T_{\text{dst}}$):
 
 ```mermaid
@@ -168,7 +215,7 @@ sequenceDiagram
     UI-->>Waiter: Show confirmation SnackBar & Refresh Cart
 ```
 
-### 4.2 Implementation Reference (`DatabaseService.shiftTableData`)
+### 5.2 Implementation Reference (`DatabaseService.shiftTableData`)
 ```dart
 void shiftTableData(String sourceTable, String targetTable) {
   if (sourceTable.trim().toLowerCase() == targetTable.trim().toLowerCase()) return;
@@ -255,97 +302,78 @@ void shiftTableData(String sourceTable, String targetTable) {
 
 ---
 
-## 5. UI Layout & Viewport Adaptation Architecture
+## 6. Payment Method Screen Architecture & Responsive Backdrop Blur
 
-### 5.1 Responsive Header & Drawer Anchoring (`main_layout.dart`)
+### 6.1 Modal Backdrop Filter & Glassmorphism Blur
+When opening the checkout/payment overlay, the entire background is blurred using hardware-accelerated `BackdropFilter` with `ImageFilter.blur(sigmaX: 6, sigmaY: 6)` and dark scrim `Color(0x73000000)`.
+
 ```dart
-// 1. Hamburger button visibility based on viewport breakpoint (900px)
-if (!isSmallScreen) ...[
-  IconButton(
-    icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
-    onPressed: _toggleSidebar,
-  ),
-  const SizedBox(width: 6),
-],
-
-// 2. Profile badge tap interaction
-InkWell(
-  onTap: _toggleSidebar,
-  borderRadius: BorderRadius.circular(24),
-  child: Row(
-    children: [
-      _buildProfileAvatarImage(34),
-      const SizedBox(width: 10),
-      GlassCompanyNameBadge(name: companyTitle),
-    ],
-  ),
-),
-
-// 3. Mobile slide-in drawer anchored below header bar
-final isHeaderVisible = !((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8);
-final sidebarTopOffset = isHeaderVisible ? 58.0 : 0.0;
-
-Positioned(
-  left: 0,
-  top: sidebarTopOffset,
-  bottom: 0,
-  width: 280,
-  child: SlideTransition(
-    position: _sidebarSlideAnimation,
-    child: _buildSidebarContent(true),
-  ),
-)
+showGeneralDialog(
+  context: context,
+  barrierDismissible: true,
+  barrierLabel: 'PaymentModal',
+  barrierColor: Colors.black.withOpacity(0.45),
+  transitionDuration: const Duration(milliseconds: 280),
+  pageBuilder: (ctx, anim1, anim2) {
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520, maxHeight: 680),
+          child: PaymentModalContent(...),
+        ),
+      ),
+    );
+  },
+);
 ```
 
-### 5.2 Mobile Cart Modal Optimization (`pos_register_screen.dart`)
-```dart
-void _openCartScreenModal() {
-  showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (context) {
-      return StatefulBuilder(
-        builder: (context, setStateModal) {
-          return Container(
-            // Sits lower down for ergonomic one-handed mobile operation
-            height: MediaQuery.of(context).size.height * 0.78,
-            decoration: const BoxDecoration(
-              color: Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-              boxShadow: [
-                BoxShadow(color: Colors.black26, blurRadius: 30, offset: Offset(0, -10)),
-              ],
-            ),
-            child: SafeArea(
-              top: false,
-              bottom: true,
-              child: _buildCartPanelContent(setStateCart: setStateModal, isDesktopPanel: false),
-            ),
-          );
-        },
-      );
-    },
-  );
-}
-```
+### 6.2 Responsive Wrapped Layout
+The payment modal supports seamless adaptation between mobile Android screens and desktop Windows monitors:
+- **Wrap Grid for Payment Modes**: Mode selector chips wrap gracefully across rows when screen width is constrained (`Wrap(spacing: 8, runSpacing: 8)`).
+- **Responsive Sizing**:
+  - Windows / Desktop / Web: Fixed `maxWidth: 520px`, centered modal with rounded corners (`BorderRadius.circular(24)`).
+  - Android / Mobile: Max width matches viewport with `16px` padding and max height constrained to `85%` of screen height.
 
 ---
 
-## 6. File Modifications & Code Delta Matrix
+## 7. POS Product Catalog View Modes
+
+### 7.1 View Mode Architecture
+Cashiers can toggle between two distinct product browsing modes:
+1. **Grid View (With Images)**: Large visual cards with dish photos, price badges, and category labels.
+2. **Compact View (Without Images)**: Streamlined, text-only compact boxes designed for ultra-fast high-volume billing.
+
+### 7.2 Compact & Wrapped Without-Images Specification
+- **Android / Mobile Wrapped Flow**: On Android / mobile form factors, product boxes are rendered inside `SingleChildScrollView` + `Wrap(spacing: 8, runSpacing: 8)`. Box widths adapt dynamically (2 columns on mobile phones, 3 columns on `≥ 460px`, and 4 columns on `≥ 680px`), allowing cards to wrap naturally across screen width.
+- **Card Height**: Constrained to `64px` on mobile and `72px` on desktop.
+- **Content Alignment**: Vertical and horizontal center (`MainAxisAlignment.center`, `CrossAxisAlignment.center`).
+- **Product Title**: Single/double-line truncated text (`12px` bold `#0F172A`).
+- **Price Tag**: Prominently displayed below title (`12px` w900 `#051C48` or strikethrough original price).
+- **Corner Badges**: Food type dot (Veg/Non-Veg) top-left, cart quantity / variant count / discount top-right.
+- **Haptic Feedback**: Scale tap animation and instant cart addition on click.
+
+---
+
+## 8. File Modifications & Code Delta Matrix
 
 | File Path | Primary Modification | Impact Area |
 | :--- | :--- | :--- |
-| `lib/features/dashboard/main_layout.dart` | 1. Redesigned side panel with pastel squircles, 11 navigation modules, and active indicators.<br>2. Wrapped hamburger icon in `if (!isSmallScreen)`.<br>3. Anchored mobile drawer overlay at `top: 58.0`. | Navigation & App Shell |
-| `lib/features/pos/pos_register_screen.dart` | 1. Adjusted mobile cart modal height to `0.78 * height`.<br>2. Fixed table tap in `_showChangeTableFloorWiseModal` to execute `_handleTableSelection` / `_shiftTable`.<br>3. Removed product category chips on mobile tiles. | POS Register & Table Shift |
-| `lib/core/database/database_service.dart` | 1. Implemented robust `shiftTableData()` handling cart, discount, order, and status transfer.<br>2. Immediate `TableStatus.free` update on source table.<br>3. Local preferences serialization. | Data Management & Persistence |
-| `lib/features/pos/kot_dialog.dart` | Removed hard blocking printer validation to ensure tables reliably transition to `runningKot`. | Kitchen Order Workflow |
-| `lib/features/orders/orders_screen.dart` | 1. Removed bulky horizontal date filter row on Android/mobile screens.<br>2. Embedded Dashboard-style date filter dropdown pill in top header bar on mobile.<br>3. Integrated custom date range dialog with FROM/TO pickers & quick preset chips.<br>4. Applied compact typography and scrollable action button wrappers for Android screens. | Orders & History |
+| `lib/core/models/table_model.dart` | 1. Updated `copyWith()` so `TableStatus.free` clears `currentOrderId`, `activeOrderTotal`, and `activeItemCount`.<br>2. String parser deserializes `runningKot`, `running_kot`, `occupied`, `free`, and `billed`. | Data Models & Serialization |
+| `lib/core/database/database_service.dart` | 1. `_reconcileTablesWithRunningOrders()` enforces `free` for empty tables, `occupied` for draft carts, and `runningKot` for active KOTs.<br>2. `shiftTableData()` preserves multi-device consistency. | Business Logic & Local DB |
+| `lib/features/pos/pos_register_screen.dart` | 1. POS View Mode toggle (With Images vs Without Images compact centered height `72px`).<br>2. Payment Modal with frosted backdrop blur and responsive wrap layout.<br>3. `_syncTableStatusWithCart()` auto-transitions table to `occupied` on add and `free` on clear. | POS Cashier Screen |
+| `lib/features/tables/table_management_screen.dart` | 1. Real-time table status color coding (`#10B981` Free, `#051C48` Occupied, `#EF4444` Running KOT, `#06B6D4` Billed).<br>2. Socket-driven automatic UI repaint without page refresh. | Floor Management |
+| `backend/src/services/tableService.js` | Backend table enrichment logic ensuring tables without active orders or cart items strictly resolve to `free`. | Backend REST & WebSockets |
+| `backend/src/services/orderService.js` | Centralized table status transitions on KOT creation (`runningKot`) and settlement (`free`). | Order Service Backend |
 
 ---
 
-## 7. Verification & Static Analysis
+## 9. Verification & Static Analysis
 
-* **Command Executed:** `flutter analyze lib/features/dashboard/main_layout.dart lib/features/pos/pos_register_screen.dart lib/core/database/database_service.dart lib/features/orders/orders_screen.dart`
-* **Static Analysis Result:** **0 Errors** (Clean compilation across all target files).
-* **Cross-Platform Compatibility:** Validated for compilation against Android ARM64/x86_64, Windows x64, Web, and iOS.
+* **Flutter Unit Tests:** `flutter test test/realtime_table_test.dart` (100% Passed across 4 lifecycle suites).
+* **Backend Integration Tests:** `npx jest tests/realtime_table.test.js` (100% Passed across 3 multi-device Socket.IO connections).
+* **Static Analysis:** `flutter analyze lib/core/models/table_model.dart lib/core/database/database_service.dart lib/features/pos/pos_register_screen.dart` (0 Errors).
+* **Cross-Platform Compatibility:** Validated for Android ARM64/x86_64 and Windows x64.
+

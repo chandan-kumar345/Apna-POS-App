@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -7,19 +9,31 @@ import '../database/database_service.dart';
 
 class PrinterSelectionDialog extends StatefulWidget {
   final OrderModel? orderToPrint;
+  final bool isKot;
+  final List<CartItemModel>? customItemsToPrint;
   final String currency;
 
   const PrinterSelectionDialog({
     super.key,
     this.orderToPrint,
+    this.isKot = false,
+    this.customItemsToPrint,
     this.currency = '₹',
   });
 
-  static Future<void> show(BuildContext context, {OrderModel? orderToPrint, String currency = '₹'}) {
+  static Future<void> show(
+    BuildContext context, {
+    OrderModel? orderToPrint,
+    bool isKot = false,
+    List<CartItemModel>? customItemsToPrint,
+    String currency = '₹',
+  }) {
     return showDialog(
       context: context,
       builder: (context) => PrinterSelectionDialog(
         orderToPrint: orderToPrint,
+        isKot: isKot,
+        customItemsToPrint: customItemsToPrint,
         currency: currency,
       ),
     );
@@ -84,16 +98,24 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
               : (bondedDevices.isNotEmpty ? bondedDevices.first : null));
       _isLoading = false;
 
-      if (!btOn) {
+      if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+        _statusMessage = '💻 Windows Desktop POS Mode';
+      } else if (!btOn) {
         _statusMessage = '⚠️ System Bluetooth adapter is turned OFF on your phone.';
       } else if (connected && _connectedDevice != null) {
-        _statusMessage = '🟢 Printer connected and ready to print bills!';
+        _statusMessage = widget.isKot
+            ? '🟢 Printer connected and ready to print KOT tickets!'
+            : '🟢 Printer connected and ready to print bills!';
       }
     });
 
-    // If orderToPrint is provided and already connected, print bill right away
+    // If orderToPrint is provided and already connected, print right away
     if (widget.orderToPrint != null && connected) {
-      _printBill();
+      if (widget.isKot) {
+        _printKot();
+      } else {
+        _printBill();
+      }
     }
   }
 
@@ -117,7 +139,11 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     });
 
     if (success && widget.orderToPrint != null) {
-      await _printBill();
+      if (widget.isKot) {
+        await _printKot();
+      } else {
+        await _printBill();
+      }
     }
   }
 
@@ -133,6 +159,40 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
 
     final customDevice = BluetoothInfo(name: 'Thermal Printer', macAdress: mac);
     await _connectToDevice(customDevice);
+  }
+
+  Future<void> _printKot() async {
+    if (widget.orderToPrint == null) return;
+
+    setState(() {
+      _statusMessage = 'Sending KOT ticket to kitchen thermal printer...';
+    });
+
+    final dbInstance = DatabaseService();
+    final restaurant = dbInstance.restaurant;
+    final success = await _printerService.printKOT(
+      order: widget.orderToPrint!,
+      restaurant: restaurant,
+      isReprint: true,
+      customItemsToPrint: widget.customItemsToPrint,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('KOT Printed successfully via Thermal Printer!'),
+          backgroundColor: Color(0xFF051C48),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      Navigator.pop(context, true);
+    } else {
+      setState(() {
+        _statusMessage = 'Failed to send KOT print job. Ensure printer is paired & turned ON.';
+      });
+    }
   }
 
   Future<void> _printBill() async {
@@ -288,7 +348,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                       // Subtitle
                       Text(
                         widget.orderToPrint != null
-                            ? 'Print Bill #${widget.orderToPrint!.orderNumber}'
+                            ? (widget.isKot ? 'Print Kitchen Order Ticket #${widget.orderToPrint!.orderNumber}' : 'Print Bill #${widget.orderToPrint!.orderNumber}')
                             : 'Bluetooth Thermal Printer Setup',
                         style: const TextStyle(color: Color(0xFF64748B), fontSize: 12, fontWeight: FontWeight.w500),
                       ),
@@ -590,17 +650,30 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    ElevatedButton.icon(
-                      onPressed: _printBill,
-                      icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
-                      label: const Text('Print Bill Now', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF051C48),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
+                    if (widget.isKot)
+                      ElevatedButton.icon(
+                        onPressed: _printKot,
+                        icon: const Icon(Icons.soup_kitchen_rounded, size: 18, color: Colors.white),
+                        label: const Text('Print KOT to Kitchen', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF051C48),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: _printBill,
+                        icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
+                        label: const Text('Print Bill Now', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF051C48),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
                       ),
-                    ),
                   ],
                 ),
             ],

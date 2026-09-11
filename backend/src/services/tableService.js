@@ -4,6 +4,7 @@ const Business = require('../models/Business');
 const Order = require('../models/Order');
 const Cart = require('../models/Cart');
 const ApiError = require('../utils/ApiError');
+const socketService = require('./socketService');
 
 class TableService {
   async getTables(businessId) {
@@ -89,6 +90,8 @@ class TableService {
         if (effectiveStatus !== 'reserved') {
           effectiveStatus = 'occupied';
         }
+      } else if (effectiveStatus !== 'reserved') {
+        effectiveStatus = 'free';
       }
 
       return {
@@ -164,7 +167,111 @@ class TableService {
       $set: { 'orderSettings.tableCount': count },
     });
 
-    return await Table.find({ businessId }).sort({ tableNumber: 1 });
+    const updatedTables = await this.getTables(businessId);
+    socketService.emitTablesBatchUpdated(businessId, updatedTables);
+    return updatedTables;
+  }
+
+  /**
+   * Helper to enrich a single table doc with live activeOrder and cart state
+   */
+  async enrichTableDoc(businessId, tableDoc) {
+    if (!tableDoc) return null;
+    const tJson = typeof tableDoc.toJSON === 'function' ? tableDoc.toJSON() : { ...tableDoc };
+    const tNumStr = (tJson.tableNumber || '').toString();
+    const tName = (tJson.name || `T-${tNumStr}`).trim().toLowerCase();
+    const tNumClean = `t-${tNumStr}`.toLowerCase();
+    const tableIdStr = (tJson.id || tJson._id || '').toString();
+
+    const [activeOrder, activeCart] = await Promise.all([
+      Order.findOne({
+        businessId,
+        status: { $in: ['pending', 'preparing'] },
+        orderType: 'dineIn',
+        $or: [
+          { tableNumber: { $regex: new RegExp(`^${tName}$`, 'i') } },
+          { tableNumber: tNumStr },
+          { tableNumber: { $regex: new RegExp(`^${tNumClean}$`, 'i') } },
+          { tableNumber: tableIdStr },
+        ],
+      }).lean(),
+      Cart.findOne({
+        businessId,
+        orderType: 'dineIn',
+        'items.0': { $exists: true },
+        $or: [
+          { tableNumber: { $regex: new RegExp(`^${tName}$`, 'i') } },
+          { tableNumber: tNumStr },
+          { tableNumber: { $regex: new RegExp(`^${tNumClean}$`, 'i') } },
+        ],
+      }).lean(),
+    ]);
+
+    let effectiveStatus = tJson.status || 'free';
+    if (activeOrder) {
+      effectiveStatus = 'runningKot';
+    } else if (activeCart && activeCart.items && activeCart.items.length > 0) {
+      if (effectiveStatus !== 'reserved') {
+        effectiveStatus = 'occupied';
+      }
+    } else if (effectiveStatus !== 'reserved') {
+      effectiveStatus = 'free';
+    }
+
+    return {
+      ...tJson,
+      status: effectiveStatus,
+      activeOrder: activeOrder
+        ? {
+            id: activeOrder._id.toString(),
+            orderNumber: activeOrder.orderNumber,
+            status: activeOrder.status,
+            totalAmount: activeOrder.totalAmount,
+            itemCount: activeOrder.items ? activeOrder.items.length : 0,
+            items: activeOrder.items || [],
+            createdAt: activeOrder.createdAt,
+          }
+        : null,
+      cart: activeCart
+        ? {
+            itemCount: activeCart.itemCount || (activeCart.items ? activeCart.items.length : 0),
+            totalAmount: activeCart.subtotal || 0,
+            items: activeCart.items || [],
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Helper for other services (orderService, cartService) to trigger real-time table update
+   */
+  async emitTableUpdateForTable(businessId, tableRef) {
+    if (!businessId || !tableRef) return;
+    try {
+      const cleanRef = tableRef.toString().trim();
+      const numOnly = parseInt(cleanRef.replace(/\D/g, ''), 10) || 0;
+      const isObjectId = mongoose.Types.ObjectId.isValid(cleanRef);
+
+      const tableDoc = await Table.findOne({
+        businessId,
+        ...(isObjectId
+          ? { _id: cleanRef }
+          : {
+              $or: [
+                { name: { $regex: new RegExp(`^${cleanRef}$`, 'i') } },
+                { name: `T-${numOnly}` },
+                { tableNumber: numOnly },
+              ],
+            }),
+      });
+
+      if (tableDoc) {
+        const enriched = await this.enrichTableDoc(businessId, tableDoc);
+        socketService.emitTableUpdated(businessId, enriched);
+      }
+    } catch (err) {
+      // non-blocking
+    }
   }
 
   async createTable(businessId, { tableNumber, name, floor, capacity, count = 1 }) {
@@ -190,6 +297,8 @@ class TableService {
         });
         createdList.push(newT);
       }
+      const enrichedList = await Promise.all(createdList.map((t) => this.enrichTableDoc(businessId, t)));
+      socketService.emitTableCreated(businessId, enrichedList);
       return createdList;
     }
 
@@ -213,6 +322,8 @@ class TableService {
       status: 'free',
     });
 
+    const enriched = await this.enrichTableDoc(businessId, table);
+    socketService.emitTableCreated(businessId, enriched);
     return table;
   }
 
@@ -227,6 +338,8 @@ class TableService {
       throw ApiError.notFound('Table not found');
     }
 
+    const enriched = await this.enrichTableDoc(businessId, table);
+    socketService.emitTableUpdated(businessId, enriched);
     return table;
   }
 
@@ -276,6 +389,9 @@ class TableService {
       }
     }
 
+    const enriched = await this.enrichTableDoc(businessId, table);
+    socketService.emitTableUpdated(businessId, enriched);
+
     return table;
   }
 
@@ -284,6 +400,7 @@ class TableService {
     if (!table) {
       throw ApiError.notFound('Table not found');
     }
+    socketService.emitTableDeleted(businessId, tableId);
     return { id: tableId, message: 'Table removed' };
   }
 
@@ -398,6 +515,14 @@ class TableService {
         }
       }
       await targetTableDoc.save();
+    }
+
+    // Broadcast both source and target table updates in real-time
+    const enrichedSource = sourceTableDoc ? await this.enrichTableDoc(businessId, sourceTableDoc) : null;
+    const enrichedTarget = targetTableDoc ? await this.enrichTableDoc(businessId, targetTableDoc) : null;
+    const batch = [enrichedSource, enrichedTarget].filter(Boolean);
+    if (batch.length > 0) {
+      socketService.emitTablesBatchUpdated(businessId, batch);
     }
 
     return {

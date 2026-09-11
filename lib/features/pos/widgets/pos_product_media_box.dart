@@ -77,6 +77,28 @@ class PosProductMediaBox extends StatefulWidget {
 }
 
 class _PosProductMediaBoxState extends State<PosProductMediaBox> {
+  // Global Active Playback Pool (Limits concurrent active decoders to ensure smooth 60fps on Android)
+  static final List<VideoPlayerController> _activePlayingControllers = [];
+  static const int _maxConcurrentPlayers = 2;
+
+  static void _registerActiveController(VideoPlayerController controller) {
+    if (!_activePlayingControllers.contains(controller)) {
+      _activePlayingControllers.add(controller);
+    }
+    while (_activePlayingControllers.length > _maxConcurrentPlayers) {
+      final oldest = _activePlayingControllers.removeAt(0);
+      try {
+        if (oldest.value.isPlaying) {
+          oldest.pause();
+        }
+      } catch (_) {}
+    }
+  }
+
+  static void _unregisterActiveController(VideoPlayerController controller) {
+    _activePlayingControllers.remove(controller);
+  }
+
   final List<PosMediaItem> _mediaList = [];
   PageController? _pageController;
   int _currentPage = 0;
@@ -150,36 +172,38 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       ));
     }
 
-    // 3. Add Images
-    final List<String> uniqueImages = [];
+    // 3. Add Multiple Images
     if (widget.item.images.isNotEmpty) {
-      for (final img in widget.item.images) {
-        final resolved = ApiEndpoints.resolveMediaUrl(img);
-        if (resolved.isNotEmpty && !uniqueImages.contains(resolved)) {
-          uniqueImages.add(resolved);
+      for (int i = 0; i < widget.item.images.length; i++) {
+        final imgUrl = ApiEndpoints.resolveMediaUrl(widget.item.images[i].trim());
+        if (imgUrl.isNotEmpty) {
+          _mediaList.add(PosMediaItem(
+            type: PosMediaType.image,
+            url: imgUrl,
+            title: 'Photo ${i + 1}',
+          ));
         }
       }
     }
 
+    // Add Primary Image if not already included
     if (widget.item.imageUrl.trim().isNotEmpty) {
       final primary = ApiEndpoints.resolveMediaUrl(widget.item.imageUrl.trim());
-      if (primary.isNotEmpty && !uniqueImages.contains(primary)) {
-        uniqueImages.insert(0, primary);
+      if (primary.isNotEmpty && !_mediaList.any((m) => m.url == primary)) {
+        _mediaList.add(PosMediaItem(
+          type: PosMediaType.image,
+          url: primary,
+          title: 'Primary Photo',
+        ));
       }
-    }
-
-    for (final imgUrl in uniqueImages) {
-      _mediaList.add(PosMediaItem(
-        type: PosMediaType.image,
-        url: imgUrl,
-        title: 'Product Image',
-      ));
     }
 
     // 4. Fallback if no images or video
     if (_mediaList.isEmpty) {
       _mediaList.add(const PosMediaItem(
         type: PosMediaType.placeholder,
+        url: '',
+        title: 'Product',
       ));
     }
   }
@@ -225,63 +249,41 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     }
 
     try {
+      final playablePath = await YouTubeService.getPlayableVideoPath(cleanUrl, instantStream: true);
+      if (playablePath == null || playablePath.isEmpty) {
+        throw Exception('Could not resolve playable video path for $cleanUrl');
+      }
+
       VideoPlayerController controller;
 
-      // 1. YouTube Video
-      if (YouTubeService.isYouTubeUrl(cleanUrl)) {
-        final streamUrl = await YouTubeService.resolveStreamUrl(cleanUrl);
-        if (streamUrl == null || streamUrl.isEmpty) {
-          throw Exception('Could not extract playable YouTube stream');
-        }
-        controller = VideoPlayerController.networkUrl(
-          Uri.parse(streamUrl),
+      if (!kIsWeb && File(playablePath).existsSync()) {
+        controller = VideoPlayerController.file(
+          File(playablePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
         );
-      }
-      // 2. Asset Video
-      else if (cleanUrl.startsWith('assets/')) {
-        controller = VideoPlayerController.asset(cleanUrl);
-      }
-      // 3. Direct HTTP/HTTPS Video
-      else if (cleanUrl.startsWith('http://') || cleanUrl.startsWith('https://')) {
-        var netUrl = cleanUrl;
+      } else if (playablePath.startsWith('assets/')) {
+        controller = VideoPlayerController.asset(
+          playablePath,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else if (playablePath.startsWith('http://') || playablePath.startsWith('https://')) {
+        var netUrl = playablePath;
         if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
           netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
         }
         controller = VideoPlayerController.networkUrl(
           Uri.parse(netUrl),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          httpHeaders: const {
+            'Accept': 'video/mp4,video/*,*/*',
+            'User-Agent': 'Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36',
+          },
         );
-      }
-      // 4. Local File Path
-      else {
-        String filePath = cleanUrl;
-        if (filePath.startsWith('file://')) {
-          try {
-            filePath = Uri.parse(filePath).toFilePath();
-          } catch (_) {
-            filePath = filePath.replaceFirst('file://', '');
-          }
-        }
-
-        final file = File(filePath);
-        if (file.existsSync()) {
-          controller = VideoPlayerController.file(file);
-        } else {
-          final resolved = ApiEndpoints.resolveMediaUrl(cleanUrl);
-          if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
-            var netUrl = resolved;
-            if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
-              netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
-            }
-            controller = VideoPlayerController.networkUrl(Uri.parse(netUrl));
-          } else {
-            final fallbackFile = File(resolved);
-            if (fallbackFile.existsSync()) {
-              controller = VideoPlayerController.file(fallbackFile);
-            } else {
-              throw Exception('Video file not found: $cleanUrl');
-            }
-          }
-        }
+      } else {
+        controller = VideoPlayerController.file(
+          File(playablePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
       }
 
       await controller.initialize();
@@ -301,6 +303,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       // Auto-play immediately if active slide is currently on Video
       if (_mediaList.isNotEmpty && _currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.video) {
         try {
+          _registerActiveController(_videoController!);
           await _videoController!.play();
         } catch (_) {}
       }
@@ -402,6 +405,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       if (_videoController != null && _isVideoInitialized) {
         _videoController!.seekTo(Duration.zero).then((_) {
           if (mounted && _currentPage == index) {
+            _registerActiveController(_videoController!);
             _videoController!.play();
           }
         });
@@ -410,7 +414,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       }
     } else {
       // Pause video when viewing image slides to conserve CPU/GPU/network bandwidth
-      _videoController?.pause();
+      if (_videoController != null) {
+        _unregisterActiveController(_videoController!);
+        _videoController?.pause();
+      }
       if (widget.autoSlide && !_isUserInteracting && _mediaList.length > 1 && !widget.isMini) {
         _scheduleAutoSlideForImages();
       }
@@ -449,6 +456,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       if (_mediaList[_currentPage].type == PosMediaType.image) {
         _scheduleAutoSlideForImages();
       } else if (_mediaList[_currentPage].type == PosMediaType.video && _videoController != null && _isVideoInitialized) {
+        _registerActiveController(_videoController!);
         _videoController!.play();
       }
     });
@@ -460,6 +468,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     _pageController?.dispose();
     _pageController = null;
     if (_videoController != null) {
+      _unregisterActiveController(_videoController!);
       _videoController!.removeListener(_videoListener);
       _videoController!.dispose();
       _videoController = null;

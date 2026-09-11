@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_player_win/video_player_win.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/menu_item_model.dart';
 import '../../core/network/api_endpoints.dart';
@@ -322,57 +323,56 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _previewVideoController?.dispose();
       _previewVideoController = null;
 
-      if (isFile && !cleanSource.startsWith('http')) {
-        _previewVideoController = VideoPlayerController.file(File(cleanSource));
+      if (YouTubeService.isYouTubeUrl(cleanSource)) {
+        // If no images selected yet, auto-populate with high quality YouTube thumbnail
+        final vidId = YouTubeService.extractVideoId(cleanSource);
+        if (vidId != null && vidId.isNotEmpty && _selectedImages.isEmpty) {
+          final thumbUrl = YouTubeService.getThumbnailUrl(vidId);
+          _selectedImages.add(ProductImageItem(
+            remoteUrl: thumbUrl,
+            path: thumbUrl,
+            name: 'YouTube Cover Thumbnail',
+          ));
+        }
+      }
+
+      final playablePath = await YouTubeService.getPlayableVideoPath(cleanSource);
+      if (playablePath == null || playablePath.isEmpty) {
+        throw Exception('Could not resolve playable video: $cleanSource');
+      }
+
+      if (!kIsWeb && File(playablePath).existsSync()) {
+        _previewVideoController = VideoPlayerController.file(
+          File(playablePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else if (playablePath.startsWith('assets/')) {
+        _previewVideoController = VideoPlayerController.asset(
+          playablePath,
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
+      } else if (playablePath.startsWith('http://') || playablePath.startsWith('https://')) {
+        var netUrl = playablePath;
+        if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
+          netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
+        }
+        _previewVideoController = VideoPlayerController.networkUrl(
+          Uri.parse(netUrl),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
       } else {
-        String streamUrl = cleanSource;
-        if (YouTubeService.isYouTubeUrl(cleanSource)) {
-          final resolved = await YouTubeService.resolveStreamUrl(cleanSource);
-          if (resolved != null && resolved.isNotEmpty) {
-            streamUrl = resolved;
-          }
-          // If no images selected yet, auto-populate with high quality YouTube thumbnail
-          final vidId = YouTubeService.extractVideoId(cleanSource);
-          if (vidId != null && vidId.isNotEmpty && _selectedImages.isEmpty) {
-            final thumbUrl = YouTubeService.getThumbnailUrl(vidId);
-            _selectedImages.add(ProductImageItem(
-              remoteUrl: thumbUrl,
-              path: thumbUrl,
-              name: 'YouTube Cover Thumbnail',
-            ));
-          }
-        } else {
-          streamUrl = ApiEndpoints.resolveMediaUrl(cleanSource);
-        }
-
-        if (streamUrl.contains('localhost:')) {
-          streamUrl = streamUrl.replaceAll('localhost:', '127.0.0.1:');
-        }
-
-        bool localExists = false;
-        if (!kIsWeb) {
-          try {
-            if (File(streamUrl).existsSync()) {
-              localExists = true;
-            }
-          } catch (_) {}
-        }
-
-        if (localExists) {
-          _previewVideoController = VideoPlayerController.file(File(streamUrl));
-        } else {
-          final uri = Uri.tryParse(streamUrl);
-          if (uri != null && (uri.isScheme('http') || uri.isScheme('https'))) {
-            _previewVideoController = VideoPlayerController.networkUrl(uri);
-          } else {
-            _previewVideoController = VideoPlayerController.file(File(streamUrl));
-          }
-        }
+        _previewVideoController = VideoPlayerController.file(
+          File(playablePath),
+          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+        );
       }
 
       await _previewVideoController!.initialize();
       await _previewVideoController!.setVolume(_isVideoMuted ? 0.0 : 1.0);
       await _previewVideoController!.setLooping(true);
+      _previewVideoController!.addListener(() {
+        if (mounted) setState(() {});
+      });
       await _previewVideoController!.play();
 
       if (mounted) {
@@ -392,6 +392,31 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
+  Future<String?> _persistVideoLocally(String? sourcePath, Uint8List? bytes, String fileName) async {
+    if (kIsWeb) return sourcePath;
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final videosDir = Directory('${appDir.path}${Platform.pathSeparator}saved_product_videos');
+      if (!videosDir.existsSync()) {
+        videosDir.createSync(recursive: true);
+      }
+      final cleanExt = fileName.contains('.') ? '.${fileName.split('.').last}' : '.mp4';
+      final cleanName = 'vid_${DateTime.now().millisecondsSinceEpoch}$cleanExt';
+      final targetFile = File('${videosDir.path}${Platform.pathSeparator}$cleanName');
+
+      if (sourcePath != null && sourcePath.isNotEmpty && File(sourcePath).existsSync()) {
+        await File(sourcePath).copy(targetFile.path);
+        return targetFile.path;
+      } else if (bytes != null && bytes.isNotEmpty) {
+        await targetFile.writeAsBytes(bytes);
+        return targetFile.path;
+      }
+    } catch (e) {
+      debugPrint('[_persistVideoLocally] note: $e');
+    }
+    return sourcePath;
+  }
+
   Future<void> _pickVideo() async {
     try {
       // 1. FilePicker video pick
@@ -401,15 +426,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
       );
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
+        final persistentPath = await _persistVideoLocally(file.path, file.bytes, file.name) ?? file.path;
         setState(() {
-          _selectedVideoPath = file.path;
+          _selectedVideoPath = persistentPath;
           _selectedVideoBytes = file.bytes;
           _selectedVideoFileName = file.name;
           _remoteVideoUrl = null;
           _videoUrlController.clear();
         });
-        if (file.path != null && file.path!.isNotEmpty) {
-          _initPreviewVideo(file.path!, isFile: true);
+        if (persistentPath != null && persistentPath.isNotEmpty) {
+          _initPreviewVideo(persistentPath, isFile: true);
         }
         _showSuccessSnackBar('Video selected: ${file.name}');
         return;
@@ -424,14 +450,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final pickedVideo = await picker.pickVideo(source: ImageSource.gallery);
       if (pickedVideo != null) {
         final bytes = await pickedVideo.readAsBytes();
+        final persistentPath = await _persistVideoLocally(pickedVideo.path, bytes, pickedVideo.name) ?? pickedVideo.path;
         setState(() {
-          _selectedVideoPath = pickedVideo.path;
+          _selectedVideoPath = persistentPath;
           _selectedVideoBytes = bytes;
           _selectedVideoFileName = pickedVideo.name;
           _remoteVideoUrl = null;
           _videoUrlController.clear();
         });
-        _initPreviewVideo(pickedVideo.path, isFile: true);
+        _initPreviewVideo(persistentPath ?? pickedVideo.path, isFile: true);
         _showSuccessSnackBar('Video selected: ${pickedVideo.name}');
       }
     } catch (e) {

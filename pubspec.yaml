@@ -65,6 +65,7 @@ dependencies:
   video_player: ^2.14.0
   video_player_win: ^3.2.2
   youtube_explode_dart: ^3.1.0
+  socket_io_client: ^3.0.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -75,6 +76,9 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+
+dependency_overrides:
+  permission_handler_android: 12.0.13
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

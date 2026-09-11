@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD)
 
 **Product Name:** Apna POS (Point of Sale & Restaurant Management System)  
-**Document Version:** 2.0.0  
+**Document Version:** 2.1.0  
 **Target Platforms:** Android (Mobile / Tablet) & Windows (Desktop / Tablet)  
 **Author:** Apna POS Product & Engineering Team  
 **Date:** September 2026  
@@ -14,11 +14,13 @@
 Apna POS is a comprehensive, cross-platform Point of Sale and Restaurant Management System engineered to provide restaurant staff, cashiers, and managers with an intuitive, ultra-fast ordering, billing, table management, and kitchen fulfillment workflow. 
 
 This document outlines the product requirements and operational specifications for the major redesign and feature enhancements deployed across **Android** and **Windows** platforms, encompassing:
-1. **Unified Navigation & Modern Side Panel**: Harmonized navigation experience across desktop and mobile form factors.
-2. **KOT (Kitchen Order Ticket) Processing Engine**: Single-printer architecture with incremental differential printing and non-blocking print dispatch.
-3. **Dynamic Table Shift & Auto-Free Lifecycle**: Reliable floor-wise table management with automated state migration and table release.
-4. **Platform-Optimized POS Workspace & Mobile Cart UX**: Tailored viewport adaptations, mobile ergonomics, and pixel-perfect layouts.
-5. **Orders & History Management**: Responsive order cards, action controls, and real-time status tracking.
+1. **Real-Time Table Status Synchronization & POS Lifecycle**: Central authoritative table status model synchronized in real-time across all connected devices via WebSockets and cloud DB.
+2. **Unified Navigation & Modern Side Panel**: Harmonized navigation experience across desktop and mobile form factors.
+3. **KOT (Kitchen Order Ticket) Processing Engine**: Single-printer architecture with incremental differential printing and non-blocking print dispatch.
+4. **Dynamic Table Shift & Auto-Free Lifecycle**: Reliable floor-wise table management with automated state migration and table release.
+5. **Redesigned Payment Method Screen**: Compact, responsive wrapped payment modal with frosted backdrop blur and 4 pastel payment methods.
+6. **Platform-Optimized POS Workspace & View Modes**: Flexible grid cards with/without images, centered typography in compact view, mobile cart bottom sheet, and desktop dual-pane.
+7. **Orders & History Management**: Responsive order cards, action controls, and real-time status tracking.
 
 ---
 
@@ -33,156 +35,182 @@ This document outlines the product requirements and operational specifications f
 
 ---
 
-## 3. Platform-Specific Feature Requirements
+## 3. Real-Time Table Status Synchronization & POS Lifecycle
 
-### 3.1 Android Mobile Application
+### 3.1 Central Source of Truth & Real-Time Architecture
+* **Requirement 3.1.1 (Central Truth):** The backend database is the single central authoritative source of truth for table occupancy and order state. Connected devices do NOT maintain isolated, un-synced table states.
+* **Requirement 3.1.2 (Instant Multi-Device Sync):** Any table state change made on Device A (e.g., Table 5 ➔ Occupied) immediately broadcasts via Socket.IO room to Device B, Device C, and Device D without requiring manual pull-to-refresh or page reloads.
 
+### 3.2 Table Status Lifecycle Rules
 ```
-+-------------------------------------------------------------+
-| [Logo] [Restaurant Name Badge]            [Online] [Bell]   | <- Top Header (Deep Navy)
-+-------------------------------------------------------------+
-|                                                             |
-| +-------------------------+ +-----------------------------+ |
-| | Category Chips (All...) | | Search & Scan Bar           | |
-| +-------------------------+ +-----------------------------+ |
-|                                                             |
-| +---------------------------------------------------------+ |
-| | [ Product Grid - Clean Image / Name / Price ]           | |
-| | (Category labels omitted for clutter-free card design)  | |
-| +---------------------------------------------------------+ |
-|                                                             |
-| +---------------------------------------------------------+ |
-| | [ Cart Bottom Sheet (Height: 0.78 Viewport) ]           | |
-| | Items: Biryani x2, Coke x1 | Subtotal: Rs. 350          | |
-| | [ Table: T-1 (Change) ]                                 | |
-| | [ KOT Order ]   [ Save & Print ]   [ Pay & Settle ]     | |
-| +---------------------------------------------------------+ |
-+-------------------------------------------------------------+
+                 +----------------------------------------------------+
+                 |                                                    |
+                 v                                                    |
+         +---------------+    User Adds Items      +----------------+ |
+         |     FREE      | ----------------------> |    OCCUPIED    | |
+         | (Emerald #10) |                         |  (Navy #051C)  | |
+         +---------------+                         +----------------+ |
+                 ^                                         |          |
+                 |                                         |          |
+                 | Settle Bill / Clear Cart                | Print KOT|
+                 |                                         v          |
+                 |                                 +----------------+ |
+                 +-------------------------------- |   KOT RUNNING  | |
+                                                   |  (Vivid #EF44) | |
+                                                   +----------------+ |
+                                                           |          |
+                                                           +----------+
 ```
 
-#### 3.1.1 Header & Sidebar Navigation
-* **Requirement 3.1.1.1 (Hamburger Removal):** The legacy 3-line hamburger menu button (`Icons.menu_rounded`) must be **hidden** on Android / mobile viewports to prevent UI clutter and accidental touches.
-* **Requirement 3.1.1.2 (Profile/Company Avatar Trigger):** Tapping anywhere on the top header's profile avatar or the semi-curved company name badge must smoothly toggle the navigation drawer.
-* **Requirement 3.1.1.3 (Header-Anchored Drawer):** The sliding navigation drawer and its backdrop must open **below the top header** (`top: 58dp`), keeping the deep navy header bar visible.
-* **Requirement 3.1.1.4 (Backdrop & Gesture Dismissal):** Tapping the backdrop overlay or swiping left must dismiss the drawer with an animated fade & slide transition.
+1. **State: `Free` (Available - `#10B981` Emerald Green)**
+   * **Definition:** Table has **zero products** in its draft cart and **no active pending/preparing KOT orders**.
+   * **Visual Indicator:** Emerald Green border/badge with label `"Free"`.
+   * **Card Content:** Displays `"No Order"` and `₹0`.
+   * **Action Icon:** Emerald Green `+` / Add-to-cart button.
+   * **Transition Trigger:** Automatically returns to `Free` when:
+     - An active order is completed and settled via Payment Modal.
+     - All items are removed from the cart.
+     - The cart is cleared/voided via Manager PIN.
 
-#### 3.1.2 POS Workspace & Product Cards
-* **Requirement 3.1.2.1 (Clutter-Free Product Cards):** Category tag chips inside individual product grid tiles are removed on mobile to maximize title readability and eliminate text truncation.
-* **Requirement 3.1.2.2 (Compact Cart Bottom Sheet):** The cart modal height is set to `0.78 * screen height`, providing an ergonomic bottom-sheet experience that keeps background context partially visible.
-* **Requirement 3.1.2.3 (Action Buttons Accessibility):** The primary cart action bar (`KOT Order`, `Save & Print`, `Pay & Settle`) must remain fixed and accessible at the bottom of the modal without horizontal overflow.
+2. **State: `Occupied` (Seated & Ordering - `#051C48` Deep Navy Blue)**
+   * **Definition:** A table is selected and **1 or more products are added to the cart**, but KOT has **NOT** yet been sent to the kitchen (draft state).
+   * **Visual Indicator:** Deep Navy Blue border/badge with label `"Occupied"`.
+   * **Card Content:** Displays live cart subtotal/total (e.g. `₹420`).
+   * **Action Icon:** Visibility eye icon (`Icons.visibility_outlined`) allowing staff to view or modify draft cart items.
+   * **Transition Trigger:**
+     - First product added to an empty/free table cart ➔ transitions to `Occupied`.
+     - Reducing cart items back to 0 ➔ table reverts to `Free`.
 
-#### 3.1.3 Change Table Modal & Migration
-* **Requirement 3.1.3.1 (Floor-Wise Organization):** The mobile Change Table modal displays floor filter tabs (`All`, `Ground Floor`, `First Floor`, `Rooftop`) with responsive 3-column table cards.
-* **Requirement 3.1.3.2 (Table Status Visuals):** Each table card displays its current status badge (`Free` [Green], `Occupied` [Blue], `Running KOT` [Orange], `Billed` [Purple]) and active order total.
-* **Requirement 3.1.3.3 (Single-Tap Shift Execution):** Selecting a target table (Table B) when Table A has items in cart or an active KOT executes an immediate table data migration:
-  * Table A's cart items, discounts, customer metadata, and KOT orders migrate to Table B.
-  * Table A transitions to `Free` (`TableStatus.free`).
-  * Table B transitions to `Running KOT` or `Occupied`.
-  * The modal dismisses and loads Table B's cart in the POS screen with a confirmation SnackBar.
+3. **State: `KOT Running` (In Kitchen Prep - `#EF4444` Vivid Red)**
+   * **Definition:** Staff clicks **"Print KOT"** or **"Save & Print"**; an active kitchen order is generated (`OrderStatus.preparing`).
+   * **Visual Indicator:** Vivid Red border/badge with label `"KOT Running"`.
+   * **Card Content:** Displays confirmed order total (e.g. `₹850`).
+   * **Dropdown Lock:** Status dropdown on table card is disabled/locked to prevent accidental cancellation without Manager PIN.
+   * **Transition Trigger:**
+     - Clicking "Print KOT" in POS or KOT Dialog ➔ immediately transitions to `KOT Running`.
+     - Completing bill settlement ➔ transitions to `Free`.
+     - Voiding KOT via Manager PIN ➔ transitions to `Free`.
 
-#### 3.1.4 Orders & History Responsive Layout
-* **Requirement 3.1.4.1 (Wrapped Content & Scaled Typography):** Order card text, timestamps, table chips, and price totals utilize responsive typography (`11.5sp` to `13sp`) to prevent pixel overflow on small screens.
-* **Requirement 3.1.4.2 (Action Button Layout):** Order action buttons (`View Details`, `Print Receipt`, `Print KOT`) are contained in flexible scrollable rows preventing overflow on narrow devices.
-* **Requirement 3.1.4.3 (Dashboard-Style Date Filter on Mobile):** On Android/mobile screens, the bulky horizontal date filter row is removed and replaced by a compact date filter dropdown pill in the top header bar (matching Dashboard design 1:1) supporting `Today`, `Yesterday`, `This Week`, `This Month`, `This Year`, `All Time`, and a custom Date Range modal with FROM/TO pickers and quick presets.
+4. **State: `Reserved` (Advance Booking - `#8B5CF6` Purple)**
+   * **Definition:** Table reserved in advance by management.
 
 ---
 
-### 3.2 Windows Desktop & Tablet Application
+## 4. Payment Method Screen Redesign
 
 ```
-+----------------------------------------------------------------------------------------------------+
-| [Logo] [Company Name Badge]                                           [Online] [Notifications]     |
-+----------------------------------------------------------------------------------------------------+
-| [ Modern Side Panel ]  | [ POS Menu & Category Grid (65% Width) ]      | [ Sticky Cart Panel 35% ] |
-|  - Dashboard           |  - Floor & Category Pills                     |  - Customer Phone / Name  |
-|  - POS Register (*)    |  - Search & Barcode Input                     |  - Table: T-4 (Change)    |
-|  - Tables Management   |  - Product Media Grid (Images, Food Type Icon)|  - Live Cart Items List   |
-|  - Orders History      |    with Instant Add / Quantity Counter        |  - Discount / Promo Code  |
-|  - Menu Management     |                                               |  - Bill Summary (Tax/Tip) |
-|  - Inventory (👑 Pro)  |                                               |  ------------------------ |
-|  - Reports & Analytics |                                               |  [ KOT ] [ Save & Print ] |
-|  - CRM & Leads         |                                               |  [ Pay & Settle (Rs 420)] |
-|  - Loyalty (👑 Pro)    |                                               |                           |
-|  - Settings            |                                               |                           |
-|  - [ Profile / Logout] |                                               |                           |
-+----------------------------------------------------------------------------------------------------+
++-------------------------------------------------------------+
+| [Backdrop: Frosted Blur sigma 6.0]                          |
+|                                                             |
+|   +-----------------------------------------------------+   |
+|   | Payment Method                            [Close X] |   |
+|   +-----------------------------------------------------+   |
+|   | Total Payable: Rs. 540.00                           |   |
+|   | Bill: #20260912-1430-T2 | Table: T-2                |   |
+|   +-----------------------------------------------------+   |
+|   |                                                     |   |
+|   |  +--------------------+    +---------------------+  |   |
+|   |  | [Cash Icon]        |    | [UPI QR Icon]       |  |   |
+|   |  | Cash Payment       |    | UPI Dynamic / QR    |  |   |
+|   |  | (Soft Pastel Blue) |    | (Soft Pastel Green) |  |   |
+|   |  +--------------------+    +---------------------+  |   |
+|   |  | [Card Icon]        |    | [Split Icon]        |  |   |
+|   |  | Card (Debit/Credit)|    | Split Payment       |  |   |
+|   |  | (Soft Pastel Purple|    | (Soft Pastel Orange)|  |   |
+|   |  +--------------------+    +---------------------+  |   |
+|   |                                                     |   |
+|   | [ Security PIN / Non-Chargeable (NC) Toggle ]       |   |
+|   +-----------------------------------------------------+   |
++-------------------------------------------------------------+
 ```
 
-#### 3.2.1 Redesigned Desktop Side Panel
-* **Requirement 3.2.1.1 (Modern Aesthetic):** A continuous white card container with rounded corners (`22px`), 1px border (`#E2E8F0`), and soft drop shadow (`#0A000000`).
-* **Requirement 3.2.1.2 (11 Navigation Modules):**
-  1. `Dashboard` (Icon: Home, Soft Blue Squircle)
-  2. `POS` (Icon: Point of Sale, Soft Royal Blue Squircle with dynamic item count badge)
-  3. `Tables` (Icon: Table Restaurant, Soft Green Squircle with occupied count badge)
-  4. `Orders` (Icon: Receipt Long, Soft Amber Squircle with pending orders badge)
-  5. `Menu Management` (Icon: Restaurant Menu, Soft Purple Squircle)
-  6. `Inventory` (Icon: Inventory 2, Soft Cyan Squircle with `👑` Pro badge)
-  7. `Reports` (Icon: Bar Chart, Soft Emerald Squircle)
-  8. `CRM Leads` (Icon: People, Soft Indigo Squircle)
-  9. `Loyalty Program` (Icon: Card Giftcard, Soft Violet Squircle with `👑` Pro badge)
-  10. `Campaigns` (Icon: Campaign, Soft Pink Squircle with `👑` Pro badge)
-  11. `Settings` (Icon: Settings, Soft Slate Squircle)
-* **Requirement 3.2.1.3 (Selected State Indicator):** Active module displays a light blue container (`#EBF2FE`), deep blue text (`#1D4ED8`, weight 900), and a vertical left indicator bar (`width: 4px`, `#1D4ED8`).
-* **Requirement 3.2.1.4 (User Account Footer):** Bottom section includes the active user's circular avatar, full name, role badge (`Admin`/`Cashier`), and a dedicated Logout button.
-
-#### 3.2.2 Dual-Pane POS Register & Sticky Cart Panel
-* **Requirement 3.2.2.1 (Split Layout):** 65% width allocated to menu catalog, category tabs, search bar, and product tiles; 35% width dedicated to sticky order cart, customer lookup, discounts, and payment controls.
-* **Requirement 3.2.2.2 (Desktop Change Table Dialog):** Full modal with search filter, floor tabs, and shift mode confirmation displaying previous and target table states.
+### 4.1 Visual & Ergonomic Specifications
+* **Requirement 4.1.1 (Compact & Wrapped Layout):** The payment modal is sized compactly (`maxWidth: 480dp`) with auto-wrapping grid cards, rendering seamlessly across both Android mobile screens and Windows desktop monitors.
+* **Requirement 4.1.2 (Frosted Glass Backdrop Blur):** When opened, the background is softly blurred using `BackdropFilter` with `sigmaX: 6.0, sigmaY: 6.0` and semi-transparent overlay (`Color(0x66000000)`), giving a premium, focused view.
+* **Requirement 4.1.3 (4 Pastel Quick Payment Cards):**
+  1. **Cash Payment Card:** Pastel Blue container (`#EBF3FE`), Navy border (`#2563EB`), Cash icon.
+  2. **UPI Payment Card:** Pastel Green container (`#EBF8F2`), Green border (`#059669`), QR code icon.
+  3. **Card Payment Card:** Pastel Purple container (`#F5EBFB`), Purple border (`#7C3AED`), Credit card icon.
+  4. **Split Payment Card:** Pastel Orange container (`#FEF3EB`), Amber border (`#D97706`), Call-split icon.
+* **Requirement 4.1.4 (Instant Settlement & Table Freeing):** Selecting a payment method executes settlement, logs the final print log, clears table cart, and marks the table `Free` across all devices.
 
 ---
 
-## 4. Kitchen Order Ticket (KOT) System Requirements
+## 5. POS Product View Modes (With / Without Images)
 
-### 4.1 Single KOT Printer Architecture Rule
-* **Mandatory Constraint:** The system operates strictly with **ONE** physical KOT printer.
-* **Prohibited:** No multi-printer routing, category-based printer splits, department routing (e.g., Kitchen vs. Bar), or printer selection modals during order placement.
-
-### 4.2 Differential (Incremental) Printing Logic
-* **Initial Order Placement:**
-  * Order contains: `Biryani x 2`, `Coke x 1`.
-  * Printed Ticket: `Biryani x 2`, `Coke x 1`.
-  * System State: `Biryani.kotQuantity = 2`, `Coke.kotQuantity = 1`.
-* **Order Editing / Item Modification:**
-  * User adds `1 Coke` (Total: 2) and `1 Butter Naan`.
-  * Printed Ticket contains **ONLY**: `Coke x 1` (differential: 2 - 1 = 1), `Butter Naan x 1`.
-  * System State: `Biryani.kotQuantity = 2`, `Coke.kotQuantity = 2`, `Butter Naan.kotQuantity = 1`.
-* **Order Deletions / Reductions:**
-  * Deletions do not print negative tickets unless explicitly configured; active KOT quantity adjusts to reflect retained quantity.
-
-### 4.3 Resilient / Non-Blocking Print Dispatch
-* **Requirement 4.3.1:** Order creation and table status progression (`TableStatus.runningKot`) must **never be blocked** by printer connection timeouts, Bluetooth reconnect delays, or out-of-paper warnings.
-* **Requirement 4.3.2:** If the printer is offline, the table status immediately updates to `Running KOT` in local state, active order ID is assigned, and a background print retry or user notification is dispatched.
+### 5.1 "Without Images" Compact & Wrapped View Mode
+* **Requirement 5.1.1 (Android Wrapped Product Boxes):** On Android / mobile form factors, product boxes are rendered inside a responsive `Wrap` container (`SingleChildScrollView` + `Wrap(spacing: 8, runSpacing: 8)`). Item width dynamically adapts to screen width (2 columns on mobile phones, 3 columns on phablets `≥ 460px`, and 4 columns on tablets `≥ 680px`), allowing boxes to wrap naturally without overflowing or cramped letter spacing.
+* **Requirement 5.1.2 (Decreased Box Height):** Product box heights are reduced to `64px` on mobile and `72px` on desktop, maximizing visible catalog items.
+* **Requirement 5.1.3 (Centered Typography):** The product name and price tag are vertically and horizontally centered with bold, high-contrast typography (`#0F172A`), food type dot, and clean text truncation.
+* **Requirement 5.1.4 (Integrated Top Badges):** Displays food type dot on top-left, and cart quantity / variant count / discount percentage on top-right.
 
 ---
 
-## 5. Non-Functional & Performance Requirements
+## 6. Platform-Specific Feature Requirements
+
+### 6.1 Android Mobile Application
+
+#### 6.1.1 Header & Sidebar Navigation
+* **Requirement 6.1.1.1 (Hamburger Removal):** The legacy 3-line hamburger menu button (`Icons.menu_rounded`) is hidden on mobile viewports.
+* **Requirement 6.1.1.2 (Profile/Company Avatar Trigger):** Tapping the top header's profile avatar or company badge smoothly opens the navigation drawer.
+* **Requirement 6.1.1.3 (Header-Anchored Drawer):** The sliding navigation drawer opens below the top header (`top: 58dp`).
+
+#### 6.1.2 Mobile Cart Bottom Sheet
+* **Requirement 6.1.2.1 (Ergonomic Viewport):** Cart bottom sheet height set to `0.78 * screen height`.
+* **Requirement 6.1.2.2 (Action Buttons Accessibility):** Fixed action buttons (`KOT`, `Save & Print`, `Settle`) at the bottom of the modal.
+
+### 6.2 Windows Desktop Application
+
+#### 6.2.1 Redesigned Desktop Side Panel
+* Continuous white card container with rounded corners (`22px`), 1px border (`#E2E8F0`), soft drop shadow, and 11 navigation modules.
+
+#### 6.2.2 Dual-Pane POS Register & Sticky Cart Panel
+* 65% width allocated to menu catalog and search; 35% width dedicated to sticky order cart, customer lookup, discounts, and payment controls.
+
+---
+
+## 7. Kitchen Order Ticket (KOT) System Requirements
+
+### 7.1 Single KOT Printer Architecture Rule
+* The system operates strictly with **ONE** physical KOT printer. No multi-printer routing or printer selection modals.
+
+### 7.2 Differential (Incremental) Printing Logic
+* System calculates differential quantity: $\Delta Q(i) = \max(0, Q_{\text{total}}(i) - Q_{\text{printed}}(i))$.
+* Only newly added or incremented items are printed; previously sent items are omitted.
+
+### 7.3 Non-Blocking Print Dispatch
+* Order creation and table status progression (`TableStatus.runningKot`) are never blocked by printer connectivity delays or offline state.
+
+---
+
+## 8. Non-Functional & Performance Requirements
 
 | Category | Requirement | Target Metric |
 | :--- | :--- | :--- |
-| **Responsiveness** | UI frame rate during drawer transitions, modal bottom sheets, and tab switching. | 60 fps (no frame drops). |
-| **Offline Reliability** | POS operations, cart modifications, table shifts, and KOT generation function offline. | 100% functionality with automatic cloud sync upon reconnection. |
-| **Print Dispatch Latency**| Time from clicking "KOT Order" to receipt generation & printer payload dispatch. | $< 250\text{ ms}$. |
-| **Database Sync** | Table shift migration consistency between local Hive/Prefs and REST API. | Eventual consistency $< 1\text{ s}$ on network availability. |
-| **Accessibility & Touch**| Minimum tap target size for mobile buttons and table chips. | $\ge 44 \times 44\text{ dp}$. |
+| **Real-Time Sync Latency** | WebSocket table status broadcast across devices | $< 100\text{ ms}$ |
+| **Responsiveness** | UI frame rate during drawer transitions, modal bottom sheets, and tab switching | 60 fps (no frame drops) |
+| **Offline Reliability** | POS operations, cart modifications, table shifts, and KOT generation function offline | 100% functionality with automatic cloud sync upon reconnection |
+| **Print Dispatch Latency**| Time from clicking "KOT Order" to receipt generation & printer payload dispatch | $< 250\text{ ms}$ |
+| **Database Sync** | Table shift migration consistency between local Hive/Prefs and REST API | Eventual consistency $< 1\text{ s}$ on network availability |
 
 ---
 
-## 6. Acceptance Criteria
+## 9. Acceptance Criteria
 
-1. **Android Navigation:**
-   - [x] No hamburger menu icon visible on screens $< 900\text{ dp}$.
-   - [x] Tapping the profile logo or company badge opens the sidebar.
-   - [x] Sidebar top starts below the header bar (`top: 58\text{ dp}`).
-2. **Android Cart Screen:**
-   - [x] Cart bottom sheet height matches `0.78 * screen height`.
-   - [x] `KOT Order`, `Save & Print`, and `Pay & Settle` buttons are fully visible and functional.
-   - [x] Product catalog tiles display clean image, title, and price without category badges.
-3. **Change Table Shift Flow:**
+1. **Table Status Lifecycle:**
+   - [x] Adding products to a free table sets status to `Occupied` (`TableStatus.occupied`).
+   - [x] Clicking "Print KOT" sets table status to `KOT Running` (`TableStatus.runningKot`).
+   - [x] When table cart is emptied or bill is settled, table status returns to `Free` (`TableStatus.free`).
+   - [x] Status changes sync across all connected devices in real time without refreshing.
+2. **Payment Method Modal:**
+   - [x] Responsive wrapped layout for mobile and desktop screens.
+   - [x] Frosted backdrop blur (`sigmaX: 6, sigmaY: 6`).
+   - [x] 4 Pastel quick payment cards (Cash, UPI, Card, Split).
+3. **POS Product Cards (Without Images View):**
+   - [x] Decreased box height with centered item name and price.
+4. **Change Table Shift Flow:**
    - [x] Shifting Table A with cart/KOT items to Table B transfers all items, active orders, and status.
-   - [x] Table A is freed (`TableStatus.free`) immediately.
-   - [x] Table B becomes `TableStatus.runningKot` or `TableStatus.occupied`.
-4. **KOT Printing:**
-   - [x] Differential quantity calculation prints only new items/quantities.
-   - [x] KOT orders transition table to `runningKot` even if printer is disconnected.
+   - [x] Table A is freed immediately; Table B becomes `runningKot` or `occupied`.
 5. **Cross-Platform Compatibility:**
-   - [x] Zero compilation errors across Android, Windows, Web, and iOS builds.
+   - [x] 100% test pass rate across unit, widget, and integration tests.
+

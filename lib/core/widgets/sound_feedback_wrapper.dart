@@ -1,10 +1,10 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import '../services/sound_service.dart';
 
-/// App-wide widget wrapper that detects clicks on buttons and text fields via hit-testing.
-/// Guarantees click sound plays on all buttons, steppers (+/-), add to cart, and inputs,
-/// while keeping empty background spaces 100% silent.
+/// App-wide widget wrapper that plays click sound strictly on genuine button taps & text inputs,
+/// and guarantees 100% SILENCE during scrolling, dragging, swiping, or pan gestures.
 class SoundFeedbackWrapper extends StatefulWidget {
   final Widget child;
 
@@ -19,6 +19,8 @@ class SoundFeedbackWrapper extends StatefulWidget {
 
 class _SoundFeedbackWrapperState extends State<SoundFeedbackWrapper> {
   FocusNode? _lastFocusedNode;
+  final Map<int, Offset> _pointerDownPositions = {};
+  final Set<int> _scrollingPointers = {};
 
   @override
   void initState() {
@@ -44,49 +46,85 @@ class _SoundFeedbackWrapperState extends State<SoundFeedbackWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    return Listener(
-      onPointerDown: (PointerDownEvent event) {
-        final hitTestResult = HitTestResult();
-        final viewId = View.of(context).viewId;
-        WidgetsBinding.instance.hitTestInView(
-          hitTestResult,
-          event.position,
-          viewId,
-        );
-
-        bool isInteractive = false;
-        bool isTextField = false;
-
-        for (final entry in hitTestResult.path) {
-          final target = entry.target;
-          if (target is RenderEditable) {
-            isTextField = true;
-            break;
-          }
-          if (target is RenderSemanticsAnnotations) {
-            final semantics = target.properties;
-            if (semantics.button == true ||
-                semantics.onTap != null ||
-                semantics.onLongPress != null) {
-              isInteractive = true;
-              break;
-            }
-          }
-          if (target is RenderSemanticsGestureHandler) {
-            if (target.onTap != null || target.onLongPress != null) {
-              isInteractive = true;
-              break;
-            }
-          }
+    return NotificationListener<ScrollNotification>(
+      onNotification: (notification) {
+        // When any scroll activity begins or updates, mark active pointers as scrolling
+        if (notification is ScrollStartNotification || notification is ScrollUpdateNotification) {
+          _scrollingPointers.addAll(_pointerDownPositions.keys);
         }
-
-        if (isTextField) {
-          SoundService.playKeyPress();
-        } else if (isInteractive) {
-          SoundService.playButtonClick();
-        }
+        return false;
       },
-      child: widget.child,
+      child: Listener(
+        onPointerDown: (PointerDownEvent event) {
+          _pointerDownPositions[event.pointer] = event.position;
+        },
+        onPointerMove: (PointerMoveEvent event) {
+          final downPos = _pointerDownPositions[event.pointer];
+          if (downPos != null) {
+            final distance = (event.position - downPos).distance;
+            if (distance > kTouchSlop) {
+              _scrollingPointers.add(event.pointer);
+            }
+          }
+        },
+        onPointerUp: (PointerUpEvent event) {
+          final downPos = _pointerDownPositions.remove(event.pointer);
+          final wasScrolling = _scrollingPointers.remove(event.pointer);
+
+          // If the pointer was scrolling or dragging, NEVER play click sound!
+          if (wasScrolling == true) return;
+
+          if (downPos != null) {
+            final distance = (event.position - downPos).distance;
+            if (distance > kTouchSlop) return;
+          }
+
+          final hitTestResult = HitTestResult();
+          final viewId = View.of(context).viewId;
+          WidgetsBinding.instance.hitTestInView(
+            hitTestResult,
+            event.position,
+            viewId,
+          );
+
+          bool isInteractive = false;
+          bool isTextField = false;
+
+          for (final entry in hitTestResult.path) {
+            final target = entry.target;
+            if (target is RenderEditable) {
+              isTextField = true;
+              break;
+            }
+            if (target is RenderSemanticsAnnotations) {
+              final semantics = target.properties;
+              if (semantics.button == true ||
+                  semantics.onTap != null ||
+                  semantics.onLongPress != null) {
+                isInteractive = true;
+                break;
+              }
+            }
+            if (target is RenderSemanticsGestureHandler) {
+              if (target.onTap != null || target.onLongPress != null) {
+                isInteractive = true;
+                break;
+              }
+            }
+          }
+
+          if (isTextField) {
+            SoundService.playKeyPress();
+          } else if (isInteractive) {
+            SoundService.playButtonClick();
+          }
+        },
+        onPointerCancel: (PointerCancelEvent event) {
+          _pointerDownPositions.remove(event.pointer);
+          _scrollingPointers.remove(event.pointer);
+        },
+        child: widget.child,
+      ),
     );
   }
 }
