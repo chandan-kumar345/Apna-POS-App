@@ -45,6 +45,7 @@ const createProductSchema = Joi.object({
   gst: Joi.number().min(0).max(100).allow(null),
   gstPercent: Joi.number().min(0).max(100).allow(null),
   taxPercentage: Joi.number().min(0).max(100).allow(null).default(5),
+  aliases: Joi.alternatives().try(Joi.array().items(Joi.string().trim()), Joi.string().trim().allow('')).default([]),
 }).or('name', 'title').messages({
   'object.missing': 'Product title is required',
 });
@@ -78,6 +79,7 @@ const updateProductSchema = Joi.object({
   gst: Joi.number().min(0).max(100).allow(null),
   gstPercent: Joi.number().min(0).max(100).allow(null),
   taxPercentage: Joi.number().min(0).max(100).allow(null),
+  aliases: Joi.alternatives().try(Joi.array().items(Joi.string().trim()), Joi.string().trim().allow('')),
 }).min(1);
 
 const categorySchema = Joi.object({

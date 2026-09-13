@@ -371,6 +371,351 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     );
   }
 
+  void _showChotuVoiceModal() {
+    bool isEnabled = db.isChotuVoiceEnabled;
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 12,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 580 : screenWidth * 0.94,
+                  minWidth: 320,
+                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header Row
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.35), width: 1.5),
+                            ),
+                            padding: const EdgeInsets.all(3),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.asset(
+                                'assets/images/chotu_robot.png',
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Chotu AI Voice Assistant',
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Configure voice ordering & robot icon visibility in POS',
+                                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B)),
+                            tooltip: 'Close',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Options
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // OPTION 1: ENABLED
+                              InkWell(
+                                onTap: () => setModalState(() => isEnabled = true),
+                                borderRadius: BorderRadius.circular(18),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: isEnabled ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: isEnabled ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                      width: isEnabled ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: isEnabled ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        padding: const EdgeInsets.all(4),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.asset(
+                                            'assets/images/chotu_robot.png',
+                                            fit: BoxFit.contain,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              children: [
+                                                const Text(
+                                                  'Enable Chotu AI',
+                                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFDBEAFE),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Text('Recommended', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF1D4ED8))),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            const Text(
+                                              'Display the robot icon on POS screens (Windows & Android). Staff can take orders, add items, and search menu items using natural voice commands in English, Hindi, and Hinglish.',
+                                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: isEnabled ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
+                                            width: 2,
+                                          ),
+                                          color: isEnabled ? const Color(0xFF2563EB) : Colors.transparent,
+                                        ),
+                                        child: isEnabled
+                                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // OPTION 2: DISABLED
+                              InkWell(
+                                onTap: () => setModalState(() => isEnabled = false),
+                                borderRadius: BorderRadius.circular(18),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 200),
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: !isEnabled ? const Color(0xFFFFF1F2) : const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: !isEnabled ? const Color(0xFFE11D48) : const Color(0xFFCBD5E1),
+                                      width: !isEnabled ? 2 : 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        width: 44,
+                                        height: 44,
+                                        decoration: BoxDecoration(
+                                          color: !isEnabled ? const Color(0xFFE11D48) : const Color(0xFFE2E8F0),
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: Icon(
+                                          Icons.smart_toy_outlined,
+                                          color: !isEnabled ? Colors.white : const Color(0xFF64748B),
+                                          size: 24,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 14),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Wrap(
+                                              crossAxisAlignment: WrapCrossAlignment.center,
+                                              spacing: 8,
+                                              runSpacing: 4,
+                                              children: [
+                                                const Text(
+                                                  'Disable Chotu AI',
+                                                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                                                ),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: const Color(0xFFFFE4E6),
+                                                    borderRadius: BorderRadius.circular(6),
+                                                  ),
+                                                  child: const Text('Hidden in POS', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFFBE123C))),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 6),
+                                            const Text(
+                                              'Completely hide the robot icon from POS screens on Windows and Android. Voice command features will be deactivated.',
+                                              style: TextStyle(fontSize: 12, color: Color(0xFF64748B), height: 1.35),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        width: 22,
+                                        height: 22,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          border: Border.all(
+                                            color: !isEnabled ? const Color(0xFFE11D48) : const Color(0xFF94A3B8),
+                                            width: 2,
+                                          ),
+                                          color: !isEnabled ? const Color(0xFFE11D48) : Colors.transparent,
+                                        ),
+                                        child: !isEnabled
+                                            ? const Icon(Icons.check, size: 14, color: Colors.white)
+                                            : null,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFE2E8F0), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Actions
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              ),
+                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 2,
+                            child: ElevatedButton.icon(
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      setModalState(() => isSaving = true);
+                                      await db.updateChotuVoiceEnabled(isEnabled);
+                                      if (!dialogCtx.mounted) return;
+                                      Navigator.pop(dialogCtx);
+                                      setState(() {});
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Row(
+                                            children: [
+                                              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                isEnabled
+                                                    ? 'Chotu AI Voice Assistant Enabled'
+                                                    : 'Chotu AI Voice Assistant Disabled (Hidden in POS)',
+                                                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                                              ),
+                                            ],
+                                          ),
+                                          backgroundColor: isEnabled ? const Color(0xFF15803D) : const Color(0xFF475569),
+                                          behavior: SnackBarBehavior.floating,
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                    },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              ),
+                              icon: isSaving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.check_rounded, color: Colors.white, size: 18),
+                              label: Text(
+                                isSaving ? 'Saving...' : 'Save Setting',
+                                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showPaymentSettingsModal() {
     String? modalError;
     showDialog(
@@ -1392,6 +1737,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Align(
@@ -1536,6 +1882,25 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             accentColor: const Color(0xFFDC2626),
                             badgeText: 'PIN',
                             onTap: _showSecurityPinModal,
+                          ),
+
+                          // 6. CHOTU AI ASSISTANT
+                          _buildSettingGridCard(
+                            title: 'Chotu AI Voice',
+                            subtitle: db.isChotuVoiceEnabled ? 'Voice Ordering ON' : 'Hidden in POS',
+                            icon: Icons.smart_toy_rounded,
+                            customIcon: ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.asset(
+                                'assets/images/chotu_robot.png',
+                                width: 34,
+                                height: 34,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            accentColor: const Color(0xFF6366F1),
+                            badgeText: db.isChotuVoiceEnabled ? 'Active' : 'Off',
+                            onTap: _showChotuVoiceModal,
                           ),
                         ],
                       );
@@ -1682,6 +2047,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     required Color accentColor,
     required VoidCallback onTap,
     String? badgeText,
+    Widget? customIcon,
   }) {
     return InkWell(
       onTap: onTap,
@@ -1717,7 +2083,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     border: Border.all(color: accentColor.withValues(alpha: 0.3), width: 1),
                   ),
                   child: Center(
-                    child: Icon(icon, color: accentColor, size: 23),
+                    child: customIcon ?? Icon(icon, color: accentColor, size: 23),
                   ),
                 ),
                 if (badgeText != null)

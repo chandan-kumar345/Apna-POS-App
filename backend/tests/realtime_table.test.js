@@ -201,6 +201,62 @@ describe('Real-Time Table Status Synchronization Multi-Device Test', () => {
     socketService.emitTablesBatchUpdated(mockBusinessId, shiftedTables);
   });
 
+  test('When an order is settled, all devices receive order:settled and order:updated events', (done) => {
+    const settledOrderData = {
+      orderId: 'ord_999',
+      orderNumber: 'ORD-999',
+      tableNumber: 'T-3',
+      totalAmount: 650,
+      status: 'completed',
+      paymentStatus: 'paid',
+      paymentMethod: 'cash',
+    };
+
+    let settledCount = 0;
+    let updatedCount = 0;
+
+    const checkComplete = () => {
+      if (settledCount === 2 && updatedCount === 2) {
+        clientSocketB.off('order:settled');
+        clientSocketC.off('order:settled');
+        clientSocketB.off('order:updated');
+        clientSocketC.off('order:updated');
+        done();
+      }
+    };
+
+    clientSocketB.on('order:settled', (payload) => {
+      expect(payload.orderId).toBe('ord_999');
+      expect(payload.tableNumber).toBe('T-3');
+      expect(payload.status).toBe('completed');
+      settledCount++;
+      checkComplete();
+    });
+
+    clientSocketC.on('order:settled', (payload) => {
+      expect(payload.orderId).toBe('ord_999');
+      expect(payload.tableNumber).toBe('T-3');
+      expect(payload.status).toBe('completed');
+      settledCount++;
+      checkComplete();
+    });
+
+    clientSocketB.on('order:updated', (payload) => {
+      expect(payload.status).toBe('completed');
+      updatedCount++;
+      checkComplete();
+    });
+
+    clientSocketC.on('order:updated', (payload) => {
+      expect(payload.status).toBe('completed');
+      updatedCount++;
+      checkComplete();
+    });
+
+    socketService.emitOrderSettled(mockBusinessId, settledOrderData);
+    socketService.emitOrderUpdated(mockBusinessId, settledOrderData);
+  });
+
   test('Ping-Pong heartbeat roundtrip succeeds', (done) => {
     clientSocketA.emit('ping_sync', { client: 'Device-A' }, (response) => {
       expect(response.status).toBe('ok');

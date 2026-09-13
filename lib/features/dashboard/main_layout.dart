@@ -517,8 +517,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       },
       child: Scaffold(
         backgroundColor: const Color(0xFF051C48), // Match exact deep navy blue from user image
+        resizeToAvoidBottomInset: false,
         body: SafeArea(
-        child: LayoutBuilder(
+          bottom: false,
+          child: LayoutBuilder(
           builder: (context, constraints) {
             final isSmallScreen = constraints.maxWidth < 900;
 

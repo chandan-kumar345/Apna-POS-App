@@ -172,6 +172,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final groupedNotifs = _groupNotificationsChronologically(notifications);
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: const Color(0xFF082559),

@@ -119,6 +119,7 @@ class _LoyaltyLandingScreenState extends State<LoyaltyLandingScreen> {
     final isDesktop = screenWidth >= 650;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(

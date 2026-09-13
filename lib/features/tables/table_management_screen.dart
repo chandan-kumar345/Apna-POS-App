@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/table_model.dart';
@@ -16,6 +17,7 @@ class TableManagementScreen extends StatefulWidget {
 class _TableManagementScreenState extends State<TableManagementScreen> with AutomaticKeepAliveClientMixin {
   final db = DatabaseService();
   String _selectedFloor = 'All Floors';
+  Timer? _tickerTimer;
 
   @override
   bool get wantKeepAlive => true;
@@ -27,6 +29,22 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     if (db.tables.isEmpty) {
       db.syncWithBackend();
     }
+    // Real-time ticking timer for running table durations
+    _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        final hasRunningTables = db.tables.any(
+            (t) => t.status == TableStatus.occupied || t.status == TableStatus.runningKot);
+        if (hasRunningTables) {
+          setState(() {});
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tickerTimer?.cancel();
+    super.dispose();
   }
 
   List<String> get floors {
@@ -455,7 +473,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: cols,
-                            childAspectRatio: width >= 600 ? 1.15 : 1.05,
+                            childAspectRatio: width >= 600 ? 1.15 : 1.0,
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
@@ -476,6 +494,12 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                             final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
                             final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
                             final hasProductsInCart = validStatus != TableStatus.free && activeAmount > 0;
+
+                            final duration = validStatus == TableStatus.free
+                                ? null
+                                : table.getRunningDuration(activeOrderCreatedAt: activeOrder?.createdAt);
+                            final isRunningTable = duration != null;
+                            final isExtended = duration != null && duration.inMinutes >= 45;
 
                             return InkWell(
                               onTap: () => _openPosForTable(table.name),
@@ -546,12 +570,52 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                     ),
                                     const SizedBox(height: 3),
 
-                                    // 2) TABLE NAME & FLOOR (NO GUEST NO)
-                                    Text(
-                                      table.name,
-                                      style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    // 2) TABLE NAME & RUNNING DURATION TIMER
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            table.name,
+                                            style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                        if (isRunningTable) ...[
+                                          const SizedBox(width: 3),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
+                                            decoration: BoxDecoration(
+                                              color: isExtended ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7),
+                                              borderRadius: BorderRadius.circular(4),
+                                              border: Border.all(
+                                                color: isExtended ? const Color(0xFFEF4444).withOpacity(0.5) : const Color(0xFFF59E0B).withOpacity(0.5),
+                                                width: 0.8,
+                                              ),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.timer_outlined,
+                                                  size: 9.0,
+                                                  color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+                                                ),
+                                                const SizedBox(width: 2),
+                                                Text(
+                                                  formatRunningDuration(duration),
+                                                  style: TextStyle(
+                                                    fontSize: 8.5,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+                                                    letterSpacing: 0.1,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                     const SizedBox(height: 1),
                                     Text(
@@ -675,7 +739,15 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(title, style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold)),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 4),
               Icon(icon, color: color, size: 15),
             ],
           ),

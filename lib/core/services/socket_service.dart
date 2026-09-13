@@ -10,6 +10,8 @@ typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
 typedef TableCreateCallback = void Function(TableModel table);
 typedef TableDeleteCallback = void Function(String tableId);
 typedef SocketReconnectCallback = void Function();
+typedef OrderSettledCallback = void Function(Map<String, dynamic> data);
+typedef OrderUpdatedCallback = void Function(Map<String, dynamic> data);
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -29,6 +31,8 @@ class SocketService {
   TableCreateCallback? onTableCreated;
   TableDeleteCallback? onTableDeleted;
   SocketReconnectCallback? onReconnected;
+  OrderSettledCallback? onOrderSettled;
+  OrderUpdatedCallback? onOrderUpdated;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -142,6 +146,12 @@ class SocketService {
       // Table deleted
       socket.on('table:deleted', (data) => _handleTableDeleted(data));
 
+      // Order settled & updated events
+      socket.on('order:settled', (data) => _handleOrderSettled(data));
+      socket.on('order_settled', (data) => _handleOrderSettled(data));
+      socket.on('order:updated', (data) => _handleOrderUpdated(data));
+      socket.on('order_updated', (data) => _handleOrderUpdated(data));
+
       socket.connect();
     } catch (e) {
       debugPrint('[SocketService] Failed to initialize socket: $e');
@@ -234,6 +244,28 @@ class SocketService {
       }
     } catch (e) {
       debugPrint('[SocketService] Error processing table:deleted event: $e');
+    }
+  }
+
+  void _handleOrderSettled(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] Received order:settled event for: ${rawMap['orderNumber'] ?? rawMap['orderId']} (Table: ${rawMap['tableNumber']})');
+      onOrderSettled?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing order:settled event: $e');
+    }
+  }
+
+  void _handleOrderUpdated(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] Received order:updated event for: ${rawMap['orderNumber'] ?? rawMap['orderId']} (Status: ${rawMap['status']})');
+      onOrderUpdated?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing order:updated event: $e');
     }
   }
 

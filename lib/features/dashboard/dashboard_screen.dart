@@ -227,6 +227,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     final isMobile = size.width < 768;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFEEF5F9),
       body: Stack(
         children: [

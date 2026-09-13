@@ -22,18 +22,27 @@ class ProfileController {
 
   async updatePosSettings(req, res, next) {
     try {
-      const { posViewMode } = req.body;
-      if (posViewMode && !['with_image', 'without_image'].includes(posViewMode)) {
-        throw ApiError.badRequest("posViewMode must be either 'with_image' or 'without_image'");
+      const { posViewMode, enableChotuVoice } = req.body;
+      const updateData = {};
+
+      if (posViewMode !== undefined) {
+        if (!['with_image', 'without_image'].includes(posViewMode)) {
+          throw ApiError.badRequest("posViewMode must be either 'with_image' or 'without_image'");
+        }
+        updateData['orderSettings.posViewMode'] = posViewMode;
+      }
+
+      if (typeof enableChotuVoice === 'boolean') {
+        updateData['orderSettings.enableChotuVoice'] = enableChotuVoice;
       }
 
       const business = await Business.findOneAndUpdate(
         { ownerId: req.user._id },
-        { $set: { 'orderSettings.posViewMode': posViewMode } },
+        { $set: updateData },
         { new: true, upsert: true }
       );
 
-      return ApiResponse.success(res, { business }, 'POS view setting updated successfully');
+      return ApiResponse.success(res, { business }, 'POS settings updated successfully');
     } catch (error) {
       next(error);
     }

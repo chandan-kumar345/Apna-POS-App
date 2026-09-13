@@ -157,6 +157,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final lowStockItems = db.inventoryItems.where((i) => i.isLowStock).toList();
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(

@@ -88,6 +88,10 @@ const businessSchema = new mongoose.Schema(
         enum: ['with_image', 'without_image'],
         default: 'with_image',
       },
+      enableChotuVoice: {
+        type: Boolean,
+        default: true,
+      },
     },
   },
   {

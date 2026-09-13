@@ -82,6 +82,7 @@ class _LoyaltyDetailsScreenState extends State<LoyaltyDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.white,

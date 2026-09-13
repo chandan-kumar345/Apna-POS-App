@@ -20,6 +20,7 @@ import '../../core/services/loyalty_service.dart';
 import '../../core/services/table_service.dart';
 import '../loyalty/widgets/loyalty_redemption_dialog.dart';
 import 'widgets/pos_product_media_box.dart';
+import 'widgets/chotu_mic_button.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
@@ -318,7 +319,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   t.tableNumber.toString() == _selectedTable
                 ).firstOrNull;
                 if (tbl != null) {
-                  db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id);
+                  db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: activeOrder.id, occupiedSince: tbl.occupiedSince ?? activeOrder.createdAt);
                 }
               }
               if (setStateModal != null) setStateModal(() {});
@@ -330,6 +331,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
 
       final calc = currentOrderCalculation;
+      final tblForKot = _selectedTable != null
+          ? db.tables.where((t) => isSameTable(t.name, _selectedTable)).firstOrNull
+          : null;
 
       // Preview OrderModel (Table status is NOT updated yet upon clicking KOT button)
       final tempOrder = OrderModel(
@@ -347,7 +351,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         orderType: _selectedOrderType,
         paymentMethod: 'KOT Pending',
         status: OrderStatus.preparing,
-        createdAt: activeOrder?.createdAt ?? DateTime.now().toIso8601String(),
+        createdAt: activeOrder?.createdAt ?? tblForKot?.occupiedSince ?? DateTime.now().toIso8601String(),
         customerName: _customerName,
         customerPhone: _customerPhone,
       );
@@ -417,7 +421,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ).firstOrNull;
 
               if (tbl != null) {
-                db.updateTableStatus(tbl.id, TableStatus.runningKot, orderId: newOrder.id);
+                db.updateTableStatus(
+                  tbl.id,
+                  TableStatus.runningKot,
+                  orderId: newOrder.id,
+                  occupiedSince: tbl.occupiedSince ?? tblForKot?.occupiedSince ?? newOrder.createdAt,
+                );
               }
 
               db.setLiveTableCart(_selectedTable!, _cartItems);
@@ -456,9 +465,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           (sum, e) => sum + (e.item.effectivePrice * e.quantity),
         );
 
-        // Save live table cart items & total in DB so table card and view button can load it
-        db.setLiveTableCart(targetTable, _cartItems);
+        // Save live table cart total & items in DB so table card and view button can load it immediately
         db.setLiveCartTotal(targetTable, cartTotal - _discountAmount.clamp(0, cartTotal));
+        db.setLiveTableCart(targetTable, _cartItems);
 
         final tbl = db.tables.where((t) => isSameTable(t.name, targetTable)).firstOrNull;
         if (tbl != null) {
@@ -472,12 +481,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ? TableStatus.runningKot
                 : TableStatus.occupied;
             if (tbl.status != mapped) {
-              db.updateTableStatus(tbl.id, mapped, orderId: activeOrder.id);
+              db.updateTableStatus(tbl.id, mapped, orderId: activeOrder.id, occupiedSince: tbl.occupiedSince);
             }
           } else if (_cartItems.isEmpty) {
             db.clearTableCartAndFree(targetTable);
-          } else if (_cartItems.isNotEmpty && tbl.status == TableStatus.free) {
-            db.updateTableStatus(tbl.id, TableStatus.occupied);
+          } else if (_cartItems.isNotEmpty && (tbl.status == TableStatus.free || tbl.occupiedSince == null)) {
+            // First item added to cart on free table or table with missing start time -> instantly ensure timer is active!
+            db.updateTableStatus(tbl.id, TableStatus.occupied, occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String());
           }
         }
       }
@@ -1437,97 +1447,140 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     String foodType = 'Veg';
     double selectedGstRate = (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0);
     String? errorMessage;
+    List<ManualProductHistoryItem> matchingSuggestions = [];
 
     showDialog(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return Dialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
             backgroundColor: Colors.white,
-            elevation: 16,
+            clipBehavior: Clip.antiAlias,
+            elevation: 12,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 440),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Header
+                    // Header: Title + Close Icon
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF051C48).withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(Icons.edit_note_rounded, color: Color(0xFF051C48), size: 24),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        Expanded(
+                          child: Row(
                             children: [
-                              Text(
-                                'Input Product Manually',
-                                style: TextStyle(
-                                  fontSize: 16.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF0F172A),
+                              Container(
+                                padding: const EdgeInsets.all(5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
+                                child: const Icon(Icons.edit_note_rounded, color: Color(0xFF051C48), size: 18),
                               ),
-                              Text(
-                                'Add custom item directly to active cart',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Color(0xFF64748B),
+                              const SizedBox(width: 8),
+                              const Expanded(
+                                child: Text(
+                                  'Add Item Manually',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF94A3B8)),
+                          icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF94A3B8)),
                           onPressed: () => Navigator.pop(dialogCtx),
                           padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 16),
-                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                    const SizedBox(height: 16),
-
-                    // Product Name Field
-                    const Text(
-                      'Product Name *',
-                      style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                    ),
                     const SizedBox(height: 6),
+                    const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                    const SizedBox(height: 8),
+
+                    // Row 1: Product Name Label & Input
+                    const Text(
+                      'Item Name *',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                    ),
+                    const SizedBox(height: 4),
                     TextField(
                       controller: nameController,
                       autofocus: true,
-                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      onChanged: (val) {
+                        setDialogState(() {
+                          final query = val.trim();
+                          if (query.isNotEmpty) {
+                            matchingSuggestions = db.searchManualProductsHistory(query);
+                          } else {
+                            matchingSuggestions = [];
+                          }
+                        });
+                      },
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                       decoration: InputDecoration(
-                        hintText: 'e.g. Special Chef Combo / Extra Item',
-                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        hintText: 'e.g. Water Bottle, Extra Roti...',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        isDense: true,
                         filled: true,
                         fillColor: const Color(0xFFF8FAFC),
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.8)),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5)),
                       ),
                     ),
 
-                    const SizedBox(height: 14),
+                    // History Suggestions Chips (Only shown after user writes text)
+                    if (nameController.text.trim().isNotEmpty && matchingSuggestions.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: matchingSuggestions.take(6).map((sug) {
+                          final priceStr = sug.price % 1 == 0 ? sug.price.toInt().toString() : sug.price.toStringAsFixed(2);
+                          return ActionChip(
+                            avatar: const Icon(Icons.history_rounded, size: 13, color: Color(0xFF051C48)),
+                            label: Text('${sug.name} ($currency$priceStr)'),
+                            labelStyle: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                            backgroundColor: const Color(0xFFF1F5F9),
+                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 0.8),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                            onPressed: () {
+                              setDialogState(() {
+                                nameController.text = sug.name;
+                                nameController.selection = TextSelection.fromPosition(TextPosition(offset: sug.name.length));
+                                priceController.text = priceStr;
+                                foodType = ['Veg', 'Non-Veg', 'Egg', 'Beverage'].contains(sug.foodType) ? sug.foodType : 'Veg';
+                                selectedGstRate = sug.gstPercent;
+                                matchingSuggestions = [];
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                    ],
 
-                    // Price & Food Type Row
+                    const SizedBox(height: 10),
+
+                    // Row 2: Price and Quantity
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         // Price Field
                         Expanded(
@@ -1535,67 +1588,76 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Price *',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              Text(
+                                'Price ($currency) *',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               TextField(
                                 controller: priceController,
                                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF051C48)),
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF051C48)),
                                 decoration: InputDecoration(
                                   prefixText: '$currency ',
-                                  prefixStyle: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold, fontSize: 14),
+                                  prefixStyle: const TextStyle(color: Color(0xFF051C48), fontWeight: FontWeight.bold, fontSize: 12.5),
                                   hintText: '0.00',
-                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                  isDense: true,
                                   filled: true,
                                   fillColor: const Color(0xFFF8FAFC),
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.8)),
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5)),
                                 ),
                               ),
                             ],
                           ),
                         ),
 
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 10),
 
-                        // Food Type (Veg / Non-Veg / Egg)
+                        // Quantity Stepper
                         Expanded(
                           flex: 2,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                'Food Type',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                'Qty',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                               ),
-                              const SizedBox(height: 6),
+                              const SizedBox(height: 4),
                               Container(
-                                height: 46,
-                                padding: const EdgeInsets.symmetric(horizontal: 10),
+                                height: 38,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: BorderRadius.circular(10),
                                   border: Border.all(color: const Color(0xFFCBD5E1)),
                                 ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButton<String>(
-                                    value: foodType,
-                                    isExpanded: true,
-                                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF64748B)),
-                                    items: const [
-                                      DropdownMenuItem(value: 'Veg', child: Text('🟢 Veg', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
-                                      DropdownMenuItem(value: 'Non-Veg', child: Text('🔴 Non-Veg', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
-                                      DropdownMenuItem(value: 'Egg', child: Text('🟡 Egg', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold))),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) setDialogState(() => foodType = val);
-                                    },
-                                  ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_rounded, size: 14, color: Color(0xFF051C48)),
+                                      onPressed: quantity > 1 ? () => setDialogState(() => quantity--) : null,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 38),
+                                    ),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        '$quantity',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Color(0xFF0F172A)),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.add_rounded, size: 14, color: Color(0xFF051C48)),
+                                      onPressed: () => setDialogState(() => quantity++),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(minWidth: 28, minHeight: 38),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -1604,193 +1666,226 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 10),
 
-                    // GST Selection Row
+                    // Row 3: Food Type Dropdown Selection (Veg, Non-Veg, Egg, Beverage)
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Tax / GST',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                          'Food Type',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
                         ),
-                        const SizedBox(height: 6),
-                        SizedBox(
-                          height: 34,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            children: [0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
-                              final isSel = selectedGstRate == rate;
-                              final label = rate == 0.0 ? 'No GST (0%)' : '${rate.toStringAsFixed(0)}%';
-                              return Padding(
-                                padding: const EdgeInsets.only(right: 6),
-                                child: ChoiceChip(
-                                  label: Text(label, style: TextStyle(fontSize: 11, color: isSel ? Colors.white : const Color(0xFF475569), fontWeight: FontWeight.bold)),
-                                  selected: isSel,
-                                  selectedColor: const Color(0xFF051C48),
-                                  backgroundColor: const Color(0xFFF1F5F9),
-                                  visualDensity: VisualDensity.compact,
-                                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                                  onSelected: (_) {
-                                    setDialogState(() => selectedGstRate = rate);
-                                  },
-                                ),
-                              );
-                            }).toList(),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Quantity Stepper
-                    Row(
-                      children: [
-                        const Text(
-                          'Quantity:',
-                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
-                        ),
-                        const SizedBox(width: 12),
+                        const SizedBox(height: 4),
                         Container(
-                          height: 36,
+                          height: 40,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(color: const Color(0xFFCBD5E1)),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.remove_rounded, size: 16, color: Color(0xFF051C48)),
-                                onPressed: quantity > 1 ? () => setDialogState(() => quantity--) : null,
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                child: Text(
-                                  '$quantity',
-                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF0F172A)),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: ['Veg', 'Non-Veg', 'Egg', 'Beverage'].contains(foodType) ? foodType : 'Veg',
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: Color(0xFF64748B)),
+                              borderRadius: BorderRadius.circular(12),
+                              dropdownColor: Colors.white,
+                              elevation: 4,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'Veg',
+                                  child: Row(
+                                    children: [
+                                      FoodTypeIcon(itemType: 'Veg', size: 13),
+                                      SizedBox(width: 8),
+                                      Text('Veg', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.add_rounded, size: 16, color: Color(0xFF051C48)),
-                                onPressed: () => setDialogState(() => quantity++),
-                                padding: const EdgeInsets.symmetric(horizontal: 8),
-                                constraints: const BoxConstraints(minWidth: 32, minHeight: 36),
-                              ),
-                            ],
+                                DropdownMenuItem(
+                                  value: 'Non-Veg',
+                                  child: Row(
+                                    children: [
+                                      FoodTypeIcon(itemType: 'Non-Veg', size: 13),
+                                      SizedBox(width: 8),
+                                      Text('Non-Veg', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Egg',
+                                  child: Row(
+                                    children: [
+                                      FoodTypeIcon(itemType: 'Egg', size: 13),
+                                      SizedBox(width: 8),
+                                      Text('Egg', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'Beverage',
+                                  child: Row(
+                                    children: [
+                                      FoodTypeIcon(itemType: 'Beverage', size: 13),
+                                      SizedBox(width: 8),
+                                      Text('Beverage', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) setDialogState(() => foodType = val);
+                              },
+                            ),
                           ),
                         ),
                       ],
                     ),
 
+                    const SizedBox(height: 10),
+
+                    // Row 4: Tax / GST (Wrapped with Wrap)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tax Rate',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                        ),
+                        const SizedBox(height: 5),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
+                            final isSel = selectedGstRate == rate;
+                            final label = rate == 0.0 ? '0%' : '${rate.toStringAsFixed(0)}%';
+                            return ChoiceChip(
+                              label: Text(label, style: TextStyle(fontSize: 10.5, color: isSel ? Colors.white : const Color(0xFF475569), fontWeight: FontWeight.bold)),
+                              selected: isSel,
+                              selectedColor: const Color(0xFF051C48),
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                              side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+                              onSelected: (_) => setDialogState(() => selectedGstRate = rate),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+
                     if (errorMessage != null) ...[
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEE2E2),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.error_outline_rounded, size: 16, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                errorMessage!,
-                                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ),
+                      const SizedBox(height: 8),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Color(0xFFDC2626), fontSize: 11, fontWeight: FontWeight.w600),
                       ),
                     ],
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 14),
 
-                    // Dialog Action Buttons
+                    // Row 5: Action Buttons
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.pop(dialogCtx),
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFCBD5E1)),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(vertical: 13),
+                          flex: 1,
+                          child: SizedBox(
+                            height: 38,
+                            child: OutlinedButton(
+                              onPressed: () => Navigator.pop(dialogCtx),
+                              style: OutlinedButton.styleFrom(
+                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: EdgeInsets.zero,
+                              ),
+                              child: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 12)),
+                              ),
                             ),
-                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 8),
                         Expanded(
                           flex: 2,
-                          child: ElevatedButton.icon(
-                            onPressed: () {
-                              final name = nameController.text.trim();
-                              final price = double.tryParse(priceController.text.trim());
+                          child: SizedBox(
+                            height: 38,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                final name = nameController.text.trim();
+                                final price = double.tryParse(priceController.text.trim());
 
-                              if (name.isEmpty) {
-                                setDialogState(() => errorMessage = 'Please enter a product name');
-                                return;
-                              }
-                              if (price == null || price <= 0) {
-                                setDialogState(() => errorMessage = 'Please enter a valid price');
-                                return;
-                              }
+                                if (name.isEmpty) {
+                                  setDialogState(() => errorMessage = 'Please enter item name');
+                                  return;
+                                }
+                                if (price == null || price <= 0) {
+                                  setDialogState(() => errorMessage = 'Please enter valid price');
+                                  return;
+                                }
 
-                              final customItem = MenuItemModel(
-                                id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-                                productId: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-                                name: name,
-                                category: 'Manual / Custom',
-                                price: price,
-                                salePrice: null,
-                                hasDiscount: false,
-                                itemType: foodType,
-                                gstPercent: selectedGstRate,
-                                description: 'Custom manual item',
-                              );
+                                final customItem = MenuItemModel(
+                                  id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+                                  productId: 'custom_${DateTime.now().millisecondsSinceEpoch}',
+                                  name: name,
+                                  category: 'Manual / Custom',
+                                  price: price,
+                                  salePrice: null,
+                                  hasDiscount: false,
+                                  itemType: foodType,
+                                  gstPercent: selectedGstRate,
+                                  description: 'Custom manual item',
+                                );
 
-                              setState(() {
-                                _cartItems.add(CartItemModel(item: customItem, quantity: quantity));
-                                _syncTableStatusWithCart();
-                              });
+                                // Save to user's persistent manual products history
+                                db.saveManualProductToHistory(
+                                  name: name,
+                                  price: price,
+                                  foodType: foodType,
+                                  gstPercent: selectedGstRate,
+                                );
 
-                              _cartApiService.addToCart(
-                                item: customItem,
-                                tableNumber: _selectedTable,
-                                orderType: _selectedOrderType.name,
-                                quantity: quantity,
-                              );
+                                setState(() {
+                                  _cartItems.add(CartItemModel(item: customItem, quantity: quantity));
+                                  _syncTableStatusWithCart();
+                                });
 
-                              Navigator.pop(dialogCtx);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Added "$name" ($currency${(price * quantity).toStringAsFixed(2)}) to Cart'),
-                                  backgroundColor: const Color(0xFF10B981),
-                                  duration: const Duration(seconds: 2),
-                                  behavior: SnackBarBehavior.floating,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                _cartApiService.addToCart(
+                                  item: customItem,
+                                  tableNumber: _selectedTable,
+                                  orderType: _selectedOrderType.name,
+                                  quantity: quantity,
+                                );
+
+                                Navigator.pop(dialogCtx);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Added "$name" ($currency${(price * quantity).toStringAsFixed(2)}) to Cart'),
+                                    backgroundColor: const Color(0xFF10B981),
+                                    duration: const Duration(seconds: 2),
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF051C48),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                elevation: 1,
+                              ),
+                              icon: const Icon(Icons.add_shopping_cart_rounded, size: 15, color: Colors.white),
+                              label: const FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  'Add to Cart',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
                                 ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF051C48),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              elevation: 2,
-                            ),
-                            icon: const Icon(Icons.add_shopping_cart_rounded, size: 17, color: Colors.white),
-                            label: const Text(
-                              'Add to Cart',
-                              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              ),
                             ),
                           ),
                         ),
@@ -2299,7 +2394,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       if (_cartItems.isNotEmpty) {
         final oldTbl = db.tables.where((t) => isSameTable(t.name, oldTable)).firstOrNull;
         if (oldTbl != null && oldTbl.status == TableStatus.free) {
-          db.updateTableStatus(oldTbl.id, TableStatus.occupied);
+          db.updateTableStatus(oldTbl.id, TableStatus.occupied, occupiedSince: oldTbl.occupiedSince ?? DateTime.now().toIso8601String());
         }
       }
     }
@@ -5858,6 +5953,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),
+              if (db.isChotuVoiceEnabled) ...[
+                const SizedBox(width: 8),
+                // Chotu AI Voice Assistant Button
+                ChotuMicButton(
+                  tableNumber: _selectedTable,
+                  isCompact: true,
+                  onTranscriptionUpdated: () => setState(() {}),
+                ),
+              ],
             ],
           ),
 
@@ -6117,6 +6221,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   ),
                 ),
               ),
+              if (db.isChotuVoiceEnabled) ...[
+                const SizedBox(width: 8),
+                // Chotu Voice Search Button
+                ChotuMicButton(
+                  tableNumber: _selectedTable,
+                  isCompact: true,
+                  onTranscriptionUpdated: () => setState(() {}),
+                ),
+              ],
             ],
           ),
 
@@ -6316,11 +6429,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            // ADD ITEM BUTTON
+            // ADD ITEM BUTTON (Invokes manual product entry dialog like Windows POS)
             SizedBox(
               height: 36,
               child: ElevatedButton(
-                onPressed: _showAddItemDialog,
+                onPressed: _showInputManuallyDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF051C48),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -6340,41 +6453,57 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Search Bar
+        // Search Bar & Chotu Voice Button (Android / Mobile View)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(22),
-              boxShadow: const [
-                BoxShadow(color: Color(0x0C000000), blurRadius: 10, offset: Offset(0, 3)),
-              ],
-            ),
-            child: TextField(
-              scrollPadding: const EdgeInsets.only(bottom: 90),
-              onChanged: (val) => setState(() => _searchQuery = val),
-              style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
-              decoration: InputDecoration(
-                hintText: 'Search products by name or category...',
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13.5),
-                prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF051C48), size: 22),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(22),
-                  borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              // Search text field with decreased width
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x0C000000), blurRadius: 10, offset: Offset(0, 3)),
+                    ],
+                  ),
+                  child: TextField(
+                    scrollPadding: const EdgeInsets.only(bottom: 90),
+                    onChanged: (val) => setState(() => _searchQuery = val),
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                    decoration: InputDecoration(
+                      hintText: 'Search products by name or category...',
+                      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13.5),
+                      prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF051C48), size: 22),
+                      filled: true,
+                      fillColor: Colors.white,
+                      contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1), width: 1.2),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(22),
+                        borderSide: const BorderSide(color: Color(0xFF051C48), width: 2),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
+              if (db.isChotuVoiceEnabled) ...[
+                const SizedBox(width: 10),
+                ChotuMicButton(
+                  tableNumber: _selectedTable,
+                  isCompact: false,
+                  onTranscriptionUpdated: () => setState(() {}),
+                ),
+              ],
+            ],
           ),
         ),
 
@@ -7082,6 +7211,27 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       }
     }
 
+    // Also include previously added manual / custom products so they are suggested and searchable on Windows & Mobile
+    for (final hist in db.manualProductsHistory) {
+      final key = hist.name.trim().toLowerCase();
+      if (key.isNotEmpty && !seenProductNames.contains(key)) {
+        seenProductNames.add(key);
+        uniqueItems.add(MenuItemModel(
+          id: 'manual_${key.hashCode}',
+          productId: 'manual_${key.hashCode}',
+          name: hist.name,
+          category: 'Manual / Custom',
+          price: hist.price,
+          salePrice: null,
+          hasDiscount: false,
+          itemType: hist.foodType,
+          gstPercent: hist.gstPercent,
+          description: 'Custom manual item',
+        ));
+        activeCategoriesSet.add('manual / custom');
+      }
+    }
+
     // Only display categories that have products assigned to them
     final categoriesWithProducts = <String>[];
     for (final cat in db.categories) {
@@ -7117,6 +7267,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     if (isDesktop) {
       // DESKTOP WIDESCREEN 3-PANEL CURVED LAYOUT (Windows Executable Matching Reference UI)
       return Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: const Color(0xFFF1F5F9),
         body: Padding(
           padding: const EdgeInsets.all(12),
@@ -7173,6 +7324,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     // ANDROID / MOBILE TOUCH LAYOUT (Strictly untouched & preserved)
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: Stack(
         children: [

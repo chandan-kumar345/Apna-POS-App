@@ -250,6 +250,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     final currency = _db.restaurant?.currencySymbol ?? '₹';
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: const Color(0xFF082559),

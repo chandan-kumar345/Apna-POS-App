@@ -62,21 +62,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
       String? startDate;
       String? endDate;
 
+      final now = DateTime.now();
       switch (_selectedDateFilter) {
         case SalesDateFilter.allTime:
           period = 'allTime';
           break;
         case SalesDateFilter.today:
           period = 'today';
+          final startToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
+          final endToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          startDate = startToday.toUtc().toIso8601String();
+          endDate = endToday.toUtc().toIso8601String();
           break;
         case SalesDateFilter.yesterday:
           period = 'yesterday';
+          final y = now.subtract(const Duration(days: 1));
+          final startY = DateTime(y.year, y.month, y.day, 0, 0, 0);
+          final endY = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+          startDate = startY.toUtc().toIso8601String();
+          endDate = endY.toUtc().toIso8601String();
           break;
         case SalesDateFilter.thisWeek:
           period = 'thisWeek';
+          final diffToMonday = (now.weekday - 1);
+          final monday = now.subtract(Duration(days: diffToMonday));
+          final startWeek = DateTime(monday.year, monday.month, monday.day, 0, 0, 0);
+          final endWeek = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          startDate = startWeek.toUtc().toIso8601String();
+          endDate = endWeek.toUtc().toIso8601String();
           break;
         case SalesDateFilter.thisMonth:
           period = 'thisMonth';
+          final startMonth = DateTime(now.year, now.month, 1, 0, 0, 0);
+          final endMonth = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+          startDate = startMonth.toUtc().toIso8601String();
+          endDate = endMonth.toUtc().toIso8601String();
           break;
         case SalesDateFilter.custom:
           if (_customDateRange != null) {
@@ -279,6 +299,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final orders = _reportData?.orders ?? [];
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: RefreshIndicator(

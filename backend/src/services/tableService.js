@@ -90,13 +90,16 @@ class TableService {
         if (effectiveStatus !== 'reserved') {
           effectiveStatus = 'occupied';
         }
-      } else if (effectiveStatus !== 'reserved') {
-        effectiveStatus = 'free';
       }
+
+      const finalOccupiedSince = effectiveStatus === 'free'
+        ? null
+        : (tJson.occupiedSince || activeOrder?.createdAt || null);
 
       return {
         ...tJson,
         status: effectiveStatus,
+        occupiedSince: finalOccupiedSince,
         activeOrder: activeOrder
           ? {
               id: activeOrder._id.toString(),
@@ -214,13 +217,16 @@ class TableService {
       if (effectiveStatus !== 'reserved') {
         effectiveStatus = 'occupied';
       }
-    } else if (effectiveStatus !== 'reserved') {
-      effectiveStatus = 'free';
     }
+
+    const finalOccupiedSince = effectiveStatus === 'free'
+      ? null
+      : (tJson.occupiedSince || activeOrder?.createdAt || null);
 
     return {
       ...tJson,
       status: effectiveStatus,
+      occupiedSince: finalOccupiedSince,
       activeOrder: activeOrder
         ? {
             id: activeOrder._id.toString(),
@@ -343,13 +349,33 @@ class TableService {
     return table;
   }
 
-  async updateTableStatus(businessId, tableId, { status, currentOrderId }) {
+  async updateTableStatus(businessId, tableId, { status, currentOrderId, occupiedSince }) {
     const isObjectId = mongoose.Types.ObjectId.isValid(tableId);
     let normalizedStatus = status === 'running_kot' ? 'runningKot' : status;
     const update = { status: normalizedStatus };
 
+    const query = {
+      businessId,
+      ...(isObjectId
+        ? { _id: tableId }
+        : { $or: [{ name: tableId }, { tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 0 }] }),
+    };
+
     if (normalizedStatus === 'occupied' || normalizedStatus === 'runningKot') {
-      update.occupiedSince = new Date();
+      const existingTable = await Table.findOne(query);
+      // Preserve existing occupiedSince if already set; do not restart running timer on KOT or bill print!
+      let resolvedOccupiedSince = existingTable?.occupiedSince;
+      if (!resolvedOccupiedSince && occupiedSince) {
+        const parsed = new Date(occupiedSince);
+        if (!isNaN(parsed.getTime())) {
+          resolvedOccupiedSince = parsed;
+        }
+      }
+      if (!resolvedOccupiedSince) {
+        resolvedOccupiedSince = new Date();
+      }
+      update.occupiedSince = resolvedOccupiedSince;
+
       if (currentOrderId && mongoose.Types.ObjectId.isValid(currentOrderId)) {
         update.currentOrderId = currentOrderId;
       }
@@ -362,12 +388,7 @@ class TableService {
     }
 
     const table = await Table.findOneAndUpdate(
-      {
-        businessId,
-        ...(isObjectId
-          ? { _id: tableId }
-          : { $or: [{ name: tableId }, { tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 0 }] }),
-      },
+      query,
       { $set: update },
       { new: true }
     );
@@ -490,6 +511,7 @@ class TableService {
       newStatus = 'occupied';
     }
 
+    const sourceOccupiedSince = sourceTableDoc?.occupiedSince;
     if (sourceTableDoc) {
       sourceTableDoc.status = 'free';
       sourceTableDoc.occupiedSince = null;
@@ -503,7 +525,7 @@ class TableService {
     if (targetTableDoc) {
       targetTableDoc.status = newStatus;
       if (newStatus !== 'free') {
-        targetTableDoc.occupiedSince = targetTableDoc.occupiedSince || new Date();
+        targetTableDoc.occupiedSince = targetTableDoc.occupiedSince || sourceOccupiedSince || new Date();
         if (activeOrders.length > 0) {
           targetTableDoc.currentOrderId = activeOrders[0]._id;
           targetTableDoc.currentOrderNumber = activeOrders[0].orderNumber;

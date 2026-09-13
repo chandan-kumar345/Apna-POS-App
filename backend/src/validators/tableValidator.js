@@ -13,11 +13,13 @@ const updateTableSchema = Joi.object({
   floor: Joi.string().trim(),
   capacity: Joi.number().integer().min(1),
   status: Joi.string().valid('free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved'),
+  occupiedSince: Joi.alternatives().try(Joi.date(), Joi.string()).allow(null, '').optional(),
 }).min(1);
 
 const updateTableStatusSchema = Joi.object({
   status: Joi.string().valid('free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved').required(),
   currentOrderId: Joi.string().allow(null, '').optional(),
+  occupiedSince: Joi.alternatives().try(Joi.date(), Joi.string()).allow(null, '').optional(),
 });
 
 module.exports = {

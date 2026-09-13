@@ -19,6 +19,7 @@ const loyaltyRoutes = require('./loyaltyRoutes');
 const crmRoutes = require('./crmRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
+const chotuRoutes = require('./chotuRoutes');
 
 const router = express.Router();
 
@@ -55,5 +56,6 @@ router.use('/loyalty', loyaltyRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/subscription', subscriptionRoutes);
 router.use('/subscriptions', subscriptionRoutes);
+router.use('/chotu', chotuRoutes);
 
 module.exports = router;

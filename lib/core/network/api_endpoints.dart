@@ -404,6 +404,14 @@ class ApiEndpoints {
   static const String subscriptionLead = '/subscription/lead';
   static const String subscriptionLeads = '/subscription/leads';
 
+  // Chotu AI Voice endpoints
+  static const String chotu = '/chotu';
+  static const String chotuTranscribe = '/chotu/transcribe';
+  static const String chotuParse = '/chotu/parse';
+  static const String chotuExecute = '/chotu/execute';
+  static const String chotuHealth = '/chotu/health';
+  static const String chotuLogs = '/chotu/logs';
+
   /// Show Developer / Admin Server Configuration Sheet
   static void showServerConfigSheet(BuildContext context, {VoidCallback? onUrlChanged}) {
     final controller = TextEditingController(text: baseUrl);

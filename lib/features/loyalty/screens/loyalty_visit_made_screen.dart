@@ -1651,7 +1651,7 @@ class _LoyaltyVisitMadeScreenState extends State<LoyaltyVisitMadeScreen> {
 
     return Scaffold(
       backgroundColor: _primaryThemeColor,
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       body: Container(
         color: _primaryThemeColor,
         child: SafeArea(

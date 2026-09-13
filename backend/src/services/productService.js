@@ -101,6 +101,12 @@ class ProductService {
       normalized.taxPercentage = Math.max(0, Math.min(100, parseFloat(data.taxPercentage ?? data.gstPercent ?? data.gst) || 0));
     }
 
+    if (Array.isArray(data.aliases)) {
+      normalized.aliases = data.aliases.map((a) => a.toString().trim().toLowerCase()).filter(Boolean);
+    } else if (typeof data.aliases === 'string') {
+      normalized.aliases = data.aliases.split(',').map((a) => a.trim().toLowerCase()).filter(Boolean);
+    }
+
     if (isCreate) {
       normalized.productId = (data.productId || data.id || this._generateUniqueProductId()).toString().trim();
     } else if (data.productId) {
@@ -133,7 +139,7 @@ class ProductService {
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
-      query.$or = [{ name: regex }, { barcode: search.trim() }, { sku: search.trim() }, { productId: search.trim() }];
+      query.$or = [{ name: regex }, { aliases: regex }, { barcode: search.trim() }, { sku: search.trim() }, { productId: search.trim() }];
     }
 
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
@@ -186,7 +192,7 @@ class ProductService {
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
-      query.$or = [{ name: regex }, { description: regex }, { category: regex }, { productId: regex }];
+      query.$or = [{ name: regex }, { aliases: regex }, { description: regex }, { category: regex }, { productId: regex }];
     }
 
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
@@ -445,6 +451,22 @@ class ProductService {
     }
 
     return { importedCount: results.length, products: results };
+  }
+
+  async updateAliases(businessId, productId, aliases) {
+    const cleanAliases = (Array.isArray(aliases) ? aliases : (aliases || '').toString().split(','))
+      .map((a) => a.toString().trim().toLowerCase())
+      .filter(Boolean);
+
+    const product = await Product.findOneAndUpdate(
+      this._buildProductQuery(businessId, productId),
+      { $set: { aliases: cleanAliases } },
+      { new: true }
+    );
+    if (!product) {
+      throw ApiError.notFound('Product not found');
+    }
+    return product;
   }
 }
 

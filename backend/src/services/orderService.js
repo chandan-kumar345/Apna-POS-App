@@ -419,18 +419,42 @@ class OrderService {
     if (order.orderType === 'dineIn' && order.tableNumber) {
       const tQuery = this._getTableQuery(businessId, order.tableNumber);
       if (status === 'completed') {
+        const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+        await Cart.deleteMany({
+          businessId,
+          orderType: 'dineIn',
+          tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+        }).catch(() => {});
+
         await Table.findOneAndUpdate(
           tQuery,
-          { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
+          { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
         );
       } else {
+        const existingTable = await Table.findOne(tQuery);
+        const resolvedStatus = (order.status === 'preparing' || existingTable?.status === 'runningKot' || existingTable?.status === 'running_kot')
+          ? 'runningKot'
+          : 'occupied';
+
+        let resolvedStart = existingTable?.occupiedSince;
+        const candidateTime = rawData.occupiedSince || rawData.createdAt || order.createdAt;
+        if (!resolvedStart && candidateTime) {
+          const parsedCandidate = new Date(candidateTime);
+          if (!isNaN(parsedCandidate.getTime())) {
+            resolvedStart = parsedCandidate;
+          }
+        }
+        if (!resolvedStart) {
+          resolvedStart = new Date();
+        }
+
         await Table.findOneAndUpdate(
           tQuery,
           {
             $set: {
-              status: 'occupied',
+              status: resolvedStatus,
               currentOrderId: order._id,
-              occupiedSince: new Date(),
+              occupiedSince: resolvedStart,
             },
           }
         );
@@ -556,6 +580,43 @@ class OrderService {
       console.warn(`[Order Notification Notice] ${err.message}`);
     }
 
+    // Broadcast real-time order state across all connected devices
+    try {
+      if (status === 'completed') {
+        socketService.emitOrderSettled(businessId, {
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          tableNumber: order.tableNumber || '',
+          totalAmount: order.totalAmount,
+          status: 'completed',
+          paymentStatus: 'paid',
+          paymentMethod: order.paymentMethod,
+          completedAt: order.completedAt || order.createdAt,
+          order: order.toJSON ? order.toJSON() : order,
+          sale: sale && sale.toJSON ? sale.toJSON() : sale,
+        });
+        socketService.emitOrderUpdated(businessId, {
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          tableNumber: order.tableNumber || '',
+          status: 'completed',
+          paymentStatus: 'paid',
+          order: order.toJSON ? order.toJSON() : order,
+        });
+      } else {
+        socketService.emitOrderCreated(businessId, {
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          tableNumber: order.tableNumber || '',
+          status: order.status,
+          totalAmount: order.totalAmount,
+          order: order.toJSON ? order.toJSON() : order,
+        });
+      }
+    } catch (sockErr) {
+      console.warn('[generatePosOrder] Socket emission warning:', sockErr.message);
+    }
+
     return {
       order,
       sale,
@@ -650,11 +711,18 @@ class OrderService {
     if (status === 'completed') {
       order.completedAt = new Date();
       order.paymentStatus = 'paid';
-      // Free linked table
+      // Free linked table and delete cart
       if (order.tableNumber) {
+        const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+        await Cart.deleteMany({
+          businessId,
+          orderType: 'dineIn',
+          tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+        }).catch(() => {});
+
         await Table.findOneAndUpdate(
           this._getTableQuery(businessId, order.tableNumber),
-          { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
+          { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
         );
         tableService.emitTableUpdateForTable(businessId, order.tableNumber);
       }
@@ -702,11 +770,18 @@ class OrderService {
       order.cancelledAt = new Date();
       if (reason) order.cancellationReason = reason;
 
-      // Free linked table
+      // Free linked table and delete cart
       if (order.tableNumber) {
+        const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+        await Cart.deleteMany({
+          businessId,
+          orderType: 'dineIn',
+          tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+        }).catch(() => {});
+
         await Table.findOneAndUpdate(
           this._getTableQuery(businessId, order.tableNumber),
-          { $set: { status: 'free', currentOrderId: null, occupiedSince: null } }
+          { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
         );
         tableService.emitTableUpdateForTable(businessId, order.tableNumber);
       }
@@ -716,6 +791,33 @@ class OrderService {
     }
 
     await order.save();
+
+    try {
+      if (status === 'completed') {
+        const linkedSale = await Sale.findOne({ businessId, orderId: order._id });
+        socketService.emitOrderSettled(businessId, {
+          orderId: order._id.toString(),
+          orderNumber: order.orderNumber,
+          tableNumber: order.tableNumber || '',
+          totalAmount: order.totalAmount,
+          status: 'completed',
+          paymentStatus: 'paid',
+          order: order.toJSON ? order.toJSON() : order,
+          sale: linkedSale && linkedSale.toJSON ? linkedSale.toJSON() : linkedSale,
+        });
+      }
+      socketService.emitOrderUpdated(businessId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        tableNumber: order.tableNumber || '',
+        status: order.status,
+        paymentStatus: order.paymentStatus,
+        order: order.toJSON ? order.toJSON() : order,
+      });
+    } catch (sockErr) {
+      console.warn('[updateOrderStatus] Socket emission warning:', sockErr.message);
+    }
+
     return order;
   }
 
@@ -993,13 +1095,25 @@ class OrderService {
         ? 'runningKot'
         : 'occupied';
 
+      let resolvedStart = existingTable?.occupiedSince;
+      const candidateTime = rawData.occupiedSince || rawData.createdAt || existingOrder?.createdAt;
+      if (!resolvedStart && candidateTime) {
+        const parsedCandidate = new Date(candidateTime);
+        if (!isNaN(parsedCandidate.getTime())) {
+          resolvedStart = parsedCandidate;
+        }
+      }
+      if (!resolvedStart) {
+        resolvedStart = new Date();
+      }
+
       await Table.findOneAndUpdate(
         tQuery,
         {
           $set: {
             status: tableStatus,
             currentOrderId: order._id,
-            occupiedSince: existingTable?.occupiedSince || new Date(),
+            occupiedSince: resolvedStart,
           },
         }
       );
@@ -1084,12 +1198,42 @@ class OrderService {
         ],
       });
     }
+    if (!order && (paymentData.tableNumber || paymentData.tableCode || paymentData.table)) {
+      const tRef = (paymentData.tableNumber || paymentData.tableCode || paymentData.table).toString().trim();
+      order = await this.getActiveTableOrder(bId, tRef);
+    }
+    if (!order) {
+      if (Array.isArray(paymentData.items) && paymentData.items.length > 0) {
+        const createResult = await this.generatePosOrder(bId, {
+          ...paymentData,
+          orderId: orderId,
+          clientSyncId: orderId,
+          status: 'completed',
+          isPaid: true,
+          paymentStatus: 'paid',
+        });
+        return createResult;
+      }
+    }
     if (!order) {
       throw ApiError.notFound('Order not found for settlement');
     }
 
     // Idempotency: if already settled
     if (order.status === 'completed' && order.paymentStatus === 'paid' && order.isPaid) {
+      if (order.tableNumber) {
+        const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+        await Cart.deleteMany({
+          businessId: bId,
+          orderType: 'dineIn',
+          tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+        }).catch(() => {});
+        await Table.findOneAndUpdate(
+          this._getTableQuery(bId, order.tableNumber),
+          { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
+        ).catch(() => {});
+        tableService.emitTableUpdateForTable(bId, order.tableNumber);
+      }
       const existingSale = await Sale.findOne({ businessId: bId, orderId: order._id });
       const lastPrintLog = await PrintLog.findOne({ businessId: bId, orderId: order._id, paymentStatus: 'paid' }).sort({ createdAt: -1 });
       return {
@@ -1176,6 +1320,13 @@ class OrderService {
 
     // 3. Free Table if dineIn
     if (order.tableNumber) {
+      const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+      await Cart.deleteMany({
+        businessId: bId,
+        orderType: 'dineIn',
+        tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+      }).catch(() => {});
+
       await Table.findOneAndUpdate(
         this._getTableQuery(bId, order.tableNumber),
         { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
@@ -1183,7 +1334,6 @@ class OrderService {
       tableService.emitTableUpdateForTable(bId, order.tableNumber);
 
       // Also resolve any duplicate pending/preparing orders for this table so none remain stuck in preparing
-      const cleanTable = order.tableNumber.toString().replace('T-', '').trim();
       await Order.updateMany(
         {
           businessId: bId,
@@ -1276,6 +1426,32 @@ class OrderService {
       printedBy: (paymentData.user || paymentData.CreatedByUserId || '').toString().trim(),
       notes: `Final Settlement Receipt #${printNumber}`,
     });
+
+    // Broadcast real-time order settlement to all connected devices in this business
+    try {
+      socketService.emitOrderSettled(bId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        tableNumber: order.tableNumber || '',
+        totalAmount: order.totalAmount,
+        status: 'completed',
+        paymentStatus: 'paid',
+        paymentMethod,
+        completedAt: order.completedAt,
+        order: order.toJSON ? order.toJSON() : order,
+        sale: sale && sale.toJSON ? sale.toJSON() : sale,
+      });
+      socketService.emitOrderUpdated(bId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        tableNumber: order.tableNumber || '',
+        status: 'completed',
+        paymentStatus: 'paid',
+        order: order.toJSON ? order.toJSON() : order,
+      });
+    } catch (sockErr) {
+      console.warn('[settleOrder] Socket emission warning:', sockErr.message);
+    }
 
     return {
       success: true,

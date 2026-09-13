@@ -190,6 +190,51 @@ class SocketService {
     this.broadcastToBusiness(businessId, 'table:deleted', payload);
   }
 
+  /**
+   * Emit order settled event across all connected clients in the business
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} orderData
+   */
+  emitOrderSettled(businessId, orderData) {
+    if (!businessId || !orderData) return;
+    const payload = {
+      ...orderData,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'order:settled', payload);
+    this.broadcastToBusiness(businessId, 'order_settled', payload);
+  }
+
+  /**
+   * Emit order updated event across all connected clients in the business
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} orderData
+   */
+  emitOrderUpdated(businessId, orderData) {
+    if (!businessId || !orderData) return;
+    const payload = {
+      ...orderData,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'order:updated', payload);
+    this.broadcastToBusiness(businessId, 'order_updated', payload);
+  }
+
+  /**
+   * Emit order created event across all connected clients in the business
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} orderData
+   */
+  emitOrderCreated(businessId, orderData) {
+    if (!businessId || !orderData) return;
+    const payload = {
+      ...orderData,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'order:created', payload);
+    this.broadcastToBusiness(businessId, 'order_created', payload);
+  }
+
   getIO() {
     return this.io;
   }

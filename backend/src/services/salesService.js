@@ -69,12 +69,20 @@ class SalesService {
     const bIdObj = mongoose.Types.ObjectId.isValid(bId) ? new mongoose.Types.ObjectId(bId) : bId;
     return {
       businessId: { $in: [bIdObj, bId.toString()] },
-      createdAt: { $gte: start, $lte: end },
       status: { $nin: ['cancelled', 'void'] },
       $or: [
         { status: { $in: ['completed', 'paid'] } },
         { paymentStatus: 'paid' },
         { isPaid: true },
+      ],
+      $and: [
+        {
+          $or: [
+            { completedAt: { $gte: start, $lte: end } },
+            { createdAt: { $gte: start, $lte: end } },
+            { saleDate: { $gte: start, $lte: end } },
+          ],
+        },
       ],
       ...extraMatch,
     };

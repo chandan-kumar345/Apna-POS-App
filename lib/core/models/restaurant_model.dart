@@ -22,6 +22,7 @@ class RestaurantModel {
   final String upiId; // Merchant UPI VPA ID e.g., 'merchant@upi' or '9876543210@paytm'
   final String posViewMode; // 'with_image' or 'without_image'
   final String managerPin; // Security / Manager PIN to clear running KOT carts & void orders (default: '1234')
+  final bool enableChotuVoice; // Whether Chotu AI Voice assistant icon is enabled in POS
 
   bool get showItemImages => posViewMode != 'without_image';
 
@@ -47,6 +48,7 @@ class RestaurantModel {
     this.upiId = 'apnapos@upi',
     this.posViewMode = 'with_image',
     this.managerPin = '1234',
+    this.enableChotuVoice = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -71,6 +73,7 @@ class RestaurantModel {
         'upiId': upiId,
         'posViewMode': posViewMode,
         'managerPin': managerPin,
+        'enableChotuVoice': enableChotuVoice,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -100,6 +103,7 @@ class RestaurantModel {
             : (json['securityPin']?.toString().trim().isNotEmpty == true
                 ? json['securityPin'].toString().trim()
                 : '1234'),
+        enableChotuVoice: json['enableChotuVoice'] ?? (json['orderSettings'] is Map ? json['orderSettings']['enableChotuVoice'] : null) ?? true,
       );
 
   RestaurantModel copyWith({
@@ -123,6 +127,7 @@ class RestaurantModel {
     String? upiId,
     String? posViewMode,
     String? managerPin,
+    bool? enableChotuVoice,
   }) {
     return RestaurantModel(
       id: id,
@@ -146,6 +151,7 @@ class RestaurantModel {
       upiId: upiId ?? this.upiId,
       posViewMode: posViewMode ?? this.posViewMode,
       managerPin: managerPin ?? this.managerPin,
+      enableChotuVoice: enableChotuVoice ?? this.enableChotuVoice,
     );
   }
 }

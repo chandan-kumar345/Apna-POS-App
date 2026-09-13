@@ -182,6 +182,7 @@ class _PrintLogsScreenState extends State<PrintLogsScreen> {
     final currency = _db.restaurant?.currencySymbol ?? '₹';
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Column(

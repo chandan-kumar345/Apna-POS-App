@@ -75,6 +75,7 @@ class _LoyaltyPerformanceScreenState extends State<LoyaltyPerformanceScreen> {
     final isTabletLandscape = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF8FAFC),
       body: SafeArea(
         child: Column(

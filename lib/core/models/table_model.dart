@@ -8,6 +8,7 @@ class TableModel {
   final int capacity;
   final TableStatus status;
   final String? currentOrderId;
+  String? get activeOrderId => currentOrderId;
   final String? occupiedSince;
   final String? activeOrderNumber;
   final double activeOrderTotal;
@@ -107,6 +108,60 @@ class TableModel {
       activeOrderTotal: isNowFree ? 0.0 : (activeOrderTotal ?? this.activeOrderTotal),
       activeItemCount: isNowFree ? 0 : (activeItemCount ?? this.activeItemCount),
     );
+  }
+
+  /// Calculates the live running duration of this table if occupied or running KOT
+  Duration? getRunningDuration({DateTime? now, String? activeOrderCreatedAt}) {
+    if (status == TableStatus.free) return null;
+    final startA = parseTableOccupiedSince(occupiedSince);
+    final startB = activeOrderCreatedAt != null ? parseTableOccupiedSince(activeOrderCreatedAt) : null;
+    final DateTime? start;
+    if (startA != null && startB != null) {
+      // Pick the earlier timestamp (when items were first added or session began)
+      start = startA.isBefore(startB) ? startA : startB;
+    } else {
+      start = startA ?? startB;
+    }
+    if (start == null) return null;
+    final current = now ?? DateTime.now();
+    final diff = current.difference(start);
+    return diff.isNegative ? Duration.zero : diff;
+  }
+}
+
+/// Robustly parses occupiedSince timestamps supporting ISO-8601 and HH:mm formats
+DateTime? parseTableOccupiedSince(String? val) {
+  if (val == null || val.trim().isEmpty) return null;
+  final clean = val.trim();
+  final parsed = DateTime.tryParse(clean);
+  if (parsed != null) return parsed;
+
+  final parts = clean.split(':');
+  if (parts.length >= 2) {
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final s = parts.length >= 3 ? (int.tryParse(parts[2]) ?? 0) : 0;
+    if (h != null && m != null) {
+      final now = DateTime.now();
+      var dt = DateTime(now.year, now.month, now.day, h, m, s);
+      if (dt.isAfter(now)) {
+        dt = dt.subtract(const Duration(days: 1));
+      }
+      return dt;
+    }
+  }
+  return null;
+}
+
+/// Formats duration into minutes & seconds (under 1h) or hours & minutes (1h+)
+String formatRunningDuration(Duration duration) {
+  final hours = duration.inHours;
+  final minutes = duration.inMinutes.remainder(60);
+  final seconds = duration.inSeconds.remainder(60);
+  if (hours > 0) {
+    return '${hours}h ${minutes.toString().padLeft(2, '0')}m';
+  } else {
+    return '${minutes}m ${seconds.toString().padLeft(2, '0')}s';
   }
 }
 

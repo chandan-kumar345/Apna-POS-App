@@ -994,6 +994,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         filteredOrders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
         return Scaffold(
+          resizeToAvoidBottomInset: false,
           backgroundColor: const Color(0xFFF8FAFC),
           body: SafeArea(
             child: LayoutBuilder(

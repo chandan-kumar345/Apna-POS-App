@@ -130,6 +130,11 @@ const productSchema = new mongoose.Schema(
       type: Number,
       default: 5,
     },
+    aliases: {
+      type: [String],
+      default: [],
+      index: true,
+    },
   },
   {
     timestamps: true,

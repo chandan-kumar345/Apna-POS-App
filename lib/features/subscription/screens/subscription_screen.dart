@@ -720,6 +720,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: GlassTheme.bgDark1,
       body: Container(
         width: double.infinity,

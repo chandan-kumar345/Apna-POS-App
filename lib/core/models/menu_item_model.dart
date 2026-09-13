@@ -74,6 +74,7 @@ class MenuItemModel {
   final double? gstPercent; // Optional GST
   final List<ProductVariant> variants;
   final bool trackInventory;
+  final List<String> aliases;
 
   String get title => name;
 
@@ -97,6 +98,7 @@ class MenuItemModel {
     this.gstPercent,
     this.variants = const [],
     this.trackInventory = true,
+    this.aliases = const [],
   }) : productId = (productId != null && productId.isNotEmpty) ? productId : id;
 
   double get effectivePrice {
@@ -137,6 +139,7 @@ class MenuItemModel {
         'taxPercentage': gstPercent,
         'variants': variants.map((v) => v.toJson()).toList(),
         'trackInventory': trackInventory,
+        'aliases': aliases,
       };
 
   factory MenuItemModel.fromJson(Map<dynamic, dynamic> json) {
@@ -200,6 +203,14 @@ class MenuItemModel {
       }
     }
 
+    final rawAliases = json['aliases'];
+    final List<String> parsedAliases = [];
+    if (rawAliases is List) {
+      parsedAliases.addAll(rawAliases.map((e) => (e ?? '').toString().trim().toLowerCase()).where((s) => s.isNotEmpty));
+    } else if (rawAliases is String && rawAliases.trim().isNotEmpty) {
+      parsedAliases.addAll(rawAliases.split(',').map((s) => s.trim().toLowerCase()).where((s) => s.isNotEmpty));
+    }
+
     return MenuItemModel(
       id: resolvedId.isNotEmpty ? resolvedId : 'PRD-${DateTime.now().millisecondsSinceEpoch}',
       productId: resolvedProductId.isNotEmpty ? resolvedProductId : resolvedId,
@@ -220,6 +231,7 @@ class MenuItemModel {
       gstPercent: (json['gstPercent'] as num?)?.toDouble() ?? (json['taxPercentage'] as num?)?.toDouble() ?? (json['gst'] as num?)?.toDouble(),
       variants: parsedVariants,
       trackInventory: json['trackInventory'] ?? true,
+      aliases: parsedAliases,
     );
   }
 
@@ -243,6 +255,7 @@ class MenuItemModel {
     double? gstPercent,
     List<ProductVariant>? variants,
     bool? trackInventory,
+    List<String>? aliases,
   }) {
     return MenuItemModel(
       id: id ?? this.id,
@@ -264,6 +277,7 @@ class MenuItemModel {
       gstPercent: gstPercent ?? this.gstPercent,
       variants: variants ?? this.variants,
       trackInventory: trackInventory ?? this.trackInventory,
+      aliases: aliases ?? this.aliases,
     );
   }
 }

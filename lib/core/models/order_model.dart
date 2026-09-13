@@ -7,6 +7,7 @@ class CartItemModel {
   final MenuItemModel item;
   int quantity;
   String? note;
+  String? get notes => note;
   int? _kotQuantity;
 
   int get kotQuantity => _kotQuantity ?? 0;

@@ -84,13 +84,14 @@ class TableService {
   }
 
   /// Update table status
-  Future<bool> updateTableStatus(String tableId, TableStatus status, {String? orderId}) async {
+  Future<bool> updateTableStatus(String tableId, TableStatus status, {String? orderId, String? occupiedSince}) async {
     try {
       await _apiClient.patch(
         '${ApiEndpoints.tables}/$tableId/status',
         data: {
           'status': status.name,
           if (orderId != null) 'currentOrderId': orderId,
+          if (occupiedSince != null) 'occupiedSince': occupiedSince,
         },
       );
       return true;
