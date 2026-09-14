@@ -21,6 +21,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   int _selectedTab = 0; // 0: Products, 1: Categories
   String _searchQuery = '';
   String _selectedCategoryFilter = 'All';
+  String _categorySearchQuery = '';
+  final Set<String> _expandedCategories = {};
+  String _categorySortMode = 'manual';
 
   @override
   void initState() {
@@ -59,12 +62,61 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     }).toList();
   }
 
+  List<String> get filteredCategories {
+    var cats = List<String>.from(db.categories);
+    final q = _categorySearchQuery.trim().toLowerCase();
+    if (q.isNotEmpty) {
+      cats = cats.where((cat) {
+        if (cat.toLowerCase().contains(q)) return true;
+        return db.menuItems.any((m) =>
+            m.category.toLowerCase() == cat.toLowerCase() &&
+            (m.name.toLowerCase().contains(q) || m.description.toLowerCase().contains(q)));
+      }).toList();
+    }
+    return cats;
+  }
+
+  void _toggleCategoryExpanded(String cat) {
+    setState(() {
+      if (_expandedCategories.contains(cat)) {
+        _expandedCategories.remove(cat);
+      } else {
+        _expandedCategories.add(cat);
+      }
+    });
+  }
+
+  void _toggleAllCategoriesExpanded() {
+    setState(() {
+      if (_expandedCategories.length >= db.categories.length && db.categories.isNotEmpty) {
+        _expandedCategories.clear();
+      } else {
+        _expandedCategories.addAll(db.categories);
+      }
+    });
+  }
+
+  String _getCategorySortLabel() {
+    switch (_categorySortMode) {
+      case 'name_asc':
+        return 'Sort: A → Z';
+      case 'name_desc':
+        return 'Sort: Z → A';
+      case 'items_desc':
+        return 'Sort: Most Items';
+      case 'items_asc':
+        return 'Sort: Fewest Items';
+      default:
+        return 'Sort Categories';
+    }
+  }
+
   /// Open full-featured POS Add Item / Edit Item screen
-  void _openAddEditProductScreen([MenuItemModel? editItem]) {
+  void _openAddEditProductScreen([MenuItemModel? editItem, String? initialCategory]) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AddProductScreen(editItem: editItem),
+        builder: (_) => AddProductScreen(editItem: editItem, initialCategory: initialCategory),
       ),
     ).then((_) => setState(() {}));
   }
@@ -984,15 +1036,348 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  Widget _buildCategoryCard(String cat) {
-    final itemCount = db.menuItems.where((m) => m.category == cat).length;
+  void _showEditCategoryDialog(String cat) {
+    final editCtrl = TextEditingController(text: cat);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        contentPadding: const EdgeInsets.all(22),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+        content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 540),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: const BoxDecoration(
+                      color: Color(0xFF051C48),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Edit Category Name',
+                    style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: editCtrl,
+                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5, fontWeight: FontWeight.bold),
+                decoration: InputDecoration(
+                  labelText: 'Category Name',
+                  hintText: 'Category Name',
+                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                  labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13),
+                  filled: true,
+                  fillColor: const Color(0xFFF8FAFC),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    onPressed: () {
+                      final newName = editCtrl.text.trim();
+                      if (newName.isNotEmpty && newName != cat) {
+                        if (_expandedCategories.contains(cat)) {
+                          _expandedCategories.remove(cat);
+                          _expandedCategories.add(newName);
+                        }
+                        db.editCategory(cat, newName);
+                        setState(() {});
+                        Navigator.pop(context);
+                      } else if (newName == cat) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF051C48),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                      elevation: 0,
+                    ),
+                    child: const Text('Update Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryProductItem(
+    String cat,
+    MenuItemModel prod,
+    int pIdx,
+    int totalCount, {
+    Key? key,
+  }) {
+    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final double displayPrice = prod.variants.isNotEmpty ? prod.variants.first.price : prod.price;
+
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      key: key,
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Row: Drag Handle + FoodType + Name + Price
+          Row(
+            children: [
+              // Product Reorder Drag Handle
+              ReorderableDragStartListener(
+                index: pIdx,
+                child: Tooltip(
+                  message: 'Drag to reorder product',
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                    child: const Icon(Icons.drag_handle_rounded, color: Color(0xFF94A3B8), size: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+
+              // Food Type Icon
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF051C48).withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: FoodTypeIcon(itemType: prod.itemType, size: 12),
+              ),
+              const SizedBox(width: 6),
+
+              // Product Name
+              Expanded(
+                child: Text(
+                  prod.name,
+                  style: const TextStyle(
+                    fontSize: 12.0,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 6),
+
+              // Product Price
+              Text(
+                '$currency${displayPrice.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  color: Color(0xFF051C48),
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+
+          // Bottom Row: Wrapped Badges & Actions (Guaranteed Zero Pixel Overflow)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Badges in Wrap
+              Expanded(
+                child: Wrap(
+                  spacing: 4,
+                  runSpacing: 3,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    // Stock badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: prod.stockQuantity <= 10
+                            ? const Color(0xFFFEE2E2)
+                            : const Color(0xFF051C48).withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(
+                          color: prod.stockQuantity <= 10
+                              ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                              : const Color(0xFF051C48).withValues(alpha: 0.15),
+                        ),
+                      ),
+                      child: Text(
+                        '${prod.stockQuantity} stock',
+                        style: TextStyle(
+                          color: prod.stockQuantity <= 10 ? const Color(0xFFEF4444) : const Color(0xFF051C48),
+                          fontSize: 9.0,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+
+                    // Variants Badge (if any)
+                    if (prod.variants.isNotEmpty)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD97706).withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: const Color(0xFFD97706).withValues(alpha: 0.25)),
+                        ),
+                        child: Text(
+                          '${prod.variants.length} var',
+                          style: const TextStyle(
+                            color: Color(0xFFD97706),
+                            fontSize: 9.0,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+
+                    // Active Switch
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Active',
+                          style: TextStyle(color: Color(0xFF64748B), fontSize: 9.5, fontWeight: FontWeight.w500),
+                        ),
+                        Transform.scale(
+                          scale: 0.6,
+                          child: Switch(
+                            value: prod.isAvailable,
+                            activeThumbColor: const Color(0xFF051C48),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            onChanged: (val) {
+                              db.toggleMenuItemAvailability(prod.id);
+                              setState(() {});
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // Actions (Move Up, Move Down, Edit, Delete)
+              Wrap(
+                spacing: 3,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (pIdx > 0)
+                    Tooltip(
+                      message: 'Move Product Up',
+                      child: InkWell(
+                        onTap: () => db.reorderCategoryProducts(cat, pIdx, pIdx - 1),
+                        borderRadius: BorderRadius.circular(4),
+                        child: const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Icon(Icons.arrow_upward_rounded, size: 14, color: Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  if (pIdx < totalCount - 1)
+                    Tooltip(
+                      message: 'Move Product Down',
+                      child: InkWell(
+                        onTap: () => db.reorderCategoryProducts(cat, pIdx, pIdx + 2),
+                        borderRadius: BorderRadius.circular(4),
+                        child: const Padding(
+                          padding: EdgeInsets.all(2),
+                          child: Icon(Icons.arrow_downward_rounded, size: 14, color: Color(0xFF64748B)),
+                        ),
+                      ),
+                    ),
+                  // Edit Product
+                  Tooltip(
+                    message: 'Edit Product',
+                    child: InkWell(
+                      onTap: () => _openAddEditProductScreen(prod, cat),
+                      borderRadius: BorderRadius.circular(5),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
+                        ),
+                        child: const Icon(Icons.edit_rounded, color: Color(0xFF051C48), size: 12),
+                      ),
+                    ),
+                  ),
+                  // Delete Product
+                  Tooltip(
+                    message: 'Delete Product',
+                    child: InkWell(
+                      onTap: () => _confirmDeleteProduct(prod),
+                      borderRadius: BorderRadius.circular(5),
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                        ),
+                        child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 12),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryCard(String cat, int index, int totalCount, {Key? key}) {
+    final catLower = cat.trim().toLowerCase();
+    final catProducts = db.menuItems.where((m) => m.category.trim().toLowerCase() == catLower).toList();
+    final itemCount = catProducts.length;
+    final activeCount = catProducts.where((p) => p.isAvailable).length;
+    final totalStock = catProducts.fold<int>(0, (sum, p) => sum + p.stockQuantity);
+    final isExpanded = _expandedCategories.contains(cat);
+
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.0),
+        border: Border.all(
+          color: isExpanded ? const Color(0xFF051C48).withValues(alpha: 0.35) : const Color(0xFFCBD5E1),
+          width: isExpanded ? 1.4 : 1.0,
+        ),
         boxShadow: const [
           BoxShadow(
             color: Color(0x06000000),
@@ -1001,140 +1386,408 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
           ),
         ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: const Color(0xFF051C48).withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(Icons.category_rounded, color: Color(0xFF051C48), size: 18),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(cat, style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                Text('$itemCount Products in category',
-                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 10.5)),
-              ],
-            ),
-          ),
+          // Header Row
           InkWell(
-            onTap: () {
-              final editCtrl = TextEditingController(text: cat);
-              showDialog(
-                context: context,
-                builder: (_) => AlertDialog(
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-                  contentPadding: const EdgeInsets.all(22),
-                  insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                  content: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 540),
+            onTap: () => _toggleCategoryExpanded(cat),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: Row(
+                children: [
+                  // Category Drag Handle
+                  ReorderableDragStartListener(
+                    index: index,
+                    child: Tooltip(
+                      message: 'Drag to reorder category',
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                        child: const Icon(Icons.drag_indicator_rounded, color: Color(0xFF94A3B8), size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+
+                  // Category Icon
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.category_rounded, color: Color(0xFF051C48), size: 16),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // Category Name & Info
+                  Expanded(
                     child: Column(
-                      mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
                           children: [
+                            Flexible(
+                              child: Text(
+                                cat,
+                                style: const TextStyle(
+                                  fontSize: 13.0,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF0F172A),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
                             Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF051C48),
-                                shape: BoxShape.circle,
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(5),
                               ),
-                              child: const Icon(Icons.edit_rounded, color: Colors.white, size: 18),
-                            ),
-                            const SizedBox(width: 10),
-                            const Text(
-                              'Edit Category Name',
-                              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 17),
+                              child: Text(
+                                '$itemCount',
+                                style: const TextStyle(
+                                  color: Color(0xFF051C48),
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: editCtrl,
-                          style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13.5, fontWeight: FontWeight.bold),
-                          decoration: InputDecoration(
-                            labelText: 'Category Name',
-                            hintText: 'Category Name',
-                            hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-                            labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 13),
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.pop(context),
-                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                if (editCtrl.text.trim().isNotEmpty) {
-                                  db.editCategory(cat, editCtrl.text.trim());
-                                  setState(() {});
-                                  Navigator.pop(context);
-                                }
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF051C48),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-                                elevation: 0,
-                              ),
-                              child: const Text('Update Category', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
+                        const SizedBox(height: 2),
+                        Text(
+                          '$activeCount active • $totalStock stock',
+                          style: const TextStyle(color: Color(0xFF64748B), fontSize: 10.0),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
                   ),
-                ),
-              );
-            },
-            borderRadius: BorderRadius.circular(6),
-            child: Container(
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: const Color(0xFF051C48).withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.25)),
+
+                  // Actions Row
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Reorder Move Up
+                      if (index > 0)
+                        Tooltip(
+                          message: 'Move Up',
+                          child: InkWell(
+                            onTap: () => db.reorderCategories(index, index - 1),
+                            borderRadius: BorderRadius.circular(6),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.keyboard_arrow_up_rounded, size: 18, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ),
+                      // Reorder Move Down
+                      if (index < totalCount - 1)
+                        Tooltip(
+                          message: 'Move Down',
+                          child: InkWell(
+                            onTap: () => db.reorderCategories(index, index + 2),
+                            borderRadius: BorderRadius.circular(6),
+                            child: const Padding(
+                              padding: EdgeInsets.all(4),
+                              child: Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Color(0xFF64748B)),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 2),
+
+                      // Add Product directly into this Category
+                      Tooltip(
+                        message: 'Add Product to $cat',
+                        child: InkWell(
+                          onTap: () => _openAddEditProductScreen(null, cat),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
+                            ),
+                            child: const Icon(Icons.add_rounded, color: Color(0xFF051C48), size: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Edit Category Name
+                      Tooltip(
+                        message: 'Edit Category Name',
+                        child: InkWell(
+                          onTap: () => _showEditCategoryDialog(cat),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF051C48).withValues(alpha: 0.08),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.2)),
+                            ),
+                            child: const Icon(Icons.edit_rounded, color: Color(0xFF051C48), size: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Delete Category
+                      Tooltip(
+                        message: 'Delete Category',
+                        child: InkWell(
+                          onTap: () => _confirmDeleteCategory(cat),
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEE2E2),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+                            ),
+                            child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 14),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+
+                      // Expand / Collapse Chevron
+                      Container(
+                        padding: const EdgeInsets.all(2),
+                        child: Icon(
+                          isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                          color: const Color(0xFF051C48),
+                          size: 20,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              child: const Icon(Icons.edit_rounded, color: Color(0xFF051C48), size: 14),
             ),
           ),
-          const SizedBox(width: 5),
-          InkWell(
-            onTap: () => _confirmDeleteCategory(cat),
-            borderRadius: BorderRadius.circular(6),
-            child: Container(
-              padding: const EdgeInsets.all(5),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFEE2E2),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.3)),
+
+          // Expanded Section (inside category)
+          if (isExpanded) ...[
+            const Divider(color: Color(0xFFE2E8F0), height: 1),
+            Container(
+              color: const Color(0xFFF8FAFC),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Category Products Toolbar
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          'Products in $cat ($itemCount)',
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF334155),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Sort Products inside category
+                          PopupMenuButton<String>(
+                            tooltip: 'Sort products in $cat',
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            position: PopupMenuPosition.under,
+                            onSelected: (sortMode) {
+                              db.sortCategoryProducts(cat, sortMode);
+                            },
+                            itemBuilder: (context) => [
+                              const PopupMenuItem(
+                                value: 'name_asc',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.sort_by_alpha_rounded, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Name (A → Z)', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'name_desc',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.sort_by_alpha_rounded, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Name (Z → A)', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'price_asc',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.arrow_upward_rounded, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Price (Low to High)', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'price_desc',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.arrow_downward_rounded, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Price (High to Low)', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'stock_desc',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Stock (High to Low)', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'available_first',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.check_circle_outline_rounded, size: 15, color: Color(0xFF051C48)),
+                                    SizedBox(width: 8),
+                                    Text('Available First', style: TextStyle(fontSize: 12)),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFCBD5E1)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.swap_vert_rounded, size: 13, color: Color(0xFF051C48)),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'Sort',
+                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          // Quick Add Product Button
+                          InkWell(
+                            onTap: () => _openAddEditProductScreen(null, cat),
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF051C48),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add_rounded, size: 13, color: Colors.white),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'Add Item',
+                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.white),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Product List
+                  if (catProducts.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.inventory_2_outlined, color: Color(0xFF94A3B8), size: 28),
+                          const SizedBox(height: 6),
+                          Text(
+                            'No products in "$cat" yet',
+                            style: const TextStyle(color: Color(0xFF64748B), fontSize: 11.5, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () => _openAddEditProductScreen(null, cat),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF051C48),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            ),
+                            icon: const Icon(Icons.add_rounded, size: 14, color: Colors.white),
+                            label: Text(
+                              'Add First Product to $cat',
+                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    Theme(
+                      data: Theme.of(context).copyWith(
+                        canvasColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                      ),
+                      child: ReorderableListView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        buildDefaultDragHandles: false,
+                        itemCount: catProducts.length,
+                        onReorder: (oldIdx, newIdx) {
+                          db.reorderCategoryProducts(cat, oldIdx, newIdx);
+                        },
+                        itemBuilder: (context, pIdx) {
+                          final prod = catProducts[pIdx];
+                          return _buildCategoryProductItem(
+                            cat,
+                            prod,
+                            pIdx,
+                            catProducts.length,
+                            key: ValueKey('cat_${cat}_item_${prod.id}'),
+                          );
+                        },
+                      ),
+                    ),
+                ],
               ),
-              child: const Icon(Icons.delete_outline_rounded, color: Color(0xFFEF4444), size: 14),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -1176,12 +1829,57 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       );
     }
 
-    return ListView.builder(
-      physics: const BouncingScrollPhysics(),
-      itemCount: db.categories.length,
-      itemBuilder: (context, idx) {
-        return _buildCategoryCard(db.categories[idx]);
-      },
+    // Categories Tab
+    final cats = filteredCategories;
+    if (cats.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.category_rounded, color: Color(0xFF94A3B8), size: 40),
+            const SizedBox(height: 8),
+            Text(
+              _categorySearchQuery.isNotEmpty ? 'No categories matching "$_categorySearchQuery"' : 'No categories found',
+              style: const TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _showAddCategoryModal,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF051C48),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+              icon: const Icon(Icons.add_rounded, size: 15, color: Colors.white),
+              label: const Text('Add First Category',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(
+        canvasColor: Colors.transparent,
+        shadowColor: Colors.transparent,
+      ),
+      child: ReorderableListView.builder(
+        physics: const BouncingScrollPhysics(),
+        buildDefaultDragHandles: false,
+        itemCount: cats.length,
+        onReorder: (oldIdx, newIdx) {
+          db.reorderCategories(oldIdx, newIdx);
+        },
+        itemBuilder: (context, idx) {
+          return _buildCategoryCard(
+            cats[idx],
+            idx,
+            cats.length,
+            key: ValueKey('cat_${cats[idx]}'),
+          );
+        },
+      ),
     );
   }
 
@@ -1381,34 +2079,192 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               const SizedBox(height: 8),
             ],
 
+            // Search Bar & Sorting Toolbar for Categories Tab
+            if (_selectedTab == 1) ...[
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x05000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 1),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    // Search Bar
+                    TextField(
+                      onChanged: (val) => setState(() => _categorySearchQuery = val),
+                      style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5),
+                      decoration: InputDecoration(
+                        hintText: 'Search category or product...',
+                        hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF051C48), size: 18),
+                        suffixIcon: _categorySearchQuery.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF64748B)),
+                                onPressed: () => setState(() => _categorySearchQuery = ''),
+                              )
+                            : null,
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+
+                    // Controls Row (Wrapped for pixel safety)
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Category Sorting Dropdown
+                        PopupMenuButton<String>(
+                          tooltip: 'Sort Categories',
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          position: PopupMenuPosition.under,
+                          onSelected: (val) {
+                            setState(() => _categorySortMode = val);
+                            if (val != 'manual') {
+                              db.sortCategories(val);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                              value: 'manual',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.drag_indicator_rounded, size: 15, color: Color(0xFF051C48)),
+                                  SizedBox(width: 8),
+                                  Text('Custom (Drag to Reorder)', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'name_asc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.sort_by_alpha_rounded, size: 15, color: Color(0xFF051C48)),
+                                  SizedBox(width: 8),
+                                  Text('Name (A → Z)', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'name_desc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.sort_by_alpha_rounded, size: 15, color: Color(0xFF051C48)),
+                                  SizedBox(width: 8),
+                                  Text('Name (Z → A)', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'items_desc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFF051C48)),
+                                  SizedBox(width: 8),
+                                  Text('Most Products (High → Low)', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem(
+                              value: 'items_asc',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFF051C48)),
+                                  SizedBox(width: 8),
+                                  Text('Fewest Products (Low → High)', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ],
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.swap_vert_rounded, size: 14, color: Color(0xFF051C48)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _getCategorySortLabel(),
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                        // Expand/Collapse All Button
+                        InkWell(
+                          onTap: _toggleAllCategoriesExpanded,
+                          borderRadius: BorderRadius.circular(6),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFFCBD5E1)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _expandedCategories.length >= db.categories.length && db.categories.isNotEmpty
+                                      ? Icons.unfold_less_rounded
+                                      : Icons.unfold_more_rounded,
+                                  size: 14,
+                                  color: const Color(0xFF051C48),
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _expandedCategories.length >= db.categories.length && db.categories.isNotEmpty
+                                      ? 'Collapse All'
+                                      : 'Expand All',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF051C48)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+
             // Content Area
             Expanded(
               child: _buildContent(),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _CsvHeaderChip extends StatelessWidget {
-  final String label;
-
-  const _CsvHeaderChip(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFF051C48).withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: const Color(0xFF051C48).withValues(alpha: 0.18)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(color: Color(0xFF051C48), fontSize: 10.5, fontWeight: FontWeight.bold),
       ),
     );
   }

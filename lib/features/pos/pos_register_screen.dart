@@ -6180,7 +6180,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
               const Spacer(),
               // Input manually / Custom Item Button
-              ElevatedButton.icon(
+              ElevatedButton(
                 onPressed: _showInputManuallyDialog,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF051C48).withValues(alpha: 0.08),
@@ -6191,9 +6191,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   visualDensity: VisualDensity.compact,
                 ),
-                icon: const Icon(Icons.add_circle_outline_rounded, size: 15, color: Color(0xFF051C48)),
-                label: const Text(
-                  'Input manually',
+                child: const Text(
+                  'Add Items',
                   style: TextStyle(color: Color(0xFF051C48), fontSize: 12, fontWeight: FontWeight.bold),
                 ),
               ),

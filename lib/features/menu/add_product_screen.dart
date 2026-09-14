@@ -34,10 +34,12 @@ class ProductImageItem {
 
 class AddProductScreen extends StatefulWidget {
   final MenuItemModel? editItem;
+  final String? initialCategory;
 
   const AddProductScreen({
     super.key,
     this.editItem,
+    this.initialCategory,
   });
 
   @override
@@ -88,7 +90,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   void initState() {
     super.initState();
-    if (db.categories.isNotEmpty) {
+    if (widget.initialCategory != null && widget.initialCategory!.isNotEmpty) {
+      _selectedCategory = widget.initialCategory!;
+    } else if (db.categories.isNotEmpty) {
       _selectedCategory = db.categories.first;
     }
 

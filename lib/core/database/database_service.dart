@@ -1343,7 +1343,15 @@ class DatabaseService extends ChangeNotifier {
 
         final remoteCategories = await _productService.fetchCategories();
         if (remoteCategories.isNotEmpty) {
-          categories = remoteCategories;
+          if (categories.isEmpty) {
+            categories = remoteCategories;
+          } else {
+            for (final rc in remoteCategories) {
+              if (!categories.any((c) => c.toLowerCase() == rc.toLowerCase())) {
+                categories.add(rc);
+              }
+            }
+          }
         } else {
           _syncCategoriesFromMenu();
         }
@@ -2409,6 +2417,124 @@ class DatabaseService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[DatabaseService.deleteCategory] API error: $e');
     }
+  }
+
+  /// Reorder categories list by moving item from [oldIndex] to [newIndex]
+  Future<void> reorderCategories(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= categories.length) return;
+    if (newIndex > categories.length) newIndex = categories.length;
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final item = categories.removeAt(oldIndex);
+    categories.insert(newIndex, item);
+    await _saveCategoriesToPrefs();
+    notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        for (int i = 0; i < categories.length; i++) {
+          _productService.updateCategorySortOrder(categories[i], i);
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.reorderCategories] API error: $e');
+    }
+  }
+
+  /// Sort categories by [sortMode]: 'name_asc', 'name_desc', 'items_desc', 'items_asc'
+  Future<void> sortCategories(String sortMode) async {
+    if (sortMode == 'name_asc') {
+      categories.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    } else if (sortMode == 'name_desc') {
+      categories.sort((a, b) => b.toLowerCase().compareTo(a.toLowerCase()));
+    } else if (sortMode == 'items_desc') {
+      categories.sort((a, b) {
+        final countA = menuItems.where((m) => m.category.toLowerCase() == a.toLowerCase()).length;
+        final countB = menuItems.where((m) => m.category.toLowerCase() == b.toLowerCase()).length;
+        return countB.compareTo(countA);
+      });
+    } else if (sortMode == 'items_asc') {
+      categories.sort((a, b) {
+        final countA = menuItems.where((m) => m.category.toLowerCase() == a.toLowerCase()).length;
+        final countB = menuItems.where((m) => m.category.toLowerCase() == b.toLowerCase()).length;
+        return countA.compareTo(countB);
+      });
+    }
+    await _saveCategoriesToPrefs();
+    notifyListeners();
+
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        for (int i = 0; i < categories.length; i++) {
+          _productService.updateCategorySortOrder(categories[i], i);
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.sortCategories] API error: $e');
+    }
+  }
+
+  /// Reorder products inside a specific category
+  Future<void> reorderCategoryProducts(String categoryName, int oldIndex, int newIndex) async {
+    final catLower = categoryName.trim().toLowerCase();
+    final catProducts = menuItems.where((m) => m.category.trim().toLowerCase() == catLower).toList();
+    if (oldIndex < 0 || oldIndex >= catProducts.length) return;
+    if (newIndex > catProducts.length) newIndex = catProducts.length;
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final movedItem = catProducts.removeAt(oldIndex);
+    catProducts.insert(newIndex, movedItem);
+
+    // Replace items of this category in menuItems in the newly arranged order
+    int catIdx = 0;
+    for (int i = 0; i < menuItems.length; i++) {
+      if (menuItems[i].category.trim().toLowerCase() == catLower) {
+        menuItems[i] = catProducts[catIdx++];
+      }
+    }
+
+    await _saveMenuToPrefs();
+    notifyListeners();
+  }
+
+  /// Sort products inside a specific category by [sortMode]
+  Future<void> sortCategoryProducts(String categoryName, String sortMode) async {
+    final catLower = categoryName.trim().toLowerCase();
+    final catProducts = menuItems.where((m) => m.category.trim().toLowerCase() == catLower).toList();
+    if (catProducts.isEmpty) return;
+
+    if (sortMode == 'name_asc') {
+      catProducts.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    } else if (sortMode == 'name_desc') {
+      catProducts.sort((a, b) => b.name.toLowerCase().compareTo(a.name.toLowerCase()));
+    } else if (sortMode == 'price_asc') {
+      catProducts.sort((a, b) => a.effectivePrice.compareTo(b.effectivePrice));
+    } else if (sortMode == 'price_desc') {
+      catProducts.sort((a, b) => b.effectivePrice.compareTo(a.effectivePrice));
+    } else if (sortMode == 'stock_desc') {
+      catProducts.sort((a, b) => b.stockQuantity.compareTo(a.stockQuantity));
+    } else if (sortMode == 'available_first') {
+      catProducts.sort((a, b) {
+        if (a.isAvailable == b.isAvailable) {
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        }
+        return a.isAvailable ? -1 : 1;
+      });
+    }
+
+    int catIdx = 0;
+    for (int i = 0; i < menuItems.length; i++) {
+      if (menuItems[i].category.trim().toLowerCase() == catLower) {
+        menuItems[i] = catProducts[catIdx++];
+      }
+    }
+
+    await _saveMenuToPrefs();
+    notifyListeners();
   }
 
   void _syncCategoriesFromMenu() {

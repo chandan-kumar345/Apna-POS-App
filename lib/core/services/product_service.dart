@@ -211,6 +211,20 @@ class ProductService {
     }
   }
 
+  /// Update category sort order
+  Future<bool> updateCategorySortOrder(String name, int sortOrder) async {
+    try {
+      await _apiClient.put(
+        '${ApiEndpoints.categories}/${Uri.encodeComponent(name.trim())}',
+        data: {'sortOrder': sortOrder},
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[ProductService.updateCategorySortOrder] error: $e');
+      return false;
+    }
+  }
+
   /// Delete category
   Future<bool> deleteCategory(String name) async {
     try {
