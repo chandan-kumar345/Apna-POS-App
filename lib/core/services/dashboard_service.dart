@@ -303,6 +303,49 @@ class DashboardService {
     return queryParams;
   }
 
+  (DateTime?, DateTime?) _parseDateRange({String? period, String? startDate, String? endDate}) {
+    DateTime? start;
+    DateTime? end;
+    if (startDate != null && startDate.isNotEmpty) {
+      final s = DateTime.tryParse(startDate);
+      if (s != null) {
+        start = s.isUtc ? s.toLocal() : s;
+      }
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      final e = DateTime.tryParse(endDate);
+      if (e != null) {
+        end = e.isUtc ? e.toLocal() : e;
+      }
+    }
+
+    if (start == null || end == null) {
+      final now = DateTime.now();
+      final p = (period ?? 'Today').toLowerCase().trim();
+      if (p == 'today') {
+        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (p == 'yesterday') {
+        final y = now.subtract(const Duration(days: 1));
+        start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+        end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+      } else if (p == 'thisweek' || p == 'week' || p == 'this week') {
+        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+        final mon = now.subtract(Duration(days: diff));
+        start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (p == 'thismonth' || p == 'month' || p == 'this month') {
+        start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+      } else if (p == 'thisyear' || p == 'year' || p == 'this year') {
+        start = DateTime(now.year, 1, 1, 0, 0, 0);
+        end = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+      }
+    }
+    return (start, end);
+  }
+
   /// Single unified request fetching complete dashboard overview bundle
   Future<DashboardOverviewData?> fetchOverview({
     String period = 'Today',
@@ -354,8 +397,10 @@ class DashboardService {
     }
 
     // Local DB fallback
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
-    final active = _db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end);
+    final allOrders = _db.deduplicateOrdersList(_db.orders);
+    final active = allOrders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
     double rev = 0;
     for (final o in settled) {
       rev += o.totalAmount;
@@ -394,7 +439,8 @@ class DashboardService {
     }
 
     // Local DB fallback
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end);
     int dineCount = 0, delivCount = 0, takeCount = 0;
     double dineAmt = 0, delivAmt = 0, takeAmt = 0;
 
@@ -453,7 +499,8 @@ class DashboardService {
       }
     }
 
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end);
     final Map<String, ItemSaleReportItem> map = {};
     int sr = 1;
     for (final o in settled) {
@@ -540,7 +587,8 @@ class DashboardService {
       }
     }
 
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end);
     final Map<String, Map<String, dynamic>> map = {};
     double total = 0;
 
@@ -549,14 +597,17 @@ class DashboardService {
       var pm = o.paymentMethod.toUpperCase().trim();
       if (pm.startsWith('CASH')) {
         pm = 'CASH';
-      } else if (pm.startsWith('CARD')) {
+      } else if (pm.startsWith('CARD') || pm.startsWith('DEBIT') || pm.startsWith('CREDIT')) {
         pm = 'CARD';
-      } else if (pm.startsWith('UPI')) {
+      } else if (pm.startsWith('UPI') || pm.startsWith('ONLINE') || pm.startsWith('QR') || pm.startsWith('GPAY') || pm.startsWith('PHONEPE') || pm.startsWith('PAYTM')) {
         pm = 'UPI';
       } else if (pm.startsWith('SPLIT')) {
         pm = 'SPLIT';
+      } else if (pm.isEmpty) {
+        pm = 'CASH';
+      } else {
+        pm = 'OTHER';
       }
-      if (pm.isEmpty) pm = 'OTHER';
 
       if (!map.containsKey(pm)) {
         map[pm] = {'count': 0, 'amount': 0.0};
@@ -604,7 +655,8 @@ class DashboardService {
       }
     }
 
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end);
     double totalTax = 0;
     for (final o in settled) {
       totalTax += o.taxAmount;
@@ -637,12 +689,14 @@ class DashboardService {
       }
     }
 
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).length;
-    final cancelled = _db.orders.where((o) => o.status == OrderStatus.cancelled).length;
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final settled = _db.getCompletedOrders(start: start, end: end).length;
+    final allOrders = _db.deduplicateOrdersList(_db.orders);
+    final cancelled = allOrders.where((o) => o.status == OrderStatus.cancelled).length;
     return OrderStatsSummaryData(
       successfulOrders: settled,
       cancelledOrders: cancelled,
-      totalOrders: _db.orders.length,
+      totalOrders: allOrders.length,
     );
   }
 
@@ -669,7 +723,7 @@ class DashboardService {
 
     // Default chart data points based on local settled orders
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final settled = _db.orders.where((o) => o.status == OrderStatus.completed || o.isPaid).toList();
+    final settled = _db.getCompletedOrders();
     final avgRev = settled.isNotEmpty ? settled.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
     return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (settled.length / 7).ceil())).toList();
   }

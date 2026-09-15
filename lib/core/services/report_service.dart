@@ -405,28 +405,51 @@ class ReportService {
     return list.take(limit).toList();
   }
 
+  /// Expose local sales report computation for instant cached rendering
+  SalesReportData getLocalSalesReport({String? period, String? startDate, String? endDate}) {
+    return _buildLocalSalesReport(period: period, startDate: startDate, endDate: endDate);
+  }
+
   /// Local calculation fallback for SalesReportData
   SalesReportData _buildLocalSalesReport({String? period, String? startDate, String? endDate}) {
     DateTime? start;
     DateTime? end;
     if (startDate != null && startDate.isNotEmpty) {
       final s = DateTime.tryParse(startDate);
-      if (s != null) start = DateTime(s.year, s.month, s.day, 0, 0, 0, 0);
+      if (s != null) {
+        start = s.isUtc ? s.toLocal() : s;
+      }
     }
     if (endDate != null && endDate.isNotEmpty) {
       final e = DateTime.tryParse(endDate);
-      if (e != null) end = DateTime(e.year, e.month, e.day, 23, 59, 59, 999);
+      if (e != null) {
+        end = e.isUtc ? e.toLocal() : e;
+      }
     }
 
-    final rawSettled = _db.orders.where((o) {
-      if (o.status != OrderStatus.completed && !o.isPaid) return false;
-      final oDate = o.createdDateTime.toLocal();
-      if (start != null && oDate.isBefore(start)) return false;
-      if (end != null && oDate.isAfter(end)) return false;
-      return true;
-    }).toList();
+    if (start == null || end == null) {
+      final now = DateTime.now();
+      final p = (period ?? 'allTime').toLowerCase().trim();
+      if (p == 'today') {
+        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (p == 'yesterday') {
+        final y = now.subtract(const Duration(days: 1));
+        start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+        end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+      } else if (p == 'thisweek' || p == 'week' || p == 'this week') {
+        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+        final mon = now.subtract(Duration(days: diff));
+        start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (p == 'thismonth' || p == 'month' || p == 'this month') {
+        start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+      }
+    }
 
-    final settled = _db.deduplicateOrdersList(rawSettled);
+    final settled = _db.getCompletedOrders(start: start, end: end);
 
     double totalRev = 0;
     double totalTax = 0;
@@ -453,7 +476,21 @@ class ReportService {
         prodMap[key] = TopProductData(name: key, quantity: q, revenue: r, foodType: i.item.itemType.toLowerCase().replaceAll('-', '_'));
       }
 
-      final pm = o.paymentMethod.isNotEmpty ? o.paymentMethod : 'Cash';
+      var pm = o.paymentMethod.toUpperCase().trim();
+      if (pm.startsWith('CASH')) {
+        pm = 'Cash';
+      } else if (pm.startsWith('CARD') || pm.startsWith('DEBIT') || pm.startsWith('CREDIT')) {
+        pm = 'Card';
+      } else if (pm.startsWith('UPI') || pm.startsWith('ONLINE') || pm.startsWith('QR') || pm.startsWith('GPAY') || pm.startsWith('PHONEPE') || pm.startsWith('PAYTM')) {
+        pm = 'UPI';
+      } else if (pm.startsWith('SPLIT')) {
+        pm = 'Split';
+      } else if (pm.isEmpty) {
+        pm = 'Cash';
+      } else {
+        pm = o.paymentMethod;
+      }
+
       pmMap[pm] = (pmMap[pm] ?? 0.0) + o.totalAmount;
       pmCount[pm] = (pmCount[pm] ?? 0) + 1;
 

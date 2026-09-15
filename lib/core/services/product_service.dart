@@ -168,13 +168,29 @@ class ProductService {
     }
   }
 
-  /// Fetch categories list
-  Future<List<String>> fetchCategories() async {
+  /// Fetch categories list and optionally populate category images map
+  Future<List<String>> fetchCategories({Map<String, String>? categoryImagesTarget}) async {
     try {
       final response = await _apiClient.get(ApiEndpoints.categories);
       if (response != null && response['data'] != null && response['data']['categories'] != null) {
         final raw = response['data']['categories'] as List<dynamic>;
-        return raw.map((c) => (c['name'] ?? '').toString()).where((s) => s.isNotEmpty).toList();
+        final List<String> result = [];
+        for (final c in raw) {
+          if (c is String && c.trim().isNotEmpty) {
+            result.add(c.trim());
+          } else if (c is Map) {
+            final name = (c['name'] ?? '').toString().trim();
+            final img = (c['image'] ?? c['imageUrl'] ?? '').toString().trim();
+            if (name.isNotEmpty) {
+              result.add(name);
+              if (img.isNotEmpty && categoryImagesTarget != null) {
+                categoryImagesTarget[name.toLowerCase()] = img;
+                categoryImagesTarget[name] = img;
+              }
+            }
+          }
+        }
+        return result;
       }
       return [];
     } catch (e) {
@@ -183,12 +199,17 @@ class ProductService {
     }
   }
 
-  /// Add new category
-  Future<bool> createCategory(String name) async {
+  /// Add new category with optional Cloudflare R2 image URL
+  Future<bool> createCategory(String name, {String? imageUrl}) async {
     try {
+      final payload = <String, dynamic>{'name': name.trim()};
+      if (imageUrl != null && imageUrl.trim().isNotEmpty) {
+        payload['image'] = imageUrl.trim();
+        payload['imageUrl'] = imageUrl.trim();
+      }
       await _apiClient.post(
         ApiEndpoints.categories,
-        data: {'name': name.trim()},
+        data: payload,
       );
       return true;
     } catch (e) {
@@ -197,12 +218,20 @@ class ProductService {
     }
   }
 
-  /// Edit / rename category (cascades on backend to all products)
-  Future<bool> updateCategory(String oldName, String newName) async {
+  /// Edit / rename category with optional Cloudflare R2 image URL (cascades on backend to all products)
+  Future<bool> updateCategory(String oldName, String newName, {String? imageUrl, int? sortOrder}) async {
     try {
+      final payload = <String, dynamic>{'name': newName.trim()};
+      if (imageUrl != null) {
+        payload['image'] = imageUrl.trim();
+        payload['imageUrl'] = imageUrl.trim();
+      }
+      if (sortOrder != null) {
+        payload['sortOrder'] = sortOrder;
+      }
       await _apiClient.put(
         '${ApiEndpoints.categories}/${Uri.encodeComponent(oldName.trim())}',
-        data: {'name': newName.trim()},
+        data: payload,
       );
       return true;
     } catch (e) {

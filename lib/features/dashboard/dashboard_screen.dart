@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'dart:ui';
 import '../../core/database/database_service.dart';
 import '../../core/services/dashboard_service.dart';
+import '../../core/services/report_service.dart';
 import '../../core/models/order_model.dart';
 
 /// Glass Liquid UI Dashboard Screen matching Apna POS design theme
@@ -2136,17 +2137,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       final start = range.start;
       final end = range.end;
 
-      final allOrders = _db.orders;
-      final filteredOrders = allOrders.where((o) {
-        if (o.status != OrderStatus.completed) return false;
-        final pm = o.paymentMethod.toLowerCase().trim();
-        if (pm.contains('kot') || pm.contains('pending') || pm == 'unpaid' || pm.isEmpty) {
-          return false;
-        }
-        final oDate = o.createdDateTime;
-        return oDate.isAfter(start.subtract(const Duration(seconds: 1))) &&
-            oDate.isBefore(end.add(const Duration(seconds: 1)));
-      }).toList();
+      final allOrders = _db.deduplicateOrdersList(_db.orders);
+      final filteredOrders = _db.getCompletedOrders(start: start, end: end);
 
       final int totalOrders = filteredOrders.length;
       final double totalRevenue = filteredOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
@@ -2175,9 +2167,11 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       }
 
       final Map<String, _LocalItemSaleAgg> productMap = {};
+      final List<TopProductData> topProductList = [];
       for (var o in filteredOrders) {
         for (var item in o.items) {
           final name = item.item.name;
+          final rev = item.item.effectivePrice * item.quantity;
           if (!productMap.containsKey(name)) {
             productMap[name] = _LocalItemSaleAgg(
               productId: item.item.id,
@@ -2188,7 +2182,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             );
           }
           productMap[name]!.quantity += item.quantity;
-          productMap[name]!.totalAmount += item.totalPrice;
+          productMap[name]!.totalAmount += rev;
         }
       }
 
@@ -2205,6 +2199,11 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           quantity: p.quantity,
           totalAmount: p.totalAmount,
         ));
+        topProductList.add(TopProductData(
+          name: p.productName,
+          quantity: p.quantity,
+          revenue: p.totalAmount,
+        ));
       }
 
       final Map<String, _LocalPaymentAgg> payMap = {};
@@ -2213,14 +2212,15 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         var m = o.paymentMethod.toUpperCase().trim();
         if (m.startsWith('CASH')) {
           m = 'CASH';
-        } else if (m.startsWith('CARD')) {
+        } else if (m.startsWith('CARD') || m.startsWith('DEBIT') || m.startsWith('CREDIT')) {
           m = 'CARD';
-        } else if (m.startsWith('UPI')) {
+        } else if (m.startsWith('UPI') || m.startsWith('ONLINE') || m.startsWith('QR') || m.startsWith('GPAY') || m.startsWith('PHONEPE') || m.startsWith('PAYTM')) {
           m = 'UPI';
         } else if (m.startsWith('SPLIT')) {
           m = 'SPLIT';
-        }
-        if (m.isEmpty) {
+        } else if (m.isEmpty) {
+          m = 'CASH';
+        } else {
           m = 'OTHER';
         }
 
@@ -2284,6 +2284,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           totalOrders: totalOrders,
           activeOrdersCount: activeOrdersCount,
           totalProductsCount: totalProductsCount,
+          topProducts: topProductList.take(15).toList(),
         ),
         orderTypes: OrderTypeStatsData(
           dineIn: OrderTypeCountAmount(count: dineInCount, amount: dineInAmount),

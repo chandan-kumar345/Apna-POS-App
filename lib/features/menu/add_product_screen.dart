@@ -462,7 +462,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           _remoteVideoUrl = null;
           _videoUrlController.clear();
         });
-        _initPreviewVideo(persistentPath ?? pickedVideo.path, isFile: true);
+        _initPreviewVideo(persistentPath, isFile: true);
         _showSuccessSnackBar('Video selected: ${pickedVideo.name}');
       }
     } catch (e) {
@@ -627,7 +627,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       children: [
                         Switch(
                           value: vAddDiscount,
-                          activeColor: const Color(0xFF051C48),
+                          activeTrackColor: const Color(0xFF1E4E8C),
+                          activeThumbColor: Colors.white,
                           onChanged: (val) {
                             setDialogState(() {
                               vAddDiscount = val;
@@ -1211,7 +1212,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 children: [
                                   Switch(
                                     value: _addDiscount,
-                                    activeColor: const Color(0xFF051C48),
+                                    activeTrackColor: const Color(0xFF1E4E8C),
+                                    activeThumbColor: Colors.white,
                                     onChanged: (val) => setState(() => _addDiscount = val),
                                   ),
                                   const SizedBox(width: 8),
@@ -2205,7 +2207,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                         children: [
                                           Switch(
                                             value: _trackInventory,
-                                            activeColor: const Color(0xFF051C48),
+                                            activeTrackColor: const Color(0xFF1E4E8C),
+                                            activeThumbColor: Colors.white,
                                             onChanged: (val) => setState(() => _trackInventory = val),
                                           ),
                                           const SizedBox(width: 8),

@@ -75,6 +75,7 @@ class DatabaseService extends ChangeNotifier {
   RestaurantModel? restaurant;
   List<MenuItemModel> menuItems = [];
   List<String> categories = [];
+  Map<String, String> categoryImages = {};
   List<TableModel> tables = [];
   List<OrderModel> orders = [];
   List<InventoryItemModel> inventoryItems = [];
@@ -432,7 +433,7 @@ class DatabaseService extends ChangeNotifier {
         final startB = parseTableOccupiedSince(activeOrder.createdAt);
         final String? earliestStart = (startA != null && startB != null)
             ? (startA.isBefore(startB) ? tbl.occupiedSince : activeOrder.createdAt)
-            : (tbl.occupiedSince ?? activeOrder.createdAt ?? DateTime.now().toIso8601String());
+            : (tbl.occupiedSince ?? activeOrder.createdAt);
 
         tables[i] = tbl.copyWith(
           status: mappedStatus,
@@ -576,6 +577,19 @@ class DatabaseService extends ChangeNotifier {
     } else {
       categories = [];
       _syncCategoriesFromMenu();
+    }
+
+    // 3b. Load Category Images (User-scoped)
+    final catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images');
+    if (catImagesJson != null && catImagesJson.isNotEmpty) {
+      try {
+        final Map rawMap = jsonDecode(catImagesJson);
+        categoryImages = rawMap.map((k, v) => MapEntry((k ?? '').toString().trim(), (v ?? '').toString().trim()));
+      } catch (e) {
+        categoryImages = {};
+      }
+    } else {
+      categoryImages = {};
     }
 
     // 4. Load Tables (User-scoped) or Seed Clean Floor
@@ -1299,6 +1313,20 @@ class DatabaseService extends ChangeNotifier {
             await _saveRestaurantToPrefs();
           }
 
+          // Sync Category Images from Business Profile / Settings
+          final rawRemoteCatImages = b?['categoryImages'] ?? ordSet?['categoryImages'] ?? prof?['categoryImages'] ?? b?['posSettings']?['categoryImages'];
+          if (rawRemoteCatImages != null && rawRemoteCatImages is Map) {
+            rawRemoteCatImages.forEach((k, v) {
+              if (k != null && v != null && v.toString().trim().isNotEmpty) {
+                final kStr = k.toString().trim();
+                final vStr = v.toString().trim();
+                categoryImages[kStr.toLowerCase()] = vStr;
+                categoryImages[kStr] = vStr;
+              }
+            });
+            await _saveCategoryImagesToPrefs();
+          }
+
           // Connect real-time Socket.IO room for this business
           final activeBizId = currentUser?.restaurantId ?? restaurant?.id;
           if (activeBizId != null && activeBizId.isNotEmpty) {
@@ -1341,7 +1369,7 @@ class DatabaseService extends ChangeNotifier {
           await _saveMenuToPrefs();
         }
 
-        final remoteCategories = await _productService.fetchCategories();
+        final remoteCategories = await _productService.fetchCategories(categoryImagesTarget: categoryImages);
         if (remoteCategories.isNotEmpty) {
           if (categories.isEmpty) {
             categories = remoteCategories;
@@ -1356,6 +1384,19 @@ class DatabaseService extends ChangeNotifier {
           _syncCategoriesFromMenu();
         }
         await _saveCategoriesToPrefs();
+        await _saveCategoryImagesToPrefs();
+
+        // Push local categoryImages to cloud if remote doesn't have it yet
+        if (categoryImages.isNotEmpty) {
+          unawaited(() async {
+            try {
+              final ApiClient client = ApiClient();
+              await client.patch(ApiEndpoints.posSettings, data: {
+                'categoryImages': categoryImages,
+              });
+            } catch (_) {}
+          }());
+        }
       } catch (e) {
         debugPrint('[DatabaseService] sync products error: $e');
       }
@@ -2358,21 +2399,35 @@ class DatabaseService extends ChangeNotifier {
   }
 
   // --- CATEGORY MANAGEMENT SERVICES ---
-  Future<void> addCategory(String categoryName) async {
+  Future<void> addCategory(String categoryName, {String? imagePath}) async {
     final name = categoryName.trim();
     if (name.isNotEmpty && !categories.contains(name)) {
       categories.add(name);
+      if (imagePath != null && imagePath.trim().isNotEmpty) {
+        final clean = name.toLowerCase();
+        categoryImages[clean] = imagePath.trim();
+        categoryImages[name] = imagePath.trim();
+        await _saveCategoryImagesToPrefs();
+      }
       await _saveCategoriesToPrefs();
       notifyListeners();
 
-      try {
-        final isAuth = await _authService.isAuthenticated();
-        if (isAuth) {
-          await _productService.createCategory(name);
+      unawaited(() async {
+        try {
+          final isAuth = await _authService.isAuthenticated();
+          if (isAuth) {
+            await _productService.createCategory(name, imageUrl: imagePath);
+            if (imagePath != null && imagePath.trim().isNotEmpty) {
+              final ApiClient client = ApiClient();
+              await client.patch(ApiEndpoints.posSettings, data: {
+                'categoryImages': categoryImages,
+              });
+            }
+          }
+        } catch (e) {
+          debugPrint('[DatabaseService.addCategory] API error: $e');
         }
-      } catch (e) {
-        debugPrint('[DatabaseService.addCategory] API error: $e');
-      }
+      }());
     }
   }
 
@@ -2389,34 +2444,61 @@ class DatabaseService extends ChangeNotifier {
           menuItems[i] = menuItems[i].copyWith(category: updatedName);
         }
       }
+      // Migrate category image mapping if present
+      final existingImg = categoryImages[oldName.toLowerCase()] ?? categoryImages[oldName];
+      if (existingImg != null && existingImg.isNotEmpty) {
+        categoryImages.remove(oldName.toLowerCase());
+        categoryImages.remove(oldName);
+        categoryImages[updatedName.toLowerCase()] = existingImg;
+        categoryImages[updatedName] = existingImg;
+        await _saveCategoryImagesToPrefs();
+      }
       await _saveMenuToPrefs();
       await _saveCategoriesToPrefs();
       notifyListeners();
 
-      try {
-        final isAuth = await _authService.isAuthenticated();
-        if (isAuth) {
-          await _productService.updateCategory(oldName, updatedName);
+      unawaited(() async {
+        try {
+          final isAuth = await _authService.isAuthenticated();
+          if (isAuth) {
+            await _productService.updateCategory(oldName, updatedName, imageUrl: existingImg);
+            if (existingImg != null) {
+              final ApiClient client = ApiClient();
+              await client.patch(ApiEndpoints.posSettings, data: {
+                'categoryImages': categoryImages,
+              });
+            }
+          }
+        } catch (e) {
+          debugPrint('[DatabaseService.editCategory] API error: $e');
         }
-      } catch (e) {
-        debugPrint('[DatabaseService.editCategory] API error: $e');
-      }
+      }());
     }
   }
 
   Future<void> deleteCategory(String categoryName) async {
     categories.remove(categoryName);
+    final clean = categoryName.trim().toLowerCase();
+    categoryImages.remove(clean);
+    categoryImages.remove(categoryName.trim());
+    await _saveCategoryImagesToPrefs();
     await _saveCategoriesToPrefs();
     notifyListeners();
 
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        await _productService.deleteCategory(categoryName);
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          await _productService.deleteCategory(categoryName);
+          final ApiClient client = ApiClient();
+          await client.patch(ApiEndpoints.posSettings, data: {
+            'categoryImages': categoryImages,
+          });
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.deleteCategory] API error: $e');
       }
-    } catch (e) {
-      debugPrint('[DatabaseService.deleteCategory] API error: $e');
-    }
+    }());
   }
 
   /// Reorder categories list by moving item from [oldIndex] to [newIndex]
@@ -2550,6 +2632,66 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_userKey('categories'), jsonEncode(categories));
   }
 
+  String? getCategoryImage(String category) {
+    final clean = category.trim().toLowerCase();
+    return categoryImages[clean] ?? categoryImages[category.trim()];
+  }
+
+  Future<void> saveCategoryImage(String category, String imagePath) async {
+    final clean = category.trim().toLowerCase();
+    if (imagePath.trim().isEmpty) {
+      categoryImages.remove(clean);
+      categoryImages.remove(category.trim());
+    } else {
+      categoryImages[clean] = imagePath.trim();
+      categoryImages[category.trim()] = imagePath.trim();
+    }
+    await _saveCategoryImagesToPrefs();
+    notifyListeners();
+
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          final ApiClient client = ApiClient();
+          await client.patch(ApiEndpoints.posSettings, data: {
+            'categoryImages': categoryImages,
+          });
+          await _productService.updateCategory(category, category, imageUrl: imagePath.trim());
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.saveCategoryImage] API error: $e');
+      }
+    }());
+  }
+
+  Future<void> removeCategoryImage(String category) async {
+    final clean = category.trim().toLowerCase();
+    categoryImages.remove(clean);
+    categoryImages.remove(category.trim());
+    await _saveCategoryImagesToPrefs();
+    notifyListeners();
+
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          final ApiClient client = ApiClient();
+          await client.patch(ApiEndpoints.posSettings, data: {
+            'categoryImages': categoryImages,
+          });
+          await _productService.updateCategory(category, category, imageUrl: '');
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.removeCategoryImage] API error: $e');
+      }
+    }());
+  }
+
+  Future<void> _saveCategoryImagesToPrefs() async {
+    await _prefs?.setString(_userKey('category_images'), jsonEncode(categoryImages));
+  }
+
   // --- TABLE MANAGEMENT SERVICES ---
   Future<void> updateTableStatus(String tableId, TableStatus status, {String? orderId, String? occupiedSince}) async {
     final index = tables.indexWhere((t) =>
@@ -2593,6 +2735,7 @@ class DatabaseService extends ChangeNotifier {
             occupiedSince: newOccupiedSince,
           ).catchError((e) {
             debugPrint('[DatabaseService.updateTableStatus] API error: $e');
+            return false;
           });
         }
       }).catchError((e) {
@@ -3443,6 +3586,34 @@ class DatabaseService extends ChangeNotifier {
     }
 
     return result;
+  }
+
+  /// Unified authoritative helper to get all settled/completed revenue orders within a date range
+  List<OrderModel> getCompletedOrders({DateTime? start, DateTime? end}) {
+    final deduplicated = deduplicateOrdersList(orders);
+    return deduplicated.where((o) {
+      // Exclude cancelled / void orders
+      if (o.status == OrderStatus.cancelled) return false;
+
+      // Must be completed or marked paid
+      final bool isSettled = o.status == OrderStatus.completed ||
+          o.isPaid ||
+          o.paymentStatus.toLowerCase() == 'paid';
+      if (!isSettled) return false;
+
+      // Exclude unpaid KOT drafts that aren't settled
+      final pm = o.paymentMethod.toLowerCase().trim();
+      if (pm.contains('kot') && !o.isPaid && o.status != OrderStatus.completed) {
+        return false;
+      }
+
+      // Timezone-safe local date check
+      final oDate = o.createdDateTime.toLocal();
+      if (start != null && oDate.isBefore(start)) return false;
+      if (end != null && oDate.isAfter(end)) return false;
+
+      return true;
+    }).toList();
   }
 
   Future<void> _saveOrdersToPrefs() async {

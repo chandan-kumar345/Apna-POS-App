@@ -6236,7 +6236,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
           // Categories Filter Row
           SizedBox(
-            height: 34,
+            height: 32,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(),
@@ -6249,12 +6249,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   padding: const EdgeInsets.only(right: 6),
                   child: InkWell(
                     onTap: () => setState(() => _selectedCategory = cat),
-                    borderRadius: BorderRadius.circular(9),
+                    borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                       decoration: BoxDecoration(
                         color: isSelected ? const Color(0xFF051C48) : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(9),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
+                          width: 1,
+                        ),
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -6262,7 +6266,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         style: TextStyle(
                           color: isSelected ? Colors.white : const Color(0xFF475569),
                           fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                          fontSize: 12,
+                          fontSize: 11.5,
                         ),
                       ),
                     ),
@@ -6510,7 +6514,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
         // Categories Row
         SizedBox(
-          height: 42,
+          height: 38,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(),
@@ -6521,20 +6525,24 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               final isSelected = _selectedCategory.toLowerCase() == cat.toLowerCase();
 
               return Padding(
-                padding: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.only(right: 6),
                 child: ChoiceChip(
                   label: Text(cat),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  labelPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
                   selected: isSelected,
                   selectedColor: const Color(0xFF051C48),
                   backgroundColor: Colors.white,
                   side: BorderSide(
                     color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
-                    width: isSelected ? 1.5 : 1.0,
+                    width: isSelected ? 1.4 : 1.0,
                   ),
                   labelStyle: TextStyle(
                     color: isSelected ? Colors.white : const Color(0xFF475569),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
+                    fontSize: 11.5,
                   ),
                   onSelected: (_) => setState(() => _selectedCategory = cat),
                 ),
@@ -6552,8 +6560,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     required int variantsCount,
     required bool isDiscounted,
     required double discountPct,
-    required String category,
-    required bool isDesktop,
   }) {
     if (qty > 0) {
       return Container(
@@ -6568,13 +6574,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 9),
+            const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 8.5),
             const SizedBox(width: 2),
             Text(
               '$qty',
               style: const TextStyle(
                 color: Colors.white,
-                fontSize: 9.5,
+                fontSize: 9.0,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -6594,7 +6600,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           '$variantsCount Var',
           style: const TextStyle(
             color: Color(0xFF051C48),
-            fontSize: 8.5,
+            fontSize: 8.0,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -6612,30 +6618,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           '${discountPct.toStringAsFixed(0)}% OFF',
           style: const TextStyle(
             color: Colors.white,
-            fontSize: 8,
+            fontSize: 7.5,
             fontWeight: FontWeight.w900,
           ),
-        ),
-      );
-    }
-
-    if (category.isNotEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-        ),
-        child: Text(
-          category,
-          style: const TextStyle(
-            color: Color(0xFF64748B),
-            fontSize: 8.5,
-            fontWeight: FontWeight.w600,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
         ),
       );
     }
@@ -6685,117 +6670,144 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
 
     // ──────────────────────────────────────────────────────────────────────────
-    // 1) WITHOUT IMAGE COMPACT CARD (Centered Name & Price, Reduced Box Height)
+    // 1) WITHOUT IMAGE COMPACT CARD (Clean 3-Tier Layout: Header, Name, Price)
     // ──────────────────────────────────────────────────────────────────────────
     if (!showImages) {
       return Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
-            width: isSelected ? 1.8 : 1.0,
+            width: isSelected ? 1.6 : 1.0,
           ),
           boxShadow: [
             BoxShadow(
               color: isSelected ? const Color(0x1F051C48) : const Color(0x06000000),
-              blurRadius: 5,
-              offset: const Offset(0, 2),
+              blurRadius: 4,
+              offset: const Offset(0, 1.5),
             ),
           ],
         ),
         child: Material(
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           child: InkWell(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(12),
             onTap: handleItemTap,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Stack(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // Top-Left: Food Type (Veg / Non-Veg) Icon
-                  Positioned(
-                    top: 2,
-                    left: 2,
-                    child: _buildFoodTypeIcon(item.itemType),
-                  ),
-
-                  // Top-Right: In-Cart Qty Badge / Variant Count / Discount / Category Pill
-                  Positioned(
-                    top: 2,
-                    right: 2,
-                    child: _buildWithoutImageTopRightBadge(
-                      qty: qty,
-                      hasVariants: hasVariants,
-                      variantsCount: item.variants.length,
-                      isDiscounted: isDiscounted,
-                      discountPct: displayDiscountPct,
-                      category: item.category,
-                      isDesktop: isDesktop,
-                    ),
-                  ),
-
-                  // Center Content: Product Name and Price (Centered!)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(4, 16, 4, 2),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            item.name,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: isDesktop ? 13.0 : 12.5,
-                              color: const Color(0xFF0F172A),
-                              height: 1.18,
+                  // 1. Top Header: Veg/Non-Veg Icon + Category Tag + Qty/Variant/Discount Badge
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      _buildFoodTypeIcon(item.itemType),
+                      if (item.category.trim().isNotEmpty) ...[
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
                             ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+                            child: Text(
+                              item.category.trim(),
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 8.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const SizedBox(height: 3),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              if (isDiscounted) ...[
-                                Text(
-                                  '$currency${displaySalePrice.toStringAsFixed(0)}',
-                                  style: TextStyle(
-                                    color: const Color(0xFF051C48),
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: isDesktop ? 13.5 : 13.0,
-                                  ),
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  '$currency${displayOriginalPrice.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    color: Color(0xFF94A3B8),
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 10,
-                                    decoration: TextDecoration.lineThrough,
-                                  ),
-                                ),
-                              ] else ...[
-                                Text(
-                                  '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
-                                  style: TextStyle(
-                                    color: const Color(0xFF051C48),
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: isDesktop ? 13.5 : 13.0,
-                                  ),
-                                ),
-                              ],
-                            ],
+                        ),
+                      ],
+                      const Spacer(),
+                      _buildWithoutImageTopRightBadge(
+                        qty: qty,
+                        hasVariants: hasVariants,
+                        variantsCount: item.variants.length,
+                        isDiscounted: isDiscounted,
+                        discountPct: displayDiscountPct,
+                      ),
+                    ],
+                  ),
+
+                  // 2. Center: Product Name (Multi-line with smaller readable typography)
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          item.name,
+                          textAlign: TextAlign.start,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: isDesktop ? 11.5 : 11.0,
+                            color: const Color(0xFF0F172A),
+                            height: 1.15,
                           ),
-                        ],
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ),
+                  ),
+
+                  // 3. Bottom: Price and Variant indicator
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      if (isDiscounted) ...[
+                        Text(
+                          '$currency${displaySalePrice.toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: const Color(0xFF051C48),
+                            fontWeight: FontWeight.w900,
+                            fontSize: isDesktop ? 12.0 : 11.5,
+                          ),
+                        ),
+                        const SizedBox(width: 3),
+                        Text(
+                          '$currency${displayOriginalPrice.toStringAsFixed(0)}',
+                          style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 9.0,
+                            decoration: TextDecoration.lineThrough,
+                          ),
+                        ),
+                      ] else ...[
+                        Text(
+                          '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
+                          style: TextStyle(
+                            color: const Color(0xFF051C48),
+                            fontWeight: FontWeight.w900,
+                            fontSize: isDesktop ? 12.0 : 11.5,
+                          ),
+                        ),
+                      ],
+                      if (hasVariants) ...[
+                        const SizedBox(width: 3),
+                        const Text(
+                          'onwards',
+                          style: TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 8.0,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -6811,27 +6823,27 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isSelected ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
-          width: isSelected ? 1.8 : 1.0,
+          width: isSelected ? 1.6 : 1.0,
         ),
         boxShadow: [
           BoxShadow(
-            color: isSelected ? const Color(0x1F051C48) : const Color(0x08000000),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            color: isSelected ? const Color(0x1F051C48) : const Color(0x06000000),
+            blurRadius: 5,
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: InkWell(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
           onTap: isDesktop ? handleItemTap : null,
           child: Padding(
-            padding: EdgeInsets.all(isDesktop ? 6 : 7),
+            padding: const EdgeInsets.all(6),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.start,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6852,11 +6864,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 width: double.infinity,
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                   border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
                                 child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
+                                  borderRadius: BorderRadius.circular(8),
                                   child: _buildPosProductImage(item),
                                 ),
                               ),
@@ -6868,7 +6880,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   padding: const EdgeInsets.all(2),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    borderRadius: BorderRadius.circular(5),
+                                    borderRadius: BorderRadius.circular(4),
                                     boxShadow: const [
                                       BoxShadow(
                                         color: Colors.black12,
@@ -6888,7 +6900,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFF051C48),
-                                      borderRadius: BorderRadius.circular(5),
+                                      borderRadius: BorderRadius.circular(4),
                                       boxShadow: const [
                                         BoxShadow(
                                           color: Colors.black26,
@@ -6899,13 +6911,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 9),
+                                        const Icon(Icons.shopping_bag_outlined, color: Colors.white, size: 8.5),
                                         const SizedBox(width: 2),
                                         Text(
                                           '$qty',
                                           style: const TextStyle(
                                             color: Colors.white,
-                                            fontSize: 9.5,
+                                            fontSize: 9.0,
                                             fontWeight: FontWeight.w900,
                                           ),
                                         ),
@@ -6927,7 +6939,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       '${item.variants.length} Var',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 8.5,
+                                        fontSize: 8.0,
                                         fontWeight: FontWeight.w800,
                                       ),
                                     ),
@@ -6947,7 +6959,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       '${displayDiscountPct.toStringAsFixed(0)}% OFF',
                                       style: const TextStyle(
                                         color: Colors.white,
-                                        fontSize: 8,
+                                        fontSize: 7.5,
                                         fontWeight: FontWeight.w900,
                                       ),
                                     ),
@@ -6956,25 +6968,44 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             ],
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 3),
 
-                        // Product Name
+                        // Category Tag
+                        if (item.category.trim().isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 1.5),
+                            child: Text(
+                              item.category.trim().toUpperCase(),
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 8.0,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.2,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+
+                        // Product Name (2 Lines for full display)
                         Text(
                           item.name,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: isDesktop ? 11.5 : 12.5,
+                            fontSize: isDesktop ? 11.0 : 11.5,
                             color: const Color(0xFF0F172A),
                             height: 1.15,
                           ),
-                          maxLines: 1,
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),
 
                         const SizedBox(height: 2),
 
-                        // Price Section & Category Tag
+                        // Price Section
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
                           children: [
                             if (isDiscounted) ...[
                               Text(
@@ -6982,7 +7013,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 style: TextStyle(
                                   color: const Color(0xFF051C48),
                                   fontWeight: FontWeight.w900,
-                                  fontSize: isDesktop ? 11.5 : 12.5,
+                                  fontSize: isDesktop ? 11.5 : 12.0,
                                 ),
                               ),
                               const SizedBox(width: 3),
@@ -6991,7 +7022,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 style: const TextStyle(
                                   color: Color(0xFF94A3B8),
                                   fontWeight: FontWeight.w600,
-                                  fontSize: 9.5,
+                                  fontSize: 9.0,
                                   decoration: TextDecoration.lineThrough,
                                 ),
                               ),
@@ -7001,26 +7032,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 style: TextStyle(
                                   color: const Color(0xFF051C48),
                                   fontWeight: FontWeight.w900,
-                                  fontSize: isDesktop ? 11.5 : 12.5,
+                                  fontSize: isDesktop ? 11.5 : 12.0,
                                 ),
                               ),
                             ],
-                            if (isDesktop && item.category.isNotEmpty) ...[
-                              const Spacer(),
-                              Flexible(
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                                  ),
-                                  child: Text(
-                                    item.category,
-                                    style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.0, fontWeight: FontWeight.w600),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                            if (hasVariants) ...[
+                              const SizedBox(width: 3),
+                              const Text(
+                                'onwards',
+                                style: TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 8.0,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -7037,12 +7060,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   if (item.variants.isNotEmpty)
                     SizedBox(
                       width: double.infinity,
-                      height: 28,
+                      height: 26,
                       child: ElevatedButton(
                         onPressed: () => _showVariantsSelectionDialog(item),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF051C48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           padding: EdgeInsets.zero,
                           elevation: 0,
                         ),
@@ -7050,7 +7073,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           fit: BoxFit.scaleDown,
                           child: Text(
                             qty > 0 ? '$qty Added' : 'Add',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10.5),
                           ),
                         ),
                       ),
@@ -7058,34 +7081,34 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   else if (qty > 0)
                     SizedBox(
                       width: double.infinity,
-                      height: 28,
+                      height: 26,
                       child: _buildPillQuantityStepper(
                         quantity: qty,
                         onDecrement: () => _decrementCartItem(item),
                         onIncrement: () => _addToCart(item),
                         width: double.infinity,
-                        height: 28,
-                        buttonSize: 24,
-                        iconSize: 15,
-                        fontSize: 14,
-                        borderRadius: BorderRadius.circular(16),
+                        height: 26,
+                        buttonSize: 22,
+                        iconSize: 14,
+                        fontSize: 13,
+                        borderRadius: BorderRadius.circular(14),
                       ),
                     )
                   else
                     SizedBox(
                       width: double.infinity,
-                      height: 28,
+                      height: 26,
                       child: ElevatedButton(
                         onPressed: () => _addToCart(item),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xFF051C48),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                           padding: EdgeInsets.zero,
                           elevation: 0,
                         ),
                         child: const FittedBox(
                           fit: BoxFit.scaleDown,
-                          child: Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+                          child: Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.0)),
                         ),
                       ),
                     ),
@@ -7143,7 +7166,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               children: filteredItems.map((item) {
                 return SizedBox(
                   width: itemWidth,
-                  height: 84,
+                  height: 90,
                   child: RepaintBoundary(
                     child: _buildProductCard(
                       item,
@@ -7167,7 +7190,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             : (showImages ? 3 : (constraints.maxWidth >= 500 ? 4 : (constraints.maxWidth >= 360 ? 3 : 2)));
         final double aspectRatio = isDesktop
             ? ResponsiveLayoutHelper.getPosChildAspectRatio(constraints.maxWidth, showImages)
-            : (showImages ? 0.58 : 1.70);
+            : (showImages ? 0.54 : 1.55);
 
         return GridView.builder(
           physics: const BouncingScrollPhysics(),

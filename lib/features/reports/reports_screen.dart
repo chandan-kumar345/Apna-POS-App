@@ -21,10 +21,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final DatabaseService _db = DatabaseService();
   final ReportService _reportService = ReportService();
 
-  SalesDateFilter _selectedDateFilter = SalesDateFilter.allTime;
+  SalesDateFilter _selectedDateFilter = SalesDateFilter.today;
   DateTimeRange? _customDateRange;
 
-  bool _isLoading = true;
+  bool _isLoading = false;
   String? _errorMessage;
   SalesReportData? _reportData;
   int _requestSeq = 0;
@@ -33,7 +33,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void initState() {
     super.initState();
     _db.addListener(_onDbChange);
-    _loadSalesReport();
+    // Instant initial render from local cache
+    final params = _resolveFilterParams();
+    _reportData = _reportService.getLocalSalesReport(
+      period: params.$1,
+      startDate: params.$2,
+      endDate: params.$3,
+    );
+    _loadSalesReport(showLoading: false);
   }
 
   @override
@@ -48,87 +55,101 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
+  (String?, String?, String?) _resolveFilterParams() {
+    String? period;
+    String? startDate;
+    String? endDate;
+
+    final now = DateTime.now();
+    switch (_selectedDateFilter) {
+      case SalesDateFilter.allTime:
+        period = 'allTime';
+        break;
+      case SalesDateFilter.today:
+        period = 'today';
+        final startToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        final endToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = startToday.toUtc().toIso8601String();
+        endDate = endToday.toUtc().toIso8601String();
+        break;
+      case SalesDateFilter.yesterday:
+        period = 'yesterday';
+        final y = now.subtract(const Duration(days: 1));
+        final startY = DateTime(y.year, y.month, y.day, 0, 0, 0);
+        final endY = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+        startDate = startY.toUtc().toIso8601String();
+        endDate = endY.toUtc().toIso8601String();
+        break;
+      case SalesDateFilter.thisWeek:
+        period = 'thisWeek';
+        final diffToMonday = (now.weekday == 7 ? 6 : now.weekday - 1);
+        final monday = now.subtract(Duration(days: diffToMonday));
+        final startWeek = DateTime(monday.year, monday.month, monday.day, 0, 0, 0);
+        final endWeek = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        startDate = startWeek.toUtc().toIso8601String();
+        endDate = endWeek.toUtc().toIso8601String();
+        break;
+      case SalesDateFilter.thisMonth:
+        period = 'thisMonth';
+        final startMonth = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        final endMonth = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+        startDate = startMonth.toUtc().toIso8601String();
+        endDate = endMonth.toUtc().toIso8601String();
+        break;
+      case SalesDateFilter.custom:
+        if (_customDateRange != null) {
+          final start = DateTime(
+            _customDateRange!.start.year,
+            _customDateRange!.start.month,
+            _customDateRange!.start.day,
+            0,
+            0,
+            0,
+          );
+          final end = DateTime(
+            _customDateRange!.end.year,
+            _customDateRange!.end.month,
+            _customDateRange!.end.day,
+            23,
+            59,
+            59,
+            999,
+          );
+          startDate = start.toUtc().toIso8601String();
+          endDate = end.toUtc().toIso8601String();
+        } else {
+          period = 'allTime';
+        }
+        break;
+    }
+    return (period, startDate, endDate);
+  }
+
   Future<void> _loadSalesReport({bool showLoading = true}) async {
     final currentSeq = ++_requestSeq;
-    if (showLoading && mounted) {
+    final params = _resolveFilterParams();
+
+    // Instantly refresh local report state from latest database orders
+    final localData = _reportService.getLocalSalesReport(
+      period: params.$1,
+      startDate: params.$2,
+      endDate: params.$3,
+    );
+
+    if (mounted) {
       setState(() {
-        _isLoading = true;
+        _reportData = localData;
+        if (showLoading) _isLoading = true;
         _errorMessage = null;
       });
     }
 
     try {
-      String? period;
-      String? startDate;
-      String? endDate;
-
-      final now = DateTime.now();
-      switch (_selectedDateFilter) {
-        case SalesDateFilter.allTime:
-          period = 'allTime';
-          break;
-        case SalesDateFilter.today:
-          period = 'today';
-          final startToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
-          final endToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-          startDate = startToday.toUtc().toIso8601String();
-          endDate = endToday.toUtc().toIso8601String();
-          break;
-        case SalesDateFilter.yesterday:
-          period = 'yesterday';
-          final y = now.subtract(const Duration(days: 1));
-          final startY = DateTime(y.year, y.month, y.day, 0, 0, 0);
-          final endY = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
-          startDate = startY.toUtc().toIso8601String();
-          endDate = endY.toUtc().toIso8601String();
-          break;
-        case SalesDateFilter.thisWeek:
-          period = 'thisWeek';
-          final diffToMonday = (now.weekday - 1);
-          final monday = now.subtract(Duration(days: diffToMonday));
-          final startWeek = DateTime(monday.year, monday.month, monday.day, 0, 0, 0);
-          final endWeek = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-          startDate = startWeek.toUtc().toIso8601String();
-          endDate = endWeek.toUtc().toIso8601String();
-          break;
-        case SalesDateFilter.thisMonth:
-          period = 'thisMonth';
-          final startMonth = DateTime(now.year, now.month, 1, 0, 0, 0);
-          final endMonth = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-          startDate = startMonth.toUtc().toIso8601String();
-          endDate = endMonth.toUtc().toIso8601String();
-          break;
-        case SalesDateFilter.custom:
-          if (_customDateRange != null) {
-            final start = DateTime(
-              _customDateRange!.start.year,
-              _customDateRange!.start.month,
-              _customDateRange!.start.day,
-              0,
-              0,
-              0,
-            );
-            final end = DateTime(
-              _customDateRange!.end.year,
-              _customDateRange!.end.month,
-              _customDateRange!.end.day,
-              23,
-              59,
-              59,
-              999,
-            );
-            startDate = start.toUtc().toIso8601String();
-            endDate = end.toUtc().toIso8601String();
-          } else {
-            period = 'allTime';
-          }
-          break;
-      }
-
       final data = await _reportService.fetchSalesReport(
-        period: period,
-        startDate: startDate,
-        endDate: endDate,
+        period: params.$1,
+        startDate: params.$2,
+        endDate: params.$3,
       );
 
       if (mounted && currentSeq == _requestSeq) {
@@ -142,7 +163,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
       if (mounted && currentSeq == _requestSeq) {
         setState(() {
           _isLoading = false;
-          _errorMessage = 'Failed to load sales report from server: ${e.toString()}';
+          if (_reportData == null) {
+            _reportData = localData;
+          }
         });
       }
     }

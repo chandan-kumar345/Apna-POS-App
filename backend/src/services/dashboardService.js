@@ -8,10 +8,10 @@ class DashboardService {
   /**
    * Helper to resolve flexible date filters (period / from-to / startDate-endDate / timezoneOffset)
    */
-  _resolveDateRange({ period, startDate, endDate, from, to, timezoneOffset } = {}) {
+  _resolveDateRange({ period, startDate, endDate, from, to, fromDate, toDate, timezoneOffset } = {}) {
     const now = new Date();
-    const effectiveFrom = from || startDate;
-    const effectiveTo = to || endDate;
+    const effectiveFrom = fromDate || from || startDate;
+    const effectiveTo = toDate || to || endDate;
 
     if (effectiveFrom && effectiveTo) {
       let start = new Date(effectiveFrom);
@@ -39,7 +39,7 @@ class DashboardService {
     if (p === 'yesterday') {
       start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
       end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-    } else if (p === 'week' || p === 'this week') {
+    } else if (p === 'week' || p === 'this week' || p === 'thisweek') {
       const day = now.getDay();
       const diffToMonday = (day === 0 ? -6 : 1) - day;
       start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
@@ -48,13 +48,13 @@ class DashboardService {
         start.setHours(0, 0, 0, 0);
       }
       end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    } else if (p === 'month' || p === 'this month') {
+    } else if (p === 'month' || p === 'this month' || p === 'thismonth') {
       start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
       end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    } else if (p === 'year' || p === 'this year') {
+    } else if (p === 'year' || p === 'this year' || p === 'thisyear') {
       start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
       end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-    } else if (p === 'all time' || p === 'all') {
+    } else if (p === 'all time' || p === 'all' || p === 'alltime') {
       start = new Date(0);
       end = new Date(now.getFullYear() + 1, 11, 31, 23, 59, 59, 999);
     }
@@ -66,12 +66,20 @@ class DashboardService {
     const bIdObj = mongoose.Types.ObjectId.isValid(bId) ? new mongoose.Types.ObjectId(bId) : bId;
     return {
       businessId: { $in: [bIdObj, bId.toString()] },
-      createdAt: { $gte: start, $lte: end },
       status: { $nin: ['cancelled', 'void'] },
       $or: [
         { status: { $in: ['completed', 'paid'] } },
         { paymentStatus: 'paid' },
         { isPaid: true },
+      ],
+      $and: [
+        {
+          $or: [
+            { completedAt: { $gte: start, $lte: end } },
+            { createdAt: { $gte: start, $lte: end } },
+            { saleDate: { $gte: start, $lte: end } },
+          ],
+        },
       ],
       ...extraMatch,
     };
@@ -403,12 +411,17 @@ class DashboardService {
   async getOrderStats(businessId, query = {}) {
     const bId = new mongoose.Types.ObjectId(businessId);
     const { start, end } = this._resolveDateRange(query);
+    const bIdObj = mongoose.Types.ObjectId.isValid(bId) ? new mongoose.Types.ObjectId(bId) : bId;
 
     const result = await Order.aggregate([
       {
         $match: {
-          businessId: bId,
-          createdAt: { $gte: start, $lte: end },
+          businessId: { $in: [bIdObj, bId.toString()] },
+          $or: [
+            { completedAt: { $gte: start, $lte: end } },
+            { createdAt: { $gte: start, $lte: end } },
+            { saleDate: { $gte: start, $lte: end } },
+          ],
         },
       },
       {
