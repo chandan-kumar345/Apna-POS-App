@@ -38,13 +38,52 @@ class PosMediaScrollBehavior extends MaterialScrollBehavior {
       };
 }
 
+/// Internal client interface for coordinating global video decoder slots
+abstract class _PosPlaybackClient {
+  void onPlaybackSlotRevoked();
+}
+
+/// Global Playback Coordinator to enforce strict hardware video decoder limits.
+/// Android/iOS hardware video decoders (MediaCodec / Codec2) have strict hardware instance
+/// and surface buffer pool limits. This coordinator ensures at most 1 decoder on mobile
+/// and 2 decoders on desktop/web are active simultaneously, automatically disposing
+/// inactive decoders to avoid GPU buffer timeouts and frame stutter.
+class _PosMediaPlaybackCoordinator {
+  static final _PosMediaPlaybackCoordinator instance = _PosMediaPlaybackCoordinator._();
+  _PosMediaPlaybackCoordinator._();
+
+  final List<_PosPlaybackClient> _activeClients = [];
+
+  int get _maxActiveDecoders {
+    if (kIsWeb) return 2;
+    if (Platform.isAndroid || Platform.isIOS) return 1;
+    return 2;
+  }
+
+  void acquireSlot(_PosPlaybackClient client) {
+    if (!_activeClients.contains(client)) {
+      _activeClients.add(client);
+    }
+    while (_activeClients.length > _maxActiveDecoders) {
+      final evicted = _activeClients.removeAt(0);
+      if (evicted != client) {
+        evicted.onPlaybackSlotRevoked();
+      }
+    }
+  }
+
+  void releaseSlot(_PosPlaybackClient client) {
+    _activeClients.remove(client);
+  }
+}
+
 /// A high-performance mixed-media widget for POS product cards and dish listings.
 /// Supports:
 /// 1. Direct & YouTube video streaming with seamless auto-play for Android & Windows
 /// 2. Mixed-media slide deck (Videos + Multiple Images)
 /// 3. Interactive Touch Swipe (Android) & Mouse Drag (Windows)
 /// 4. Interactive Pill Pagination Dots (tap-to-jump)
-/// 5. Automatic pause/play on slide change to conserve system resources
+/// 5. Automatic pause/release on slide change to conserve system resources
 /// 6. Graceful fallback to YouTube thumbnails, local images, or placeholder
 class PosProductMediaBox extends StatefulWidget {
   final MenuItemModel item;
@@ -76,29 +115,7 @@ class PosProductMediaBox extends StatefulWidget {
   State<PosProductMediaBox> createState() => _PosProductMediaBoxState();
 }
 
-class _PosProductMediaBoxState extends State<PosProductMediaBox> {
-  // Global Active Playback Pool (Limits concurrent active decoders to ensure smooth 60fps on Android)
-  static final List<VideoPlayerController> _activePlayingControllers = [];
-  static const int _maxConcurrentPlayers = 2;
-
-  static void _registerActiveController(VideoPlayerController controller) {
-    if (!_activePlayingControllers.contains(controller)) {
-      _activePlayingControllers.add(controller);
-    }
-    while (_activePlayingControllers.length > _maxConcurrentPlayers) {
-      final oldest = _activePlayingControllers.removeAt(0);
-      try {
-        if (oldest.value.isPlaying) {
-          oldest.pause();
-        }
-      } catch (_) {}
-    }
-  }
-
-  static void _unregisterActiveController(VideoPlayerController controller) {
-    _activePlayingControllers.remove(controller);
-  }
-
+class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _PosPlaybackClient {
   final List<PosMediaItem> _mediaList = [];
   PageController? _pageController;
   int _currentPage = 0;
@@ -132,6 +149,32 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       _cleanup();
       _buildMediaList();
       _initController();
+    }
+  }
+
+  @override
+  void onPlaybackSlotRevoked() {
+    _releaseVideoController();
+  }
+
+  void _releaseVideoController() {
+    if (_videoController != null) {
+      final ctrl = _videoController!;
+      _videoController = null;
+      try {
+        ctrl.removeListener(_videoListener);
+        ctrl.pause();
+        ctrl.dispose();
+      } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _isVideoInitialized = false;
+        _isVideoLoading = false;
+      });
+    } else {
+      _isVideoInitialized = false;
+      _isVideoLoading = false;
     }
   }
 
@@ -217,12 +260,24 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       _pageController = null;
     }
 
-    // If initial slide is video, initialize stream
+    // If initial slide is video, check if we should auto-start stream
     if (_mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
-      _initVideoStream(_mediaList[0].url);
+      // Schedule stream initialization on demand
+      if (!widget.isMini) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && _currentPage == 0 && _mediaList.isNotEmpty && _mediaList[0].type == PosMediaType.video) {
+            _requestAndInitVideoStream(_mediaList[0].url);
+          }
+        });
+      }
     } else if (widget.autoSlide && _mediaList.length > 1 && !widget.isMini) {
       _scheduleAutoSlideForImages();
     }
+  }
+
+  void _requestAndInitVideoStream(String videoUrl) {
+    _PosMediaPlaybackCoordinator.instance.acquireSlot(this);
+    _initVideoStream(videoUrl);
   }
 
   Future<void> _initVideoStream(String videoUrl) async {
@@ -252,6 +307,11 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       final playablePath = await YouTubeService.getPlayableVideoPath(cleanUrl, instantStream: true);
       if (playablePath == null || playablePath.isEmpty) {
         throw Exception('Could not resolve playable video path for $cleanUrl');
+      }
+
+      if (!mounted) {
+        _isVideoLoading = false;
+        return;
       }
 
       VideoPlayerController controller;
@@ -303,7 +363,6 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       // Auto-play immediately if active slide is currently on Video
       if (_mediaList.isNotEmpty && _currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.video) {
         try {
-          _registerActiveController(_videoController!);
           await _videoController!.play();
         } catch (_) {}
       }
@@ -402,10 +461,10 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     if (currentMedia.type == PosMediaType.video) {
       _autoSlideTimer?.cancel();
       _isVideoFinishingSlide = false;
+      _PosMediaPlaybackCoordinator.instance.acquireSlot(this);
       if (_videoController != null && _isVideoInitialized) {
         _videoController!.seekTo(Duration.zero).then((_) {
-          if (mounted && _currentPage == index) {
-            _registerActiveController(_videoController!);
+          if (mounted && _currentPage == index && _videoController != null) {
             _videoController!.play();
           }
         });
@@ -413,11 +472,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
         _initVideoStream(currentMedia.url);
       }
     } else {
-      // Pause video when viewing image slides to conserve CPU/GPU/network bandwidth
-      if (_videoController != null) {
-        _unregisterActiveController(_videoController!);
-        _videoController?.pause();
-      }
+      // Release video controller when viewing image slides to free up native decoders and GPU buffers
+      _PosMediaPlaybackCoordinator.instance.releaseSlot(this);
+      _releaseVideoController();
       if (widget.autoSlide && !_isUserInteracting && _mediaList.length > 1 && !widget.isMini) {
         _scheduleAutoSlideForImages();
       }
@@ -429,7 +486,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     if (_mediaList.length <= 1 || widget.isMini) return;
 
     // If currently on video slide, do NOT slide via timer; let the video play fully first!
-    if (_mediaList[_currentPage].type == PosMediaType.video) return;
+    if (_currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.video) return;
 
     _autoSlideTimer = Timer(const Duration(milliseconds: 2800), () {
       if (!mounted || _isUserInteracting || _mediaList.length <= 1) return;
@@ -453,25 +510,30 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     _resumeAutoSlideTimer = Timer(const Duration(seconds: 5), () {
       if (!mounted) return;
       _isUserInteracting = false;
-      if (_mediaList[_currentPage].type == PosMediaType.image) {
+      if (_currentPage < _mediaList.length && _mediaList[_currentPage].type == PosMediaType.image) {
         _scheduleAutoSlideForImages();
-      } else if (_mediaList[_currentPage].type == PosMediaType.video && _videoController != null && _isVideoInitialized) {
-        _registerActiveController(_videoController!);
+      } else if (_currentPage < _mediaList.length &&
+          _mediaList[_currentPage].type == PosMediaType.video &&
+          _videoController != null &&
+          _isVideoInitialized) {
         _videoController!.play();
       }
     });
   }
 
   void _cleanup() {
+    _PosMediaPlaybackCoordinator.instance.releaseSlot(this);
     _autoSlideTimer?.cancel();
     _resumeAutoSlideTimer?.cancel();
     _pageController?.dispose();
     _pageController = null;
     if (_videoController != null) {
-      _unregisterActiveController(_videoController!);
-      _videoController!.removeListener(_videoListener);
-      _videoController!.dispose();
+      final ctrl = _videoController!;
       _videoController = null;
+      try {
+        ctrl.removeListener(_videoListener);
+        ctrl.dispose();
+      } catch (_) {}
     }
     _isVideoInitialized = false;
     _isVideoLoading = false;
@@ -595,17 +657,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
   }
 
   Widget _buildVideoSlide(PosMediaItem mediaItem) {
-    // If not yet initializing or initialized, kick off stream auto-play immediately
-    if (!_isVideoInitialized && !_isVideoLoading && !_isVideoError) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_isVideoLoading && !_isVideoInitialized && !_isVideoError) {
-          _initVideoStream(mediaItem.url);
-        }
-      });
-    }
-
     // Build guaranteed base thumbnail / dish photo
-    // Even while video buffers or on any transient delay, this guarantees 0 blank box
+    // Even while video buffers or when video is not active, this guarantees 0 blank box
     String? thumb = mediaItem.previewThumbnail;
     if (thumb == null || thumb.isEmpty) {
       if (widget.item.imageUrl.trim().isNotEmpty) {
@@ -631,6 +684,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
       if (!_videoController!.value.isPlaying &&
           !_videoController!.value.isCompleted &&
           _mediaList.isNotEmpty &&
+          _currentPage < _mediaList.length &&
           _mediaList[_currentPage].type == PosMediaType.video) {
         try {
           _videoController!.play();
@@ -667,7 +721,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> {
     }
 
     // 2. If Loading or Initializing: show preview thumbnail with subtle buffer indicator
-    if (_isVideoLoading || (!_isVideoInitialized && !_isVideoError)) {
+    if (_isVideoLoading) {
       return Stack(
         fit: StackFit.expand,
         children: [

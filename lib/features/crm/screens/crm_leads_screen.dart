@@ -7,8 +7,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/database/database_service.dart';
 import '../../../core/models/crm_model.dart';
+import '../../../core/models/order_model.dart';
 import '../../../core/services/crm_service.dart';
+import '../../../core/services/customer_service.dart';
 
 class CrmLeadsScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -26,23 +29,32 @@ class CrmLeadsScreen extends StatefulWidget {
 
 class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   final CrmService _crmService = CrmService();
+  final CustomerService _customerService = CustomerService();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _noteInputController = TextEditingController();
+
+  // Signature Theme Colors (Lighter shade of top navy header Color(0xFF051C48))
+  static const Color headerNavy = Color(0xFF051C48);
+  static const Color primaryNavy = Color(0xFF0A2B66); // Lighter header color for buttons & active boxes
+  static const Color textDark = Color(0xFF0F172A);
+  static const Color textSubtle = Color(0xFF64748B);
+  static const Color boxBorder = Color(0xFFCBD5E1);
+  static const Color boxBg = Color(0xFFF8FAFC);
 
   // State Variables
   String _selectedStageTab = 'All';
   String _selectedSourceFilter = 'All Sources';
-  DateTimeRange _selectedDateRange = DateTimeRange(
-    start: DateTime(2026, 8, 1),
-    end: DateTime(2026, 8, 31),
-  );
+  DateTimeRange? _selectedDateRange;
 
-  // Pagination
+  // Pagination (Fixed 5 leads per page)
   int _currentPage = 1;
-  int _pageSize = 8;
+  static const int _pageSize = 5;
   int _totalCount = 0;
   int _totalPages = 1;
   bool _isLoading = false;
+
+  // Persisted local lead stage overrides across user edits
+  static final Map<String, String> _persistedLeadStages = {};
 
   // Detail Sub-tab
   String _activeDetailTab = 'Overview';
@@ -54,12 +66,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
   // Dynamic Statistics
   CrmStatsModel _stats = CrmStatsModel(
-    total: 8,
-    leads: 3,
-    prospects: 2,
-    deals: 1,
-    wins: 1,
-    lost: 1,
+    total: 0,
+    leads: 0,
+    prospects: 0,
+    deals: 0,
+    wins: 0,
+    lost: 0,
   );
 
   final List<String> _stageTabs = [
@@ -93,7 +105,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   @override
   void initState() {
     super.initState();
-    _initDefaultLeads();
     _loadLeadsFromBackend();
   }
 
@@ -104,145 +115,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     super.dispose();
   }
 
-  /// Initial demo leads matching the exact 8 rows in the reference image
-  void _initDefaultLeads() {
-    _allLeads = [
-      CrmLeadModel(
-        id: '1',
-        name: 'Jagat',
-        phone: '7838710511',
-        email: 'jagat@example.com',
-        address: 'Noida, Uttar Pradesh',
-        source: 'Dine In',
-        stage: 'New Lead',
-        status: 'New Lead',
-        customerType: 'New Customer',
-        tags: const ['New Customer', 'Dine In'],
-        totalOrders: 3,
-        totalSpent: 1240.0,
-        createdAt: DateTime(2026, 8, 31, 19, 11),
-        lastVisit: DateTime(2026, 8, 31, 19, 11),
-      ),
-      CrmLeadModel(
-        id: '2',
-        name: 'Chandan',
-        phone: '9709593705',
-        email: 'chandan@example.com',
-        address: 'Patna, Bihar',
-        source: 'Dine In',
-        stage: 'New Lead',
-        status: 'New Lead',
-        customerType: 'Regular Customer',
-        tags: const ['Regular Customer', 'Dine In'],
-        totalOrders: 12,
-        totalSpent: 4850.0,
-        createdAt: DateTime(2026, 8, 31, 9, 40),
-        lastVisit: DateTime(2026, 8, 31, 9, 40),
-      ),
-      CrmLeadModel(
-        id: '3',
-        name: 'Rohit Sharma',
-        phone: '9876543210',
-        email: 'rohit@example.com',
-        address: 'Mumbai, Maharashtra',
-        source: 'POS',
-        stage: 'Prospect',
-        status: 'Prospect',
-        customerType: 'Walk-in',
-        tags: const ['Walk-in', 'POS'],
-        totalOrders: 1,
-        totalSpent: 620.0,
-        createdAt: DateTime(2026, 8, 30, 18, 20),
-        lastVisit: DateTime(2026, 8, 30, 18, 20),
-      ),
-      CrmLeadModel(
-        id: '4',
-        name: 'Priya Singh',
-        phone: '9543216780',
-        email: 'priya@example.com',
-        address: 'Delhi, India',
-        source: 'Online',
-        stage: 'Deal',
-        status: 'Deal',
-        customerType: 'Online Order',
-        tags: const ['Online Order', 'Online'],
-        totalOrders: 5,
-        totalSpent: 2310.0,
-        createdAt: DateTime(2026, 8, 30, 11, 15),
-        lastVisit: DateTime(2026, 8, 30, 11, 15),
-      ),
-      CrmLeadModel(
-        id: '5',
-        name: 'Amit Verma',
-        phone: '9956784321',
-        email: 'amit@example.com',
-        address: 'Lucknow, Uttar Pradesh',
-        source: 'WhatsApp',
-        stage: 'Won',
-        status: 'Won',
-        customerType: 'Campaign',
-        tags: const ['Campaign', 'WhatsApp'],
-        totalOrders: 8,
-        totalSpent: 3950.0,
-        createdAt: DateTime(2026, 8, 29, 16, 45),
-        lastVisit: DateTime(2026, 8, 29, 16, 45),
-      ),
-      CrmLeadModel(
-        id: '6',
-        name: 'Sneha Kapoor',
-        phone: '9876501234',
-        email: 'sneha@example.com',
-        address: 'Bengaluru, Karnataka',
-        source: 'Social Media',
-        stage: 'Prospect',
-        status: 'Prospect',
-        customerType: 'Instagram',
-        tags: const ['Instagram', 'Social Media'],
-        totalOrders: 2,
-        totalSpent: 990.0,
-        createdAt: DateTime(2026, 8, 29, 13, 20),
-        lastVisit: DateTime(2026, 8, 29, 13, 20),
-      ),
-      CrmLeadModel(
-        id: '7',
-        name: 'Vikas Jain',
-        phone: '9965432109',
-        email: 'vikas@example.com',
-        address: 'Jaipur, Rajasthan',
-        source: 'Referral',
-        stage: 'Lost',
-        status: 'Lost',
-        customerType: 'Referral',
-        tags: const ['Referral'],
-        totalOrders: 0,
-        totalSpent: 0.0,
-        createdAt: DateTime(2026, 8, 28, 10, 10),
-        lastVisit: DateTime(2026, 8, 28, 10, 10),
-      ),
-      CrmLeadModel(
-        id: '8',
-        name: 'Neha Gupta',
-        phone: '9812345678',
-        email: 'neha@example.com',
-        address: 'Gurgaon, Haryana',
-        source: 'Website',
-        stage: 'New Lead',
-        status: 'New Lead',
-        customerType: 'Website',
-        tags: const ['Website'],
-        totalOrders: 4,
-        totalSpent: 1870.0,
-        createdAt: DateTime(2026, 8, 28, 9, 30),
-        lastVisit: DateTime(2026, 8, 28, 9, 30),
-      ),
-    ];
-
-    _totalCount = _allLeads.length;
-    _selectedLead = _allLeads.first;
-    _filteredLeads = List.from(_allLeads);
-  }
-
-  /// Load leads dynamically from backend API with fallback
+  /// Load leads dynamically from all sources (CRM API + Customer DB + POS Live Orders)
   Future<void> _loadLeadsFromBackend() async {
     setState(() {
       _isLoading = true;
@@ -252,44 +125,188 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       final stageParam = _selectedStageTab == 'All' ? null : _selectedStageTab;
       final searchParam = _searchController.text.trim().isEmpty ? null : _searchController.text.trim();
       final sourceParam = _selectedSourceFilter == 'All Sources' ? null : _selectedSourceFilter;
+      final startParam = _selectedDateRange?.start.toIso8601String();
+      final endParam = _selectedDateRange?.end.toIso8601String();
 
-      final result = await _crmService.fetchLeads(
-        page: _currentPage,
-        limit: _pageSize,
-        stage: stageParam,
-        search: searchParam,
-        source: sourceParam,
-      );
+      // 1. Fetch from CRM Backend API
+      CrmFetchResult? crmApiResult;
+      try {
+        crmApiResult = await _crmService.fetchLeads(
+          page: _currentPage,
+          limit: _pageSize,
+          stage: stageParam,
+          search: searchParam,
+          source: sourceParam,
+          startDate: startParam,
+          endDate: endParam,
+        );
+      } catch (_) {}
 
-      if (mounted) {
-        if (result != null && result.leads.isNotEmpty) {
-          setState(() {
-            _allLeads = result.leads;
-            _filteredLeads = result.leads;
-            _totalCount = result.totalCount;
-            _totalPages = result.totalPages;
-            _stats = result.stats;
+      // 2. Fetch from Customer Database Service
+      List<CustomerModel> dbCustomers = [];
+      try {
+        dbCustomers = await _customerService.fetchCustomers(
+          search: searchParam,
+          limit: 100,
+        );
+      } catch (_) {}
 
-            if (_selectedLead == null || !_filteredLeads.any((l) => l.id == _selectedLead!.id)) {
-              _selectedLead = _filteredLeads.isNotEmpty ? _filteredLeads.first : null;
-            } else {
-              _selectedLead = _filteredLeads.firstWhere((l) => l.id == _selectedLead!.id);
-            }
-          });
-        } else if (result != null && result.leads.isEmpty) {
-          setState(() {
-            _allLeads = [];
-            _filteredLeads = [];
-            _totalCount = result.totalCount;
-            _totalPages = result.totalPages;
-            _stats = result.stats;
-            _selectedLead = null;
-          });
+      // 3. Aggregate all leads dynamically into a single master map
+      final Map<String, CrmLeadModel> aggregatedMap = {};
+
+      // Add & merge backend Customer Database records
+      for (final cust in dbCustomers) {
+        final key = cust.phone.trim().isNotEmpty ? cust.phone.trim() : cust.name.trim();
+        if (key.isEmpty) continue;
+
+        final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[cust.id];
+        final isRegular = cust.totalOrders > 1;
+        final defaultStage = isRegular ? 'Won' : 'New Lead';
+        final effStage = stageOverride ?? defaultStage;
+
+        aggregatedMap[key] = CrmLeadModel(
+          id: cust.id.isNotEmpty ? cust.id : 'cust_${DateTime.now().millisecondsSinceEpoch}',
+          name: cust.name.isNotEmpty ? cust.name : 'Customer',
+          phone: cust.phone,
+          email: cust.email,
+          address: cust.address,
+          source: 'POS',
+          stage: effStage,
+          status: effStage,
+          customerType: isRegular ? 'Regular Customer' : 'New Customer',
+          tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
+          totalOrders: cust.totalOrders,
+          totalSpent: cust.totalSpent,
+          returnCount: 0,
+          createdAt: DateTime.now().subtract(const Duration(days: 7)),
+          lastVisit: cust.lastVisit != null ? DateTime.tryParse(cust.lastVisit!) : DateTime.now(),
+        );
+      }
+
+      // Add & merge local POS orders from DatabaseService
+      final localOrders = DatabaseService().orders;
+      for (final order in localOrders) {
+        final phone = (order.customerPhone ?? '').trim();
+        final name = (order.customerName ?? '').trim();
+        if (phone.isEmpty && name.isEmpty) continue;
+        final key = phone.isNotEmpty ? phone : name;
+
+        String src = 'POS';
+        if (order.orderType == OrderType.dineIn) src = 'Dine In';
+        if (order.orderType == OrderType.delivery) src = 'Online';
+        if (order.orderType == OrderType.takeaway) src = 'POS';
+
+        final orderDate = DateTime.tryParse(order.createdAt) ?? DateTime.now();
+        final isCancelled = order.status == OrderStatus.cancelled;
+        final deliveryAddr = (order.deliveryAddress ?? '').trim();
+        final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages['ord_${order.id}'];
+
+        if (aggregatedMap.containsKey(key)) {
+          final existing = aggregatedMap[key]!;
+          final totalOrd = existing.totalOrders + 1;
+          final totalSpent = existing.totalSpent + (isCancelled ? 0.0 : order.totalAmount);
+          final totalReturns = existing.returnCount + (isCancelled ? 1 : 0);
+          final lastVisit = orderDate.isAfter(existing.lastVisit ?? existing.createdAt)
+              ? orderDate
+              : existing.lastVisit;
+          final isRegular = totalOrd > 1;
+          final effAddress = existing.address.isNotEmpty ? existing.address : deliveryAddr;
+          final effStage = stageOverride ?? existing.stage;
+
+          aggregatedMap[key] = existing.copyWith(
+            address: effAddress,
+            stage: effStage,
+            status: effStage,
+            totalOrders: totalOrd,
+            totalSpent: totalSpent,
+            returnCount: totalReturns,
+            lastVisit: lastVisit,
+            customerType: isRegular ? 'Regular Customer' : existing.customerType,
+            tags: isRegular ? ['Regular Customer', src] : existing.tags,
+            recentOrders: [
+              ...existing.recentOrders,
+              {
+                'id': order.orderNumber.isNotEmpty ? order.orderNumber : order.id,
+                'totalAmount': order.totalAmount,
+                'date': orderDate.toIso8601String(),
+                'status': order.status.name,
+                'isCancelled': isCancelled,
+              }
+            ],
+          );
         } else {
-          _applyLocalFilter();
+          final effAddress = deliveryAddr;
+          final defaultStage = isCancelled ? 'Lost' : 'Won';
+          final effStage = stageOverride ?? defaultStage;
+
+          aggregatedMap[key] = CrmLeadModel(
+            id: 'ord_${order.id}',
+            name: name.isNotEmpty ? name : 'Guest Customer',
+            phone: phone.isNotEmpty ? phone : '9876543210',
+            email: '',
+            address: effAddress,
+            source: src,
+            stage: effStage,
+            status: effStage,
+            customerType: 'New Customer',
+            tags: ['New Customer', src],
+            totalOrders: 1,
+            totalSpent: isCancelled ? 0.0 : order.totalAmount,
+            returnCount: isCancelled ? 1 : 0,
+            createdAt: orderDate,
+            lastVisit: orderDate,
+            recentOrders: [
+              {
+                'id': order.orderNumber.isNotEmpty ? order.orderNumber : order.id,
+                'totalAmount': order.totalAmount,
+                'date': orderDate.toIso8601String(),
+                'status': order.status.name,
+                'isCancelled': isCancelled,
+              }
+            ],
+          );
         }
       }
-    } catch (_) {
+
+      // Add & merge backend CRM API leads
+      if (crmApiResult != null && crmApiResult.leads.isNotEmpty) {
+        for (final l in crmApiResult.leads) {
+          final key = l.phone.trim().isNotEmpty ? l.phone.trim() : l.name.trim();
+          if (key.isNotEmpty) {
+            final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[l.id];
+            final effStage = stageOverride ?? l.stage;
+
+            if (aggregatedMap.containsKey(key)) {
+              final existing = aggregatedMap[key]!;
+              aggregatedMap[key] = l.copyWith(
+                stage: effStage,
+                status: effStage,
+                totalOrders: math.max(existing.totalOrders, l.totalOrders),
+                totalSpent: math.max(existing.totalSpent, l.totalSpent),
+                returnCount: math.max(existing.returnCount, l.returnCount),
+                address: l.address.isNotEmpty ? l.address : existing.address,
+                recentOrders: l.recentOrders.isNotEmpty ? l.recentOrders : existing.recentOrders,
+              );
+            } else {
+              aggregatedMap[key] = l.copyWith(
+                stage: effStage,
+                status: effStage,
+              );
+            }
+          }
+        }
+      }
+
+      final dynamicList = aggregatedMap.values.toList();
+
+      if (mounted) {
+        setState(() {
+          _allLeads = dynamicList;
+          _applyLocalFilter();
+        });
+      }
+    } catch (e) {
+      debugPrint('[CrmLeadsScreen] Error loading dynamic leads: $e');
       if (mounted) {
         _applyLocalFilter();
       }
@@ -307,14 +324,24 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     // 1. Stage Tab Filter
     if (_selectedStageTab != 'All') {
-      final target = _selectedStageTab.toLowerCase();
+      final target = _selectedStageTab.toLowerCase().trim();
       list = list.where((lead) {
-        final st = lead.stage.toLowerCase();
-        if (target == 'leads') return st.contains('lead');
-        if (target == 'prospects') return st.contains('prospect');
-        if (target == 'deals') return st.contains('deal');
-        if (target == 'won') return st.contains('win') || st.contains('won');
-        if (target == 'lost') return st.contains('lost');
+        final st = lead.stage.toLowerCase().trim();
+        if (target == 'leads' || target == 'lead') {
+          return st == 'lead' || st == 'new lead' || (st.contains('lead') && !st.contains('deal'));
+        }
+        if (target == 'prospects' || target == 'prospect') {
+          return st == 'prospect' || st.contains('prospect');
+        }
+        if (target == 'deals' || target == 'deal') {
+          return st == 'deal' || st.contains('deal');
+        }
+        if (target == 'won' || target == 'wins' || target == 'won customers') {
+          return st == 'won' || st.contains('won') || st.contains('win');
+        }
+        if (target == 'lost') {
+          return st == 'lost' || st.contains('lost');
+        }
         return st == target;
       }).toList();
     }
@@ -335,12 +362,28 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       }).toList();
     }
 
+    // 4. Date Filter
+    if (_selectedDateRange != null) {
+      final start = DateTime(_selectedDateRange!.start.year, _selectedDateRange!.start.month, _selectedDateRange!.start.day);
+      final end = DateTime(_selectedDateRange!.end.year, _selectedDateRange!.end.month, _selectedDateRange!.end.day, 23, 59, 59);
+      list = list.where((lead) {
+        final d = lead.lastVisit ?? lead.createdAt;
+        return d.isAfter(start.subtract(const Duration(seconds: 1))) && d.isBefore(end.add(const Duration(seconds: 1)));
+      }).toList();
+    }
+
     setState(() {
       _filteredLeads = list;
       _totalCount = _filteredLeads.length;
+      _totalPages = math.max(1, (_filteredLeads.length / _pageSize).ceil());
+      if (_currentPage > _totalPages) _currentPage = _totalPages;
+      if (_currentPage < 1) _currentPage = 1;
+
       if (_selectedLead == null || !_filteredLeads.any((l) => l.id == _selectedLead!.id)) {
         if (_filteredLeads.isNotEmpty) {
           _selectedLead = _filteredLeads.first;
+        } else {
+          _selectedLead = null;
         }
       }
       _recalculateStats();
@@ -356,18 +399,17 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     int lost = 0;
 
     for (final l in _allLeads) {
-      final st = l.stage.toLowerCase();
-      if (st.contains('lead')) {
-        leads++;
-      } else if (st.contains('prospect')) {
+      final st = l.stage.toLowerCase().trim();
+      if (st == 'prospect' || st.contains('prospect')) {
         prospects++;
-      } else if (st.contains('deal')) {
+      } else if (st == 'deal' || st.contains('deal')) {
         deals++;
-      } else if (st.contains('win') || st.contains('won')) {
+      } else if (st == 'won' || st.contains('won') || st.contains('win')) {
         wins++;
-      } else if (st.contains('lost')) {
+      } else if (st == 'lost' || st.contains('lost')) {
         lost++;
       } else {
+        // default / new lead
         leads++;
       }
     }
@@ -379,11 +421,10 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       deals: deals,
       wins: wins,
       lost: lost,
-      trends: _stats.trends,
     );
   }
 
-  // --- Dynamic Actions ---
+  // --- Actions ---
 
   void _onSelectLead(CrmLeadModel lead) {
     setState(() {
@@ -394,6 +435,11 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   Future<void> _updateSelectedLeadStage(String newStage) async {
     if (_selectedLead == null) return;
     final updated = _selectedLead!.copyWith(stage: newStage, status: newStage);
+    final key = updated.phone.trim().isNotEmpty ? updated.phone.trim() : updated.name.trim();
+    if (key.isNotEmpty) {
+      _persistedLeadStages[key] = newStage;
+    }
+    _persistedLeadStages[updated.id] = newStage;
 
     setState(() {
       final idx = _allLeads.indexWhere((l) => l.id == _selectedLead!.id);
@@ -401,17 +447,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         _allLeads[idx] = updated;
       }
       _selectedLead = updated;
-      final fIdx = _filteredLeads.indexWhere((l) => l.id == updated.id);
-      if (fIdx != -1) {
-        _filteredLeads[fIdx] = updated;
-      }
-      _recalculateStats();
+      _applyLocalFilter();
     });
 
     _showSnackBar('Stage updated to "$newStage"');
     try {
       await _crmService.updateStage(updated.id, newStage);
-      _loadLeadsFromBackend();
     } catch (_) {}
   }
 
@@ -425,10 +466,10 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0F172A),
+              primary: primaryNavy,
               onPrimary: Colors.white,
               surface: Colors.white,
-              onSurface: Color(0xFF0F172A),
+              onSurface: textDark,
             ),
           ),
           child: child!,
@@ -442,34 +483,52 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        title: const Text('Schedule Follow-up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Schedule Follow-up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textDark)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Date: ${DateFormat('dd MMM yyyy').format(pickedDate)}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: primaryNavy),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: noteCtrl,
               maxLines: 2,
-              style: const TextStyle(fontSize: 12),
-              decoration: const InputDecoration(
+              style: const TextStyle(fontSize: 12.5, color: textDark),
+              decoration: InputDecoration(
                 labelText: 'Follow-up Reason / Notes',
+                labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
                 hintText: 'e.g. Call to confirm catering order',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                 isDense: true,
-                border: OutlineInputBorder(),
+                filled: true,
+                fillColor: boxBg,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
               ),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: boxBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0F172A), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryNavy,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Save'),
           ),
@@ -537,20 +596,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     } catch (_) {}
   }
 
+  /// Launch phone dialer directly with the customer number
   Future<void> _makePhoneCall(String phone) async {
     final cleanPhone = phone.replaceAll(RegExp(r'[^0-9+]'), '');
     if (cleanPhone.isEmpty) {
       _showSnackBar('Invalid phone number', isError: true);
       return;
     }
+
     final uri = Uri.parse('tel:$cleanPhone');
-    if (await canLaunchUrl(uri)) {
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        return;
+      }
+    } catch (_) {}
+
+    try {
       await launchUrl(uri);
-    } else {
-      _showSnackBar('Could not open phone dialer for $phone');
-    }
+      return;
+    } catch (_) {}
+
+    _copyToClipboard(cleanPhone, 'Phone number');
+    _showSnackBar('Calling $phone (copied to clipboard)');
   }
 
+  /// Launch WhatsApp chat directly with cleaned phone number across Windows and Mobile
   Future<void> _openWhatsApp(String phone) async {
     String cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '');
     if (cleanDigits.isEmpty) {
@@ -563,24 +634,130 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       cleanDigits = '91${cleanDigits.substring(1)}';
     }
 
+    final universalWaUri = Uri.parse('https://wa.me/$cleanDigits');
     final nativeWhatsappUri = Uri.parse('whatsapp://send?phone=$cleanDigits');
-    final webWhatsappUri = Uri.parse('https://wa.me/$cleanDigits');
+    final apiWhatsappUri = Uri.parse('https://api.whatsapp.com/send?phone=$cleanDigits');
+    final webWhatsappUri = Uri.parse('https://web.whatsapp.com/send?phone=$cleanDigits');
 
+    // 1. Try launching native WhatsApp app (on Windows desktop app or mobile app)
     try {
       if (await canLaunchUrl(nativeWhatsappUri)) {
-        await launchUrl(nativeWhatsappUri, mode: LaunchMode.externalNonBrowserApplication);
-        return;
+        final ok = await launchUrl(nativeWhatsappUri, mode: LaunchMode.externalNonBrowserApplication);
+        if (ok) return;
       }
     } catch (_) {}
 
+    // 2. Launch universal wa.me URI in external application (WhatsApp Web / Browser / Mobile App)
     try {
-      if (await canLaunchUrl(webWhatsappUri)) {
-        await launchUrl(webWhatsappUri, mode: LaunchMode.externalApplication);
-        return;
+      if (await canLaunchUrl(universalWaUri)) {
+        final ok = await launchUrl(universalWaUri, mode: LaunchMode.externalApplication);
+        if (ok) return;
       }
+    } catch (_) {}
+
+    // 3. Fallback to api.whatsapp.com
+    try {
+      if (await canLaunchUrl(apiWhatsappUri)) {
+        final ok = await launchUrl(apiWhatsappUri, mode: LaunchMode.externalApplication);
+        if (ok) return;
+      }
+    } catch (_) {}
+
+    // 4. Web WhatsApp fallback
+    try {
+      await launchUrl(webWhatsappUri, mode: LaunchMode.externalApplication);
+      return;
     } catch (_) {}
 
     _showSnackBar('Could not open WhatsApp for $phone', isError: true);
+  }
+
+  /// Show quick popup modal to Add or Edit Delivery Address
+  Future<void> _showAddressDialog(CrmLeadModel lead) async {
+    final addrCtrl = TextEditingController(text: lead.address);
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          lead.address.isNotEmpty ? 'Edit Delivery Address' : 'Add Delivery Address',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textDark),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Customer: ${lead.name} (${lead.phone})',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: addrCtrl,
+              maxLines: 3,
+              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+              decoration: InputDecoration(
+                labelText: 'Delivery Address / Area / Landmark',
+                labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
+                hintText: 'e.g. Flat 302, Green Valley Apts, Sector 62, Noida',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                filled: true,
+                fillColor: boxBg,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: boxBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryNavy,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Save Address'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved == true && mounted) {
+      final newAddr = addrCtrl.text.trim();
+      final updated = lead.copyWith(address: newAddr);
+
+      setState(() {
+        final idx = _allLeads.indexWhere((l) => l.id == lead.id);
+        if (idx != -1) _allLeads[idx] = updated;
+        if (_selectedLead?.id == lead.id) _selectedLead = updated;
+        final fIdx = _filteredLeads.indexWhere((l) => l.id == lead.id);
+        if (fIdx != -1) _filteredLeads[fIdx] = updated;
+      });
+
+      _showSnackBar(newAddr.isNotEmpty ? 'Delivery address updated' : 'Address cleared');
+
+      try {
+        await _customerService.saveCustomer(
+          name: updated.name,
+          phone: updated.phone,
+          email: updated.email,
+          address: newAddr,
+        );
+        await _crmService.updateLead(updated.id, {'address': newAddr});
+      } catch (_) {}
+    }
   }
 
   void _copyToClipboard(String text, String label) {
@@ -612,7 +789,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             ),
           ],
         ),
-        backgroundColor: isError ? const Color(0xFFDC2626) : const Color(0xFF0F172A),
+        backgroundColor: isError ? const Color(0xFFDC2626) : primaryNavy,
         behavior: SnackBarBehavior.floating,
         elevation: 6,
         margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -622,36 +799,377 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Date Range Picker Dialog ---
-  Future<void> _pickDateRange() async {
-    final picked = await showDateRangePicker(
+  // ==========================================================================
+  // REDESIGNED POPUP MODAL FOR DATE FILTER SELECTION
+  // ==========================================================================
+  Future<void> _showDateFilterPopup() async {
+    DateTime? tempStart = _selectedDateRange?.start ?? DateTime.now().subtract(const Duration(days: 30));
+    DateTime? tempEnd = _selectedDateRange?.end ?? DateTime.now();
+    String activePreset = _selectedDateRange == null ? 'All Time' : 'Custom';
+
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final sevenDaysAgo = today.subtract(const Duration(days: 6));
+    final monthStart = DateTime(now.year, now.month, 1);
+    final lastMonthStart = DateTime(now.year, now.month - 1, 1);
+    final lastMonthEnd = DateTime(now.year, now.month, 0);
+
+    await showDialog(
       context: context,
-      firstDate: DateTime(2025, 1, 1),
-      lastDate: DateTime(2028, 12, 31),
-      initialDateRange: _selectedDateRange,
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: Color(0xFF0F172A),
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Color(0xFF0F172A),
-            ),
-          ),
-          child: child!,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            void applyPreset(String preset) {
+              setDialogState(() {
+                activePreset = preset;
+                switch (preset) {
+                  case 'Today':
+                    tempStart = today;
+                    tempEnd = today;
+                    break;
+                  case 'Yesterday':
+                    tempStart = yesterday;
+                    tempEnd = yesterday;
+                    break;
+                  case 'Last 7 Days':
+                    tempStart = sevenDaysAgo;
+                    tempEnd = today;
+                    break;
+                  case 'This Month':
+                    tempStart = monthStart;
+                    tempEnd = today;
+                    break;
+                  case 'Last Month':
+                    tempStart = lastMonthStart;
+                    tempEnd = lastMonthEnd;
+                    break;
+                  case 'All Time':
+                    tempStart = null;
+                    tempEnd = null;
+                    break;
+                }
+              });
+            }
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Container(
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: primaryNavy.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.date_range_rounded, size: 20, color: primaryNavy),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Select Date Range',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: textDark,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Filter customers by interaction date',
+                                style: TextStyle(fontSize: 11.5, color: textSubtle),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          icon: const Icon(Icons.close_rounded, size: 18, color: textSubtle),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Preset Chips
+                    const Text(
+                      'Quick Presets',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        'Today',
+                        'Yesterday',
+                        'Last 7 Days',
+                        'This Month',
+                        'Last Month',
+                        'All Time',
+                      ].map((preset) {
+                        final isSelected = activePreset == preset;
+                        return InkWell(
+                          onTap: () => applyPreset(preset),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                            decoration: BoxDecoration(
+                              color: isSelected ? primaryNavy : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: isSelected ? primaryNavy : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Text(
+                              preset,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                color: isSelected ? Colors.white : const Color(0xFF334155),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Custom Date Inputs (From - To)
+                    const Text(
+                      'Custom Range',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF475569)),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        // Start Date
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: tempStart ?? DateTime.now(),
+                                firstDate: DateTime(2024, 1, 1),
+                                lastDate: DateTime(2030, 12, 31),
+                                builder: (context, child) => Theme(
+                                  data: ThemeData.light().copyWith(
+                                    colorScheme: const ColorScheme.light(
+                                      primary: primaryNavy,
+                                      onPrimary: Colors.white,
+                                      surface: Colors.white,
+                                      onSurface: textDark,
+                                    ),
+                                  ),
+                                  child: child!,
+                                ),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  tempStart = picked;
+                                  activePreset = 'Custom';
+                                  if (tempEnd != null && tempEnd!.isBefore(tempStart!)) {
+                                    tempEnd = tempStart;
+                                  }
+                                });
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: boxBg,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: boxBorder),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'FROM',
+                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.calendar_today_outlined, size: 13, color: primaryNavy),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          tempStart != null ? DateFormat('dd MMM yyyy').format(tempStart!) : 'Start Date',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: tempStart != null ? textDark : const Color(0xFF94A3B8),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+
+                        const SizedBox(width: 8),
+
+                        // End Date
+                        Expanded(
+                          child: InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: tempEnd ?? tempStart ?? DateTime.now(),
+                                firstDate: tempStart ?? DateTime(2024, 1, 1),
+                                lastDate: DateTime(2030, 12, 31),
+                                builder: (context, child) => Theme(
+                                  data: ThemeData.light().copyWith(
+                                    colorScheme: const ColorScheme.light(
+                                      primary: primaryNavy,
+                                      onPrimary: Colors.white,
+                                      surface: Colors.white,
+                                      onSurface: textDark,
+                                    ),
+                                  ),
+                                  child: child!,
+                                ),
+                              );
+                              if (picked != null) {
+                                setDialogState(() {
+                                  tempEnd = picked;
+                                  activePreset = 'Custom';
+                                });
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: boxBg,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: boxBorder),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'TO',
+                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      const Icon(Icons.calendar_today_outlined, size: 13, color: primaryNavy),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          tempEnd != null ? DateFormat('dd MMM yyyy').format(tempEnd!) : 'End Date',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: tempEnd != null ? textDark : const Color(0xFF94A3B8),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 20),
+
+                    // Action Buttons
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              Navigator.pop(ctx);
+                              setState(() {
+                                _selectedDateRange = null;
+                                _currentPage = 1;
+                              });
+                              _applyLocalFilter();
+                              _loadLeadsFromBackend();
+                              _showSnackBar('Date filter reset (All Time)');
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: boxBorder),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                            ),
+                            child: const Text('Reset All', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (tempStart != null && tempEnd != null) {
+                                setState(() {
+                                  _selectedDateRange = DateTimeRange(start: tempStart!, end: tempEnd!);
+                                  _currentPage = 1;
+                                });
+                                _applyLocalFilter();
+                                _loadLeadsFromBackend();
+                                _showSnackBar(
+                                  'Filtered: ${DateFormat('dd MMM').format(tempStart!)} - ${DateFormat('dd MMM yyyy').format(tempEnd!)}',
+                                );
+                              } else {
+                                setState(() {
+                                  _selectedDateRange = null;
+                                  _currentPage = 1;
+                                });
+                                _applyLocalFilter();
+                                _loadLeadsFromBackend();
+                              }
+                              Navigator.pop(ctx);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primaryNavy,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              padding: const EdgeInsets.symmetric(vertical: 11),
+                            ),
+                            child: const Text('Apply Filter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         );
       },
     );
-
-    if (picked != null) {
-      setState(() {
-        _selectedDateRange = picked;
-      });
-      _showSnackBar(
-        'Filtered range: ${DateFormat('dd MMM yyyy').format(picked.start)} - ${DateFormat('dd MMM yyyy').format(picked.end)}',
-      );
-    }
   }
 
   // --- UI Colors & Badge Helpers ---
@@ -730,13 +1248,13 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
   Color _getAvatarColor(String name) {
     final n = name.trim().toUpperCase();
-    if (n.startsWith('J') || n.startsWith('C')) return const Color(0xFF0B192C);
+    if (n.startsWith('J') || n.startsWith('C')) return headerNavy;
     if (n.startsWith('R') || n.startsWith('P') || n.startsWith('A') || n.startsWith('S')) {
-      return const Color(0xFF1D4ED8);
+      return primaryNavy;
     }
-    if (n.startsWith('V')) return const Color(0xFF0F172A);
+    if (n.startsWith('V')) return const Color(0xFF1E293B);
     if (n.startsWith('N')) return const Color(0xFF854D0E);
-    return const Color(0xFF1E293B);
+    return primaryNavy;
   }
 
   @override
@@ -751,7 +1269,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
             return RefreshIndicator(
               onRefresh: _loadLeadsFromBackend,
-              color: const Color(0xFF0B192C),
+              color: primaryNavy,
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: EdgeInsets.symmetric(
@@ -761,17 +1279,17 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // 1. Top Header (Wrapped for Mobile)
+                    // 1. Top Header (Without Back Button)
                     _buildHeaderRow(isMobile),
 
                     SizedBox(height: isMobile ? 12 : 16),
 
-                    // 2. 5 Metric Cards with Sparklines
+                    // 2. 5 Dynamic Metric Cards with Sparklines & Distinct Icons (Matching Image)
                     _buildMetricCardsRow(isWide, isMobile),
 
                     SizedBox(height: isMobile ? 14 : 18),
 
-                    // 3. Stage Tabs & Wrapped Filters
+                    // 3. Stage Tabs & Curved Dropdowns / Filters
                     _buildStageTabsAndFiltersRow(isWide, isMobile),
 
                     SizedBox(height: isMobile ? 14 : 16),
@@ -811,36 +1329,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   // ==========================================================================
-  // 1. HEADER ROW: CRM, Subtitle, Import, + Add New Lead (Wrapped for Mobile)
+  // 1. HEADER ROW: CRM, Subtitle, Import, + Add Lead (Clean Modern Header)
   // ==========================================================================
   Widget _buildHeaderRow(bool isMobile) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Optional Back button if callback provided
-        if (widget.onNavigateToDashboard != null) ...[
-          IconButton(
-            icon: const Icon(Icons.arrow_back_rounded, size: 20, color: Color(0xFF0F172A)),
-            onPressed: widget.onNavigateToDashboard,
-            tooltip: 'Back to Dashboard',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 8),
-        ],
-
-        // Optional Drawer toggle button on mobile
-        if (widget.onOpenDrawer != null && isMobile) ...[
-          IconButton(
-            icon: const Icon(Icons.menu_rounded, size: 22, color: Color(0xFF0F172A)),
-            onPressed: widget.onOpenDrawer,
-            tooltip: 'Open Menu',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 8),
-        ],
-
         // Title & Subtitle
         Expanded(
           child: Column(
@@ -852,17 +1346,17 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 style: TextStyle(
                   fontSize: isMobile ? 20 : 24,
                   fontWeight: FontWeight.w800,
-                  color: const Color(0xFF0F172A),
+                  color: textDark,
                   letterSpacing: -0.3,
                 ),
               ),
               const SizedBox(height: 2),
-              Text(
+              const Text(
                 'Manage customers, leads & relationships',
                 style: TextStyle(
-                  fontSize: isMobile ? 11 : 12.5,
+                  fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: const Color(0xFF64748B),
+                  color: textSubtle,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -873,7 +1367,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
         const SizedBox(width: 8),
 
-        // Action Buttons: Import, + Add New Lead (Wrapped)
+        // Action Buttons: Import, + Add Lead (Styled with primaryNavy)
         Wrap(
           spacing: 8,
           runSpacing: 6,
@@ -883,7 +1377,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             // Import Button
             InkWell(
               onTap: _showImportModal,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: isMobile ? 10 : 14,
@@ -891,20 +1385,20 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 ),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: boxBorder, width: 1),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.file_upload_outlined, size: 14, color: Color(0xFF0F172A)),
+                    const Icon(Icons.file_upload_outlined, size: 14, color: textDark),
                     const SizedBox(width: 4),
                     Text(
                       'Import',
                       style: TextStyle(
                         fontSize: isMobile ? 11.5 : 12,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0F172A),
+                        color: textDark,
                       ),
                     ),
                   ],
@@ -912,23 +1406,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               ),
             ),
 
-            // + Add New Lead Button
+            // + Add New Lead Button (Primary Header Navy Tone)
             InkWell(
               onTap: () => _showAddEditLeadModal(context),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: isMobile ? 12 : 16,
                   vertical: isMobile ? 7.5 : 8.5,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0B192C),
-                  borderRadius: BorderRadius.circular(8),
+                  color: primaryNavy,
+                  borderRadius: BorderRadius.circular(10),
                   boxShadow: const [
                     BoxShadow(
-                      color: Color(0x12000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 1),
+                      color: Color(0x180A2B66),
+                      blurRadius: 5,
+                      offset: Offset(0, 2),
                     ),
                   ],
                 ),
@@ -956,53 +1450,53 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   // ==========================================================================
-  // 2. 5 METRIC CARDS ROW WITH SPARKLINES (Compact for Mobile)
+  // 2. 5 DYNAMIC METRIC CARDS ROW (Matching Image)
   // ==========================================================================
   Widget _buildMetricCardsRow(bool isWide, bool isMobile) {
     final cards = [
       _MetricCardData(
         title: 'Total Contacts',
         value: '${_stats.total}',
-        trend: _stats.trends.total,
-        iconBgColor: const Color(0xFFEFF6FF),
-        iconColor: const Color(0xFF2563EB),
-        iconWidget: const Icon(Icons.people_alt_rounded, size: 17, color: Color(0xFF2563EB)),
-        waveColor: const Color(0xFF3B82F6),
+        stageTab: 'All',
+        iconBgColor: const Color(0xFFE0F2FE),
+        iconColor: const Color(0xFF0284C7),
+        iconWidget: Icon(Icons.people_alt_rounded, size: isMobile ? 22 : 24, color: const Color(0xFF0284C7)),
+        waveColor: const Color(0xFF38BDF8),
       ),
       _MetricCardData(
         title: 'Leads',
         value: '${_stats.leads}',
-        trend: _stats.trends.leads,
+        stageTab: 'Leads',
         iconBgColor: const Color(0xFFFEF3C7),
         iconColor: const Color(0xFFD97706),
-        iconWidget: const CrownIcon(size: 17, color: Color(0xFFD97706)),
+        iconWidget: CrownIcon(size: isMobile ? 22 : 24, color: const Color(0xFFD97706)),
         waveColor: const Color(0xFFF59E0B),
       ),
       _MetricCardData(
         title: 'Prospects',
         value: '${_stats.prospects}',
-        trend: _stats.trends.prospects,
+        stageTab: 'Prospects',
         iconBgColor: const Color(0xFFF3E8FF),
         iconColor: const Color(0xFF9333EA),
-        iconWidget: const Icon(Icons.handshake_rounded, size: 17, color: Color(0xFF9333EA)),
+        iconWidget: Icon(Icons.handshake_rounded, size: isMobile ? 22 : 24, color: const Color(0xFF9333EA)),
         waveColor: const Color(0xFFA855F7),
       ),
       _MetricCardData(
         title: 'Deals',
         value: '${_stats.deals}',
-        trend: _stats.trends.deals,
+        stageTab: 'Deals',
         iconBgColor: const Color(0xFFDCFCE7),
         iconColor: const Color(0xFF16A34A),
-        iconWidget: const Icon(Icons.shopping_bag_rounded, size: 17, color: Color(0xFF16A34A)),
+        iconWidget: Icon(Icons.shopping_bag_rounded, size: isMobile ? 22 : 24, color: const Color(0xFF16A34A)),
         waveColor: const Color(0xFF22C55E),
       ),
       _MetricCardData(
         title: 'Won Customers',
         value: '${_stats.wins}',
-        trend: _stats.trends.wins,
-        iconBgColor: const Color(0xFFFFEDD5),
+        stageTab: 'Won',
+        iconBgColor: const Color(0xFFFEF3C7),
         iconColor: const Color(0xFFEA580C),
-        iconWidget: const Icon(Icons.emoji_events_rounded, size: 17, color: Color(0xFFEA580C)),
+        iconWidget: Icon(Icons.emoji_events_rounded, size: isMobile ? 22 : 24, color: const Color(0xFFEA580C)),
         waveColor: const Color(0xFFF97316),
       ),
     ];
@@ -1029,7 +1523,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         children: cards
             .map(
               (card) => Container(
-                width: isMobile ? 175 : 195,
+                width: isMobile ? 165 : 185,
                 margin: const EdgeInsets.only(right: 10),
                 child: _buildSingleMetricCard(card, isMobile: isMobile),
               ),
@@ -1040,140 +1534,125 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   Widget _buildSingleMetricCard(_MetricCardData data, {required bool isMobile}) {
-    return Container(
-      height: isMobile ? 80 : 88,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.1),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x04000000),
-            blurRadius: 6,
-            offset: Offset(0, 1),
+    final isSelected = _selectedStageTab == data.stageTab;
+
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _selectedStageTab = data.stageTab;
+          _currentPage = 1;
+          _applyLocalFilter();
+        });
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: isMobile ? 78 : 86,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? primaryNavy : const Color(0xFFF1F5F9),
+            width: isSelected ? 1.8 : 1.2,
           ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        children: [
-          // Background Sparkline Wave
-          Positioned(
-            right: 0,
-            bottom: 0,
-            width: isMobile ? 80 : 90,
-            height: isMobile ? 42 : 48,
-            child: CustomPaint(
-              painter: SparklineWavePainter(color: data.waveColor),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected ? primaryNavy.withValues(alpha: 0.12) : const Color(0x06000000),
+              blurRadius: isSelected ? 8 : 6,
+              offset: const Offset(0, 2),
             ),
-          ),
-
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: isMobile ? 8 : 10),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Icon circle
-                Container(
-                  width: isMobile ? 36 : 40,
-                  height: isMobile ? 36 : 40,
-                  decoration: BoxDecoration(
-                    color: data.iconBgColor,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: data.iconWidget,
+          ],
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Stack(
+          children: [
+            Positioned(
+              right: 0,
+              bottom: 0,
+              width: isMobile ? 85 : 100,
+              height: isMobile ? 42 : 50,
+              child: Opacity(
+                opacity: 0.9,
+                child: CustomPaint(
+                  painter: SparklineWavePainter(color: data.waveColor, isSelected: isSelected),
                 ),
-
-                const SizedBox(width: 9),
-
-                // Texts: Title, Big Number, Trend
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        data.title,
-                        style: TextStyle(
-                          fontSize: isMobile ? 10.5 : 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: const Color(0xFF64748B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        data.value,
-                        style: TextStyle(
-                          fontSize: isMobile ? 17 : 20,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF0F172A),
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      Row(
-                        children: [
-                          const Icon(Icons.north_east_rounded, size: 10, color: Color(0xFF16A34A)),
-                          const SizedBox(width: 2),
-                          Flexible(
-                            child: Text(
-                              data.trend,
-                              style: TextStyle(
-                                fontSize: isMobile ? 9.5 : 10,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF16A34A),
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+              ),
+            ),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 12, vertical: isMobile ? 8 : 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Container(
+                    width: isMobile ? 40 : 44,
+                    height: isMobile ? 40 : 44,
+                    decoration: BoxDecoration(
+                      color: data.iconBgColor,
+                      shape: BoxShape.circle,
+                    ),
+                    alignment: Alignment.center,
+                    child: data.iconWidget,
+                  ),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          data.title,
+                          style: TextStyle(
+                            fontSize: isMobile ? 10.5 : 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: textSubtle,
                           ),
-                        ],
-                      ),
-                    ],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          data.value,
+                          style: TextStyle(
+                            fontSize: isMobile ? 18 : 22,
+                            fontWeight: FontWeight.w800,
+                            color: textDark,
+                            letterSpacing: -0.4,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
   // ==========================================================================
-  // 3. STAGE TABS & WRAPPED FILTERS ROW
+  // 3. STAGE TABS & CURVED FILTER CONTROLS
   // ==========================================================================
   Widget _buildStageTabsAndFiltersRow(bool isWide, bool isMobile) {
     if (isWide) {
       return Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Stage Tabs on Left
           Expanded(
             child: _buildStagePillsRow(isMobile: false),
           ),
-
           const SizedBox(width: 12),
-
-          // Filters on Right
           _buildFilterControlsRow(isMobile: false),
         ],
       );
     }
 
-    // Mobile & Tablet: Stack tabs and wrapped filters
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Stage Tabs (Horizontal scroll on mobile)
         _buildStagePillsRow(isMobile: isMobile),
-
         const SizedBox(height: 10),
-
-        // Wrapped Filter Dropdowns
         _buildFilterControlsRow(isMobile: isMobile),
       ],
     );
@@ -1215,20 +1694,20 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 setState(() {
                   _selectedStageTab = tab;
                   _currentPage = 1;
+                  _applyLocalFilter();
                 });
-                _loadLeadsFromBackend();
               },
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               child: Container(
                 padding: EdgeInsets.symmetric(
                   horizontal: isMobile ? 10 : 12,
                   vertical: isMobile ? 6 : 7,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected ? const Color(0xFF0B192C) : Colors.white,
-                  borderRadius: BorderRadius.circular(8),
+                  color: isSelected ? primaryNavy : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isSelected ? const Color(0xFF0B192C) : const Color(0xFFCBD5E1),
+                    color: isSelected ? primaryNavy : boxBorder,
                     width: 1,
                   ),
                 ),
@@ -1249,29 +1728,38 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   Widget _buildFilterControlsRow({required bool isMobile}) {
+    final dateLabel = _selectedDateRange == null
+        ? 'All Dates'
+        : '${DateFormat('dd MMM').format(_selectedDateRange!.start)} - ${DateFormat('dd MMM yyyy').format(_selectedDateRange!.end)}';
+
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        // Sources Dropdown
+        // Sources Dropdown (Curved Shape Box with High Visibility Text)
         Container(
-          height: 34,
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          height: 36,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: boxBorder, width: 1),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: _selectedSourceFilter,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(12),
               icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF475569)),
-              style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: const Color(0xFF1E293B)),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark),
               items: _allSources.map((source) {
                 return DropdownMenuItem<String>(
                   value: source,
-                  child: Text(source),
+                  child: Text(
+                    source,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark),
+                  ),
                 );
               }).toList(),
               onChanged: (val) {
@@ -1287,58 +1775,70 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // Date Range Picker
+        // Redesigned Date Filter Popup Button (Curved Shape Box)
         InkWell(
-          onTap: _pickDateRange,
-          borderRadius: BorderRadius.circular(8),
+          onTap: _showDateFilterPopup,
+          borderRadius: BorderRadius.circular(10),
           child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+              color: _selectedDateRange != null ? primaryNavy.withValues(alpha: 0.08) : Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: _selectedDateRange != null ? primaryNavy : boxBorder,
+                width: 1,
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.calendar_today_outlined, size: 13, color: Color(0xFF475569)),
+                Icon(
+                  Icons.calendar_today_outlined,
+                  size: 13,
+                  color: _selectedDateRange != null ? primaryNavy : const Color(0xFF475569),
+                ),
                 const SizedBox(width: 6),
                 Text(
-                  '${DateFormat('dd MMM').format(_selectedDateRange.start)} - ${DateFormat('dd MMM yyyy').format(_selectedDateRange.end)}',
+                  dateLabel,
                   style: TextStyle(
                     fontSize: isMobile ? 11 : 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1E293B),
+                    fontWeight: _selectedDateRange != null ? FontWeight.w700 : FontWeight.w600,
+                    color: _selectedDateRange != null ? primaryNavy : textDark,
                   ),
                 ),
-                const SizedBox(width: 3),
-                const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF475569)),
+                const SizedBox(width: 4),
+                Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 16,
+                  color: _selectedDateRange != null ? primaryNavy : const Color(0xFF475569),
+                ),
               ],
             ),
           ),
         ),
 
-        // Reset Filter Action Button
+        // Reset Filter Action Button (Curved Shape Box)
         InkWell(
           onTap: () {
             _searchController.clear();
             setState(() {
               _selectedStageTab = 'All';
               _selectedSourceFilter = 'All Sources';
+              _selectedDateRange = null;
               _currentPage = 1;
             });
             _loadLeadsFromBackend();
             _showSnackBar('Filters reset');
           },
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 10),
+            height: 36,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: boxBorder, width: 1),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1350,7 +1850,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   style: TextStyle(
                     fontSize: isMobile ? 11 : 11.5,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF1E293B),
+                    color: textDark,
                   ),
                 ),
               ],
@@ -1362,7 +1862,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   // ==========================================================================
-  // 4. LEFT SECTION: TABLE CARD (Search, Mobile List / Desktop Table, Pagination)
+  // 4. LEFT SECTION: TABLE CARD (Wrapped in Horizontal Scroll)
   // ==========================================================================
   Widget _buildTableCard({required bool isMobile}) {
     return Container(
@@ -1402,7 +1902,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     style: TextStyle(
                       fontSize: isMobile ? 12 : 13,
                       fontWeight: FontWeight.w600,
-                      color: const Color(0xFF0F172A),
+                      color: textDark,
                     ),
                     decoration: InputDecoration(
                       hintText: 'Search by name, phone or email...',
@@ -1430,14 +1930,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             ),
           ),
 
-          // Content: Loading State, Empty State, or Data (Mobile vs Desktop Table)
+          // Content: Loading, Empty, or Data View
           if (_isLoading)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 40),
               child: Center(
                 child: CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  color: Color(0xFF0B192C),
+                  color: primaryNavy,
                 ),
               ),
             )
@@ -1454,7 +1954,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       style: TextStyle(
                         fontSize: isMobile ? 12.5 : 13.5,
                         fontWeight: FontWeight.w600,
-                        color: const Color(0xFF64748B),
+                        color: textSubtle,
                       ),
                     ),
                   ],
@@ -1466,18 +1966,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           else
             _buildDesktopTable(),
 
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
-
-          // Table Footer / Pagination Bar (Wrapped & Responsive)
-          _buildPaginationBar(isMobile: isMobile),
+          // Dynamic Pagination: ONLY rendered if leads are present!
+          if (_filteredLeads.isNotEmpty) ...[
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            _buildPaginationBar(isMobile: isMobile),
+          ],
         ],
       ),
     );
   }
 
-  // --- Mobile Leads List View ---
+  // --- Mobile Leads List View with Dynamic Paging ---
   Widget _buildMobileLeadsList() {
-    final leadsToShow = _filteredLeads.take(_pageSize).toList();
+    final start = (_currentPage - 1) * _pageSize;
+    final leadsToShow = _filteredLeads.skip(start).take(_pageSize).toList();
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1492,7 +1995,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Mobile Lead Card Item ---
+  // --- Mobile Lead Card Item (Optimized Area Management & Standalone Action Icons) ---
   Widget _buildMobileLeadCardItem(CrmLeadModel lead, bool isSelected) {
     final avatarColor = _getAvatarColor(lead.name);
     final initial = lead.name.isNotEmpty ? lead.name[0].toUpperCase() : 'G';
@@ -1500,24 +2003,35 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     return InkWell(
       onTap: () => _onSelectLead(lead),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF1F5F9) : Colors.white,
-          border: isSelected
-              ? const Border(left: BorderSide(color: Color(0xFF2563EB), width: 3.5))
-              : null,
+          color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? primaryNavy : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.5 : 1,
+          ),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x04000000),
+              blurRadius: 4,
+              offset: Offset(0, 1),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Row: Avatar + Name + Stage Badge
+            // Top Row: Avatar + Name + Regular Tag + Stage Badge
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Container(
-                  width: 32,
-                  height: 32,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
                     color: avatarColor,
                     shape: BoxShape.circle,
@@ -1526,7 +2040,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   child: Text(
                     initial,
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
@@ -1540,37 +2054,62 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       Text(
                         lead.name,
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 13,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+                          color: textDark,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      Text(
-                        lead.customerType,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF64748B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      const SizedBox(height: 1),
+                      Row(
+                        children: [
+                          if (lead.isRegularCustomer) ...[
+                            Container(
+                              margin: const EdgeInsets.only(right: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: primaryNavy.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Regular',
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: primaryNavy,
+                                ),
+                              ),
+                            ),
+                          ],
+                          Flexible(
+                            child: Text(
+                              lead.displayCustomerType,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: lead.isRegularCustomer ? FontWeight.w700 : FontWeight.w500,
+                                color: lead.isRegularCustomer ? primaryNavy : textSubtle,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: 6),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: _getStageBgColor(lead.stage),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     lead.stage,
                     style: TextStyle(
-                      fontSize: 10,
+                      fontSize: 10.5,
                       fontWeight: FontWeight.w700,
                       color: _getStageTextColor(lead.stage),
                     ),
@@ -1579,26 +2118,25 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               ],
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 7),
 
-            // Middle Wrapped Row: Phone, Source, Last Visit
+            // Middle Row: Phone (One-Tap Dial), Source Badge, Spent & Orders Summary
             Wrap(
               spacing: 8,
               runSpacing: 4,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                // Phone
                 InkWell(
                   onTap: () => _makePhoneCall(lead.phone),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.phone_rounded, size: 11, color: Color(0xFF2563EB)),
+                      const Icon(Icons.phone_rounded, size: 12, color: Color(0xFF2563EB)),
                       const SizedBox(width: 3),
                       Text(
                         lead.phone,
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF2563EB),
                         ),
@@ -1606,13 +2144,11 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     ],
                   ),
                 ),
-
-                // Source Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                   decoration: BoxDecoration(
                     color: _getSourceBgColor(lead.source),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     lead.source,
@@ -1623,112 +2159,151 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     ),
                   ),
                 ),
-
-                // Last Interaction
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.access_time_rounded, size: 11, color: Color(0xFF94A3B8)),
-                    const SizedBox(width: 3),
-                    Text(
-                      interactionDate,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
-                      ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '₹${lead.totalSpend.toStringAsFixed(0)} • ${lead.totalOrders} ${lead.totalOrders == 1 ? 'order' : 'orders'}',
+                    style: const TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF334155),
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),
 
             const SizedBox(height: 8),
 
-            // Bottom Actions: WhatsApp, Call, Follow-up, More
+            // Bottom Action Strip: Last interaction & Standalone Action Icons (Enlarged, No Circles)
             Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // WhatsApp
-                InkWell(
-                  onTap: () => _openWhatsApp(lead.phone),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFDCFCE7),
-                      shape: BoxShape.circle,
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.access_time_rounded, size: 11, color: Color(0xFF94A3B8)),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Active: $interactionDate',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        color: textSubtle,
+                      ),
                     ),
-                    child: const WhatsAppBubbleIcon(size: 14, color: Color(0xFF16A34A)),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // Call
-                InkWell(
-                  onTap: () => _makePhoneCall(lead.phone),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFEFF6FF),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.call_rounded, size: 13, color: Color(0xFF2563EB)),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // Followup
-                InkWell(
-                  onTap: () => _scheduleFollowup(lead),
-                  borderRadius: BorderRadius.circular(12),
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFEF3C7),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.event_rounded, size: 13, color: Color(0xFFD97706)),
-                  ),
-                ),
-
-                const SizedBox(width: 8),
-
-                // More Menu
-                PopupMenuButton<String>(
-                  onSelected: (val) {
-                    if (val == 'details') {
-                      _onSelectLead(lead);
-                    } else if (val == 'edit') {
-                      _showAddEditLeadModal(context, existingLead: lead);
-                    } else if (val == 'delete') {
-                      _confirmDeleteLead(lead);
-                    } else if (val == 'share') {
-                      SharePlus.instance.share(
-                        ShareParams(
-                          text: 'Customer Lead: ${lead.name}\nPhone: ${lead.phone}\nStage: ${lead.stage}',
-                        ),
-                      );
-                    }
-                  },
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  itemBuilder: (ctx) => [
-                    const PopupMenuItem(value: 'details', child: Text('View Details', style: TextStyle(fontSize: 12))),
-                    const PopupMenuItem(value: 'edit', child: Text('Edit Lead', style: TextStyle(fontSize: 12))),
-                    const PopupMenuItem(value: 'delete', child: Text('Delete', style: TextStyle(fontSize: 12, color: Colors.red))),
-                    const PopupMenuItem(value: 'share', child: Text('Share', style: TextStyle(fontSize: 12))),
                   ],
-                  child: Container(
-                    padding: const EdgeInsets.all(5),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF1F5F9),
-                      shape: BoxShape.circle,
+                ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Standalone Enlarged WhatsApp Icon
+                    InkWell(
+                      onTap: () => _openWhatsApp(lead.phone),
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4.0),
+                        child: WhatsAppBubbleIcon(size: 24),
+                      ),
                     ),
-                    child: const Icon(Icons.more_horiz_rounded, size: 14, color: Color(0xFF475569)),
-                  ),
+
+                    const SizedBox(width: 6),
+
+                    // Standalone Enlarged Call Icon
+                    InkWell(
+                      onTap: () => _makePhoneCall(lead.phone),
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4.0),
+                        child: CallActionIcon(size: 24),
+                      ),
+                    ),
+
+                    const SizedBox(width: 6),
+
+                    // Followup Button
+                    InkWell(
+                      onTap: () => _scheduleFollowup(lead),
+                      borderRadius: BorderRadius.circular(8),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4.0),
+                        child: Icon(Icons.event_note_rounded, size: 22, color: Color(0xFFD97706)),
+                      ),
+                    ),
+
+                    const SizedBox(width: 4),
+
+                    // More Menu
+                    PopupMenuButton<String>(
+                      color: Colors.white,
+                      surfaceTintColor: Colors.transparent,
+                      elevation: 6,
+                      onSelected: (val) {
+                        if (val == 'details') {
+                          _onSelectLead(lead);
+                        } else if (val == 'edit') {
+                          _showAddEditLeadModal(context, existingLead: lead);
+                        } else if (val == 'address') {
+                          _showAddressDialog(lead);
+                        } else if (val == 'delete') {
+                          _confirmDeleteLead(lead);
+                        } else if (val == 'share') {
+                          SharePlus.instance.share(
+                            ShareParams(
+                              text: 'Customer Lead: ${lead.name}\nPhone: ${lead.phone}\nStage: ${lead.stage}',
+                            ),
+                          );
+                        }
+                      },
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      itemBuilder: (ctx) => [
+                        const PopupMenuItem(
+                          value: 'details',
+                          child: Text(
+                            'View Details',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Text(
+                            'Edit Lead',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'address',
+                          child: Text(
+                            'Delivery Address',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'share',
+                          child: Text(
+                            'Share Lead',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text(
+                            'Delete Lead',
+                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                          ),
+                        ),
+                      ],
+                      child: const Padding(
+                        padding: EdgeInsets.all(4.0),
+                        child: Icon(Icons.more_vert_rounded, size: 22, color: Color(0xFF64748B)),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1738,96 +2313,113 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Desktop Table View ---
+  // --- Desktop Table View (Wrapped in Horizontal Scroll to Eliminate Overflow) ---
   Widget _buildDesktopTable() {
-    return Column(
-      children: [
-        // Table Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8FAFC),
-            border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1)),
-          ),
-          child: Row(
-            children: const [
-              Expanded(
-                flex: 30,
-                child: Text(
-                  'Name',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 18,
-                child: Text(
-                  'Phone',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 14,
-                child: Text(
-                  'Source',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 14,
-                child: Text(
-                  'Stage',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 16,
-                child: Text(
-                  'Last Interaction',
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-              Expanded(
-                flex: 14,
-                child: Text(
-                  'Actions',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF475569),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
+    final start = (_currentPage - 1) * _pageSize;
+    final leadsToShow = _filteredLeads.skip(start).take(_pageSize).toList();
 
-        // Table Rows
-        ..._filteredLeads.take(_pageSize).map((lead) {
-          final isSelected = _selectedLead?.id == lead.id;
-          return _buildTableRow(lead, isSelected);
-        }),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final minWidth = math.max(constraints.maxWidth, 680.0);
+
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          child: SizedBox(
+            width: minWidth,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Table Header
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1)),
+                  ),
+                  child: Row(
+                    children: const [
+                      Expanded(
+                        flex: 26,
+                        child: Text(
+                          'Name',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 17,
+                        child: Text(
+                          'Phone',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 13,
+                        child: Text(
+                          'Source',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 13,
+                        child: Text(
+                          'Stage',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 14,
+                        child: Text(
+                          'Last Interaction',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 17,
+                        child: Text(
+                          'Actions',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF475569),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Table Rows
+                ...leadsToShow.map((lead) {
+                  final isSelected = _selectedLead?.id == lead.id;
+                  return _buildTableRow(lead, isSelected);
+                }),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1840,21 +2432,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return InkWell(
       onTap: () => _onSelectLead(lead),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFF1F5F9) : Colors.white,
           border: const Border(bottom: BorderSide(color: Color(0xFFF8FAFC), width: 1)),
         ),
         child: Row(
           children: [
-            // 1. Name & Subtitle with Avatar
+            // 1. Name & Regular Customer Subtitle
             Expanded(
-              flex: 30,
+              flex: 26,
               child: Row(
                 children: [
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 30,
+                    height: 30,
                     decoration: BoxDecoration(
                       color: avatarColor,
                       shape: BoxShape.circle,
@@ -1863,13 +2455,13 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     child: Text(
                       initial,
                       style: const TextStyle(
-                        fontSize: 13,
+                        fontSize: 12.5,
                         fontWeight: FontWeight.w800,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 10),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1877,23 +2469,46 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                         Text(
                           lead.name,
                           style: const TextStyle(
-                            fontSize: 12.5,
+                            fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: Color(0xFF0F172A),
+                            color: textDark,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                        const SizedBox(height: 1),
-                        Text(
-                          lead.customerType,
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF64748B),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            if (lead.isRegularCustomer) ...[
+                              Container(
+                                margin: const EdgeInsets.only(right: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: primaryNavy.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Regular',
+                                  style: TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: primaryNavy,
+                                  ),
+                                ),
+                              ),
+                            ],
+                            Flexible(
+                              child: Text(
+                                lead.displayCustomerType,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: lead.isRegularCustomer ? FontWeight.w700 : FontWeight.w500,
+                                  color: lead.isRegularCustomer ? primaryNavy : textSubtle,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -1904,11 +2519,11 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
             // 2. Phone
             Expanded(
-              flex: 18,
+              flex: 17,
               child: Text(
                 lead.phone,
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w600,
                   color: Color(0xFF334155),
                 ),
@@ -1917,19 +2532,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
             // 3. Source Badge
             Expanded(
-              flex: 14,
+              flex: 13,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
                     color: _getSourceBgColor(lead.source),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     lead.source,
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: _getSourceTextColor(lead.source),
                     ),
@@ -1940,19 +2555,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
             // 4. Stage Badge
             Expanded(
-              flex: 14,
+              flex: 13,
               child: Align(
                 alignment: Alignment.centerLeft,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                   decoration: BoxDecoration(
                     color: _getStageBgColor(lead.stage),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     lead.stage,
                     style: TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 10,
                       fontWeight: FontWeight.w700,
                       color: _getStageTextColor(lead.stage),
                     ),
@@ -1963,14 +2578,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
             // 5. Last Interaction Date & Time
             Expanded(
-              flex: 16,
+              flex: 14,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     interactionDate,
                     style: const TextStyle(
-                      fontSize: 11.5,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF334155),
                     ),
@@ -1978,7 +2593,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   Text(
                     interactionTime,
                     style: const TextStyle(
-                      fontSize: 10,
+                      fontSize: 9.5,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFF94A3B8),
                     ),
@@ -1987,55 +2602,49 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               ),
             ),
 
-            // 6. Action Circular Buttons (WhatsApp, Phone, More)
+            // 6. Action Buttons (Standalone Enlarged WhatsApp, Green Call, More Menu) - No Outer Circles!
             Expanded(
-              flex: 14,
+              flex: 17,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // WhatsApp Icon Circle
+                  // WhatsApp Standalone Enlarged Icon
                   InkWell(
                     onTap: () => _openWhatsApp(lead.phone),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: const WhatsAppBubbleIcon(size: 13, color: Colors.white),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: WhatsAppBubbleIcon(size: 24),
                     ),
                   ),
 
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 8),
 
-                  // Phone Call Icon Circle
+                  // Phone Call Standalone Enlarged Icon
                   InkWell(
                     onTap: () => _makePhoneCall(lead.phone),
-                    borderRadius: BorderRadius.circular(14),
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF2563EB),
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.call_rounded, size: 13, color: Colors.white),
+                    borderRadius: BorderRadius.circular(8),
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: CallActionIcon(size: 24),
                     ),
                   ),
 
-                  const SizedBox(width: 5),
+                  const SizedBox(width: 6),
 
-                  // More Context Menu Circle
+                  // More Context Menu
                   PopupMenuButton<String>(
+                    color: Colors.white,
+                    surfaceTintColor: Colors.transparent,
+                    elevation: 6,
                     onSelected: (val) {
                       if (val == 'details') {
                         _onSelectLead(lead);
                       } else if (val == 'edit') {
                         _showAddEditLeadModal(context, existingLead: lead);
+                      } else if (val == 'address') {
+                        _showAddressDialog(lead);
                       } else if (val == 'delete') {
                         _confirmDeleteLead(lead);
                       } else if (val == 'share') {
@@ -2048,20 +2657,45 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     },
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(value: 'details', child: Text('View Details', style: TextStyle(fontSize: 12))),
-                      const PopupMenuItem(value: 'edit', child: Text('Edit Lead', style: TextStyle(fontSize: 12))),
-                      const PopupMenuItem(value: 'delete', child: Text('Delete Lead', style: TextStyle(fontSize: 12, color: Colors.red))),
-                      const PopupMenuItem(value: 'share', child: Text('Share Lead', style: TextStyle(fontSize: 12))),
-                    ],
-                    child: Container(
-                      width: 26,
-                      height: 26,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF1F5F9),
-                        shape: BoxShape.circle,
+                      const PopupMenuItem(
+                        value: 'details',
+                        child: Text(
+                          'View Details',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
                       ),
-                      alignment: Alignment.center,
-                      child: const Icon(Icons.more_horiz_rounded, size: 15, color: Color(0xFF475569)),
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Text(
+                          'Edit Lead',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'address',
+                        child: Text(
+                          'Delivery Address',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'share',
+                        child: Text(
+                          'Share Lead',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text(
+                          'Delete Lead',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+                        ),
+                      ),
+                    ],
+                    child: const Padding(
+                      padding: EdgeInsets.all(4.0),
+                      child: Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF64748B)),
                     ),
                   ),
                 ],
@@ -2073,115 +2707,115 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Pagination Bar (Responsive & Wrapped) ---
+  // --- Dynamic Pagination Bar (Hidden if 0 leads, Shows 1 if 1 page, Counts if 2-4+ pages) ---
   Widget _buildPaginationBar({required bool isMobile}) {
-    final startIdx = math.min((_currentPage - 1) * _pageSize + 1, _totalCount);
+    if (_filteredLeads.isEmpty) return const SizedBox.shrink();
+
+    final startIdx = (_currentPage - 1) * _pageSize + 1;
     final endIdx = math.min(_currentPage * _pageSize, _totalCount);
 
     if (isMobile) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          alignment: WrapAlignment.spaceBetween,
-          crossAxisAlignment: WrapCrossAlignment.center,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
               'Showing $startIdx-$endIdx of $_totalCount',
               style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
+                color: textSubtle,
               ),
             ),
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                // Prev Button
                 InkWell(
                   onTap: _currentPage > 1
                       ? () {
                           setState(() {
                             _currentPage--;
                           });
-                          _loadLeadsFromBackend();
                         }
                       : null,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    width: 28,
-                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: boxBorder),
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.chevron_left_rounded, size: 16, color: Color(0xFF475569)),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.chevron_left_rounded,
+                          size: 16,
+                          color: _currentPage > 1 ? primaryNavy : const Color(0xFFCBD5E1),
+                        ),
+                        Text(
+                          'Prev',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _currentPage > 1 ? primaryNavy : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
+
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   child: Text(
-                    '$_currentPage / $_totalPages',
+                    'Page $_currentPage of $_totalPages',
                     style: const TextStyle(
                       fontSize: 11.5,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF1E293B),
+                      color: textDark,
                     ),
                   ),
                 ),
+
+                // Next Button
                 InkWell(
                   onTap: _currentPage < _totalPages
                       ? () {
                           setState(() {
                             _currentPage++;
                           });
-                          _loadLeadsFromBackend();
                         }
                       : null,
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    width: 28,
-                    height: 28,
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: boxBorder),
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(Icons.chevron_right_rounded, size: 16, color: Color(0xFF475569)),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  height: 28,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<int>(
-                      value: _pageSize,
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFF475569)),
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                      items: [8, 10, 20, 50].map((size) {
-                        return DropdownMenuItem<int>(
-                          value: size,
-                          child: Text('$size'),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) {
-                          setState(() {
-                            _pageSize = val;
-                            _currentPage = 1;
-                          });
-                          _loadLeadsFromBackend();
-                        }
-                      },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Next',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: _currentPage < _totalPages ? primaryNavy : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        Icon(
+                          Icons.chevron_right_rounded,
+                          size: 16,
+                          color: _currentPage < _totalPages ? primaryNavy : const Color(0xFFCBD5E1),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2202,36 +2836,54 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             style: const TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+              color: textSubtle,
             ),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Prev Button
               InkWell(
                 onTap: _currentPage > 1
                     ? () {
                         setState(() {
                           _currentPage--;
                         });
-                        _loadLeadsFromBackend();
                       }
                     : null,
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 30,
-                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    border: Border.all(color: boxBorder),
                   ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.chevron_left_rounded, size: 17, color: Color(0xFF475569)),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.chevron_left_rounded,
+                        size: 16,
+                        color: _currentPage > 1 ? primaryNavy : const Color(0xFFCBD5E1),
+                      ),
+                      const SizedBox(width: 2),
+                      Text(
+                        'Prev',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _currentPage > 1 ? primaryNavy : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
-              ...List.generate(math.min(_totalPages, 5), (i) {
+
+              // Dynamic Page Number Pills (1 if 1 page, 2-4+ if multiple pages)
+              ...List.generate(_totalPages, (i) {
                 final p = i + 1;
                 final isActive = _currentPage == p;
                 return Padding(
@@ -2241,17 +2893,16 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       setState(() {
                         _currentPage = p;
                       });
-                      _loadLeadsFromBackend();
                     },
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
                       width: 30,
                       height: 30,
                       decoration: BoxDecoration(
-                        color: isActive ? const Color(0xFF0B192C) : Colors.white,
+                        color: isActive ? primaryNavy : Colors.white,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isActive ? const Color(0xFF0B192C) : const Color(0xFFCBD5E1),
+                          color: isActive ? primaryNavy : boxBorder,
                         ),
                       ),
                       alignment: Alignment.center,
@@ -2260,65 +2911,50 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: isActive ? FontWeight.w800 : FontWeight.w600,
-                          color: isActive ? Colors.white : const Color(0xFF1E293B),
+                          color: isActive ? Colors.white : textDark,
                         ),
                       ),
                     ),
                   ),
                 );
               }),
-              const SizedBox(width: 4),
+
+              // Next Button
+              const SizedBox(width: 6),
               InkWell(
                 onTap: _currentPage < _totalPages
                     ? () {
                         setState(() {
                           _currentPage++;
                         });
-                        _loadLeadsFromBackend();
                       }
                     : null,
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
-                  width: 30,
-                  height: 30,
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    border: Border.all(color: boxBorder),
                   ),
-                  alignment: Alignment.center,
-                  child: const Icon(Icons.chevron_right_rounded, size: 17, color: Color(0xFF475569)),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Container(
-                height: 30,
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<int>(
-                    value: _pageSize,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: Color(0xFF475569)),
-                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                    items: [8, 10, 20, 50].map((size) {
-                      return DropdownMenuItem<int>(
-                        value: size,
-                        child: Text('$size / page'),
-                      );
-                    }).toList(),
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() {
-                          _pageSize = val;
-                          _currentPage = 1;
-                        });
-                        _loadLeadsFromBackend();
-                      }
-                    },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Next',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: _currentPage < _totalPages ? primaryNavy : const Color(0xFFCBD5E1),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: _currentPage < _totalPages ? primaryNavy : const Color(0xFFCBD5E1),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2345,7 +2981,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         child: const Center(
           child: Text(
             'Select a customer to view details',
-            style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 12.5, color: textSubtle),
           ),
         ),
       );
@@ -2371,7 +3007,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Row: Avatar, Name & Subtitle, Stage Pill Badge with Dot
+          // Top Row: Avatar, Name & Regular Customer Subtitle, Stage Pill
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -2402,21 +3038,45 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       style: TextStyle(
                         fontSize: isMobile ? 15 : 16.5,
                         fontWeight: FontWeight.w800,
-                        color: const Color(0xFF0F172A),
+                        color: textDark,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 1),
-                    Text(
-                      '${lead.customerType} • ${lead.source}',
-                      style: TextStyle(
-                        fontSize: isMobile ? 10.5 : 11.5,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF64748B),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        if (lead.isRegularCustomer) ...[
+                          Container(
+                            margin: const EdgeInsets.only(right: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: primaryNavy.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Regular',
+                              style: TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w700,
+                                color: primaryNavy,
+                              ),
+                            ),
+                          ),
+                        ],
+                        Flexible(
+                          child: Text(
+                            '${lead.displayCustomerType} • ${lead.source}',
+                            style: TextStyle(
+                              fontSize: isMobile ? 10.5 : 11.5,
+                              fontWeight: FontWeight.w500,
+                              color: lead.isRegularCustomer ? primaryNavy : textSubtle,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -2477,7 +3137,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                         vertical: isMobile ? 5.5 : 6,
                       ),
                       decoration: BoxDecoration(
-                        color: isActive ? const Color(0xFF2563EB) : const Color(0xFFF1F5F9),
+                        color: isActive ? primaryNavy : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -2485,7 +3145,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                         style: TextStyle(
                           fontSize: isMobile ? 11 : 11.5,
                           fontWeight: isActive ? FontWeight.w700 : FontWeight.w600,
-                          color: isActive ? Colors.white : const Color(0xFF64748B),
+                          color: isActive ? Colors.white : textSubtle,
                         ),
                       ),
                     ),
@@ -2502,7 +3162,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
           const SizedBox(height: 16),
 
-          // Bottom Action Buttons (Wrapped & Responsive)
+          // Bottom Action Buttons
           _buildDetailActionButtons(lead, isMobile: isMobile),
         ],
       ),
@@ -2534,32 +3194,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildInfoItem(
-          icon: const Icon(Icons.call_outlined, size: 15, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.call_outlined, size: 16, color: textDark),
           text: lead.phone,
           isLink: false,
           fontSize: isMobile ? 11.5 : 12.5,
           onTap: () => _makePhoneCall(lead.phone),
           trailing: InkWell(
             onTap: () => _copyToClipboard(lead.phone, 'Phone number'),
-            child: const Icon(Icons.content_copy_rounded, size: 14, color: Color(0xFF64748B)),
+            child: const Icon(Icons.content_copy_rounded, size: 14, color: textSubtle),
           ),
         ),
 
         const SizedBox(height: 8),
 
         _buildInfoItem(
-          icon: const WhatsAppBubbleIcon(size: 15, color: Color(0xFF16A34A)),
+          icon: const WhatsAppBubbleIcon(size: 16),
           text: 'Chat on WhatsApp',
           isLink: true,
           fontSize: isMobile ? 11.5 : 12.5,
-          textColor: const Color(0xFF0F172A),
+          textColor: textDark,
           onTap: () => _openWhatsApp(lead.phone),
         ),
 
         const SizedBox(height: 8),
 
         _buildInfoItem(
-          icon: const Icon(Icons.email_outlined, size: 15, color: Color(0xFF2563EB)),
+          icon: const Icon(Icons.email_outlined, size: 16, color: Color(0xFF2563EB)),
           text: lead.email.isNotEmpty ? lead.email : 'No email provided',
           isLink: lead.email.isNotEmpty,
           fontSize: isMobile ? 11.5 : 12.5,
@@ -2567,30 +3227,118 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           trailing: lead.email.isNotEmpty
               ? InkWell(
                   onTap: () => _copyToClipboard(lead.email, 'Email'),
-                  child: const Icon(Icons.content_copy_rounded, size: 14, color: Color(0xFF64748B)),
+                  child: const Icon(Icons.content_copy_rounded, size: 14, color: textSubtle),
                 )
               : null,
         ),
 
         const SizedBox(height: 8),
 
-        _buildInfoItem(
-          icon: const Icon(Icons.location_on_outlined, size: 15, color: Color(0xFF0F172A)),
-          text: lead.address.isNotEmpty ? lead.address : 'No address provided',
-          fontSize: isMobile ? 11.5 : 12.5,
+        // Delivery Address Row with Location Icon & Edit / + Add Address button
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Icon(Icons.location_on_outlined, size: 16, color: textDark),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                lead.address.isNotEmpty ? lead.address : 'No delivery address provided',
+                style: TextStyle(
+                  fontSize: isMobile ? 11.5 : 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: lead.address.isNotEmpty ? const Color(0xFF334155) : const Color(0xFF94A3B8),
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            InkWell(
+              onTap: () => _showAddressDialog(lead),
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: primaryNavy.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  lead.address.isNotEmpty ? 'Edit' : '+ Add Address',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: primaryNavy,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 8),
 
         _buildInfoItem(
-          icon: const Icon(Icons.calendar_today_outlined, size: 14, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.calendar_today_outlined, size: 15, color: textDark),
           text: 'Added on $formattedAddedDate',
           fontSize: isMobile ? 11 : 12,
         ),
 
         const SizedBox(height: 12),
 
-        // Source and Stage Dynamic Change Row
+        // Quick Stats Strip: Total Spent, Orders, Returns
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: boxBg,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Row(
+            children: [
+              // Spent
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Total Spent', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: textSubtle)),
+                    const SizedBox(height: 2),
+                    Text('₹${lead.totalSpend.toStringAsFixed(0)}', style: TextStyle(fontSize: isMobile ? 12.5 : 13.5, fontWeight: FontWeight.w800, color: const Color(0xFF2563EB))),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+              const SizedBox(width: 10),
+              // Orders
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Orders', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: textSubtle)),
+                    const SizedBox(height: 2),
+                    Text('${lead.totalOrders}', style: TextStyle(fontSize: isMobile ? 12.5 : 13.5, fontWeight: FontWeight.w800, color: const Color(0xFF16A34A))),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+              const SizedBox(width: 10),
+              // Visits
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Visits', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: textSubtle)),
+                    const SizedBox(height: 2),
+                    Text('${lead.visitCount}', style: TextStyle(fontSize: isMobile ? 12.5 : 13.5, fontWeight: FontWeight.w800, color: const Color(0xFF7C3AED))),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Source and Stage Dynamic Change Row with Curved Dropdown Box
         Wrap(
           spacing: 12,
           runSpacing: 8,
@@ -2599,12 +3347,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'Source',
                   style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    color: textSubtle,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -2629,36 +3377,41 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(
+                const Text(
                   'Stage',
                   style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
+                    fontSize: 12,
                     fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    color: textSubtle,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  height: 28,
+                  height: 30,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFCBD5E1)),
+                    border: Border.all(color: boxBorder),
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _allStages.contains(lead.stage) ? lead.stage : _allStages.first,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
                       icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: Color(0xFF475569)),
                       style: TextStyle(
                         fontSize: isMobile ? 11 : 11.5,
                         fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0F172A),
+                        color: textDark,
                       ),
                       items: _allStages.map((st) {
                         return DropdownMenuItem<String>(
                           value: st,
-                          child: Text(st),
+                          child: Text(
+                            st,
+                            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: textDark),
+                          ),
                         );
                       }).toList(),
                       onChanged: (val) {
@@ -2730,7 +3483,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return Container(
       padding: EdgeInsets.all(isMobile ? 10 : 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: boxBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
@@ -2755,7 +3508,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   style: TextStyle(
                     fontSize: isMobile ? 11.5 : 12.5,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF0F172A),
+                    color: textDark,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -2764,7 +3517,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   style: TextStyle(
                     fontSize: isMobile ? 10.5 : 11.5,
                     fontWeight: FontWeight.w500,
-                    color: const Color(0xFF64748B),
+                    color: textSubtle,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -2789,12 +3542,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        const Text(
           'Add Note',
           style: TextStyle(
-            fontSize: isMobile ? 12 : 13,
+            fontSize: 13,
             fontWeight: FontWeight.w800,
-            color: const Color(0xFF0F172A),
+            color: textDark,
           ),
         ),
         const SizedBox(height: 6),
@@ -2804,29 +3557,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           style: TextStyle(
             fontSize: isMobile ? 11.5 : 12.5,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
+            color: textDark,
           ),
           decoration: InputDecoration(
             hintText: 'Write a note...',
-            hintStyle: TextStyle(fontSize: isMobile ? 11 : 12, color: const Color(0xFF94A3B8)),
+            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             filled: true,
-            fillColor: const Color(0xFFF8FAFC),
-            contentPadding: const EdgeInsets.all(8),
+            fillColor: boxBg,
+            contentPadding: const EdgeInsets.all(10),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: boxBorder),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: boxBorder),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.2),
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: primaryNavy, width: 1.2),
             ),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         Align(
           alignment: Alignment.centerRight,
           child: InkWell(
@@ -2835,7 +3588,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 14, vertical: isMobile ? 6 : 7),
               decoration: BoxDecoration(
-                color: const Color(0xFF2563EB),
+                color: primaryNavy,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
@@ -2852,14 +3605,13 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
         const SizedBox(height: 10),
 
-        // Display Existing Notes History
         if (lead.notesList.isNotEmpty) ...[
-          Text(
+          const Text(
             'Notes History',
             style: TextStyle(
-              fontSize: isMobile ? 11.5 : 12,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: const Color(0xFF475569),
+              color: Color(0xFF475569),
             ),
           ),
           const SizedBox(height: 6),
@@ -2872,7 +3624,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               margin: const EdgeInsets.only(bottom: 6),
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: boxBg,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
@@ -2898,7 +3650,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: boxBg,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFFE2E8F0)),
             ),
@@ -2908,12 +3660,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             ),
           ),
         ] else ...[
-          Center(
+          const Center(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Text(
                 'No notes added yet.',
-                style: TextStyle(fontSize: isMobile ? 11 : 12, color: const Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -2931,7 +3683,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           children: [
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(10),
@@ -2939,23 +3691,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Total Spent',
-                      style: TextStyle(fontSize: isMobile ? 10 : 11, color: const Color(0xFF2563EB), fontWeight: FontWeight.w600),
+                      style: TextStyle(fontSize: 10, color: Color(0xFF2563EB), fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '₹${lead.totalSpend.toStringAsFixed(0)}',
-                      style: TextStyle(fontSize: isMobile ? 15 : 17, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: isMobile ? 14 : 16, fontWeight: FontWeight.w800, color: textDark),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Expanded(
               child: Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFDCFCE7),
                   borderRadius: BorderRadius.circular(10),
@@ -2963,14 +3715,46 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total Orders',
-                      style: TextStyle(fontSize: isMobile ? 10 : 11, color: const Color(0xFF16A34A), fontWeight: FontWeight.w600),
+                    const Text(
+                      'Orders',
+                      style: TextStyle(fontSize: 10, color: Color(0xFF16A34A), fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '${lead.totalOrders}',
-                      style: TextStyle(fontSize: isMobile ? 15 : 17, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: isMobile ? 14 : 16, fontWeight: FontWeight.w800, color: textDark),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF3E8FF),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Visits',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF7C3AED),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${lead.visitCount}',
+                      style: TextStyle(
+                        fontSize: isMobile ? 14 : 16,
+                        fontWeight: FontWeight.w800,
+                        color: textDark,
+                      ),
                     ),
                   ],
                 ),
@@ -2982,38 +3766,76 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         const SizedBox(height: 12),
 
         if (lead.recentOrders.isNotEmpty) ...[
-          Text(
+          const Text(
             'Recent Orders',
-            style: TextStyle(fontSize: isMobile ? 11.5 : 12.5, fontWeight: FontWeight.w700, color: const Color(0xFF1E293B)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textDark),
           ),
           const SizedBox(height: 6),
           ...lead.recentOrders.map((ord) {
             final id = ord is Map ? (ord['id'] ?? ord['_id'] ?? 'Order') : 'Order';
             final amt = ord is Map ? (ord['totalAmount'] ?? ord['amount'] ?? 0) : 0;
+            final dateRaw = ord is Map ? ord['date'] : null;
+            final dateStr = dateRaw != null
+                ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(dateRaw.toString()) ?? DateTime.now())
+                : '';
+            final statusStr = ord is Map ? (ord['status']?.toString() ?? '') : '';
+
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
+                color: Colors.white,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: boxBorder),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('$id', style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600)),
-                  Text('₹$amt', style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w700, color: const Color(0xFF16A34A))),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$id',
+                          style: TextStyle(
+                            fontSize: isMobile ? 11.5 : 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: textDark,
+                          ),
+                        ),
+                        if (dateStr.isNotEmpty || statusStr.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            [dateStr, statusStr].where((s) => s.isNotEmpty).join(' • '),
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w500,
+                              color: textSubtle,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '₹$amt',
+                    style: TextStyle(
+                      fontSize: isMobile ? 12.5 : 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: const Color(0xFF16A34A),
+                    ),
+                  ),
                 ],
               ),
             );
           }),
         ] else ...[
-          Center(
+          const Center(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Text(
                 'No orders recorded yet.',
-                style: TextStyle(fontSize: isMobile ? 11 : 12, color: const Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -3041,9 +3863,9 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
+                    const Text(
                       'Scheduled Date',
-                      style: TextStyle(fontSize: isMobile ? 10.5 : 11.5, fontWeight: FontWeight.w600, color: const Color(0xFF92400E)),
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -3075,12 +3897,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
           const SizedBox(height: 10),
         ] else ...[
-          Center(
+          const Center(
             child: Padding(
-              padding: const EdgeInsets.all(14),
+              padding: EdgeInsets.all(14),
               child: Text(
                 'No follow-up scheduled yet.',
-                style: TextStyle(fontSize: isMobile ? 11 : 12, color: const Color(0xFF94A3B8)),
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
             ),
           ),
@@ -3095,8 +3917,8 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w700),
             ),
             style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF2563EB),
-              side: const BorderSide(color: Color(0xFF2563EB)),
+              foregroundColor: primaryNavy,
+              side: const BorderSide(color: primaryNavy),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
           ),
@@ -3105,13 +3927,13 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Detail Action Buttons (Wrapped & Responsive) ---
+  // --- Detail Action Buttons ---
   Widget _buildDetailActionButtons(CrmLeadModel lead, {required bool isMobile}) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        // WhatsApp Button (Green Outline)
+        // WhatsApp Button
         InkWell(
           onTap: () => _openWhatsApp(lead.phone),
           borderRadius: BorderRadius.circular(8),
@@ -3128,12 +3950,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const WhatsAppBubbleIcon(size: 14, color: Color(0xFF16A34A)),
-                const SizedBox(width: 5),
+                const WhatsAppBubbleIcon(size: 19),
+                const SizedBox(width: 6),
                 Text(
                   'WhatsApp',
                   style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
+                    fontSize: isMobile ? 11.5 : 12.5,
                     fontWeight: FontWeight.w700,
                     color: const Color(0xFF16A34A),
                   ),
@@ -3143,7 +3965,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // Call Button (Blue Outline)
+        // Call Button with Custom Green Call Icon
         InkWell(
           onTap: () => _makePhoneCall(lead.phone),
           borderRadius: BorderRadius.circular(8),
@@ -3155,19 +3977,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF2563EB), width: 1.2),
+              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.call_rounded, size: 14, color: Color(0xFF2563EB)),
-                const SizedBox(width: 5),
+                const CallActionIcon(size: 19),
+                const SizedBox(width: 6),
                 Text(
                   'Call',
                   style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
+                    fontSize: isMobile ? 11.5 : 12.5,
                     fontWeight: FontWeight.w700,
-                    color: const Color(0xFF2563EB),
+                    color: const Color(0xFF16A34A),
                   ),
                 ),
               ],
@@ -3175,11 +3997,16 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // ••• More Button (Gray Outline)
+        // More Options
         PopupMenuButton<String>(
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 6,
           onSelected: (val) {
             if (val == 'edit') {
               _showAddEditLeadModal(context, existingLead: lead);
+            } else if (val == 'address') {
+              _showAddressDialog(lead);
             } else if (val == 'followup') {
               _scheduleFollowup(lead);
             } else if (val == 'delete') {
@@ -3190,10 +4017,41 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           },
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           itemBuilder: (ctx) => [
-            const PopupMenuItem(value: 'edit', child: Text('Edit Customer', style: TextStyle(fontSize: 12))),
-            const PopupMenuItem(value: 'followup', child: Text('Schedule Follow-up', style: TextStyle(fontSize: 12))),
-            const PopupMenuItem(value: 'export', child: Text('Export CSV', style: TextStyle(fontSize: 12))),
-            const PopupMenuItem(value: 'delete', child: Text('Delete Customer', style: TextStyle(fontSize: 12, color: Colors.red))),
+            const PopupMenuItem(
+              value: 'edit',
+              child: Text(
+                'Edit Customer',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'address',
+              child: Text(
+                'Edit Delivery Address',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'followup',
+              child: Text(
+                'Schedule Follow-up',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'export',
+              child: Text(
+                'Export CSV',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+              ),
+            ),
+            const PopupMenuItem(
+              value: 'delete',
+              child: Text(
+                'Delete Customer',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFFDC2626)),
+              ),
+            ),
           ],
           child: Container(
             padding: EdgeInsets.symmetric(
@@ -3203,14 +4061,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+              border: Border.all(color: boxBorder, width: 1.2),
             ),
-            child: Text(
+            child: const Text(
               '••• More',
               style: TextStyle(
-                fontSize: isMobile ? 11 : 12,
+                fontSize: 12,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF475569),
+                color: Color(0xFF475569),
               ),
             ),
           ),
@@ -3254,7 +4112,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   // ==========================================================================
-  // MODALS: ADD/EDIT LEAD, IMPORT, EXPORT, DELETE
+  // REDESIGNED ADD/EDIT LEAD MODAL (High-Visibility Text & Responsive Wrapping)
   // ==========================================================================
   void _showAddEditLeadModal(BuildContext context, {CrmLeadModel? existingLead}) {
     final isEditing = existingLead != null;
@@ -3269,48 +4127,97 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => Dialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          isEditing ? 'Edit Customer Lead' : 'Add New Lead',
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0F172A)),
-        ),
-        content: SizedBox(
-          width: 420,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 460),
+          padding: const EdgeInsets.all(20),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                TextField(
+                // Modal Title & Close
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      isEditing ? 'Edit Customer Lead' : 'Add New Lead',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      icon: const Icon(Icons.close_rounded, size: 18, color: textSubtle),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+
+                // Name Input
+                _buildModalTextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name *', isDense: true),
+                  label: 'Customer Name *',
+                  hint: 'e.g. Rahul Sharma',
                 ),
                 const SizedBox(height: 10),
-                TextField(
+
+                // Phone Input
+                _buildModalTextField(
                   controller: phoneCtrl,
+                  label: 'Phone Number *',
+                  hint: 'e.g. 9876543210',
                   keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone Number *', isDense: true),
                 ),
                 const SizedBox(height: 10),
-                TextField(
+
+                // Email Input
+                _buildModalTextField(
                   controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: 'Email Address', isDense: true),
+                  label: 'Email Address',
+                  hint: 'e.g. customer@example.com',
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 10),
-                TextField(
+
+                // Address Input
+                _buildModalTextField(
                   controller: addressCtrl,
-                  decoration: const InputDecoration(labelText: 'Address / Location', isDense: true),
+                  label: 'Address / City',
+                  hint: 'e.g. Sector 62, Noida',
                 ),
                 const SizedBox(height: 10),
+
+                // Source & Stage Dropdowns (Curved boxes with visible text)
                 Row(
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        initialValue: sourceCtrl.text,
-                        decoration: const InputDecoration(labelText: 'Source', isDense: true),
+                        initialValue: _allSources.contains(sourceCtrl.text) && sourceCtrl.text != 'All Sources'
+                            ? sourceCtrl.text
+                            : 'Dine In',
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                        decoration: InputDecoration(
+                          labelText: 'Source',
+                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
+                          filled: true,
+                          fillColor: boxBg,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                        ),
                         items: ['Dine In', 'POS', 'Online', 'WhatsApp', 'Social Media', 'Referral', 'Website']
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12))))
+                            .map((s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
+                                ))
                             .toList(),
                         onChanged: (val) {
                           if (val != null) sourceCtrl.text = val;
@@ -3320,10 +4227,26 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        initialValue: stageCtrl.text,
-                        decoration: const InputDecoration(labelText: 'Stage', isDense: true),
+                        initialValue: _allStages.contains(stageCtrl.text) ? stageCtrl.text : 'New Lead',
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                        decoration: InputDecoration(
+                          labelText: 'Stage',
+                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
+                          filled: true,
+                          fillColor: boxBg,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                        ),
                         items: _allStages
-                            .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12))))
+                            .map((s) => DropdownMenuItem(
+                                  value: s,
+                                  child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
+                                ))
                             .toList(),
                         onChanged: (val) {
                           if (val != null) stageCtrl.text = val;
@@ -3333,85 +4256,145 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                TextField(
+
+                // Customer Type Input
+                _buildModalTextField(
                   controller: typeCtrl,
-                  decoration: const InputDecoration(labelText: 'Customer Type (e.g. New Customer, Walk-in)', isDense: true),
+                  label: 'Customer Type',
+                  hint: 'e.g. New Customer, Regular Customer, Walk-in',
                 ),
                 const SizedBox(height: 10),
-                TextField(
+
+                // Notes Input
+                _buildModalTextField(
                   controller: notesCtrl,
+                  label: 'Notes / Preferences',
+                  hint: 'e.g. Prefers window table, vegetarian meals',
                   maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Notes', isDense: true),
+                ),
+
+                const SizedBox(height: 18),
+
+                // Dialog Buttons
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: boxBorder),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primaryNavy,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                      onPressed: () async {
+                        final name = nameCtrl.text.trim();
+                        final phone = phoneCtrl.text.trim();
+                        if (phone.isEmpty) {
+                          _showSnackBar('Phone number is required', isError: true);
+                          return;
+                        }
+
+                        final newLead = CrmLeadModel(
+                          id: isEditing ? existingLead.id : DateTime.now().millisecondsSinceEpoch.toString(),
+                          name: name.isNotEmpty ? name : 'Guest Customer',
+                          phone: phone,
+                          email: emailCtrl.text.trim(),
+                          address: addressCtrl.text.trim(),
+                          source: sourceCtrl.text,
+                          stage: stageCtrl.text,
+                          status: stageCtrl.text,
+                          customerType: typeCtrl.text.trim().isNotEmpty ? typeCtrl.text.trim() : 'New Customer',
+                          tags: [stageCtrl.text],
+                          notes: notesCtrl.text.trim(),
+                          createdAt: isEditing ? existingLead.createdAt : DateTime.now(),
+                          lastVisit: DateTime.now(),
+                        );
+
+                        Navigator.pop(ctx);
+
+                        setState(() {
+                          if (isEditing) {
+                            final idx = _allLeads.indexWhere((l) => l.id == existingLead.id);
+                            if (idx != -1) _allLeads[idx] = newLead;
+                          } else {
+                            _allLeads.insert(0, newLead);
+                          }
+                          _selectedLead = newLead;
+                          _applyLocalFilter();
+                        });
+
+                        _showSnackBar(isEditing ? 'Customer updated' : 'New lead added successfully');
+
+                        try {
+                          if (isEditing) {
+                            await _crmService.updateLead(newLead.id, newLead.toJson());
+                          } else {
+                            await _crmService.createLead(newLead.toJson());
+                          }
+                        } catch (_) {}
+                      },
+                      child: Text(
+                        isEditing ? 'Update Customer' : 'Add Lead',
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCBD5E1)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF475569))),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0B192C),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () async {
-              final name = nameCtrl.text.trim();
-              final phone = phoneCtrl.text.trim();
-              if (phone.isEmpty) {
-                _showSnackBar('Phone number is required', isError: true);
-                return;
-              }
+      ),
+    );
+  }
 
-              final newLead = CrmLeadModel(
-                id: isEditing ? existingLead.id : DateTime.now().millisecondsSinceEpoch.toString(),
-                name: name.isNotEmpty ? name : 'Guest Customer',
-                phone: phone,
-                email: emailCtrl.text.trim(),
-                address: addressCtrl.text.trim(),
-                source: sourceCtrl.text,
-                stage: stageCtrl.text,
-                status: stageCtrl.text,
-                customerType: typeCtrl.text.trim().isNotEmpty ? typeCtrl.text.trim() : 'New Customer',
-                tags: [stageCtrl.text],
-                notes: notesCtrl.text.trim(),
-                createdAt: isEditing ? existingLead.createdAt : DateTime.now(),
-                lastVisit: DateTime.now(),
-              );
-
-              Navigator.pop(ctx);
-
-              setState(() {
-                if (isEditing) {
-                  final idx = _allLeads.indexWhere((l) => l.id == existingLead.id);
-                  if (idx != -1) _allLeads[idx] = newLead;
-                } else {
-                  _allLeads.insert(0, newLead);
-                }
-                _selectedLead = newLead;
-                _applyLocalFilter();
-              });
-
-              _showSnackBar(isEditing ? 'Customer updated' : 'New lead added successfully');
-
-              try {
-                if (isEditing) {
-                  await _crmService.updateLead(newLead.id, newLead.toJson());
-                } else {
-                  await _crmService.createLead(newLead.toJson());
-                }
-              } catch (_) {}
-            },
-            child: Text(isEditing ? 'Update' : 'Add Lead'),
-          ),
-        ],
+  Widget _buildModalTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    TextInputType keyboardType = TextInputType.text,
+    int maxLines = 1,
+  }) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      style: const TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        color: textDark,
+      ),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
+        hintText: hint,
+        hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+        filled: true,
+        fillColor: boxBg,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: boxBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: boxBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(10),
+          borderSide: const BorderSide(color: primaryNavy, width: 1.5),
+        ),
       ),
     );
   }
@@ -3426,7 +4409,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Import Customers',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: Color(0xFF0F172A)),
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark),
         ),
         content: SizedBox(
           width: 420,
@@ -3436,18 +4419,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             children: [
               const Text(
                 'Paste comma-separated leads (Name, Phone, Source, Stage):',
-                style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 12, color: textSubtle),
               ),
               const SizedBox(height: 10),
               TextField(
                 controller: textCtrl,
                 maxLines: 4,
-                style: const TextStyle(fontSize: 12.5),
+                style: const TextStyle(fontSize: 12.5, color: textDark),
                 decoration: InputDecoration(
                   hintText: 'Aarav Kumar, 9876543211, Dine In, New Lead\nSimran Kaur, 9811223344, Online, Prospect',
+                  hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
                   filled: true,
-                  fillColor: const Color(0xFFF8FAFC),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  fillColor: boxBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
                 ),
               ),
             ],
@@ -3456,11 +4442,18 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         actions: [
           OutlinedButton(
             onPressed: () => Navigator.pop(ctx),
-            style: OutlinedButton.styleFrom(side: const BorderSide(color: Color(0xFFCBD5E1))),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF475569))),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: boxBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0B192C), foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: primaryNavy,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () {
               final raw = textCtrl.text.trim();
               if (raw.isEmpty) return;
@@ -3483,7 +4476,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   );
                   _allLeads.insert(0, lead);
                   count++;
-                  // Persist asynchronously
                   _crmService.createLead(lead.toJson()).catchError((_) => lead);
                 }
               }
@@ -3504,12 +4496,25 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Delete ${lead.name}?'),
-        content: const Text('Are you sure you want to delete this customer lead? This action cannot be undone.'),
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Delete ${lead.name}?', style: const TextStyle(fontWeight: FontWeight.w800, color: textDark)),
+        content: const Text('Are you sure you want to delete this customer lead? This action cannot be undone.', style: TextStyle(fontSize: 12.5, color: textSubtle)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          OutlinedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: boxBorder),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+          ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
             onPressed: () async {
               Navigator.pop(ctx);
               setState(() {
@@ -3562,7 +4567,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 class _MetricCardData {
   final String title;
   final String value;
-  final String trend;
+  final String stageTab;
   final Color iconBgColor;
   final Color iconColor;
   final Widget iconWidget;
@@ -3571,7 +4576,7 @@ class _MetricCardData {
   _MetricCardData({
     required this.title,
     required this.value,
-    required this.trend,
+    required this.stageTab,
     required this.iconBgColor,
     required this.iconColor,
     required this.iconWidget,
@@ -3580,47 +4585,41 @@ class _MetricCardData {
 }
 
 // ============================================================================
-// CUSTOM PAINTER FOR SMOOTH SPARKLINE BEZIER WAVES
+// CUSTOM PAINTER FOR SMOOTH SPARKLINE BEZIER WAVES & GRAPHICS
 // ============================================================================
 class SparklineWavePainter extends CustomPainter {
   final Color color;
+  final bool isSelected;
 
-  SparklineWavePainter({required this.color});
+  SparklineWavePainter({required this.color, this.isSelected = false});
 
   @override
   void paint(Canvas canvas, Size size) {
+    final w = size.width;
+    final h = size.height;
+
     final path = Path();
-    // Gentle curved bezier wave matching the reference image
-    path.moveTo(0, size.height * 0.7);
+    path.moveTo(0, h * 0.78);
     path.cubicTo(
-      size.width * 0.25,
-      size.height * 0.85,
-      size.width * 0.45,
-      size.height * 0.2,
-      size.width * 0.7,
-      size.height * 0.45,
+      w * 0.22,
+      h * 0.90,
+      w * 0.38,
+      h * 0.22,
+      w * 0.58,
+      h * 0.50,
     );
     path.cubicTo(
-      size.width * 0.85,
-      size.height * 0.65,
-      size.width * 0.92,
-      size.height * 0.15,
-      size.width,
-      size.height * 0.05,
+      w * 0.72,
+      h * 0.72,
+      w * 0.86,
+      h * 0.12,
+      w,
+      h * 0.25,
     );
 
-    // Stroke line
-    final strokePaint = Paint()
-      ..color = color
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke
-      ..strokeCap = StrokeCap.round;
-    canvas.drawPath(path, strokePaint);
-
-    // Gradient fill under the wave
     final fillPath = Path.from(path)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
+      ..lineTo(w, h)
+      ..lineTo(0, h)
       ..close();
 
     final fillPaint = Paint()
@@ -3628,21 +4627,40 @@ class SparklineWavePainter extends CustomPainter {
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          color.withValues(alpha: 0.25),
+          color.withValues(alpha: isSelected ? 0.38 : 0.22),
           color.withValues(alpha: 0.0),
         ],
-      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ).createShader(Rect.fromLTWH(0, 0, w, h))
       ..style = PaintingStyle.fill;
 
     canvas.drawPath(fillPath, fillPaint);
+
+    final strokePaint = Paint()
+      ..color = isSelected ? color : color.withValues(alpha: 0.85)
+      ..strokeWidth = isSelected ? 2.6 : 2.0
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+    canvas.drawPath(path, strokePaint);
+
+    // Peak decorative glowing dot
+    final dotPaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(w, h * 0.25), 3.0, dotPaint);
+
+    final innerDotPaint = Paint()
+      ..color = Colors.white
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(w, h * 0.25), 1.5, innerDotPaint);
   }
 
   @override
-  bool shouldRepaint(covariant SparklineWavePainter oldDelegate) => oldDelegate.color != color;
+  bool shouldRepaint(covariant SparklineWavePainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.isSelected != isSelected;
 }
 
 // ============================================================================
-// CUSTOM CROWN ICON (Used in Leads Card)
+// CUSTOM CROWN ICON (Golden Crown with Blue Gem matching image)
 // ============================================================================
 class CrownIcon extends StatelessWidget {
   final double size;
@@ -3665,12 +4683,11 @@ class _CrownPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
+    final goldPaint = Paint()
+      ..color = const Color(0xFFF59E0B)
       ..style = PaintingStyle.fill;
 
     final path = Path();
-    // Crown base and 3 peaks
     path.moveTo(size.width * 0.15, size.height * 0.75);
     path.lineTo(size.width * 0.15, size.height * 0.35);
     path.lineTo(size.width * 0.35, size.height * 0.55);
@@ -3680,19 +4697,24 @@ class _CrownPainter extends CustomPainter {
     path.lineTo(size.width * 0.85, size.height * 0.75);
     path.close();
 
-    canvas.drawPath(path, paint);
+    canvas.drawPath(path, goldPaint);
 
-    // Bottom base band
     final baseRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(size.width * 0.12, size.height * 0.8, size.width * 0.76, size.height * 0.08),
       const Radius.circular(2),
     );
-    canvas.drawRRect(baseRect, paint);
+    canvas.drawRRect(baseRect, goldPaint);
 
     // 3 small top balls
-    canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.32), size.width * 0.045, paint);
-    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.22), size.width * 0.05, paint);
-    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.32), size.width * 0.045, paint);
+    canvas.drawCircle(Offset(size.width * 0.15, size.height * 0.32), size.width * 0.045, goldPaint);
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.22), size.width * 0.05, goldPaint);
+    canvas.drawCircle(Offset(size.width * 0.85, size.height * 0.32), size.width * 0.045, goldPaint);
+
+    // Blue jewel in center of crown matching reference
+    final gemPaint = Paint()
+      ..color = const Color(0xFF0284C7)
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size.width * 0.5, size.height * 0.6), size.width * 0.06, gemPaint);
   }
 
   @override
@@ -3700,16 +4722,62 @@ class _CrownPainter extends CustomPainter {
 }
 
 // ============================================================================
-// CUSTOM WHATSAPP BUBBLE ICON
+// CUSTOM WHATSAPP BUBBLE ICON WITH LOGO ASSET & HIGH-RES FALLBACK
 // ============================================================================
 class WhatsAppBubbleIcon extends StatelessWidget {
   final double size;
-  final Color color;
+  final Color? color;
 
-  const WhatsAppBubbleIcon({super.key, required this.size, required this.color});
+  const WhatsAppBubbleIcon({super.key, required this.size, this.color});
 
   @override
   Widget build(BuildContext context) {
-    return Icon(Icons.chat_rounded, size: size, color: color);
+    final effectiveSize = size * 1.25;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Center(
+        child: Image.asset(
+          'assets/images/whatsapp_logo.png',
+          width: effectiveSize,
+          height: effectiveSize,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) {
+            return Icon(
+              Icons.chat_rounded,
+              size: size,
+              color: color ?? const Color(0xFF22C55E),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// CUSTOM CALL ACTION ICON (Using User Provided Green Phone Icon)
+// ============================================================================
+class CallActionIcon extends StatelessWidget {
+  final double size;
+  final Color? color;
+
+  const CallActionIcon({super.key, required this.size, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Image.asset(
+      'assets/images/call_icon.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (context, error, stackTrace) {
+        return Icon(
+          Icons.call_rounded,
+          size: size,
+          color: color ?? const Color(0xFF22C55E),
+        );
+      },
+    );
   }
 }

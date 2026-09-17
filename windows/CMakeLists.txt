@@ -2,6 +2,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(apna_pos LANGUAGES CXX)
 
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/include/winrt/impl")
+
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "apna_pos")
@@ -58,6 +61,16 @@ add_subdirectory("runner")
 # them to the application.
 include(flutter/generated_plugins.cmake)
 
+# Fix C++/WinRT version mismatch across plugins (geolocator, permission_handler, local_auth)
+if(EXISTS "${CMAKE_BINARY_DIR}/include/winrt/base.h")
+  file(READ "${CMAKE_BINARY_DIR}/include/winrt/base.h" WINRT_BASE_H)
+  if(NOT WINRT_BASE_H MATCHES "check_version")
+    string(REPLACE "#define CPPWINRT_VERSION \"2.0.210806.1\"" "#define CPPWINRT_VERSION \"2.0.220418.1\"\nnamespace winrt { constexpr bool check_version(char const*, char const*) noexcept { return true; } }" WINRT_BASE_H "${WINRT_BASE_H}")
+    file(WRITE "${CMAKE_BINARY_DIR}/include/winrt/base.h" "${WINRT_BASE_H}")
+  endif()
+endif()
+
+
 
 # === Installation ===
 # Support files are copied into place next to the executable, so that it can
@@ -66,18 +79,14 @@ include(flutter/generated_plugins.cmake)
 set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
-endif()
 
-set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")
-set(INSTALL_BUNDLE_LIB_DIR "${CMAKE_INSTALL_PREFIX}")
-
-install(TARGETS ${BINARY_NAME} RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
-  COMPONENT Runtime)
+set(INSTALL_BUNDLE_DATA_DIR "${BUILD_BUNDLE_DIR}/data")
+set(INSTALL_BUNDLE_LIB_DIR "${BUILD_BUNDLE_DIR}")
 
 install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
+
+
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)

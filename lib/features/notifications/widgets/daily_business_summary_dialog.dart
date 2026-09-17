@@ -522,7 +522,7 @@ class _DailyBusinessSummaryDialogState extends State<DailyBusinessSummaryDialog>
                     shrinkWrap: true,
                     physics: const BouncingScrollPhysics(),
                     itemCount: _displayOrders.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 5),
+                    separatorBuilder: (context, index) => const SizedBox(height: 5),
                     itemBuilder: (context, idx) {
                       final ord = _displayOrders[idx];
                       final orderNum = ord['orderNumber']?.toString() ?? '${idx + 1}';

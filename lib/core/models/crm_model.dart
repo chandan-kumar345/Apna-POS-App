@@ -17,12 +17,16 @@ class CrmLeadModel {
   final String notes;
   final int totalOrders;
   final double totalSpent;
+  final int returnCount;
   final DateTime createdAt;
   final DateTime? lastVisit;
   final List<dynamic> recentOrders;
   final List<dynamic> notesList;
 
   double get totalSpend => totalSpent;
+  int get visitCount => totalOrders > 0 ? totalOrders : 1;
+  bool get isRegularCustomer => totalOrders > 1 || customerType.toLowerCase().contains('regular');
+  String get displayCustomerType => isRegularCustomer ? 'Regular Customer' : (customerType.isNotEmpty ? customerType : 'New Customer');
 
   CrmLeadModel({
     required this.id,
@@ -43,6 +47,7 @@ class CrmLeadModel {
     this.notes = '',
     this.totalOrders = 0,
     this.totalSpent = 0.0,
+    this.returnCount = 0,
     required this.createdAt,
     this.lastVisit,
     this.recentOrders = const [],
@@ -108,6 +113,7 @@ class CrmLeadModel {
       notes: json['notes']?.toString() ?? '',
       totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
       totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 0.0,
+      returnCount: (json['returnCount'] as num?)?.toInt() ?? (json['cancelledOrders'] as num?)?.toInt() ?? 0,
       createdAt: parsedCreated,
       lastVisit: parsedLastVisit,
       recentOrders: json['recentOrders'] is List ? json['recentOrders'] as List : const [],
@@ -134,6 +140,7 @@ class CrmLeadModel {
         'notes': notes,
         'totalOrders': totalOrders,
         'totalSpent': totalSpent,
+        'returnCount': returnCount,
         'createdAt': createdAt.toIso8601String(),
         'lastVisit': lastVisit?.toIso8601String(),
         'notesList': notesList,
@@ -157,6 +164,7 @@ class CrmLeadModel {
     String? notes,
     int? totalOrders,
     double? totalSpent,
+    int? returnCount,
     DateTime? lastVisit,
     List<dynamic>? recentOrders,
     List<dynamic>? notesList,
@@ -180,6 +188,7 @@ class CrmLeadModel {
       notes: notes ?? this.notes,
       totalOrders: totalOrders ?? this.totalOrders,
       totalSpent: totalSpent ?? this.totalSpent,
+      returnCount: returnCount ?? this.returnCount,
       createdAt: createdAt,
       lastVisit: lastVisit ?? this.lastVisit,
       recentOrders: recentOrders ?? this.recentOrders,

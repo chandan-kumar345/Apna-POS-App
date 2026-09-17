@@ -32,7 +32,7 @@ app.use(
 // 3. Rate Limiting for production security
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limit each IP to 1000 requests per windowMs
+  max: 20000, // Limit each IP to 20000 requests per windowMs
   standardHeaders: true,
   legacyHeaders: false,
   validate: { xForwardedForHeader: false },
@@ -43,7 +43,20 @@ const limiter = rateLimit({
       message: 'Too many requests from this IP, please try again after 15 minutes',
     },
   },
-  skip: (req) => env.NODE_ENV === 'test' || env.NODE_ENV === 'development' || req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1',
+  skip: (req) => {
+    if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') return true;
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    return (
+      ip.includes('127.0.0.1') ||
+      ip.includes('::1') ||
+      ip.startsWith('172.') ||
+      ip.startsWith('192.168.') ||
+      ip.startsWith('10.') ||
+      ip.includes('::ffff:172.') ||
+      ip.includes('::ffff:192.168.') ||
+      ip.includes('::ffff:10.')
+    );
+  },
 });
 app.use(limiter);
 
