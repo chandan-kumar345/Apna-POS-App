@@ -101,6 +101,25 @@ class CrmController {
       next(err);
     }
   }
+
+  async deleteLead(req, res, next) {
+    try {
+      const result = await crmService.deleteLead(req.businessId, req.params.id);
+      return ApiResponse.success(res, result, 'Lead deleted successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async addNote(req, res, next) {
+    try {
+      const { note } = req.body;
+      const lead = await crmService.addLeadNote(req.businessId, req.params.id, note);
+      return ApiResponse.success(res, lead, 'Note added successfully');
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new CrmController();

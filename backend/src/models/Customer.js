@@ -81,6 +81,11 @@ const customerSchema = new mongoose.Schema(
       default: 'Dine In',
       trim: true,
     },
+    customerType: {
+      type: String,
+      default: 'New Customer',
+      trim: true,
+    },
     tags: {
       type: [String],
       default: ['New Lead'],
@@ -112,6 +117,12 @@ const customerSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    notesList: [
+      {
+        note: { type: String, trim: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
   },
   {
     timestamps: true,

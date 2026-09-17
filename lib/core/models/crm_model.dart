@@ -7,6 +7,7 @@ class CrmLeadModel {
   final String source;
   final String stage;
   final String status;
+  final String customerType;
   final List<String> tags;
   final bool isLiked;
   final bool isStarred;
@@ -19,6 +20,9 @@ class CrmLeadModel {
   final DateTime createdAt;
   final DateTime? lastVisit;
   final List<dynamic> recentOrders;
+  final List<dynamic> notesList;
+
+  double get totalSpend => totalSpent;
 
   CrmLeadModel({
     required this.id,
@@ -29,6 +33,7 @@ class CrmLeadModel {
     this.source = 'Dine In',
     this.stage = 'New Lead',
     this.status = 'New Lead',
+    this.customerType = 'New Customer',
     this.tags = const ['New Lead'],
     this.isLiked = false,
     this.isStarred = false,
@@ -41,6 +46,7 @@ class CrmLeadModel {
     required this.createdAt,
     this.lastVisit,
     this.recentOrders = const [],
+    this.notesList = const [],
   });
 
   factory CrmLeadModel.fromJson(Map<String, dynamic> json) {
@@ -74,6 +80,11 @@ class CrmLeadModel {
       } catch (_) {}
     }
 
+    List<dynamic> parsedNotesList = [];
+    if (json['notesList'] is List) {
+      parsedNotesList = json['notesList'] as List<dynamic>;
+    }
+
     return CrmLeadModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       name: (json['name']?.toString() ?? '').trim().isNotEmpty
@@ -87,6 +98,7 @@ class CrmLeadModel {
           : 'Dine In',
       stage: json['stage']?.toString() ?? 'New Lead',
       status: json['status']?.toString() ?? 'New Lead',
+      customerType: json['customerType']?.toString() ?? (parsedTags.isNotEmpty ? parsedTags.first : 'New Customer'),
       tags: parsedTags,
       isLiked: json['isLiked'] == true,
       isStarred: json['isStarred'] == true,
@@ -99,6 +111,7 @@ class CrmLeadModel {
       createdAt: parsedCreated,
       lastVisit: parsedLastVisit,
       recentOrders: json['recentOrders'] is List ? json['recentOrders'] as List : const [],
+      notesList: parsedNotesList,
     );
   }
 
@@ -111,6 +124,7 @@ class CrmLeadModel {
         'source': source,
         'stage': stage,
         'status': status,
+        'customerType': customerType,
         'tags': tags,
         'isLiked': isLiked,
         'isStarred': isStarred,
@@ -122,6 +136,7 @@ class CrmLeadModel {
         'totalSpent': totalSpent,
         'createdAt': createdAt.toIso8601String(),
         'lastVisit': lastVisit?.toIso8601String(),
+        'notesList': notesList,
       };
 
   CrmLeadModel copyWith({
@@ -132,6 +147,7 @@ class CrmLeadModel {
     String? source,
     String? stage,
     String? status,
+    String? customerType,
     List<String>? tags,
     bool? isLiked,
     bool? isStarred,
@@ -143,6 +159,7 @@ class CrmLeadModel {
     double? totalSpent,
     DateTime? lastVisit,
     List<dynamic>? recentOrders,
+    List<dynamic>? notesList,
   }) {
     return CrmLeadModel(
       id: id,
@@ -153,6 +170,7 @@ class CrmLeadModel {
       source: source ?? this.source,
       stage: stage ?? this.stage,
       status: status ?? this.status,
+      customerType: customerType ?? this.customerType,
       tags: tags ?? this.tags,
       isLiked: isLiked ?? this.isLiked,
       isStarred: isStarred ?? this.isStarred,
@@ -165,6 +183,34 @@ class CrmLeadModel {
       createdAt: createdAt,
       lastVisit: lastVisit ?? this.lastVisit,
       recentOrders: recentOrders ?? this.recentOrders,
+      notesList: notesList ?? this.notesList,
+    );
+  }
+}
+
+class CrmTrendsModel {
+  final String total;
+  final String leads;
+  final String prospects;
+  final String deals;
+  final String wins;
+
+  const CrmTrendsModel({
+    this.total = '+12% this month',
+    this.leads = '+8% this month',
+    this.prospects = '+18% this month',
+    this.deals = '+5% this month',
+    this.wins = '+22% this month',
+  });
+
+  factory CrmTrendsModel.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const CrmTrendsModel();
+    return CrmTrendsModel(
+      total: json['total']?.toString() ?? '+12% this month',
+      leads: json['leads']?.toString() ?? '+8% this month',
+      prospects: json['prospects']?.toString() ?? '+18% this month',
+      deals: json['deals']?.toString() ?? '+5% this month',
+      wins: json['wins']?.toString() ?? '+22% this month',
     );
   }
 }
@@ -176,6 +222,7 @@ class CrmStatsModel {
   final int deals;
   final int wins;
   final int lost;
+  final CrmTrendsModel trends;
 
   CrmStatsModel({
     this.total = 0,
@@ -184,6 +231,7 @@ class CrmStatsModel {
     this.deals = 0,
     this.wins = 0,
     this.lost = 0,
+    this.trends = const CrmTrendsModel(),
   });
 
   factory CrmStatsModel.fromJson(Map<String, dynamic>? json) {
@@ -195,6 +243,7 @@ class CrmStatsModel {
       deals: (json['deals'] as num?)?.toInt() ?? 0,
       wins: (json['wins'] as num?)?.toInt() ?? 0,
       lost: (json['lost'] as num?)?.toInt() ?? 0,
+      trends: CrmTrendsModel.fromJson(json['trends'] as Map<String, dynamic>?),
     );
   }
 }

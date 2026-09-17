@@ -20,5 +20,7 @@ router.post('/leads/:id/stage', (req, res, next) => crmController.updateStage(re
 router.post('/leads/:id/followup', (req, res, next) => crmController.setFollowup(req, res, next));
 router.post('/leads/:id/like', (req, res, next) => crmController.toggleLike(req, res, next));
 router.post('/leads/:id/star', (req, res, next) => crmController.toggleStar(req, res, next));
+router.delete('/leads/:id', (req, res, next) => crmController.deleteLead(req, res, next));
+router.post('/leads/:id/notes', (req, res, next) => crmController.addNote(req, res, next));
 
 module.exports = router;

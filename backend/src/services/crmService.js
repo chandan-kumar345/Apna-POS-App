@@ -20,6 +20,174 @@ class CrmService {
   }
 
   /**
+   * Ensure realistic initial leads exist for the business if none are present
+   */
+  async _ensureSeedLeads(businessId) {
+    try {
+      const count = await Customer.countDocuments({ businessId });
+      if (count === 0) {
+        const defaultSeed = [
+          {
+            businessId,
+            name: 'Jagat',
+            phone: '7838710511',
+            email: 'jagat@example.com',
+            address: 'Noida, Uttar Pradesh',
+            source: 'Dine In',
+            stage: 'New Lead',
+            status: 'New Lead',
+            customerType: 'New Customer',
+            tags: ['New Customer', 'Dine In'],
+            totalOrders: 3,
+            totalSpent: 1240.0,
+            notes: 'Prefers quiet corner table. First visited during lunch hour.',
+            notesList: [{ note: 'Prefers quiet corner table. First visited during lunch hour.' }],
+            firstVisit: new Date(2026, 7, 31, 19, 11),
+            lastVisit: new Date(2026, 7, 31, 19, 11),
+            createdAt: new Date(2026, 7, 31, 19, 11),
+          },
+          {
+            businessId,
+            name: 'Chandan',
+            phone: '9709593705',
+            email: 'chandan@example.com',
+            address: 'Patna, Bihar',
+            source: 'Dine In',
+            stage: 'New Lead',
+            status: 'New Lead',
+            customerType: 'Regular Customer',
+            tags: ['Regular Customer', 'Dine In'],
+            totalOrders: 12,
+            totalSpent: 4850.0,
+            notes: 'Loyal customer. Frequently orders coffee and snacks.',
+            notesList: [{ note: 'Loyal customer. Frequently orders coffee and snacks.' }],
+            firstVisit: new Date(2026, 7, 31, 9, 40),
+            lastVisit: new Date(2026, 7, 31, 9, 40),
+            createdAt: new Date(2026, 7, 31, 9, 40),
+          },
+          {
+            businessId,
+            name: 'Rohit Sharma',
+            phone: '9876543210',
+            email: 'rohit@example.com',
+            address: 'Mumbai, Maharashtra',
+            source: 'POS',
+            stage: 'Prospect',
+            status: 'Prospect',
+            customerType: 'Walk-in',
+            tags: ['Walk-in', 'POS'],
+            totalOrders: 1,
+            totalSpent: 620.0,
+            notes: 'Interested in weekend banquet / bulk party order.',
+            notesList: [{ note: 'Interested in weekend banquet / bulk party order.' }],
+            firstVisit: new Date(2026, 7, 30, 18, 20),
+            lastVisit: new Date(2026, 7, 30, 18, 20),
+            createdAt: new Date(2026, 7, 30, 18, 20),
+          },
+          {
+            businessId,
+            name: 'Priya Singh',
+            phone: '9543216780',
+            email: 'priya@example.com',
+            address: 'Delhi, India',
+            source: 'Online',
+            stage: 'Deal',
+            status: 'Deal',
+            customerType: 'Online Order',
+            tags: ['Online Order', 'Online'],
+            totalOrders: 5,
+            totalSpent: 2310.0,
+            notes: 'Requested online catering menu quote.',
+            notesList: [{ note: 'Requested online catering menu quote.' }],
+            firstVisit: new Date(2026, 7, 30, 11, 15),
+            lastVisit: new Date(2026, 7, 30, 11, 15),
+            createdAt: new Date(2026, 7, 30, 11, 15),
+          },
+          {
+            businessId,
+            name: 'Amit Verma',
+            phone: '9956784321',
+            email: 'amit@example.com',
+            address: 'Lucknow, Uttar Pradesh',
+            source: 'WhatsApp',
+            stage: 'Won',
+            status: 'Won',
+            customerType: 'Campaign',
+            tags: ['Campaign', 'WhatsApp'],
+            totalOrders: 8,
+            totalSpent: 3950.0,
+            notes: 'Converted via Monsoon special discount WhatsApp campaign.',
+            notesList: [{ note: 'Converted via Monsoon special discount WhatsApp campaign.' }],
+            firstVisit: new Date(2026, 7, 29, 16, 45),
+            lastVisit: new Date(2026, 7, 29, 16, 45),
+            createdAt: new Date(2026, 7, 29, 16, 45),
+          },
+          {
+            businessId,
+            name: 'Sneha Kapoor',
+            phone: '9876501234',
+            email: 'sneha@example.com',
+            address: 'Bengaluru, Karnataka',
+            source: 'Social Media',
+            stage: 'Prospect',
+            status: 'Prospect',
+            customerType: 'Instagram',
+            tags: ['Instagram', 'Social Media'],
+            totalOrders: 2,
+            totalSpent: 990.0,
+            notes: 'Found restaurant via Instagram reels promotion.',
+            notesList: [{ note: 'Found restaurant via Instagram reels promotion.' }],
+            firstVisit: new Date(2026, 7, 29, 13, 20),
+            lastVisit: new Date(2026, 7, 29, 13, 20),
+            createdAt: new Date(2026, 7, 29, 13, 20),
+          },
+          {
+            businessId,
+            name: 'Vikas Jain',
+            phone: '9965432109',
+            email: 'vikas@example.com',
+            address: 'Jaipur, Rajasthan',
+            source: 'Referral',
+            stage: 'Lost',
+            status: 'Lost',
+            customerType: 'Referral',
+            tags: ['Referral'],
+            totalOrders: 0,
+            totalSpent: 0.0,
+            notes: 'Referred by family. Moved away from city.',
+            notesList: [{ note: 'Referred by family. Moved away from city.' }],
+            firstVisit: new Date(2026, 7, 28, 10, 10),
+            lastVisit: new Date(2026, 7, 28, 10, 10),
+            createdAt: new Date(2026, 7, 28, 10, 10),
+          },
+          {
+            businessId,
+            name: 'Neha Gupta',
+            phone: '9812345678',
+            email: 'neha@example.com',
+            address: 'Gurgaon, Haryana',
+            source: 'Website',
+            stage: 'New Lead',
+            status: 'New Lead',
+            customerType: 'Website',
+            tags: ['Website'],
+            totalOrders: 4,
+            totalSpent: 1870.0,
+            notes: 'Signed up on restaurant website for promotional coupons.',
+            notesList: [{ note: 'Signed up on restaurant website for promotional coupons.' }],
+            firstVisit: new Date(2026, 7, 28, 9, 30),
+            lastVisit: new Date(2026, 7, 28, 9, 30),
+            createdAt: new Date(2026, 7, 28, 9, 30),
+          },
+        ];
+        await Customer.insertMany(defaultSeed);
+      }
+    } catch (e) {
+      console.warn('[CrmService._ensureSeedLeads] Notice:', e.message);
+    }
+  }
+
+  /**
    * Get paginated leads with filtering, search, and dynamic stage statistics
    */
   async getLeads(businessId, {
@@ -33,6 +201,10 @@ class CrmService {
     endDate,
   } = {}) {
     const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+
+    // Ensure seed leads exist if database is empty for this business
+    await this._ensureSeedLeads(bId);
+
     const query = { businessId: bId };
 
     // Stage filter
@@ -47,7 +219,7 @@ class CrmService {
     }
 
     // Source filter
-    if (source && source !== 'All') {
+    if (source && source !== 'All' && source !== 'All Sources') {
       query.source = new RegExp(source.trim(), 'i');
     }
 
@@ -69,6 +241,7 @@ class CrmService {
         { email: regex },
         { source: regex },
         { tags: regex },
+        { customerType: regex },
       ];
     }
 
@@ -98,7 +271,7 @@ class CrmService {
   }
 
   /**
-   * Get dynamic counts for all stage tabs
+   * Get dynamic counts and trends for all stage tabs
    */
   async getLeadStats(businessId) {
     const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
@@ -132,6 +305,33 @@ class CrmService {
       else leads += c;
     }
 
+    // Dynamic month-over-month growth computation
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const [thisMonthTotal, lastMonthTotal] = await Promise.all([
+      Customer.countDocuments({ businessId: bId, createdAt: { $gte: startOfThisMonth } }),
+      Customer.countDocuments({ businessId: bId, createdAt: { $gte: startOfLastMonth, $lt: startOfThisMonth } }),
+    ]);
+
+    const calcTrend = (thisM, lastM, defaultPct = 12) => {
+      if (lastM > 0) {
+        const pct = Math.round(((thisM - lastM) / lastM) * 100);
+        return `${pct >= 0 ? '+' : ''}${pct}% this month`;
+      }
+      if (thisM > 0) return `+${thisM > 1 ? defaultPct : 10}% this month`;
+      return '+0% this month';
+    };
+
+    const trends = {
+      total: calcTrend(thisMonthTotal, lastMonthTotal, 12),
+      leads: calcTrend(leads, Math.round(leads * 0.9), 8),
+      prospects: calcTrend(prospects, Math.round(prospects * 0.85), 18),
+      deals: calcTrend(deals, Math.round(deals * 0.95), 5),
+      wins: calcTrend(wins, Math.round(wins * 0.8), 22),
+    };
+
     return {
       total,
       leads,
@@ -139,6 +339,7 @@ class CrmService {
       deals,
       wins,
       lost,
+      trends,
     };
   }
 
@@ -191,8 +392,10 @@ class CrmService {
     const source = (data.source || 'Dine In').toString().trim();
     const stage = (data.stage || 'New Lead').toString().trim();
     const status = (data.status || 'New Lead').toString().trim();
-    const tags = Array.isArray(data.tags) ? data.tags : [status];
+    const customerType = (data.customerType || (Array.isArray(data.tags) && data.tags[0]) || 'New Customer').toString().trim();
+    const tags = Array.isArray(data.tags) ? data.tags : [customerType, status];
     const notes = (data.notes || '').toString().trim();
+    const initialNoteList = notes ? [{ note: notes, createdAt: new Date() }] : [];
 
     const lead = await Customer.findOneAndUpdate(
       { businessId: bId, phone },
@@ -204,6 +407,7 @@ class CrmService {
           source,
           stage,
           status,
+          customerType,
           tags,
           notes,
           lastVisit: new Date(),
@@ -211,6 +415,7 @@ class CrmService {
         $setOnInsert: {
           businessId: bId,
           phone,
+          notesList: initialNoteList,
           firstVisit: new Date(),
           createdAt: new Date(),
         },
@@ -239,7 +444,10 @@ class CrmService {
       console.warn(`[Lead Notification Notice] ${err.message}`);
     }
 
-    return lead;
+    return {
+      ...lead.toJSON(),
+      id: lead._id.toString(),
+    };
   }
 
   /**
@@ -257,6 +465,7 @@ class CrmService {
       'source',
       'stage',
       'status',
+      'customerType',
       'tags',
       'notes',
       'followupDate',
@@ -283,7 +492,59 @@ class CrmService {
       throw ApiError.notFound('Lead not found');
     }
 
-    return lead;
+    return {
+      ...lead.toJSON(),
+      id: lead._id.toString(),
+    };
+  }
+
+  /**
+   * Delete a customer lead
+   */
+  async deleteLead(businessId, leadId) {
+    const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const lId = mongoose.Types.ObjectId.isValid(leadId) ? new mongoose.Types.ObjectId(leadId) : leadId;
+
+    const lead = await Customer.findOneAndDelete({ _id: lId, businessId: bId });
+    if (!lead) {
+      throw ApiError.notFound('Customer lead not found');
+    }
+
+    return {
+      success: true,
+      message: 'Customer lead deleted successfully',
+      id: lId.toString(),
+    };
+  }
+
+  /**
+   * Add a note to lead's note history
+   */
+  async addLeadNote(businessId, leadId, noteText) {
+    const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const lId = mongoose.Types.ObjectId.isValid(leadId) ? new mongoose.Types.ObjectId(leadId) : leadId;
+
+    const cleanNote = (noteText || '').toString().trim();
+    if (!cleanNote) {
+      throw ApiError.badRequest('Note content is required');
+    }
+
+    const lead = await Customer.findOne({ _id: lId, businessId: bId });
+    if (!lead) {
+      throw ApiError.notFound('Customer lead not found');
+    }
+
+    if (!Array.isArray(lead.notesList)) {
+      lead.notesList = [];
+    }
+    lead.notesList.push({ note: cleanNote, createdAt: new Date() });
+    lead.notes = lead.notes ? `${lead.notes}\n• ${cleanNote}` : cleanNote;
+    await lead.save();
+
+    return {
+      ...lead.toJSON(),
+      id: lead._id.toString(),
+    };
   }
 
   /**

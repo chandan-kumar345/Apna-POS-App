@@ -34,6 +34,7 @@ class CrmService {
     int limit = 20,
     String? stage,
     String? search,
+    String? source,
     String? startDate,
     String? endDate,
   }) async {
@@ -47,6 +48,9 @@ class CrmService {
       };
       if (stage != null && stage.isNotEmpty && stage != 'All') {
         queryParams['stage'] = stage;
+      }
+      if (source != null && source.isNotEmpty && source != 'All Sources') {
+        queryParams['source'] = source;
       }
       if (search != null && search.trim().isNotEmpty) {
         queryParams['search'] = search.trim();
@@ -147,6 +151,33 @@ class CrmService {
     } catch (e) {
       debugPrint('[CrmService.updateLead] Error: $e');
       rethrow;
+    }
+    return null;
+  }
+
+  /// Delete lead
+  Future<bool> deleteLead(String id) async {
+    try {
+      final response = await _apiClient.delete('${ApiEndpoints.crmLeads}/$id');
+      return response != null && response['success'] == true;
+    } catch (e) {
+      debugPrint('[CrmService.deleteLead] Error: $e');
+      return false;
+    }
+  }
+
+  /// Add a note to lead's notes history
+  Future<CrmLeadModel?> addNote(String id, String note) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.crmLeads}/$id/notes',
+        data: {'note': note},
+      );
+      if (response != null && response['data'] != null) {
+        return CrmLeadModel.fromJson(response['data'] as Map<String, dynamic>);
+      }
+    } catch (e) {
+      debugPrint('[CrmService.addNote] Error: $e');
     }
     return null;
   }
