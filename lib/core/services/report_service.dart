@@ -391,18 +391,18 @@ class ReportService {
               orderType: orderType,
               outlet: outlet,
               search: search,
-              ordersOverride: serverReport.orders.isNotEmpty ? serverReport.orders : null,
+              ordersOverride: serverReport.orders,
             );
             return SalesReportData(
-              summary: serverReport.summary.totalRevenue > 0 ? serverReport.summary : local.summary,
-              paymentModes: serverReport.paymentModes.isNotEmpty ? serverReport.paymentModes : local.paymentModes,
-              salesByOrderType: serverReport.salesByOrderType.isNotEmpty ? serverReport.salesByOrderType : local.salesByOrderType,
-              topProducts: serverReport.topProducts.isNotEmpty ? serverReport.topProducts : local.topProducts,
-              salesTrend: local.salesTrend,
-              categoryWise: local.categoryWise,
-              staffWise: local.staffWise,
-              outletWise: local.outletWise,
-              orders: serverReport.orders.isNotEmpty ? serverReport.orders : local.orders,
+              summary: serverReport.summary,
+              paymentModes: serverReport.paymentModes,
+              salesByOrderType: serverReport.salesByOrderType,
+              topProducts: serverReport.topProducts,
+              salesTrend: serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend,
+              categoryWise: serverReport.categoryWise.isNotEmpty ? serverReport.categoryWise : local.categoryWise,
+              staffWise: serverReport.staffWise.isNotEmpty ? serverReport.staffWise : local.staffWise,
+              outletWise: serverReport.outletWise.isNotEmpty ? serverReport.outletWise : local.outletWise,
+              orders: serverReport.orders,
               startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : local.startDate,
               endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : local.endDate,
               period: serverReport.period.isNotEmpty ? serverReport.period : local.period,
@@ -618,20 +618,16 @@ class ReportService {
       }
 
       var pm = o.paymentMethod.toUpperCase().trim();
-      if (pm.startsWith('CASH')) {
+      if (pm.startsWith('CASH') || pm.isEmpty) {
         pm = 'Cash';
       } else if (pm.startsWith('CARD') || pm.startsWith('DEBIT') || pm.startsWith('CREDIT')) {
-        pm = 'Card';
+        pm = 'Card (Debit/Credit)';
       } else if (pm.startsWith('UPI') || pm.startsWith('ONLINE') || pm.startsWith('QR') || pm.startsWith('GPAY') || pm.startsWith('PHONEPE') || pm.startsWith('PAYTM')) {
         pm = 'UPI / Digital QR';
       } else if (pm.startsWith('WALLET')) {
         pm = 'Wallet';
-      } else if (pm.startsWith('SPLIT')) {
-        pm = 'Split';
-      } else if (pm.isEmpty) {
-        pm = 'Cash';
       } else {
-        pm = o.paymentMethod;
+        pm = 'Other';
       }
 
       pmMap[pm] = (pmMap[pm] ?? 0.0) + o.totalAmount;
@@ -700,44 +696,172 @@ class ReportService {
 
     final topProds = prodMap.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
 
-    // Daily Sales Trend computation (7 days window or date range days)
+    // Multi-resolution Dynamic Sales Trend computation
     final List<DailySalesTrendPoint> trendPoints = [];
-    DateTime trendStart = start ?? now.subtract(const Duration(days: 6));
-    DateTime trendEnd = end ?? now;
+    final pLower = (period ?? 'allTime').toLowerCase().trim();
 
-    // Ensure at least 7 points for visual elegance
-    final daysDiff = trendEnd.difference(trendStart).inDays.abs();
-    if (daysDiff > 31 || daysDiff < 1) {
-      trendStart = now.subtract(const Duration(days: 6));
-      trendEnd = now;
-    }
+    final bool isSingleDay = pLower == 'today' ||
+        pLower == 'yesterday' ||
+        (start != null &&
+            end != null &&
+            start.year == end.year &&
+            start.month == end.month &&
+            start.day == end.day);
 
-    final numDays = trendEnd.difference(trendStart).inDays.abs() + 1;
-    for (int d = 0; d < numDays; d++) {
-      final currentDay = trendStart.add(Duration(days: d));
-      final dayFmt = DateFormat('d MMM').format(currentDay);
+    if (isSingleDay) {
+      // 1. Single Day: Generate 8 intraday time slots across business day (8 AM to 10 PM)
+      final targetDate = start ?? (pLower == 'yesterday' ? now.subtract(const Duration(days: 1)) : now);
+      final List<(String, int, int)> hourlySlots = [
+        ('8 AM', 0, 9),    // 00:00 - 09:59
+        ('10 AM', 10, 11), // 10:00 - 11:59
+        ('12 PM', 12, 13), // 12:00 - 13:59
+        ('2 PM', 14, 15),  // 14:00 - 15:59
+        ('4 PM', 16, 17),  // 16:00 - 17:59
+        ('6 PM', 18, 19),  // 18:00 - 19:59
+        ('8 PM', 20, 21),  // 20:00 - 21:59
+        ('10 PM', 22, 23), // 22:00 - 23:59
+      ];
 
-      double dayAmount = 0.0;
-      int dayOrders = 0;
+      for (final slot in hourlySlots) {
+        final label = slot.$1;
+        final startHour = slot.$2;
+        final endHour = slot.$3;
 
-      for (final o in settled) {
-        final oDate = DateTime.tryParse(o.createdAt);
-        if (oDate != null) {
-          if (oDate.year == currentDay.year && oDate.month == currentDay.month && oDate.day == currentDay.day) {
-            dayAmount += o.totalAmount;
-            dayOrders += 1;
+        double slotAmount = 0.0;
+        int slotOrders = 0;
+
+        for (final o in settled) {
+          final oDate = DateTime.tryParse(o.createdAt);
+          if (oDate != null) {
+            final localO = oDate.isUtc ? oDate.toLocal() : oDate;
+            if (localO.year == targetDate.year &&
+                localO.month == targetDate.month &&
+                localO.day == targetDate.day) {
+              if (localO.hour >= startHour && localO.hour <= endHour) {
+                slotAmount += o.totalAmount;
+                slotOrders += 1;
+              }
+            }
+          }
+        }
+
+        trendPoints.add(
+          DailySalesTrendPoint(
+            date: DateTime(targetDate.year, targetDate.month, targetDate.day, startHour),
+            dateLabel: label,
+            salesAmount: slotAmount,
+            orderCount: slotOrders,
+          ),
+        );
+      }
+    } else {
+      DateTime trendStart = start ?? (pLower == 'thisweek' ? now.subtract(Duration(days: (now.weekday == 7 ? 6 : now.weekday - 1))) : now.subtract(const Duration(days: 6)));
+      DateTime trendEnd = end ?? now;
+
+      final totalDays = trendEnd.difference(trendStart).inDays.abs() + 1;
+
+      if (totalDays <= 31) {
+        // 2. Day-by-Day (This Week, This Month, or <= 31 Days custom range)
+        for (int d = 0; d < totalDays; d++) {
+          final currentDay = trendStart.add(Duration(days: d));
+          final dayFmt = DateFormat('d MMM').format(currentDay);
+
+          double dayAmount = 0.0;
+          int dayOrders = 0;
+
+          for (final o in settled) {
+            final oDate = DateTime.tryParse(o.createdAt);
+            if (oDate != null) {
+              final localO = oDate.isUtc ? oDate.toLocal() : oDate;
+              if (localO.year == currentDay.year &&
+                  localO.month == currentDay.month &&
+                  localO.day == currentDay.day) {
+                dayAmount += o.totalAmount;
+                dayOrders += 1;
+              }
+            }
+          }
+
+          trendPoints.add(
+            DailySalesTrendPoint(
+              date: currentDay,
+              dateLabel: dayFmt,
+              salesAmount: dayAmount,
+              orderCount: dayOrders,
+            ),
+          );
+        }
+      } else {
+        // 3. Multi-Month or All Time (> 31 Days)
+        final int startYear = trendStart.year > 2000 ? trendStart.year : (now.year - (now.month < 6 ? 1 : 0));
+        final int startMonth = trendStart.year > 2000 ? trendStart.month : ((now.month - 5) <= 0 ? (now.month + 7) : (now.month - 5));
+
+        DateTime cursor = DateTime(startYear, startMonth, 1);
+        final DateTime endLimit = DateTime(trendEnd.year, trendEnd.month, 1);
+
+        int safety = 0;
+        while (!cursor.isAfter(endLimit) && safety < 36) {
+          safety++;
+          final nextMonth = DateTime(cursor.year, cursor.month + 1, 1);
+          final monthFmt = DateFormat('MMM yy').format(cursor);
+
+          double monthAmount = 0.0;
+          int monthOrders = 0;
+
+          for (final o in settled) {
+            final oDate = DateTime.tryParse(o.createdAt);
+            if (oDate != null) {
+              final localO = oDate.isUtc ? oDate.toLocal() : oDate;
+              if (localO.year == cursor.year && localO.month == cursor.month) {
+                monthAmount += o.totalAmount;
+                monthOrders += 1;
+              }
+            }
+          }
+
+          trendPoints.add(
+            DailySalesTrendPoint(
+              date: cursor,
+              dateLabel: monthFmt,
+              salesAmount: monthAmount,
+              orderCount: monthOrders,
+            ),
+          );
+
+          cursor = nextMonth;
+        }
+
+        // If less than 6 months generated for allTime, ensure at least 6 months
+        if (trendPoints.length < 6) {
+          trendPoints.clear();
+          for (int m = 5; m >= 0; m--) {
+            final d = DateTime(now.year, now.month - m, 1);
+            final monthFmt = DateFormat('MMM yy').format(d);
+            double monthAmount = 0.0;
+            int monthOrders = 0;
+
+            for (final o in settled) {
+              final oDate = DateTime.tryParse(o.createdAt);
+              if (oDate != null) {
+                final localO = oDate.isUtc ? oDate.toLocal() : oDate;
+                if (localO.year == d.year && localO.month == d.month) {
+                  monthAmount += o.totalAmount;
+                  monthOrders += 1;
+                }
+              }
+            }
+
+            trendPoints.add(
+              DailySalesTrendPoint(
+                date: d,
+                dateLabel: monthFmt,
+                salesAmount: monthAmount,
+                orderCount: monthOrders,
+              ),
+            );
           }
         }
       }
-
-      trendPoints.add(
-        DailySalesTrendPoint(
-          date: currentDay,
-          dateLabel: dayFmt,
-          salesAmount: dayAmount,
-          orderCount: dayOrders,
-        ),
-      );
     }
 
     final categoryWise = catMap.values.map((c) {

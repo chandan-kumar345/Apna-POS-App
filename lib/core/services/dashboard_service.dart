@@ -294,6 +294,7 @@ class DashboardOverviewData {
 class DashboardService {
   final ApiClient _apiClient = ApiClient();
   final AuthService _authService = AuthService();
+  final ReportService _reportService = ReportService();
   DatabaseService get _db => DatabaseService();
 
   Map<String, dynamic> _buildQueryParams(String period, String? startDate, String? endDate) {
@@ -341,35 +342,207 @@ class DashboardService {
       } else if (p == 'thisyear' || p == 'year' || p == 'this year') {
         start = DateTime(now.year, 1, 1, 0, 0, 0);
         end = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+      } else if (p == 'all time' || p == 'all' || p == 'alltime') {
+        start = DateTime(2020, 1, 1, 0, 0, 0);
+        end = DateTime(now.year + 1, 12, 31, 23, 59, 59, 999);
       }
     }
     return (start, end);
   }
 
-  /// Single unified request fetching complete dashboard overview bundle
-  Future<DashboardOverviewData?> fetchOverview({
+  /// Converts authoritative SalesReportData into DashboardOverviewData for complete cross-screen parity
+  DashboardOverviewData buildOverviewFromSalesReport(
+    SalesReportData report, {
+    String period = 'Today',
+    DateTime? start,
+    DateTime? end,
+  }) {
+    final allOrders = _db.deduplicateOrdersList(_db.orders);
+    final activeOrders = allOrders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
+
+    // 1. Summary
+    final summary = DashboardSummaryData(
+      period: period,
+      revenue: report.summary.totalRevenue,
+      totalOrders: report.summary.totalOrders,
+      activeOrdersCount: activeOrders.length,
+      totalProductsCount: _db.menuItems.length,
+      topProducts: report.topProducts,
+    );
+
+    // 2. Order Types
+    int dineInCount = 0;
+    double dineInAmount = 0.0;
+    int deliveryCount = 0;
+    double deliveryAmount = 0.0;
+    int takeawayCount = 0;
+    double takeawayAmount = 0.0;
+
+    for (final ot in report.salesByOrderType) {
+      final t = ot.type.toLowerCase();
+      if (t.contains('dine')) {
+        dineInCount += ot.count;
+        dineInAmount += ot.amount;
+      } else if (t.contains('delivery') || t.contains('deliv')) {
+        deliveryCount += ot.count;
+        deliveryAmount += ot.amount;
+      } else if (t.contains('takeaway') || t.contains('take')) {
+        takeawayCount += ot.count;
+        takeawayAmount += ot.amount;
+      }
+    }
+
+    final orderTypes = OrderTypeStatsData(
+      dineIn: OrderTypeCountAmount(count: dineInCount, amount: dineInAmount),
+      delivery: OrderTypeCountAmount(count: deliveryCount, amount: deliveryAmount),
+      takeaway: OrderTypeCountAmount(count: takeawayCount, amount: takeawayAmount),
+      total: OrderTypeCountAmount(count: report.summary.totalOrders, amount: report.summary.totalRevenue),
+    );
+
+    // 3. Product Sales List
+    final List<ItemSaleReportItem> productSales = [];
+    for (int i = 0; i < report.topProducts.length; i++) {
+      final tp = report.topProducts[i];
+      final price = tp.quantity > 0 ? (tp.revenue / tp.quantity) : 0.0;
+      productSales.add(ItemSaleReportItem(
+        srNo: i + 1,
+        productId: '',
+        productName: tp.name,
+        price: price,
+        quantity: tp.quantity,
+        totalAmount: tp.revenue,
+      ));
+    }
+
+    // 4. Payment Methods
+    final List<PaymentMethodSaleItem> payList = report.paymentModes.map((p) {
+      String m = p.mode.toUpperCase();
+      if (m.contains('CASH')) {
+        m = 'CASH';
+      } else if (m.contains('CARD') || m.contains('DEBIT') || m.contains('CREDIT')) {
+        m = 'CARD';
+      } else if (m.contains('UPI') || m.contains('QR') || m.contains('ONLINE')) {
+        m = 'UPI';
+      } else if (m.contains('WALLET')) {
+        m = 'WALLET';
+      } else {
+        m = 'OTHER';
+      }
+      return PaymentMethodSaleItem(
+        method: m,
+        count: p.count,
+        amount: p.amount,
+      );
+    }).toList();
+
+    final paymentMethods = PaymentMethodsSummaryData(
+      payments: payList,
+      totalAmount: report.summary.totalRevenue,
+    );
+
+    // 5. Taxes
+    final half = report.summary.totalTax / 2;
+    final taxes = TaxSummaryData(
+      totalGST: report.summary.totalTax,
+      cgst: report.summary.cgst > 0 ? report.summary.cgst : half,
+      sgst: report.summary.sgst > 0 ? report.summary.sgst : half,
+      igst: report.summary.igst,
+    );
+
+    // 6. Customers
+    final Map<String, CustomerInsightItem> custMap = {};
+    for (final o in report.orders) {
+      final name = (o.customerName ?? '').trim();
+      final phone = (o.customerPhone ?? '').trim();
+      final key = phone.isNotEmpty ? phone : name;
+      if (key.isEmpty) continue;
+
+      if (!custMap.containsKey(key)) {
+        final totalVisits = allOrders.where((ao) {
+          final aPhone = (ao.customerPhone ?? '').trim();
+          final aName = (ao.customerName ?? '').trim();
+          return (phone.isNotEmpty && aPhone == phone) || (name.isNotEmpty && aName == name);
+        }).length;
+        custMap[key] = CustomerInsightItem(
+          name: name.isNotEmpty ? name : 'Customer',
+          phone: phone,
+          visitCount: totalVisits > 0 ? totalVisits : 1,
+        );
+      }
+    }
+
+    final List<CustomerInsightItem> localNewCust = [];
+    final List<CustomerInsightItem> localRetCust = [];
+    for (final c in custMap.values) {
+      if (c.visitCount > 1) {
+        localRetCust.add(c);
+      } else {
+        localNewCust.add(c);
+      }
+    }
+
+    final customers = CustomerAnalyticsData(
+      newCustomers: localNewCust,
+      returningCustomers: localRetCust,
+    );
+
+    // 7. Order Stats
+    final allInRange = (start != null && end != null)
+        ? allOrders.where((o) {
+            final oDate = o.createdDateTime.toLocal();
+            return !oDate.isBefore(start) && !oDate.isAfter(end);
+          }).toList()
+        : allOrders;
+
+    final cancelledCount = allInRange.where((o) => o.status == OrderStatus.cancelled).length;
+    final otherCount = allInRange.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length;
+
+    final orderStats = OrderStatsSummaryData(
+      successfulOrders: report.summary.totalOrders,
+      cancelledOrders: cancelledCount,
+      otherOrders: otherCount,
+      totalOrders: report.summary.totalOrders + cancelledCount + otherCount,
+    );
+
+    return DashboardOverviewData(
+      summary: summary,
+      orderTypes: orderTypes,
+      productSales: productSales,
+      customers: customers,
+      paymentMethods: paymentMethods,
+      taxes: taxes,
+      orderStats: orderStats,
+    );
+  }
+
+  /// Single unified request fetching complete dashboard overview bundle with guaranteed parity
+  Future<DashboardOverviewData> fetchOverview({
     String period = 'Today',
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardOverview,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final salesReport = await _reportService.fetchSalesReport(
+      period: period,
+      startDate: startDate ?? (start != null ? start.toUtc().toIso8601String() : null),
+      endDate: endDate ?? (end != null ? end.toUtc().toIso8601String() : null),
+    );
+    return buildOverviewFromSalesReport(salesReport, period: period, start: start, end: end);
+  }
 
-        if (response != null && response['data'] != null && response['data'] is Map<String, dynamic>) {
-          return DashboardOverviewData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchOverview] API warning: $e');
-      }
-    }
-    return null;
+  /// Instant cached overview from synchronized local database
+  DashboardOverviewData getLocalOverview({
+    String period = 'Today',
+    String? startDate,
+    String? endDate,
+  }) {
+    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
+    final salesReport = _reportService.getLocalSalesReport(
+      period: period,
+      startDate: startDate ?? (start != null ? start.toUtc().toIso8601String() : null),
+      endDate: endDate ?? (end != null ? end.toUtc().toIso8601String() : null),
+    );
+    return buildOverviewFromSalesReport(salesReport, period: period, start: start, end: end);
   }
 
   /// 1. Fetch dashboard order & revenue summary metrics
@@ -378,40 +551,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardSummary,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null && response['data']['summary'] != null) {
-          return DashboardSummaryData.fromJson(response['data']['summary'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchSummary] API warning: $e');
-      }
-    }
-
-    // Local DB fallback
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end);
-    final allOrders = _db.deduplicateOrdersList(_db.orders);
-    final active = allOrders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
-    double rev = 0;
-    for (final o in settled) {
-      rev += o.totalAmount;
-    }
-    return DashboardSummaryData(
-      period: period,
-      revenue: rev,
-      totalOrders: settled.length,
-      activeOrdersCount: active.length,
-      totalProductsCount: _db.menuItems.length,
-    );
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.summary;
   }
 
   /// 2. Fetch order types breakdown (Dine In, Delivery, Takeaway, Total)
@@ -420,52 +561,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardOrderTypes,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null) {
-          return OrderTypeStatsData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchOrderTypes] API warning: $e');
-      }
-    }
-
-    // Local DB fallback
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end);
-    int dineCount = 0, delivCount = 0, takeCount = 0;
-    double dineAmt = 0, delivAmt = 0, takeAmt = 0;
-
-    for (final o in settled) {
-      if (o.orderType == OrderType.dineIn) {
-        dineCount++;
-        dineAmt += o.totalAmount;
-      } else if (o.orderType == OrderType.delivery) {
-        delivCount++;
-        delivAmt += o.totalAmount;
-      } else {
-        takeCount++;
-        takeAmt += o.totalAmount;
-      }
-    }
-
-    final totalCount = dineCount + delivCount + takeCount;
-    final totalAmt = dineAmt + delivAmt + takeAmt;
-
-    return OrderTypeStatsData(
-      dineIn: OrderTypeCountAmount(count: dineCount, amount: dineAmt),
-      delivery: OrderTypeCountAmount(count: delivCount, amount: delivAmt),
-      takeaway: OrderTypeCountAmount(count: takeCount, amount: takeAmt),
-      total: OrderTypeCountAmount(count: totalCount, amount: totalAmt),
-    );
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.orderTypes;
   }
 
   /// 3. Fetch item/product sales report
@@ -475,51 +572,8 @@ class DashboardService {
     String? endDate,
     String? orderType,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final params = _buildQueryParams(period, startDate, endDate);
-        if (orderType != null && orderType.isNotEmpty && orderType != 'All') {
-          params['orderType'] = orderType;
-        }
-
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardProductSales,
-          queryParameters: params,
-        );
-
-        if (response != null && response['data'] != null && response['data']['items'] != null) {
-          final list = response['data']['items'] as List<dynamic>;
-          return list.map((i) => ItemSaleReportItem.fromJson(i as Map<String, dynamic>)).toList();
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchProductSales] API warning: $e');
-      }
-    }
-
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end);
-    final Map<String, ItemSaleReportItem> map = {};
-    int sr = 1;
-    for (final o in settled) {
-      for (final i in o.items) {
-        final key = i.item.name;
-        final existing = map[key];
-        final qty = (existing?.quantity ?? 0) + i.quantity;
-        final tot = (existing?.totalAmount ?? 0.0) + (i.item.effectivePrice * i.quantity);
-        map[key] = ItemSaleReportItem(
-          srNo: existing?.srNo ?? sr++,
-          productId: i.item.id,
-          productName: key,
-          price: i.item.effectivePrice,
-          quantity: qty,
-          totalAmount: tot,
-        );
-      }
-    }
-    return map.values.toList();
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.productSales;
   }
 
   /// 4. Fetch customer analytics (New vs Returning)
@@ -528,39 +582,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardCustomers,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null) {
-          return CustomerAnalyticsData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchCustomers] API warning: $e');
-      }
-    }
-
-    final totalCust = _db.customers;
-    final List<CustomerInsightItem> news = [];
-    final List<CustomerInsightItem> returns = [];
-    for (final c in totalCust) {
-      final item = CustomerInsightItem(name: c.name, phone: c.phone, visitCount: c.totalOrders);
-      if (c.totalOrders > 1) {
-        returns.add(item);
-      } else {
-        news.add(item);
-      }
-    }
-    return CustomerAnalyticsData(
-      newCustomers: news,
-      returningCustomers: returns,
-    );
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.customers;
   }
 
   /// 5. Fetch payment methods breakdown (Cash, Card, UPI, etc.)
@@ -569,66 +592,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardPaymentMethods,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null) {
-          return PaymentMethodsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchPaymentMethods] API warning: $e');
-      }
-    }
-
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end);
-    final Map<String, Map<String, dynamic>> map = {};
-    double total = 0;
-
-    for (final o in settled) {
-      total += o.totalAmount;
-      var pm = o.paymentMethod.toUpperCase().trim();
-      if (pm.startsWith('CASH')) {
-        pm = 'CASH';
-      } else if (pm.startsWith('CARD') || pm.startsWith('DEBIT') || pm.startsWith('CREDIT')) {
-        pm = 'CARD';
-      } else if (pm.startsWith('UPI') || pm.startsWith('ONLINE') || pm.startsWith('QR') || pm.startsWith('GPAY') || pm.startsWith('PHONEPE') || pm.startsWith('PAYTM')) {
-        pm = 'UPI';
-      } else if (pm.startsWith('SPLIT')) {
-        pm = 'SPLIT';
-      } else if (pm.isEmpty) {
-        pm = 'CASH';
-      } else {
-        pm = 'OTHER';
-      }
-
-      if (!map.containsKey(pm)) {
-        map[pm] = {'count': 0, 'amount': 0.0};
-      }
-      map[pm]!['count'] = (map[pm]!['count'] as int) + 1;
-      map[pm]!['amount'] = (map[pm]!['amount'] as double) + o.totalAmount;
-    }
-
-    final payList = map.entries
-        .map((e) => PaymentMethodSaleItem(
-              method: e.key,
-              count: e.value['count'] as int,
-              amount: e.value['amount'] as double,
-            ))
-        .toList()
-      ..sort((a, b) => b.amount.compareTo(a.amount));
-
-    return PaymentMethodsSummaryData(
-      payments: payList,
-      totalAmount: total,
-    );
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.paymentMethods;
   }
 
   /// 6. Fetch taxes summary (GST, CGST, SGST, IGST)
@@ -637,32 +602,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardTaxes,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null) {
-          return TaxSummaryData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchTaxes] API warning: $e');
-      }
-    }
-
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end);
-    double totalTax = 0;
-    for (final o in settled) {
-      totalTax += o.taxAmount;
-    }
-    final half = totalTax / 2;
-    return TaxSummaryData(totalGST: totalTax, cgst: half, sgst: half, igst: 0.0);
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.taxes;
   }
 
   /// 7. Fetch order status statistics (Successful, Cancelled, Total)
@@ -671,33 +612,8 @@ class DashboardService {
     String? startDate,
     String? endDate,
   }) async {
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        final response = await _apiClient.get(
-          ApiEndpoints.dashboardOrderStats,
-          queryParameters: _buildQueryParams(period, startDate, endDate),
-        );
-
-        if (response != null && response['data'] != null) {
-          return OrderStatsSummaryData.fromJson(response['data'] as Map<String, dynamic>);
-        }
-      }
-    } catch (e) {
-      if (!e.toString().contains('Authorization') && !e.toString().contains('401')) {
-        debugPrint('[DashboardService.fetchOrderStats] API warning: $e');
-      }
-    }
-
-    final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
-    final settled = _db.getCompletedOrders(start: start, end: end).length;
-    final allOrders = _db.deduplicateOrdersList(_db.orders);
-    final cancelled = allOrders.where((o) => o.status == OrderStatus.cancelled).length;
-    return OrderStatsSummaryData(
-      successfulOrders: settled,
-      cancelledOrders: cancelled,
-      totalOrders: allOrders.length,
-    );
+    final overview = await fetchOverview(period: period, startDate: startDate, endDate: endDate);
+    return overview.orderStats;
   }
 
   /// 8. Fetch chart data points

@@ -140,10 +140,10 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
             Container(
               padding: const EdgeInsets.all(7),
               decoration: const BoxDecoration(
-                color: Color(0xFF051C48),
+                color: Color(0xFF0F172A),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.show_chart_rounded, color: Colors.white, size: 16),
+              child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 16),
             ),
             const SizedBox(width: 8),
             Text(
@@ -169,22 +169,22 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                   width: 8,
                   height: 8,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF3B82F6),
+                    color: Color(0xFF2563EB),
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 5),
                 Text(
                   widget.isMobile ? 'Sales' : 'Sales (${widget.currency})',
                   style: const TextStyle(
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF475569),
                   ),
                 ),
               ],
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 12),
 
             // Legend: Orders
             Row(
@@ -198,11 +198,11 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                     shape: BoxShape.circle,
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 5),
                 const Text(
                   'Orders',
                   style: TextStyle(
-                    fontSize: 11,
+                    fontSize: 11.5,
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF475569),
                   ),
@@ -246,8 +246,8 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
 
   void _handleTouch(Offset localPos, double totalWidth, int count) {
     if (count <= 0) return;
-    const double leftMargin = 42;
-    const double rightMargin = 32;
+    final double leftMargin = widget.isMobile ? 44 : 56;
+    final double rightMargin = widget.isMobile ? 26 : 34;
     final chartWidth = totalWidth - leftMargin - rightMargin;
     if (chartWidth <= 0) return;
 
@@ -262,15 +262,22 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
   }
 
   double _calculateCeiling(double val) {
+    if (val <= 500) return 500;
+    if (val <= 1000) return 1000;
+    if (val <= 2500) return 2500;
     if (val <= 5000) return 5000;
     if (val <= 10000) return 10000;
+    if (val <= 15000) return 15000;
     if (val <= 20000) return 20000;
+    if (val <= 25000) return 25000;
     if (val <= 50000) return 50000;
     if (val <= 100000) return 100000;
     return (val * 1.15).ceilToDouble();
   }
 
   int _calculateOrdersCeiling(int val) {
+    if (val <= 5) return 5;
+    if (val <= 10) return 10;
     if (val <= 20) return 20;
     if (val <= 50) return 50;
     if (val <= 100) return 100;
@@ -285,8 +292,8 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
       return DailySalesTrendPoint(
         date: d,
         dateLabel: DateFormat('d MMM').format(d),
-        salesAmount: (index + 2) * 2800.0,
-        orderCount: (index + 2) * 8,
+        salesAmount: 0.0,
+        orderCount: 0,
       );
     });
   }
@@ -311,7 +318,7 @@ class _DualAxisChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final double leftMargin = isMobile ? 36 : 46;
+    final double leftMargin = isMobile ? 44 : 56;
     final double rightMargin = isMobile ? 26 : 34;
     final double bottomMargin = 24;
     final double topMargin = 12;
@@ -330,8 +337,8 @@ class _DualAxisChartPainter extends CustomPainter {
       color: Color(0xFF94A3B8),
     );
 
-    // Draw 4 Horizontal Grid lines & Axis Labels
-    const int gridSteps = 4;
+    // Draw 5 Horizontal Grid lines & Axis Labels (0, 1/5, 2/5, 3/5, 4/5, 5/5)
+    const int gridSteps = 5;
     for (int i = 0; i <= gridSteps; i++) {
       final y = topMargin + (chartHeight * (gridSteps - i) / gridSteps);
 
@@ -339,10 +346,18 @@ class _DualAxisChartPainter extends CustomPainter {
       canvas.drawLine(Offset(leftMargin, y), Offset(leftMargin + chartWidth, y), gridPaint);
 
       // Left Y-Axis Label (Sales in ₹)
-      final salesVal = (maxSales * i / gridSteps);
-      final salesText = salesVal >= 1000
-          ? '$currency${(salesVal / 1000).toStringAsFixed(salesVal % 1000 == 0 ? 0 : 1)}k'
-          : '$currency${salesVal.toInt()}';
+      final salesVal = (maxSales * i / gridSteps).round();
+      String salesText;
+      if (salesVal == 0) {
+        salesText = '$currency 0';
+      } else if (salesVal >= 1000) {
+        final str = salesVal.toString();
+        final formatted = str.replaceAllMapped(RegExp(r'(\d+?)(?=(\d\d)+(\d)(?!\d))(\.\d+)?'), (Match m) => '${m[1]},');
+        salesText = '$currency$formatted';
+      } else {
+        salesText = '$currency$salesVal';
+      }
+
       final tpLeft = TextPainter(
         text: TextSpan(text: salesText, style: textStyle),
         textDirection: TextDirection.ltr,
@@ -359,7 +374,12 @@ class _DualAxisChartPainter extends CustomPainter {
     }
 
     final double stepX = chartWidth / points.length;
-    final double barWidth = math.min(stepX * 0.45, isMobile ? 18.0 : 26.0);
+    final double barWidth = math.min(stepX * 0.44, isMobile ? 18.0 : 28.0);
+
+    // Dynamic label spacing interval to prevent overlap when points count is large
+    final int labelInterval = points.length > 20
+        ? (points.length / 6).ceil()
+        : (points.length > 12 ? (points.length / 7).ceil() : 1);
 
     // 1. Draw Sales Bars (Blue with rounded top)
     for (int i = 0; i < points.length; i++) {
@@ -370,7 +390,7 @@ class _DualAxisChartPainter extends CustomPainter {
 
       final isHovered = hoveredIndex == i;
       final barPaint = Paint()
-        ..color = isHovered ? const Color(0xFF2563EB) : const Color(0xFF60A5FA).withValues(alpha: 0.85);
+        ..color = isHovered ? const Color(0xFF2563EB) : const Color(0xFF5B9EF8).withValues(alpha: 0.88);
 
       final rrect = RRect.fromRectAndCorners(
         Rect.fromLTRB(centerX - barWidth / 2, topY, centerX + barWidth / 2, topMargin + chartHeight),
@@ -381,22 +401,27 @@ class _DualAxisChartPainter extends CustomPainter {
 
       // Bottom X-Axis Date Label
       String dateLabel = p.dateLabel;
-      if (isMobile && dateLabel.contains(' ')) {
+      if (isMobile && dateLabel.contains(' ') && !dateLabel.endsWith('AM') && !dateLabel.endsWith('PM')) {
         // e.g. "11 Sep" -> "11" for clean mobile fit
         dateLabel = dateLabel.split(' ').first;
       }
-      final tpBottom = TextPainter(
-        text: TextSpan(
-          text: dateLabel,
-          style: TextStyle(
-            fontSize: isMobile ? 9 : 10,
-            fontWeight: isHovered ? FontWeight.bold : FontWeight.w600,
-            color: isHovered ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+
+      final bool showLabel = (i % labelInterval == 0) || (i == points.length - 1) || isHovered;
+
+      if (showLabel) {
+        final tpBottom = TextPainter(
+          text: TextSpan(
+            text: dateLabel,
+            style: TextStyle(
+              fontSize: isMobile ? 9 : 10,
+              fontWeight: isHovered ? FontWeight.bold : FontWeight.w600,
+              color: isHovered ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+            ),
           ),
-        ),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      tpBottom.paint(canvas, Offset(centerX - tpBottom.width / 2, topMargin + chartHeight + 6));
+          textDirection: TextDirection.ltr,
+        )..layout();
+        tpBottom.paint(canvas, Offset(centerX - tpBottom.width / 2, topMargin + chartHeight + 6));
+      }
     }
 
     // 2. Draw Orders Line (Green smooth bezier curve)

@@ -192,7 +192,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildSidebarContent(bool isSmallScreen) {
+  Widget _buildSidebarContent(bool isSmallScreen, {bool isCollapsed = false}) {
     final rest = db.restaurant;
     final user = db.currentUser;
 
@@ -200,7 +200,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       margin: isSmallScreen
           ? const EdgeInsets.all(10)
           : const EdgeInsets.fromLTRB(10, 10, 0, 10),
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: isCollapsed ? 6 : 10),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(22),
@@ -224,6 +224,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconColor: const Color(0xFF1D4ED8),
                   iconBgColor: const Color(0xFFEBF2FE),
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 1,
@@ -233,6 +234,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFDCEBFE),
                   badge: '${db.menuItems.length}',
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 2,
@@ -242,6 +244,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFDCFCE7),
                   badge: '${db.tables.where((t) => t.status != TableStatus.free).length}',
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 3,
@@ -251,6 +254,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFF3E8FF),
                   badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}',
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 4,
@@ -259,6 +263,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconColor: const Color(0xFFEA580C),
                   iconBgColor: const Color(0xFFFFEDD5),
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 5,
@@ -268,6 +273,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFFFEDD5),
                   isPremium: true,
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 6,
@@ -276,6 +282,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconColor: const Color(0xFF0284C7),
                   iconBgColor: const Color(0xFFE0F2FE),
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 7,
@@ -284,6 +291,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconColor: const Color(0xFFDB2777),
                   iconBgColor: const Color(0xFFFCE7F3),
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 8,
@@ -293,6 +301,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFFEF08A),
                   isPremium: true,
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 9,
@@ -302,6 +311,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconBgColor: const Color(0xFFFFE4E6),
                   isPremium: true,
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
                 _buildNavItem(
                   index: 10,
@@ -310,6 +320,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                   iconColor: const Color(0xFF475569),
                   iconBgColor: const Color(0xFFF1F5F9),
                   isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
                 ),
               ],
             ),
@@ -318,86 +329,141 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
           const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
           const SizedBox(height: 10),
 
-          // User Profile & Logout Bottom Row (Matches exact screenshot layout)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: Row(
+          // User Profile & Logout Bottom Row (Collapsed Icon Column or Extended Full Row)
+          if (isCollapsed)
+            Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDBEAFE),
-                    shape: BoxShape.circle,
-                  ),
-                  child: ClipOval(
-                    child: _buildProfileAvatarImage(46),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        (user?.name.isNotEmpty == true)
-                            ? user!.name
-                            : (rest?.name.isNotEmpty == true
-                                ? rest!.name
-                                : 'Kundan Lal'),
-                        style: const TextStyle(
-                          color: Color(0xFF0F172A),
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.1,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        (user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : 'owner',
-                        style: const TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: () async {
-                    await AuthService().logout();
-                    if (mounted) {
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                  borderRadius: BorderRadius.circular(14),
+                Tooltip(
+                  message: '${user?.name.isNotEmpty == true ? user!.name : (rest?.name.isNotEmpty == true ? rest!.name : "Kundan Lal")} (${(user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : "owner"})',
                   child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFE4E6),
-                      borderRadius: BorderRadius.circular(14),
+                    width: 40,
+                    height: 40,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFDBEAFE),
+                      shape: BoxShape.circle,
                     ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.logout_rounded,
-                      color: Color(0xFFEF4444),
-                      size: 22,
+                    child: ClipOval(
+                      child: _buildProfileAvatarImage(40),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Tooltip(
+                  message: 'Logout',
+                  child: InkWell(
+                    onTap: () async {
+                      await AuthService().logout();
+                      if (mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginScreen()),
+                          (route) => false,
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFE4E6),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.logout_rounded,
+                        color: Color(0xFFEF4444),
+                        size: 20,
+                      ),
                     ),
                   ),
                 ),
               ],
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFDBEAFE),
+                      shape: BoxShape.circle,
+                    ),
+                    child: ClipOval(
+                      child: _buildProfileAvatarImage(46),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          (user?.name.isNotEmpty == true)
+                              ? user!.name
+                              : (rest?.name.isNotEmpty == true
+                                  ? rest!.name
+                                  : 'Kundan Lal'),
+                          style: const TextStyle(
+                            color: Color(0xFF0F172A),
+                            fontSize: 15.5,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: 0.1,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          (user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : 'owner',
+                          style: const TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Tooltip(
+                    message: 'Logout',
+                    child: InkWell(
+                      onTap: () async {
+                        await AuthService().logout();
+                        if (mounted) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                            (route) => false,
+                          );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFE4E6),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.logout_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 22,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -626,30 +692,22 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                           ),
                           child: Row(
                             children: [
-                              // DESKTOP ANIMATED SLIDING & SCALING SIDEBAR
+                              // DESKTOP ANIMATED SLIDING & SCALING SIDEBAR (Collapsed Icon Rail by default, Extended on Hamburger Click)
                               if (!isSmallScreen)
                                 AnimatedBuilder(
                                   animation: _sidebarAnimation,
                                   builder: (context, child) {
-                                    if (_sidebarAnimation.value <= 0.001) {
+                                    if (_selectedIndex == 1 && _isPosFullScreen) {
                                       return const SizedBox.shrink();
                                     }
+                                    final double currentWidth = 74.0 + (260.0 - 74.0) * _sidebarAnimation.value;
+                                    final bool isCollapsed = _sidebarAnimation.value < 0.5;
+
                                     return SizedBox(
-                                      width: 260.0 * _sidebarAnimation.value,
+                                      width: currentWidth,
                                       height: double.infinity,
                                       child: ClipRect(
-                                        child: Align(
-                                          alignment: Alignment.topLeft,
-                                          widthFactor: _sidebarAnimation.value,
-                                          child: SizedBox(
-                                            width: 260,
-                                            height: double.infinity,
-                                            child: Opacity(
-                                              opacity: _sidebarAnimation.value.clamp(0.0, 1.0),
-                                              child: _buildSidebarContent(false),
-                                            ),
-                                          ),
-                                        ),
+                                        child: _buildSidebarContent(false, isCollapsed: isCollapsed),
                                       ),
                                     );
                                   },
@@ -793,39 +851,129 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     String? badge,
     bool isPremium = false,
     bool isSmallScreen = false,
+    bool isCollapsed = false,
   }) {
     final isSelected = _selectedIndex == index;
+
+    final void Function() onTapAction = () {
+      if (isPremium) {
+        if (isSmallScreen) _closeSidebar();
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => SubscriptionScreen(
+              sourceFeature: title.toLowerCase(),
+              onNavigateToFeature: (target) {
+                if (target.contains('inventory')) {
+                  _selectTab(5);
+                } else if (target.contains('loyalty')) {
+                  _selectTab(8);
+                } else if (target.contains('campaign')) {
+                  _selectTab(9);
+                }
+              },
+            ),
+          ),
+        );
+      } else {
+        _selectTab(index);
+        if (isSmallScreen) {
+          _closeSidebar();
+        }
+      }
+    };
+
+    if (isCollapsed) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Tooltip(
+          message: title,
+          waitDuration: const Duration(milliseconds: 300),
+          child: InkWell(
+            onTap: onTapAction,
+            borderRadius: BorderRadius.circular(14),
+            child: Container(
+              height: 42,
+              width: 42,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: isSelected
+                    ? const Color(0xFFEBF3FE)
+                    : (isPremium ? const Color(0xFFFEF7DC) : Colors.transparent),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFF1D4ED8) : iconBgColor,
+                      borderRadius: BorderRadius.circular(11),
+                    ),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      icon,
+                      color: isSelected ? Colors.white : iconColor,
+                      size: 19,
+                    ),
+                  ),
+                  if (isSelected)
+                    Positioned(
+                      left: -3,
+                      top: 8,
+                      bottom: 8,
+                      child: Container(
+                        width: 3.5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1D4ED8),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
+                      ),
+                    ),
+                  if (isPremium)
+                    const Positioned(
+                      top: -4,
+                      right: -4,
+                      child: Text('👑', style: TextStyle(fontSize: 11)),
+                    )
+                  else if (badge != null && badge != '0')
+                    Positioned(
+                      top: -2,
+                      right: -3,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                        alignment: Alignment.center,
+                        child: Text(
+                          badge,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            height: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 3),
       child: InkWell(
-        onTap: () {
-          if (isPremium) {
-            if (isSmallScreen) _closeSidebar();
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SubscriptionScreen(
-                  sourceFeature: title.toLowerCase(),
-                  onNavigateToFeature: (target) {
-                    if (target.contains('inventory')) {
-                      _selectTab(5);
-                    } else if (target.contains('loyalty')) {
-                      _selectTab(8);
-                    } else if (target.contains('campaign')) {
-                      _selectTab(9);
-                    }
-                  },
-                ),
-              ),
-            );
-          } else {
-            _selectTab(index);
-            if (isSmallScreen) {
-              _closeSidebar();
-            }
-          }
-        },
+        onTap: onTapAction,
         borderRadius: BorderRadius.circular(16),
         child: Stack(
           children: [

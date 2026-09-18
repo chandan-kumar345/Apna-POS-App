@@ -20,171 +20,178 @@ class CrmService {
   }
 
   /**
-   * Ensure realistic initial leads exist for the business if none are present
+   * Dynamically enrich customer lead objects with exact order counts, visit counts,
+   * total spend, return counts, last visit date, and recent orders from the Order collection.
    */
-  async _ensureSeedLeads(businessId) {
-    try {
-      const count = await Customer.countDocuments({ businessId });
-      if (count === 0) {
-        const defaultSeed = [
-          {
-            businessId,
-            name: 'Jagat',
-            phone: '7838710511',
-            email: 'jagat@example.com',
-            address: 'Noida, Uttar Pradesh',
-            source: 'Dine In',
-            stage: 'New Lead',
-            status: 'New Lead',
-            customerType: 'New Customer',
-            tags: ['New Customer', 'Dine In'],
-            totalOrders: 3,
-            totalSpent: 1240.0,
-            notes: 'Prefers quiet corner table. First visited during lunch hour.',
-            notesList: [{ note: 'Prefers quiet corner table. First visited during lunch hour.' }],
-            firstVisit: new Date(2026, 7, 31, 19, 11),
-            lastVisit: new Date(2026, 7, 31, 19, 11),
-            createdAt: new Date(2026, 7, 31, 19, 11),
+  async _enrichCustomersWithOrderMetrics(businessId, customerDocs) {
+    if (!customerDocs || customerDocs.length === 0) return [];
+
+    const bId = mongoose.Types.ObjectId.isValid(businessId)
+      ? new mongoose.Types.ObjectId(businessId)
+      : businessId;
+
+    const phones = customerDocs
+      .map((c) => (c.phone || '').trim())
+      .filter((p) => p.length > 0);
+
+    const customerIds = customerDocs
+      .map((c) => (c._id ? c._id : c.id))
+      .filter(Boolean)
+      .map((id) => (mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : id));
+
+    // 1. Aggregation on Order collection for real order metrics
+    const orderAgg = await Order.aggregate([
+      {
+        $match: {
+          businessId: bId,
+          $or: [
+            { customerPhone: { $in: phones } },
+            { customerId: { $in: customerIds } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $cond: [
+              { $and: [{ $ne: ['$customerPhone', null] }, { $ne: ['$customerPhone', ''] }] },
+              '$customerPhone',
+              '$customerId',
+            ],
           },
-          {
-            businessId,
-            name: 'Chandan',
-            phone: '9709593705',
-            email: 'chandan@example.com',
-            address: 'Patna, Bihar',
-            source: 'Dine In',
-            stage: 'New Lead',
-            status: 'New Lead',
-            customerType: 'Regular Customer',
-            tags: ['Regular Customer', 'Dine In'],
-            totalOrders: 12,
-            totalSpent: 4850.0,
-            notes: 'Loyal customer. Frequently orders coffee and snacks.',
-            notesList: [{ note: 'Loyal customer. Frequently orders coffee and snacks.' }],
-            firstVisit: new Date(2026, 7, 31, 9, 40),
-            lastVisit: new Date(2026, 7, 31, 9, 40),
-            createdAt: new Date(2026, 7, 31, 9, 40),
+          completedOrdersCount: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['completed', 'settled', 'paid', 'delivered']] },
+                1,
+                0,
+              ],
+            },
           },
-          {
-            businessId,
-            name: 'Rohit Sharma',
-            phone: '9876543210',
-            email: 'rohit@example.com',
-            address: 'Mumbai, Maharashtra',
-            source: 'POS',
-            stage: 'Prospect',
-            status: 'Prospect',
-            customerType: 'Walk-in',
-            tags: ['Walk-in', 'POS'],
-            totalOrders: 1,
-            totalSpent: 620.0,
-            notes: 'Interested in weekend banquet / bulk party order.',
-            notesList: [{ note: 'Interested in weekend banquet / bulk party order.' }],
-            firstVisit: new Date(2026, 7, 30, 18, 20),
-            lastVisit: new Date(2026, 7, 30, 18, 20),
-            createdAt: new Date(2026, 7, 30, 18, 20),
+          allValidOrdersCount: {
+            $sum: {
+              $cond: [
+                { $ne: ['$status', 'cancelled'] },
+                1,
+                0,
+              ],
+            },
           },
-          {
-            businessId,
-            name: 'Priya Singh',
-            phone: '9543216780',
-            email: 'priya@example.com',
-            address: 'Delhi, India',
-            source: 'Online',
-            stage: 'Deal',
-            status: 'Deal',
-            customerType: 'Online Order',
-            tags: ['Online Order', 'Online'],
-            totalOrders: 5,
-            totalSpent: 2310.0,
-            notes: 'Requested online catering menu quote.',
-            notesList: [{ note: 'Requested online catering menu quote.' }],
-            firstVisit: new Date(2026, 7, 30, 11, 15),
-            lastVisit: new Date(2026, 7, 30, 11, 15),
-            createdAt: new Date(2026, 7, 30, 11, 15),
+          cancelledCount: {
+            $sum: {
+              $cond: [{ $eq: ['$status', 'cancelled'] }, 1, 0],
+            },
           },
-          {
-            businessId,
-            name: 'Amit Verma',
-            phone: '9956784321',
-            email: 'amit@example.com',
-            address: 'Lucknow, Uttar Pradesh',
-            source: 'WhatsApp',
-            stage: 'Won',
-            status: 'Won',
-            customerType: 'Campaign',
-            tags: ['Campaign', 'WhatsApp'],
-            totalOrders: 8,
-            totalSpent: 3950.0,
-            notes: 'Converted via Monsoon special discount WhatsApp campaign.',
-            notesList: [{ note: 'Converted via Monsoon special discount WhatsApp campaign.' }],
-            firstVisit: new Date(2026, 7, 29, 16, 45),
-            lastVisit: new Date(2026, 7, 29, 16, 45),
-            createdAt: new Date(2026, 7, 29, 16, 45),
+          totalSpent: {
+            $sum: {
+              $cond: [
+                { $in: ['$status', ['completed', 'settled', 'paid', 'delivered']] },
+                '$totalAmount',
+                0,
+              ],
+            },
           },
-          {
-            businessId,
-            name: 'Sneha Kapoor',
-            phone: '9876501234',
-            email: 'sneha@example.com',
-            address: 'Bengaluru, Karnataka',
-            source: 'Social Media',
-            stage: 'Prospect',
-            status: 'Prospect',
-            customerType: 'Instagram',
-            tags: ['Instagram', 'Social Media'],
-            totalOrders: 2,
-            totalSpent: 990.0,
-            notes: 'Found restaurant via Instagram reels promotion.',
-            notesList: [{ note: 'Found restaurant via Instagram reels promotion.' }],
-            firstVisit: new Date(2026, 7, 29, 13, 20),
-            lastVisit: new Date(2026, 7, 29, 13, 20),
-            createdAt: new Date(2026, 7, 29, 13, 20),
-          },
-          {
-            businessId,
-            name: 'Vikas Jain',
-            phone: '9965432109',
-            email: 'vikas@example.com',
-            address: 'Jaipur, Rajasthan',
-            source: 'Referral',
-            stage: 'Lost',
-            status: 'Lost',
-            customerType: 'Referral',
-            tags: ['Referral'],
-            totalOrders: 0,
-            totalSpent: 0.0,
-            notes: 'Referred by family. Moved away from city.',
-            notesList: [{ note: 'Referred by family. Moved away from city.' }],
-            firstVisit: new Date(2026, 7, 28, 10, 10),
-            lastVisit: new Date(2026, 7, 28, 10, 10),
-            createdAt: new Date(2026, 7, 28, 10, 10),
-          },
-          {
-            businessId,
-            name: 'Neha Gupta',
-            phone: '9812345678',
-            email: 'neha@example.com',
-            address: 'Gurgaon, Haryana',
-            source: 'Website',
-            stage: 'New Lead',
-            status: 'New Lead',
-            customerType: 'Website',
-            tags: ['Website'],
-            totalOrders: 4,
-            totalSpent: 1870.0,
-            notes: 'Signed up on restaurant website for promotional coupons.',
-            notesList: [{ note: 'Signed up on restaurant website for promotional coupons.' }],
-            firstVisit: new Date(2026, 7, 28, 9, 30),
-            lastVisit: new Date(2026, 7, 28, 9, 30),
-            createdAt: new Date(2026, 7, 28, 9, 30),
-          },
-        ];
-        await Customer.insertMany(defaultSeed);
+          lastOrderDate: { $max: '$createdAt' },
+          orderDates: { $push: '$createdAt' },
+        },
+      },
+    ]);
+
+    const metricsMap = new Map();
+    for (const item of orderAgg) {
+      const key = item._id ? item._id.toString() : '';
+      if (key) {
+        // Compute distinct visit days (distinct YYYY-MM-DD sessions)
+        const distinctDays = new Set(
+          (item.orderDates || []).map((d) => (d ? new Date(d).toISOString().slice(0, 10) : ''))
+        );
+        distinctDays.delete('');
+
+        const validOrders = item.completedOrdersCount > 0 ? item.completedOrdersCount : item.allValidOrdersCount;
+        const visits = distinctDays.size > 0 ? distinctDays.size : (validOrders > 0 ? validOrders : 0);
+
+        metricsMap.set(key, {
+          totalOrders: validOrders,
+          totalSpent: Number((item.totalSpent || 0).toFixed(2)),
+          returnCount: item.cancelledCount || 0,
+          visitCount: visits,
+          lastVisit: item.lastOrderDate || null,
+        });
       }
-    } catch (e) {
-      console.warn('[CrmService._ensureSeedLeads] Notice:', e.message);
     }
+
+    // 2. Fetch top 5 recent orders for each customer
+    const recentOrdersMap = new Map();
+    if (phones.length > 0 || customerIds.length > 0) {
+      const matchConditions = [];
+      if (phones.length > 0) matchConditions.push({ customerPhone: { $in: phones } });
+      if (customerIds.length > 0) matchConditions.push({ customerId: { $in: customerIds } });
+
+      const orders = await Order.find({
+        businessId: bId,
+        $or: matchConditions,
+      })
+        .sort({ createdAt: -1 })
+        .limit(100)
+        .select('orderNumber orderType status totalAmount items createdAt customerPhone customerId')
+        .lean();
+
+      for (const ord of orders) {
+        const pKey = (ord.customerPhone || '').trim();
+        const idKey = ord.customerId ? ord.customerId.toString() : '';
+
+        const formattedOrd = {
+          id: ord.orderNumber || (ord._id ? ord._id.toString() : 'Order'),
+          orderNumber: ord.orderNumber || '',
+          orderType: ord.orderType || 'POS',
+          status: ord.status || 'completed',
+          totalAmount: ord.totalAmount || 0,
+          date: ord.createdAt ? ord.createdAt.toISOString() : new Date().toISOString(),
+          createdAt: ord.createdAt ? ord.createdAt.toISOString() : new Date().toISOString(),
+          items: Array.isArray(ord.items)
+            ? ord.items.map((it) => ({
+                name: it.name || it.productName || 'Item',
+                quantity: it.quantity || 1,
+                price: it.price || 0,
+              }))
+            : [],
+        };
+
+        if (pKey) {
+          if (!recentOrdersMap.has(pKey)) recentOrdersMap.set(pKey, []);
+          if (recentOrdersMap.get(pKey).length < 5) recentOrdersMap.get(pKey).push(formattedOrd);
+        }
+        if (idKey && idKey !== pKey) {
+          if (!recentOrdersMap.has(idKey)) recentOrdersMap.set(idKey, []);
+          if (recentOrdersMap.get(idKey).length < 5) recentOrdersMap.get(idKey).push(formattedOrd);
+        }
+      }
+    }
+
+    // 3. Assemble dynamically enriched leads
+    return customerDocs.map((cust) => {
+      const phoneKey = (cust.phone || '').trim();
+      const idKey = (cust._id ? cust._id.toString() : cust.id || '').trim();
+      const metrics = metricsMap.get(phoneKey) || (idKey ? metricsMap.get(idKey) : null);
+      const recent = recentOrdersMap.get(phoneKey) || (idKey ? recentOrdersMap.get(idKey) : []) || [];
+
+      const dynamicOrders = metrics ? metrics.totalOrders : (cust.totalOrders || 0);
+      const dynamicSpent = metrics ? metrics.totalSpent : (cust.totalSpent || 0.0);
+      const dynamicReturns = metrics ? metrics.returnCount : (cust.returnCount || 0);
+      const dynamicVisits = metrics ? metrics.visitCount : (cust.visitCount || (dynamicOrders > 0 ? dynamicOrders : 0));
+      const dynamicLastVisit = metrics?.lastVisit || cust.lastVisit || cust.createdAt;
+
+      return {
+        ...cust,
+        id: cust._id ? cust._id.toString() : cust.id,
+        totalOrders: dynamicOrders,
+        totalSpent: dynamicSpent,
+        returnCount: dynamicReturns,
+        visitCount: dynamicVisits,
+        lastVisit: dynamicLastVisit,
+        recentOrders: recent,
+      };
+    });
   }
 
   /**
@@ -201,9 +208,6 @@ class CrmService {
     endDate,
   } = {}) {
     const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
-
-    // Ensure seed leads exist if database is empty for this business
-    await this._ensureSeedLeads(bId);
 
     const query = { businessId: bId };
 
@@ -249,17 +253,17 @@ class CrmService {
     const parsedLimit = Math.max(1, parseInt(limit, 10) || 20);
     const skip = (parsedPage - 1) * parsedLimit;
 
-    const [leads, total, stats] = await Promise.all([
+    const [rawLeads, total, stats] = await Promise.all([
       Customer.find(query).sort({ createdAt: -1, lastVisit: -1 }).skip(skip).limit(parsedLimit).lean(),
       Customer.countDocuments(query),
       this.getLeadStats(businessId),
     ]);
 
+    // Enrich leads with accurate live order, visit, and spend figures from APIs
+    const enrichedLeads = await this._enrichCustomersWithOrderMetrics(bId, rawLeads);
+
     return {
-      leads: leads.map((l) => ({
-        ...l,
-        id: l._id.toString(),
-      })),
+      leads: enrichedLeads,
       pagination: {
         total,
         page: parsedPage,
@@ -344,7 +348,7 @@ class CrmService {
   }
 
   /**
-   * Get complete details of a single lead, including recent order transactions
+   * Get complete details of a single lead, including real dynamic order transactions
    */
   async getLeadById(businessId, leadId) {
     const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
@@ -355,25 +359,8 @@ class CrmService {
       throw ApiError.notFound('Lead not found');
     }
 
-    // Fetch up to 10 recent orders for this customer
-    const phone = (lead.phone || '').trim();
-    let recentOrders = [];
-    if (phone) {
-      recentOrders = await Order.find({
-        businessId: bId,
-        $or: [{ customerPhone: phone }, { customerId: lId }],
-      })
-        .sort({ createdAt: -1 })
-        .limit(10)
-        .select('orderNumber orderType status totalAmount items createdAt')
-        .lean();
-    }
-
-    return {
-      ...lead,
-      id: lead._id.toString(),
-      recentOrders,
-    };
+    const [enriched] = await this._enrichCustomersWithOrderMetrics(bId, [lead]);
+    return enriched;
   }
 
   /**
@@ -645,8 +632,9 @@ class CrmService {
   async exportLeads(businessId) {
     const bId = mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
     const leads = await Customer.find({ businessId: bId }).sort({ createdAt: -1 }).lean();
+    const enriched = await this._enrichCustomersWithOrderMetrics(bId, leads);
 
-    return leads.map((l, index) => ({
+    return enriched.map((l, index) => ({
       srNo: index + 1,
       name: l.name || '',
       phone: l.phone || '',
@@ -655,10 +643,11 @@ class CrmService {
       stage: l.stage || 'New Lead',
       status: l.status || 'New Lead',
       totalOrders: l.totalOrders || 0,
+      visitCount: l.visitCount || 0,
       totalSpent: l.totalSpent || 0,
-      followupDate: l.followupDate ? l.followupDate.toISOString() : '',
+      followupDate: l.followupDate ? new Date(l.followupDate).toISOString() : '',
       followupNotes: l.followupNotes || '',
-      createdAt: l.createdAt ? l.createdAt.toISOString() : '',
+      createdAt: l.createdAt ? new Date(l.createdAt).toISOString() : '',
     }));
   }
 }

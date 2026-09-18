@@ -128,7 +128,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       final startParam = _selectedDateRange?.start.toIso8601String();
       final endParam = _selectedDateRange?.end.toIso8601String();
 
-      // 1. Fetch from CRM Backend API
+      // 1. Fetch from CRM Backend API (Source of Truth for leads, orders, visits & spend)
       CrmFetchResult? crmApiResult;
       try {
         crmApiResult = await _crmService.fetchLeads(
@@ -140,9 +140,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           startDate: startParam,
           endDate: endParam,
         );
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('[CrmLeadsScreen] API fetch error: $e');
+      }
 
-      // 2. Fetch from Customer Database Service
+      if (crmApiResult != null) {
+        // Direct binding from API
+        final leads = crmApiResult.leads.map((l) {
+          final key = l.phone.trim().isNotEmpty ? l.phone.trim() : l.name.trim();
+          final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[l.id];
+          if (stageOverride != null && stageOverride != l.stage) {
+            return l.copyWith(stage: stageOverride, status: stageOverride);
+          }
+          return l;
+        }).toList();
+
+        if (mounted) {
+          _allLeads = leads;
+          _totalCount = crmApiResult.totalCount;
+          _totalPages = crmApiResult.totalPages;
+          _stats = crmApiResult.stats;
+          _applyLocalFilter();
+        }
+        return;
+      }
+
+      // 2. Offline Fallback: Fetch from Customer Database & synced orders
       List<CustomerModel> dbCustomers = [];
       try {
         dbCustomers = await _customerService.fetchCustomers(
@@ -151,10 +174,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         );
       } catch (_) {}
 
-      // 3. Aggregate all leads dynamically into a single master map
       final Map<String, CrmLeadModel> aggregatedMap = {};
-
-      // Add & merge backend Customer Database records
       for (final cust in dbCustomers) {
         final key = cust.phone.trim().isNotEmpty ? cust.phone.trim() : cust.name.trim();
         if (key.isEmpty) continue;
@@ -165,7 +185,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         final effStage = stageOverride ?? defaultStage;
 
         aggregatedMap[key] = CrmLeadModel(
-          id: cust.id.isNotEmpty ? cust.id : 'cust_${DateTime.now().millisecondsSinceEpoch}',
+          id: cust.id.isNotEmpty ? cust.id : 'cust_${cust.phone}',
           name: cust.name.isNotEmpty ? cust.name : 'Customer',
           phone: cust.phone,
           email: cust.email,
@@ -177,133 +197,18 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
           totalOrders: cust.totalOrders,
           totalSpent: cust.totalSpent,
+          visitCount: cust.totalOrders > 0 ? cust.totalOrders : 0,
           returnCount: 0,
-          createdAt: DateTime.now().subtract(const Duration(days: 7)),
+          createdAt: DateTime.now(),
           lastVisit: cust.lastVisit != null ? DateTime.tryParse(cust.lastVisit!) : DateTime.now(),
         );
-      }
-
-      // Add & merge local POS orders from DatabaseService
-      final localOrders = DatabaseService().orders;
-      for (final order in localOrders) {
-        final phone = (order.customerPhone ?? '').trim();
-        final name = (order.customerName ?? '').trim();
-        if (phone.isEmpty && name.isEmpty) continue;
-        final key = phone.isNotEmpty ? phone : name;
-
-        String src = 'POS';
-        if (order.orderType == OrderType.dineIn) src = 'Dine In';
-        if (order.orderType == OrderType.delivery) src = 'Online';
-        if (order.orderType == OrderType.takeaway) src = 'POS';
-
-        final orderDate = DateTime.tryParse(order.createdAt) ?? DateTime.now();
-        final isCancelled = order.status == OrderStatus.cancelled;
-        final deliveryAddr = (order.deliveryAddress ?? '').trim();
-        final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages['ord_${order.id}'];
-
-        if (aggregatedMap.containsKey(key)) {
-          final existing = aggregatedMap[key]!;
-          final totalOrd = existing.totalOrders + 1;
-          final totalSpent = existing.totalSpent + (isCancelled ? 0.0 : order.totalAmount);
-          final totalReturns = existing.returnCount + (isCancelled ? 1 : 0);
-          final lastVisit = orderDate.isAfter(existing.lastVisit ?? existing.createdAt)
-              ? orderDate
-              : existing.lastVisit;
-          final isRegular = totalOrd > 1;
-          final effAddress = existing.address.isNotEmpty ? existing.address : deliveryAddr;
-          final effStage = stageOverride ?? existing.stage;
-
-          aggregatedMap[key] = existing.copyWith(
-            address: effAddress,
-            stage: effStage,
-            status: effStage,
-            totalOrders: totalOrd,
-            totalSpent: totalSpent,
-            returnCount: totalReturns,
-            lastVisit: lastVisit,
-            customerType: isRegular ? 'Regular Customer' : existing.customerType,
-            tags: isRegular ? ['Regular Customer', src] : existing.tags,
-            recentOrders: [
-              ...existing.recentOrders,
-              {
-                'id': order.orderNumber.isNotEmpty ? order.orderNumber : order.id,
-                'totalAmount': order.totalAmount,
-                'date': orderDate.toIso8601String(),
-                'status': order.status.name,
-                'isCancelled': isCancelled,
-              }
-            ],
-          );
-        } else {
-          final effAddress = deliveryAddr;
-          final defaultStage = isCancelled ? 'Lost' : 'Won';
-          final effStage = stageOverride ?? defaultStage;
-
-          aggregatedMap[key] = CrmLeadModel(
-            id: 'ord_${order.id}',
-            name: name.isNotEmpty ? name : 'Guest Customer',
-            phone: phone.isNotEmpty ? phone : '9876543210',
-            email: '',
-            address: effAddress,
-            source: src,
-            stage: effStage,
-            status: effStage,
-            customerType: 'New Customer',
-            tags: ['New Customer', src],
-            totalOrders: 1,
-            totalSpent: isCancelled ? 0.0 : order.totalAmount,
-            returnCount: isCancelled ? 1 : 0,
-            createdAt: orderDate,
-            lastVisit: orderDate,
-            recentOrders: [
-              {
-                'id': order.orderNumber.isNotEmpty ? order.orderNumber : order.id,
-                'totalAmount': order.totalAmount,
-                'date': orderDate.toIso8601String(),
-                'status': order.status.name,
-                'isCancelled': isCancelled,
-              }
-            ],
-          );
-        }
-      }
-
-      // Add & merge backend CRM API leads
-      if (crmApiResult != null && crmApiResult.leads.isNotEmpty) {
-        for (final l in crmApiResult.leads) {
-          final key = l.phone.trim().isNotEmpty ? l.phone.trim() : l.name.trim();
-          if (key.isNotEmpty) {
-            final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[l.id];
-            final effStage = stageOverride ?? l.stage;
-
-            if (aggregatedMap.containsKey(key)) {
-              final existing = aggregatedMap[key]!;
-              aggregatedMap[key] = l.copyWith(
-                stage: effStage,
-                status: effStage,
-                totalOrders: math.max(existing.totalOrders, l.totalOrders),
-                totalSpent: math.max(existing.totalSpent, l.totalSpent),
-                returnCount: math.max(existing.returnCount, l.returnCount),
-                address: l.address.isNotEmpty ? l.address : existing.address,
-                recentOrders: l.recentOrders.isNotEmpty ? l.recentOrders : existing.recentOrders,
-              );
-            } else {
-              aggregatedMap[key] = l.copyWith(
-                stage: effStage,
-                status: effStage,
-              );
-            }
-          }
-        }
       }
 
       final dynamicList = aggregatedMap.values.toList();
 
       if (mounted) {
-        setState(() {
-          _allLeads = dynamicList;
-          _applyLocalFilter();
-        });
+        _allLeads = dynamicList;
+        _applyLocalFilter();
       }
     } catch (e) {
       debugPrint('[CrmLeadsScreen] Error loading dynamic leads: $e');
@@ -430,6 +335,20 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     setState(() {
       _selectedLead = lead;
     });
+
+    if (lead.id.isNotEmpty && !lead.id.startsWith('cust_') && !lead.id.startsWith('ord_')) {
+      _crmService.fetchLeadById(lead.id).then((freshLead) {
+        if (freshLead != null && mounted && _selectedLead?.id == lead.id) {
+          setState(() {
+            _selectedLead = freshLead;
+            final idx = _allLeads.indexWhere((l) => l.id == freshLead.id);
+            if (idx != -1) {
+              _allLeads[idx] = freshLead;
+            }
+          });
+        }
+      }).catchError((_) {});
+    }
   }
 
   Future<void> _updateSelectedLeadStage(String newStage) async {
@@ -4105,7 +4024,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          ?trailing,
+          if (trailing != null) trailing,
         ],
       ),
     );

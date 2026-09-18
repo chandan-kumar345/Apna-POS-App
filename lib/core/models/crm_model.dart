@@ -17,6 +17,7 @@ class CrmLeadModel {
   final String notes;
   final int totalOrders;
   final double totalSpent;
+  final int visitCount;
   final int returnCount;
   final DateTime createdAt;
   final DateTime? lastVisit;
@@ -24,7 +25,6 @@ class CrmLeadModel {
   final List<dynamic> notesList;
 
   double get totalSpend => totalSpent;
-  int get visitCount => totalOrders > 0 ? totalOrders : 1;
   bool get isRegularCustomer => totalOrders > 1 || customerType.toLowerCase().contains('regular');
   String get displayCustomerType => isRegularCustomer ? 'Regular Customer' : (customerType.isNotEmpty ? customerType : 'New Customer');
 
@@ -47,6 +47,7 @@ class CrmLeadModel {
     this.notes = '',
     this.totalOrders = 0,
     this.totalSpent = 0.0,
+    this.visitCount = 0,
     this.returnCount = 0,
     required this.createdAt,
     this.lastVisit,
@@ -111,9 +112,10 @@ class CrmLeadModel {
       followupNotes: json['followupNotes']?.toString() ?? '',
       followupStatus: json['followupStatus']?.toString() ?? 'none',
       notes: json['notes']?.toString() ?? '',
-      totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
-      totalSpent: (json['totalSpent'] as num?)?.toDouble() ?? 0.0,
-      returnCount: (json['returnCount'] as num?)?.toInt() ?? (json['cancelledOrders'] as num?)?.toInt() ?? 0,
+      totalOrders: _parseCrmInt(json['totalOrders']),
+      totalSpent: _parseCrmDouble(json['totalSpent']),
+      visitCount: _parseCrmInt(json['visitCount'], _parseCrmInt(json['totalOrders'])),
+      returnCount: _parseCrmInt(json['returnCount'], _parseCrmInt(json['cancelledOrders'])),
       createdAt: parsedCreated,
       lastVisit: parsedLastVisit,
       recentOrders: json['recentOrders'] is List ? json['recentOrders'] as List : const [],
@@ -140,6 +142,7 @@ class CrmLeadModel {
         'notes': notes,
         'totalOrders': totalOrders,
         'totalSpent': totalSpent,
+        'visitCount': visitCount,
         'returnCount': returnCount,
         'createdAt': createdAt.toIso8601String(),
         'lastVisit': lastVisit?.toIso8601String(),
@@ -164,6 +167,7 @@ class CrmLeadModel {
     String? notes,
     int? totalOrders,
     double? totalSpent,
+    int? visitCount,
     int? returnCount,
     DateTime? lastVisit,
     List<dynamic>? recentOrders,
@@ -188,6 +192,7 @@ class CrmLeadModel {
       notes: notes ?? this.notes,
       totalOrders: totalOrders ?? this.totalOrders,
       totalSpent: totalSpent ?? this.totalSpent,
+      visitCount: visitCount ?? this.visitCount,
       returnCount: returnCount ?? this.returnCount,
       createdAt: createdAt,
       lastVisit: lastVisit ?? this.lastVisit,
@@ -246,13 +251,28 @@ class CrmStatsModel {
   factory CrmStatsModel.fromJson(Map<String, dynamic>? json) {
     if (json == null) return CrmStatsModel();
     return CrmStatsModel(
-      total: (json['total'] as num?)?.toInt() ?? 0,
-      leads: (json['leads'] as num?)?.toInt() ?? 0,
-      prospects: (json['prospects'] as num?)?.toInt() ?? 0,
-      deals: (json['deals'] as num?)?.toInt() ?? 0,
-      wins: (json['wins'] as num?)?.toInt() ?? 0,
-      lost: (json['lost'] as num?)?.toInt() ?? 0,
+      total: _parseCrmInt(json['total']),
+      leads: _parseCrmInt(json['leads']),
+      prospects: _parseCrmInt(json['prospects']),
+      deals: _parseCrmInt(json['deals']),
+      wins: _parseCrmInt(json['wins']),
+      lost: _parseCrmInt(json['lost']),
       trends: CrmTrendsModel.fromJson(json['trends'] as Map<String, dynamic>?),
     );
   }
 }
+
+int _parseCrmInt(dynamic val, [int fallback = 0]) {
+  if (val == null) return fallback;
+  if (val is int) return val;
+  if (val is num) return val.toInt();
+  return int.tryParse(val.toString()) ?? fallback;
+}
+
+double _parseCrmDouble(dynamic val, [double fallback = 0.0]) {
+  if (val == null) return fallback;
+  if (val is double) return val;
+  if (val is num) return val.toDouble();
+  return double.tryParse(val.toString()) ?? fallback;
+}
+

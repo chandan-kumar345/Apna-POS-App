@@ -244,7 +244,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                       children: [
                         // Glass Logo Card Container
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(28),
@@ -259,8 +259,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                           ),
                           child: Image.asset(
                             'assets/images/logo.png',
-                            height: 120,
-                            width: 130,
+                            height: 140,
+                            width: 200,
                             fit: BoxFit.contain,
                           ),
                         ),

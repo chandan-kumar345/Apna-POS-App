@@ -145,8 +145,8 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                             ),
                             child: Image.asset(
                               'assets/images/logo.png',
-                              height: 110,
-                              width: 110,
+                              height: 120,
+                              width: 170,
                               fit: BoxFit.contain,
                             ),
                           ),

@@ -55,6 +55,14 @@ const customerSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    visitCount: {
+      type: Number,
+      default: 0,
+    },
+    returnCount: {
+      type: Number,
+      default: 0,
+    },
     firstVisit: {
       type: Date,
       default: Date.now,

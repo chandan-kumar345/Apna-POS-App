@@ -78,11 +78,15 @@ class CrmService {
             .map((item) => CrmLeadModel.fromJson(item))
             .toList();
 
+        final totalVal = int.tryParse(pagination['total']?.toString() ?? '') ?? leads.length;
+        final pageVal = int.tryParse(pagination['page']?.toString() ?? '') ?? page;
+        final totalPagesVal = int.tryParse(pagination['totalPages']?.toString() ?? '') ?? 1;
+
         return CrmFetchResult(
           leads: leads,
-          totalCount: (pagination['total'] as num?)?.toInt() ?? leads.length,
-          page: (pagination['page'] as num?)?.toInt() ?? page,
-          totalPages: (pagination['totalPages'] as num?)?.toInt() ?? 1,
+          totalCount: totalVal,
+          page: pageVal,
+          totalPages: totalPagesVal,
           stats: CrmStatsModel.fromJson(rawStats),
         );
       }

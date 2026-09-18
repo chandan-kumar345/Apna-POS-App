@@ -10,6 +10,7 @@ const PrintLog = require('../models/PrintLog');
 const notificationService = require('./notificationService');
 const loyaltyService = require('./loyaltyService');
 const tableService = require('./tableService');
+const socketService = require('./socketService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {

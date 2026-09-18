@@ -1,4 +1,4 @@
-﻿import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/core/models/order_model.dart';
@@ -315,6 +315,64 @@ void main() {
       expect(summary.totalOrders, 1);
       expect(report.summary.totalRevenue, 105.0);
       expect(summary.revenue, 105.0);
+    });
+
+    test('Dynamic date-filter Sales Trend multi-resolution bucketing', () async {
+      final now = DateTime.now();
+      final todayAt2PM = DateTime(now.year, now.month, now.day, 14, 30, 0);
+
+      final burger = MenuItemModel(
+        id: 'item_burger',
+        name: 'Veggie Burger',
+        description: 'Tasty burger',
+        price: 100.0,
+        category: 'Fast Food',
+        itemType: 'Veg',
+      );
+
+      final todayOrder = OrderModel(
+        id: 'ord_today_1',
+        orderNumber: 'ORD-TD-01',
+        status: OrderStatus.completed,
+        isPaid: true,
+        paymentStatus: 'paid',
+        paymentMethod: 'Cash',
+        subtotal: 200.0,
+        taxAmount: 10.0,
+        totalAmount: 210.0,
+        createdAt: todayAt2PM.toIso8601String(),
+        items: [CartItemModel(item: burger, quantity: 2)],
+      );
+
+      db.orders.add(todayOrder);
+
+      // 1. Single-day 'today': should return 8 hourly slots, with '2 PM' bucket having the sale
+      final todayReport = reportService.getLocalSalesReport(period: 'today');
+      expect(todayReport.salesTrend.length, 8);
+      expect(todayReport.salesTrend.map((p) => p.dateLabel).toList(), [
+        '8 AM', '10 AM', '12 PM', '2 PM', '4 PM', '6 PM', '8 PM', '10 PM',
+      ]);
+      final slot2PM = todayReport.salesTrend.firstWhere((p) => p.dateLabel == '2 PM');
+      expect(slot2PM.salesAmount, 210.0);
+      expect(slot2PM.orderCount, 1);
+
+      final slot8AM = todayReport.salesTrend.firstWhere((p) => p.dateLabel == '8 AM');
+      expect(slot8AM.salesAmount, 0.0);
+      expect(slot8AM.orderCount, 0);
+
+      // 2. 'thisWeek': should return daily points for the week
+      final weekReport = reportService.getLocalSalesReport(period: 'thisWeek');
+      expect(weekReport.salesTrend.length, greaterThanOrEqualTo(1));
+      expect(weekReport.salesTrend.length, lessThanOrEqualTo(7));
+
+      // 3. 'thisMonth': should return daily points for the month
+      final monthReport = reportService.getLocalSalesReport(period: 'thisMonth');
+      expect(monthReport.salesTrend.length, greaterThanOrEqualTo(28));
+      expect(monthReport.salesTrend.length, lessThanOrEqualTo(31));
+
+      // 4. 'allTime': should return at least 6 monthly buckets
+      final allTimeReport = reportService.getLocalSalesReport(period: 'allTime');
+      expect(allTimeReport.salesTrend.length, greaterThanOrEqualTo(6));
     });
   });
 }

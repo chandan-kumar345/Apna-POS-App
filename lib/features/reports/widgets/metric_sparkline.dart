@@ -46,30 +46,52 @@ class _SparklinePainter extends CustomPainter {
     final double range = (maxVal - minVal == 0) ? 1.0 : (maxVal - minVal);
 
     final path = Path();
+    final fillPath = Path();
     final stepX = size.width / (values.length - 1);
 
     final List<Offset> normalizedPoints = [];
     for (int i = 0; i < values.length; i++) {
       final normY = (values[i] - minVal) / range;
       // Invert Y for canvas (top is 0)
-      final y = size.height - (normY * (size.height - 4)) - 2;
+      final y = size.height - (normY * (size.height - 6)) - 3;
       final x = i * stepX;
       normalizedPoints.add(Offset(x, y));
     }
 
     path.moveTo(normalizedPoints[0].dx, normalizedPoints[0].dy);
+    fillPath.moveTo(normalizedPoints[0].dx, normalizedPoints[0].dy);
 
     for (int i = 0; i < normalizedPoints.length - 1; i++) {
       final p0 = normalizedPoints[i];
       final p1 = normalizedPoints[i + 1];
       final midX = (p0.dx + p1.dx) / 2;
       path.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
+      fillPath.cubicTo(midX, p0.dy, midX, p1.dy, p1.dx, p1.dy);
     }
 
-    // Smooth Line
+    // Close fill path down to the bottom
+    fillPath.lineTo(size.width, size.height);
+    fillPath.lineTo(0, size.height);
+    fillPath.close();
+
+    // 1. Draw gradient fill area beneath curve
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [
+          color.withValues(alpha: 0.32),
+          color.withValues(alpha: 0.0),
+        ],
+      ).createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+
+    canvas.drawPath(fillPath, fillPaint);
+
+    // 2. Draw smooth stroke line on top
     final linePaint = Paint()
       ..color = color
-      ..strokeWidth = 2.2
+      ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round;

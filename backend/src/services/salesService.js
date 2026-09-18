@@ -209,7 +209,7 @@ class SalesService {
     ]);
     const totalItems = totalItemsAgg[0] ? totalItemsAgg[0].totalItems : 0;
 
-    // 3. Dynamic Payment Modes Aggregation
+    // 3. Dynamic Payment Modes Aggregation into Canonical Buckets
     const paymentAgg = await Order.aggregate([
       { $match: matchStage },
       {
@@ -222,31 +222,41 @@ class SalesService {
       { $sort: { amount: -1 } },
     ]);
 
-    const paymentModes = paymentAgg.map((item) => {
-      let rawMode = (item._id || 'CASH').toString().trim();
-      let modeName = 'Cash';
+    const paymentMap = {
+      'Cash': { count: 0, amount: 0 },
+      'UPI / Digital QR': { count: 0, amount: 0 },
+      'Card (Debit/Credit)': { count: 0, amount: 0 },
+      'Wallet': { count: 0, amount: 0 },
+      'Other': { count: 0, amount: 0 },
+    };
 
-      if (rawMode.startsWith('UPI') || rawMode.includes('ONLINE') || rawMode.includes('GPay') || rawMode.includes('QR')) {
-        modeName = 'UPI / Digital QR';
+    for (const item of paymentAgg) {
+      const rawMode = (item._id || 'CASH').toString().toUpperCase().trim();
+      let key = 'Other';
+
+      if (rawMode.startsWith('UPI') || rawMode.includes('ONLINE') || rawMode.includes('GPAY') || rawMode.includes('PHONEPE') || rawMode.includes('PAYTM') || rawMode.includes('QR')) {
+        key = 'UPI / Digital QR';
       } else if (rawMode.startsWith('CARD') || rawMode.includes('DEBIT') || rawMode.includes('CREDIT')) {
-        modeName = 'Cards (Debit/Credit)';
-      } else if (rawMode.startsWith('CASH')) {
-        modeName = 'Cash Payments';
-      } else if (rawMode.startsWith('SPLIT')) {
-        modeName = 'Split Payment';
+        key = 'Card (Debit/Credit)';
+      } else if (rawMode.startsWith('CASH') || !rawMode) {
+        key = 'Cash';
       } else if (rawMode.startsWith('WALLET')) {
-        modeName = 'Digital Wallet';
+        key = 'Wallet';
       } else {
-        modeName = rawMode.charAt(0).toUpperCase() + rawMode.slice(1).toLowerCase();
+        key = 'Other';
       }
 
-      const amt = Number(item.amount.toFixed(2));
-      const pct = totalRevenue > 0 ? Number(((amt / totalRevenue) * 100).toFixed(1)) : 0.0;
+      paymentMap[key].count += item.count;
+      paymentMap[key].amount += item.amount;
+    }
 
+    const paymentModes = Object.entries(paymentMap).map(([modeName, val]) => {
+      const amt = Number(val.amount.toFixed(2));
+      const pct = totalRevenue > 0 ? Number(((amt / totalRevenue) * 100).toFixed(1)) : 0.0;
       return {
         mode: modeName,
-        rawMode: rawMode,
-        count: item.count,
+        rawMode: modeName.toLowerCase(),
+        count: val.count,
         amount: amt,
         percentage: pct,
       };
@@ -341,6 +351,144 @@ class SalesService {
       };
     });
 
+    // 7. Multi-resolution Dynamic Sales Trend Aggregation
+    const trendPoints = [];
+    const pLower = (resolvedPeriod || 'allTime').toLowerCase().trim();
+    const isSingleDay = pLower === 'today' ||
+      pLower === 'yesterday' ||
+      (start.getFullYear() === end.getFullYear() &&
+       start.getMonth() === end.getMonth() &&
+       start.getDate() === end.getDate());
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    if (isSingleDay) {
+      const slots = [
+        { label: '8 AM', startHour: 0, endHour: 9 },
+        { label: '10 AM', startHour: 10, endHour: 11 },
+        { label: '12 PM', startHour: 12, endHour: 13 },
+        { label: '2 PM', startHour: 14, endHour: 15 },
+        { label: '4 PM', startHour: 16, endHour: 17 },
+        { label: '6 PM', startHour: 18, endHour: 19 },
+        { label: '8 PM', startHour: 20, endHour: 21 },
+        { label: '10 PM', startHour: 22, endHour: 23 },
+      ];
+
+      for (const slot of slots) {
+        let slotAmount = 0;
+        let slotOrders = 0;
+
+        for (const o of rawOrders) {
+          const oDate = new Date(o.createdAt || o.saleDate);
+          if (!isNaN(oDate.getTime())) {
+            const h = oDate.getHours();
+            if (h >= slot.startHour && h <= slot.endHour) {
+              slotAmount += (o.totalAmount || 0);
+              slotOrders += 1;
+            }
+          }
+        }
+
+        const slotDate = new Date(start.getFullYear(), start.getMonth(), start.getDate(), slot.startHour, 0, 0);
+        trendPoints.push({
+          date: slotDate.toISOString(),
+          dateLabel: slot.label,
+          salesAmount: Number(slotAmount.toFixed(2)),
+          orderCount: slotOrders,
+        });
+      }
+    } else {
+      const daysDiff = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+      if (daysDiff <= 31) {
+        for (let d = 0; d < daysDiff; d++) {
+          const currentDay = new Date(start.getFullYear(), start.getMonth(), start.getDate() + d);
+          const dayFmt = `${currentDay.getDate()} ${monthNames[currentDay.getMonth()]}`;
+
+          let dayAmount = 0;
+          let dayOrders = 0;
+
+          for (const o of rawOrders) {
+            const oDate = new Date(o.createdAt || o.saleDate);
+            if (!isNaN(oDate.getTime())) {
+              if (
+                oDate.getFullYear() === currentDay.getFullYear() &&
+                oDate.getMonth() === currentDay.getMonth() &&
+                oDate.getDate() === currentDay.getDate()
+              ) {
+                dayAmount += (o.totalAmount || 0);
+                dayOrders += 1;
+              }
+            }
+          }
+
+          trendPoints.push({
+            date: currentDay.toISOString(),
+            dateLabel: dayFmt,
+            salesAmount: Number(dayAmount.toFixed(2)),
+            orderCount: dayOrders,
+          });
+        }
+      } else {
+        const now = new Date();
+        let cursor = new Date(start.getFullYear() > 2000 ? start.getFullYear() : now.getFullYear(), start.getFullYear() > 2000 ? start.getMonth() : (now.getMonth() - 5), 1);
+        const endLimit = new Date(end.getFullYear(), end.getMonth(), 1);
+
+        let safety = 0;
+        while (cursor <= endLimit && safety < 36) {
+          safety++;
+          const monthFmt = `${monthNames[cursor.getMonth()]} ${cursor.getFullYear().toString().slice(-2)}`;
+          let monthAmount = 0;
+          let monthOrders = 0;
+
+          for (const o of rawOrders) {
+            const oDate = new Date(o.createdAt || o.saleDate);
+            if (!isNaN(oDate.getTime())) {
+              if (oDate.getFullYear() === cursor.getFullYear() && oDate.getMonth() === cursor.getMonth()) {
+                monthAmount += (o.totalAmount || 0);
+                monthOrders += 1;
+              }
+            }
+          }
+
+          trendPoints.push({
+            date: cursor.toISOString(),
+            dateLabel: monthFmt,
+            salesAmount: Number(monthAmount.toFixed(2)),
+            orderCount: monthOrders,
+          });
+
+          cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+        }
+
+        if (trendPoints.length < 6) {
+          trendPoints.length = 0;
+          for (let m = 5; m >= 0; m--) {
+            const d = new Date(now.getFullYear(), now.getMonth() - m, 1);
+            const monthFmt = `${monthNames[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
+            let monthAmount = 0;
+            let monthOrders = 0;
+
+            for (const o of rawOrders) {
+              const oDate = new Date(o.createdAt || o.saleDate);
+              if (!isNaN(oDate.getTime())) {
+                if (oDate.getFullYear() === d.getFullYear() && oDate.getMonth() === d.getMonth()) {
+                  monthAmount += (o.totalAmount || 0);
+                  monthOrders += 1;
+                }
+              }
+            }
+
+            trendPoints.push({
+              date: d.toISOString(),
+              dateLabel: monthFmt,
+              salesAmount: Number(monthAmount.toFixed(2)),
+              orderCount: monthOrders,
+            });
+          }
+        }
+      }
+    }
+
     return {
       summary: {
         totalRevenue,
@@ -358,6 +506,7 @@ class SalesService {
       paymentModes,
       salesByOrderType,
       topProducts: topProductsAgg,
+      salesTrend: trendPoints,
       orders,
       startDate: start.toISOString(),
       endDate: end.toISOString(),

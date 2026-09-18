@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../../core/services/report_service.dart';
 
@@ -18,12 +19,122 @@ class PaymentModeDonutChart extends StatelessWidget {
     this.onTap,
   });
 
+  List<PaymentModeStat> _getCanonicalModes() {
+    double cashAmount = 0.0;
+    int cashCount = 0;
+    double upiAmount = 0.0;
+    int upiCount = 0;
+    double cardAmount = 0.0;
+    int cardCount = 0;
+    double walletAmount = 0.0;
+    int walletCount = 0;
+    double otherAmount = 0.0;
+    int otherCount = 0;
+
+    for (final item in paymentModes) {
+      final combined = '${item.mode} ${item.rawMode}'.toLowerCase().trim();
+
+      if (combined.contains('upi') ||
+          combined.contains('qr') ||
+          combined.contains('online') ||
+          combined.contains('gpay') ||
+          combined.contains('phonepe') ||
+          combined.contains('paytm') ||
+          combined.contains('digital')) {
+        upiAmount += item.amount;
+        upiCount += item.count;
+      } else if (combined.contains('card') ||
+          combined.contains('debit') ||
+          combined.contains('credit') ||
+          combined.contains('swipe')) {
+        cardAmount += item.amount;
+        cardCount += item.count;
+      } else if (combined.contains('wallet')) {
+        walletAmount += item.amount;
+        walletCount += item.count;
+      } else if (combined.contains('cash') || combined.isEmpty) {
+        cashAmount += item.amount;
+        cashCount += item.count;
+      } else {
+        otherAmount += item.amount;
+        otherCount += item.count;
+      }
+    }
+
+    final totalSum = cashAmount + upiAmount + cardAmount + walletAmount + otherAmount;
+    final effectiveTotal = totalSales > 0 ? totalSales : totalSum;
+
+    double calcPct(double amt) {
+      if (effectiveTotal <= 0) return 0.0;
+      return (amt / effectiveTotal) * 100;
+    }
+
+    // Real 0 state when no sales recorded
+    if (totalSum == 0 && totalSales <= 0) {
+      return [
+        PaymentModeStat(mode: 'Cash', rawMode: 'cash', amount: 0, count: 0, percentage: 0),
+        PaymentModeStat(mode: 'UPI / Digital QR', rawMode: 'upi', amount: 0, count: 0, percentage: 0),
+        PaymentModeStat(mode: 'Card (Debit/Credit)', rawMode: 'card', amount: 0, count: 0, percentage: 0),
+        PaymentModeStat(mode: 'Wallet', rawMode: 'wallet', amount: 0, count: 0, percentage: 0),
+        PaymentModeStat(mode: 'Other', rawMode: 'other', amount: 0, count: 0, percentage: 0),
+      ];
+    }
+
+    return [
+      PaymentModeStat(
+        mode: 'Cash',
+        rawMode: 'cash',
+        amount: cashAmount,
+        count: cashCount,
+        percentage: calcPct(cashAmount),
+      ),
+      PaymentModeStat(
+        mode: 'UPI / Digital QR',
+        rawMode: 'upi',
+        amount: upiAmount,
+        count: upiCount,
+        percentage: calcPct(upiAmount),
+      ),
+      PaymentModeStat(
+        mode: 'Card (Debit/Credit)',
+        rawMode: 'card',
+        amount: cardAmount,
+        count: cardCount,
+        percentage: calcPct(cardAmount),
+      ),
+      PaymentModeStat(
+        mode: 'Wallet',
+        rawMode: 'wallet',
+        amount: walletAmount,
+        count: walletCount,
+        percentage: calcPct(walletAmount),
+      ),
+      PaymentModeStat(
+        mode: 'Other',
+        rawMode: 'other',
+        amount: otherAmount,
+        count: otherCount,
+        percentage: calcPct(otherAmount),
+      ),
+    ];
+  }
+
+  double _getEffectiveTotal(List<PaymentModeStat> modes) {
+    if (totalSales > 0) return totalSales;
+    final sum = modes.fold(0.0, (s, p) => s + p.amount);
+    return sum;
+  }
+
   Color _getColorForMode(String mode, int index) {
     final m = mode.toLowerCase();
     if (m.contains('cash')) return const Color(0xFF10B981); // Emerald Green
-    if (m.contains('upi') || m.contains('qr') || m.contains('online')) return const Color(0xFF2563EB); // Royal Blue
-    if (m.contains('card')) return const Color(0xFF8B5CF6); // Purple
-    if (m.contains('wallet')) return const Color(0xFFF59E0B); // Amber
+    if (m.contains('upi') || m.contains('qr') || m.contains('online') || m.contains('digital')) {
+      return const Color(0xFF2563EB); // Royal Blue
+    }
+    if (m.contains('card') || m.contains('credit') || m.contains('debit')) {
+      return const Color(0xFF8B5CF6); // Purple
+    }
+    if (m.contains('wallet')) return const Color(0xFFF59E0B); // Amber / Orange
     if (m.contains('other') || m.contains('split')) return const Color(0xFF94A3B8); // Slate Gray
 
     final fallbackColors = [
@@ -32,16 +143,14 @@ class PaymentModeDonutChart extends StatelessWidget {
       const Color(0xFF8B5CF6),
       const Color(0xFFF59E0B),
       const Color(0xFF94A3B8),
-      const Color(0xFFEC4899),
     ];
     return fallbackColors[index % fallbackColors.length];
   }
 
   @override
   Widget build(BuildContext context) {
-    final effectiveTotal = totalSales > 0
-        ? totalSales
-        : paymentModes.fold(0.0, (sum, p) => sum + p.amount);
+    final canonicalModes = _getCanonicalModes();
+    final effectiveTotal = _getEffectiveTotal(canonicalModes);
 
     return InkWell(
       onTap: onTap,
@@ -73,10 +182,10 @@ class PaymentModeDonutChart extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(7),
                       decoration: const BoxDecoration(
-                        color: Color(0xFF051C48),
+                        color: Color(0xFF0F172A),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.pie_chart_rounded, color: Colors.white, size: 16),
+                      child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 16),
                     ),
                     const SizedBox(width: 8),
                     Text(
@@ -102,15 +211,15 @@ class PaymentModeDonutChart extends StatelessWidget {
                 children: [
                   // Donut Canvas with Center Text
                   SizedBox(
-                    width: 170,
-                    height: 170,
+                    width: 160,
+                    height: 160,
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
                         CustomPaint(
-                          size: const Size(160, 160),
+                          size: const Size(150, 150),
                           painter: _DonutChartPainter(
-                            paymentModes: paymentModes,
+                            paymentModes: canonicalModes,
                             totalSales: effectiveTotal,
                             getColor: _getColorForMode,
                           ),
@@ -121,17 +230,19 @@ class PaymentModeDonutChart extends StatelessWidget {
                             Text(
                               '$currency${_formatAmount(effectiveTotal)}',
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 15,
                                 fontWeight: FontWeight.w900,
                                 color: Color(0xFF0F172A),
+                                letterSpacing: -0.3,
                               ),
                             ),
+                            const SizedBox(height: 2),
                             const Text(
                               'Total Sales',
                               style: TextStyle(
-                                fontSize: 9.5,
+                                fontSize: 10,
                                 color: Color(0xFF64748B),
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
@@ -139,20 +250,20 @@ class PaymentModeDonutChart extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 20),
 
-                  // Legends List
+                  // Legends List: Exactly 5 single lines
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(paymentModes.length, (idx) {
-                        final mode = paymentModes[idx];
+                      children: List.generate(canonicalModes.length, (idx) {
+                        final mode = canonicalModes[idx];
                         final color = _getColorForMode(mode.mode, idx);
-                        final pct = effectiveTotal > 0 ? (mode.amount / effectiveTotal) * 100 : 0.0;
+                        final pct = mode.percentage;
 
                         return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.symmetric(vertical: 4.5),
                           child: Row(
                             children: [
                               Container(
@@ -163,12 +274,12 @@ class PaymentModeDonutChart extends StatelessWidget {
                                   shape: BoxShape.circle,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
                                   mode.mode,
                                   style: const TextStyle(
-                                    fontSize: 11.5,
+                                    fontSize: 12,
                                     fontWeight: FontWeight.w600,
                                     color: Color(0xFF334155),
                                   ),
@@ -179,20 +290,20 @@ class PaymentModeDonutChart extends StatelessWidget {
                               Text(
                                 '$currency${_formatAmount(mode.amount)}',
                                 style: const TextStyle(
-                                  fontSize: 11.5,
+                                  fontSize: 12,
                                   fontWeight: FontWeight.w700,
                                   color: Color(0xFF0F172A),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 12),
                               SizedBox(
-                                width: 34,
+                                width: 32,
                                 child: Text(
                                   '${pct.toStringAsFixed(0)}%',
                                   textAlign: TextAlign.end,
                                   style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w500,
                                     color: Color(0xFF64748B),
                                   ),
                                 ),
@@ -219,7 +330,7 @@ class PaymentModeDonutChart extends StatelessWidget {
                           CustomPaint(
                             size: const Size(140, 140),
                             painter: _DonutChartPainter(
-                              paymentModes: paymentModes,
+                              paymentModes: canonicalModes,
                               totalSales: effectiveTotal,
                               getColor: _getColorForMode,
                             ),
@@ -230,17 +341,18 @@ class PaymentModeDonutChart extends StatelessWidget {
                               Text(
                                 '$currency${_formatAmount(effectiveTotal)}',
                                 style: const TextStyle(
-                                  fontSize: 12.5,
+                                  fontSize: 13.5,
                                   fontWeight: FontWeight.w900,
                                   color: Color(0xFF0F172A),
                                 ),
                               ),
+                              const SizedBox(height: 2),
                               const Text(
-                                'Total',
+                                'Total Sales',
                                 style: TextStyle(
-                                  fontSize: 9,
+                                  fontSize: 9.5,
                                   color: Color(0xFF64748B),
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
                             ],
@@ -256,10 +368,10 @@ class PaymentModeDonutChart extends StatelessWidget {
                     spacing: 12,
                     runSpacing: 6,
                     alignment: WrapAlignment.center,
-                    children: List.generate(paymentModes.length, (idx) {
-                      final mode = paymentModes[idx];
+                    children: List.generate(canonicalModes.length, (idx) {
+                      final mode = canonicalModes[idx];
                       final color = _getColorForMode(mode.mode, idx);
-                      final pct = effectiveTotal > 0 ? (mode.amount / effectiveTotal) * 100 : 0.0;
+                      final pct = mode.percentage;
 
                       return Row(
                         mainAxisSize: MainAxisSize.min,
@@ -271,13 +383,13 @@ class PaymentModeDonutChart extends StatelessWidget {
                           ),
                           const SizedBox(width: 5),
                           Text(
-                            mode.mode.replaceAll('Payments', '').replaceAll('(Debit/Credit)', '').trim(),
-                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                            mode.mode.replaceAll('(Debit/Credit)', '').replaceAll('/ Digital QR', '').trim(),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
                           ),
                           const SizedBox(width: 4),
                           Text(
                             '${pct.toStringAsFixed(0)}%',
-                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                           ),
                         ],
                       );
@@ -315,37 +427,53 @@ class _DonutChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2);
-    final radius = math.min(size.width, size.height) / 2;
-    const strokeWidth = 22.0;
+    const strokeWidth = 24.0;
+    final radius = (math.min(size.width, size.height) - strokeWidth) / 2;
 
-    if (totalSales <= 0 || paymentModes.isEmpty) {
+    // Filter only modes with amount > 0
+    final activeModes = paymentModes.where((m) => m.amount > 0).toList();
+
+    if (totalSales <= 0 || activeModes.isEmpty) {
       final defaultPaint = Paint()
         ..color = const Color(0xFFE2E8F0)
         ..style = PaintingStyle.stroke
         ..strokeWidth = strokeWidth;
-      canvas.drawCircle(center, radius - strokeWidth / 2, defaultPaint);
+      canvas.drawCircle(center, radius, defaultPaint);
       return;
     }
 
     double startAngle = -math.pi / 2;
 
-    for (int i = 0; i < paymentModes.length; i++) {
-      final mode = paymentModes[i];
+    // If there is only 1 mode with 100%, draw full complete circle
+    if (activeModes.length == 1) {
+      final mode = activeModes.first;
+      final originalIdx = paymentModes.indexOf(mode);
+      final paint = Paint()
+        ..color = getColor(mode.mode, originalIdx >= 0 ? originalIdx : 0)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth;
+      canvas.drawCircle(center, radius, paint);
+      return;
+    }
+
+    for (int i = 0; i < activeModes.length; i++) {
+      final mode = activeModes[i];
       final sweepAngle = (mode.amount / totalSales) * 2 * math.pi;
 
       if (sweepAngle > 0.001) {
+        final originalIdx = paymentModes.indexOf(mode);
         final paint = Paint()
-          ..color = getColor(mode.mode, i)
+          ..color = getColor(mode.mode, originalIdx >= 0 ? originalIdx : i)
           ..style = PaintingStyle.stroke
           ..strokeWidth = strokeWidth
           ..strokeCap = StrokeCap.butt;
 
-        // Add a slight arc gap
-        const gap = 0.03;
+        // Add slight gap between arcs
+        const gap = 0.025;
         final actualSweep = (sweepAngle > gap * 2) ? (sweepAngle - gap) : sweepAngle;
 
         canvas.drawArc(
-          Rect.fromCircle(center: center, radius: radius - strokeWidth / 2),
+          Rect.fromCircle(center: center, radius: radius),
           startAngle + gap / 2,
           actualSweep,
           false,
@@ -359,6 +487,6 @@ class _DonutChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DonutChartPainter oldDelegate) {
-    return oldDelegate.totalSales != totalSales || oldDelegate.paymentModes != paymentModes;
+    return oldDelegate.totalSales != totalSales || !listEquals(oldDelegate.paymentModes, paymentModes);
   }
 }
