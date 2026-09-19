@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -8,6 +9,8 @@ import '../../core/models/order_model.dart';
 import '../../core/models/user_model.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/bluetooth_printer_service.dart';
+import '../../core/services/windows_printer_service.dart';
+import '../../core/widgets/printer_selection_dialog.dart';
 
 class ReceiptDialog extends StatelessWidget {
   final OrderModel order;
@@ -561,40 +564,100 @@ class ReceiptDialog extends StatelessWidget {
                     child: ElevatedButton.icon(
                       onPressed: () async {
                         final printerService = BluetoothPrinterService();
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Printing Thermal Bill via Bluetooth...'),
-                              backgroundColor: Color(0xFF051C48),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
                         final dbInstance = DatabaseService();
                         final rest = dbInstance.restaurant;
                         final currentUser = dbInstance.currentUser;
-                        final success = await printerService.printBill(
-                          order: order,
-                          restaurant: rest,
-                          user: currentUser,
-                          currency: currency,
-                        );
-                        if (!context.mounted) return;
-                        if (success) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Bill printed successfully!'),
-                              backgroundColor: Colors.green,
-                            ),
+
+                        // 1. Windows Native / Bluetooth Flow
+                        if (!kIsWeb && Platform.isWindows) {
+                          final windowsService = WindowsPrinterService();
+                          final printers = await windowsService.getInstalledPrinters();
+                          final activeDefault = await windowsService.getActiveDefaultPrinter();
+
+                          if (printers.isEmpty) {
+                            if (context.mounted) {
+                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                            }
+                            return;
+                          }
+
+                          // If 1 printer OR user has a saved default printer -> print immediately (0ms delay)
+                          if (printers.length == 1 || (activeDefault != null && windowsService.cachedSavedPrinterName != null)) {
+                            final target = activeDefault ?? printers.first;
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Printing to ${target.name}...'),
+                                  backgroundColor: const Color(0xFF051C48),
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                            final success = await printerService.printBill(
+                              order: order,
+                              restaurant: rest,
+                              user: currentUser,
+                              currency: currency,
+                              windowsPrinter: target,
+                            );
+                            if (!context.mounted) return;
+                            if (success) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Bill printed successfully on ${target.name}!'),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            } else {
+                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                            }
+                            return;
+                          }
+
+                          // Multiple printers and no default set yet -> open selection popup
+                          if (context.mounted) {
+                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                          }
+                          return;
+                        }
+
+                        // 2. Mobile Android / iOS Bluetooth Flow
+                        bool isConn = await printerService.isConnected();
+                        if (!isConn) {
+                          isConn = await printerService.autoConnectSavedPrinter();
+                        }
+
+                        if (isConn) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Printing Thermal Bill...'),
+                                backgroundColor: Color(0xFF051C48),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                          }
+                          final success = await printerService.printBill(
+                            order: order,
+                            restaurant: rest,
+                            user: currentUser,
+                            currency: currency,
                           );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Could not print bill. Check Bluetooth printer power & connection.'),
-                              backgroundColor: Colors.redAccent,
-                              duration: Duration(seconds: 4),
-                            ),
-                          );
+                          if (!context.mounted) return;
+                          if (success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Bill printed successfully!'),
+                                backgroundColor: Colors.green,
+                                duration: Duration(seconds: 2),
+                              ),
+                            );
+                          } else {
+                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                          }
+                        } else if (context.mounted) {
+                          PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
                         }
                       },
                       icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),

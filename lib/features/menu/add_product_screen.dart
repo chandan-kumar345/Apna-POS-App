@@ -627,7 +627,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                       children: [
                         Switch(
                           value: vAddDiscount,
-                          activeTrackColor: const Color(0xFF1E4E8C),
+                          activeTrackColor: const Color(0xFF051C48),
                           activeThumbColor: Colors.white,
                           onChanged: (val) {
                             setDialogState(() {
@@ -1212,7 +1212,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                 children: [
                                   Switch(
                                     value: _addDiscount,
-                                    activeTrackColor: const Color(0xFF1E4E8C),
+                                    activeTrackColor: const Color(0xFF051C48),
                                     activeThumbColor: Colors.white,
                                     onChanged: (val) => setState(() => _addDiscount = val),
                                   ),
@@ -2207,7 +2207,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                         children: [
                                           Switch(
                                             value: _trackInventory,
-                                            activeTrackColor: const Color(0xFF1E4E8C),
+                                            activeTrackColor: const Color(0xFF051C48),
                                             activeThumbColor: Colors.white,
                                             onChanged: (val) => setState(() => _trackInventory = val),
                                           ),

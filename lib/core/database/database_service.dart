@@ -2912,13 +2912,10 @@ class DatabaseService extends ChangeNotifier {
     }
     final orderId = 'ORD-${DateTime.now().millisecondsSinceEpoch.toString().substring(7)}';
 
-    // Ensure strictly unique order number
-    String orderNum = '$year$month$day-$hour$min-$tSuffix';
-    if (orders.any((o) => o.orderNumber == orderNum)) {
-      orderNum = '$year$month$day-$hour$min$sec-$tSuffix';
-    }
+    // Ensure strictly unique order number with second precision
+    String orderNum = '$year$month$day-$hour$min$sec-$tSuffix';
     int dupCounter = 1;
-    while (orders.any((o) => o.orderNumber == orderNum)) {
+    while (orders.any((o) => o.orderNumber.replaceAll(RegExp(r'^#'), '') == orderNum || o.orderNumber == orderNum || o.orderNumber == '#$orderNum')) {
       orderNum = '$year$month$day-$hour$min$sec-$tSuffix-$dupCounter';
       dupCounter++;
     }
@@ -3541,37 +3538,49 @@ class DatabaseService extends ChangeNotifier {
     if (sourceOrders.isEmpty) return [];
 
     final List<OrderModel> result = [];
-    final Set<String> seenIds = {};
-    final Set<String> seenOrderNumbers = {};
+    final Map<String, int> seenIdsIndex = {};
+    final Map<String, int> seenOrderNumbersIndex = {};
 
     for (final order in sourceOrders) {
       final cleanId = order.id.trim();
-      final cleanOrderNum = order.orderNumber.trim();
+      final cleanOrderNum = order.orderNumber.replaceAll(RegExp(r'^#'), '').trim();
 
       // 1. Check ID collision
-      if (cleanId.isNotEmpty && seenIds.contains(cleanId)) {
-        continue; // Skip duplicate ID
+      if (cleanId.isNotEmpty && seenIdsIndex.containsKey(cleanId)) {
+        final existingIdx = seenIdsIndex[cleanId]!;
+        final existing = result[existingIdx];
+        if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
+          result[existingIdx] = order;
+        }
+        continue;
       }
 
       // 2. Check Order Number collision (if non-empty and valid)
-      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && seenOrderNumbers.contains(cleanOrderNum)) {
-        continue; // Skip duplicate Order Number
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && seenOrderNumbersIndex.containsKey(cleanOrderNum)) {
+        final existingIdx = seenOrderNumbersIndex[cleanOrderNum]!;
+        final existing = result[existingIdx];
+        if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
+          result[existingIdx] = order;
+        }
+        continue;
       }
 
       // 3. Check rapid-succession duplicate collision (same table/orderType, same amount, created within 5s)
       bool isRapidDuplicate = false;
-      for (final existing in result) {
+      for (int i = 0; i < result.length; i++) {
+        final existing = result[i];
         final sameType = existing.orderType == order.orderType;
         final sameAmount = (existing.totalAmount - order.totalAmount).abs() < 0.01;
         final sameTableOrNone = (existing.tableNumber == null && order.tableNumber == null) ||
             (existing.tableNumber != null && order.tableNumber != null && isSameTable(existing.tableNumber, order.tableNumber));
         if (sameType && sameAmount && sameTableOrNone) {
           final diffSec = existing.createdDateTime.difference(order.createdDateTime).inSeconds.abs();
-          if (diffSec <= 5) {
-            if (existing.items.length == order.items.length) {
-              isRapidDuplicate = true;
-              break;
+          if (diffSec <= 5 && existing.items.length == order.items.length) {
+            isRapidDuplicate = true;
+            if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
+              result[i] = order;
             }
+            break;
           }
         }
       }
@@ -3580,8 +3589,9 @@ class DatabaseService extends ChangeNotifier {
         continue;
       }
 
-      if (cleanId.isNotEmpty) seenIds.add(cleanId);
-      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000') seenOrderNumbers.add(cleanOrderNum);
+      final newIdx = result.length;
+      if (cleanId.isNotEmpty) seenIdsIndex[cleanId] = newIdx;
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000') seenOrderNumbersIndex[cleanOrderNum] = newIdx;
       result.add(order);
     }
 

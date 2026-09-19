@@ -329,6 +329,7 @@ const orderSchema = new mongoose.Schema(
 );
 
 orderSchema.index({ businessId: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, orderNumber: 1 });
 orderSchema.index({ businessId: 1, status: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, orderType: 1, createdAt: -1 });
 orderSchema.index({ businessId: 1, paymentMethod: 1, createdAt: -1 });

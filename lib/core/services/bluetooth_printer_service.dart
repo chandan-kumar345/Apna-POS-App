@@ -18,6 +18,7 @@ import '../models/restaurant_model.dart';
 import '../models/user_model.dart';
 import '../network/api_endpoints.dart';
 import '../database/database_service.dart';
+import 'windows_printer_service.dart';
 
 class BluetoothPrinterService {
   static final BluetoothPrinterService _instance = BluetoothPrinterService._internal();
@@ -30,12 +31,54 @@ class BluetoothPrinterService {
   bool _isConnecting = false;
   bool get isConnecting => _isConnecting;
 
+  // In-Memory Fast Cache for instant UI loading
+  List<BluetoothInfo>? _cachedBondedDevices;
+  Map<String, String?>? _cachedSavedPrinter;
+  bool _permissionsRequestedOnce = false;
+  CapabilityProfile? _cachedProfile;
+
+  // In-Memory Pre-Processed Logo Cache (eliminates 200-800ms resizing loop on every print)
+  img.Image? _cachedFormattedLogo;
+  String? _cachedLogoKey;
+
+  bool get hasCachedData => _cachedBondedDevices != null || _cachedSavedPrinter != null;
+  List<BluetoothInfo> get cachedBondedDevices => _cachedBondedDevices ?? [];
+  Map<String, String?> get cachedSavedPrinter => _cachedSavedPrinter ?? {};
+
   static const String _prefKeyPrinterAddress = 'saved_printer_mac_address';
   static const String _prefKeyPrinterName = 'saved_printer_name';
 
-  /// Request runtime Bluetooth and Location permissions safely for Android
-  Future<void> requestPermissions() async {
+  /// Invalidate cached logo when user profile photo changes
+  void invalidateLogoCache() {
+    _cachedFormattedLogo = null;
+    _cachedLogoKey = null;
+  }
+
+  /// Pre-warm and cache company logo in background for 0ms print execution
+  Future<void> warmupLogo({UserModel? user, RestaurantModel? restaurant}) async {
     try {
+      await _loadCompanyLogo(user: user, restaurant: restaurant);
+    } catch (_) {}
+  }
+
+  /// Get or load POS CapabilityProfile with in-memory caching for zero-delay printing
+  Future<CapabilityProfile> getCapabilityProfile() async {
+    try {
+      _cachedProfile ??= await CapabilityProfile.load();
+      return _cachedProfile!;
+    } catch (_) {
+      return await CapabilityProfile.load();
+    }
+  }
+
+  /// Request runtime Bluetooth and Location permissions safely for Android
+  Future<void> requestPermissions({bool force = false}) async {
+    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+      return;
+    }
+    if (_permissionsRequestedOnce && !force) return;
+    try {
+      _permissionsRequestedOnce = true;
       await [
         Permission.bluetooth,
         Permission.bluetoothConnect,
@@ -47,13 +90,14 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Check if Bluetooth is powered ON on the mobile device
+  /// Check if Bluetooth is powered ON on the mobile device with quick timeout
   Future<bool> isBluetoothOn() async {
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       return true;
     }
     try {
-      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled;
+      final bool enabled = await PrintBluetoothThermal.bluetoothEnabled
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => true);
       return enabled;
     } catch (e) {
       if (kDebugMode) print('Error checking if bluetooth is enabled: $e');
@@ -61,13 +105,18 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Check if Bluetooth printer is currently connected
+  /// Check if Bluetooth printer is currently connected with quick timeout
   Future<bool> isConnected() async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb && Platform.isWindows) {
+      final defaultPrinter = await WindowsPrinterService().getActiveDefaultPrinter();
+      return defaultPrinter != null;
+    }
+    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
       return false;
     }
     try {
-      final bool connected = await PrintBluetoothThermal.connectionStatus;
+      final bool connected = await PrintBluetoothThermal.connectionStatus
+          .timeout(const Duration(milliseconds: 1500), onTimeout: () => false);
       return connected;
     } catch (e) {
       if (kDebugMode) print('Error checking bluetooth connection status: $e');
@@ -75,36 +124,51 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Get saved printer details from SharedPreferences
-  Future<Map<String, String?>> getSavedPrinter() async {
+  /// Get saved printer details with in-memory cache support
+  Future<Map<String, String?>> getSavedPrinter({bool forceRefresh = false}) async {
+    if (!forceRefresh && _cachedSavedPrinter != null) {
+      return _cachedSavedPrinter!;
+    }
     try {
       final prefs = await SharedPreferences.getInstance();
-      return {
+      final result = {
         'address': prefs.getString(_prefKeyPrinterAddress),
         'name': prefs.getString(_prefKeyPrinterName),
       };
+      _cachedSavedPrinter = result;
+      return result;
     } catch (e) {
-      return {'address': null, 'name': null};
+      return _cachedSavedPrinter ?? {'address': null, 'name': null};
     }
   }
 
-  /// Get list of paired Bluetooth devices on the mobile device
-  Future<List<BluetoothInfo>> getBondedDevices() async {
+  /// Get list of paired Bluetooth devices on the mobile device with caching & timeout protection
+  Future<List<BluetoothInfo>> getBondedDevices({bool forceRefresh = false}) async {
     if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
       return [];
     }
+    if (!forceRefresh && _cachedBondedDevices != null) {
+      return _cachedBondedDevices!;
+    }
     try {
       await requestPermissions();
-      final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths;
+      final List<BluetoothInfo> devices = await PrintBluetoothThermal.pairedBluetooths
+          .timeout(const Duration(milliseconds: 2500), onTimeout: () => _cachedBondedDevices ?? []);
+      _cachedBondedDevices = devices;
       return devices;
     } catch (e) {
       if (kDebugMode) print('Error getting bonded bluetooth devices: $e');
-      return [];
+      return _cachedBondedDevices ?? [];
     }
   }
 
   /// Auto-reconnect to saved printer if available
-  Future<bool> autoConnectSavedPrinter() async {
+  Future<bool> autoConnectSavedPrinter({bool forceScan = false}) async {
+    if (!kIsWeb && Platform.isWindows) {
+      final defaultPrinter = await WindowsPrinterService().getActiveDefaultPrinter();
+      return defaultPrinter != null;
+    }
+
     final connected = await isConnected();
     if (connected) return true;
 
@@ -112,11 +176,11 @@ class BluetoothPrinterService {
     final savedAddress = saved['address'];
 
     if (savedAddress != null && savedAddress.isNotEmpty) {
-      final devices = await getBondedDevices();
+      final devices = await getBondedDevices(forceRefresh: forceScan);
       BluetoothInfo? targetDevice;
 
       for (var device in devices) {
-        if (device.macAdress == savedAddress) {
+        if (device.macAdress.toLowerCase().trim() == savedAddress.toLowerCase().trim()) {
           targetDevice = device;
           break;
         }
@@ -147,27 +211,30 @@ class BluetoothPrinterService {
       try {
         await PrintBluetoothThermal.disconnect;
       } catch (_) {}
-      await Future.delayed(const Duration(milliseconds: 300));
+      await Future.delayed(const Duration(milliseconds: 150));
 
       final String macAddress = device.macAdress.trim();
       final String deviceName = device.name.trim().isNotEmpty ? device.name.trim() : 'Thermal Printer';
 
       // Attempt 1: Initial connection
-      bool success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+      bool success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress)
+          .timeout(const Duration(seconds: 4), onTimeout: () => false);
 
-      // Attempt 2: Retry after brief delay if attempt 1 returned false
+      // Attempt 2: Quick retry if attempt 1 returned false
       if (!success) {
-        await Future.delayed(const Duration(milliseconds: 500));
-        success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress);
+        await Future.delayed(const Duration(milliseconds: 300));
+        success = await PrintBluetoothThermal.connect(macPrinterAddress: macAddress)
+            .timeout(const Duration(seconds: 3), onTimeout: () => false);
       }
 
       if (success) {
         _selectedDevice = BluetoothInfo(name: deviceName, macAdress: macAddress);
 
-        // Save preference
+        // Save preference and update cache
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_prefKeyPrinterAddress, macAddress);
         await prefs.setString(_prefKeyPrinterName, deviceName);
+        _cachedSavedPrinter = {'address': macAddress, 'name': deviceName};
       }
 
       _isConnecting = false;
@@ -192,7 +259,59 @@ class BluetoothPrinterService {
   }
 
   /// Print test receipt (Bill or KOT sample)
-  Future<bool> printTestReceipt({RestaurantModel? restaurant, bool isKot = false}) async {
+  Future<bool> printTestReceipt({RestaurantModel? restaurant, bool isKot = false, WindowsPrinterInfo? windowsPrinter}) async {
+    if (!kIsWeb && Platform.isWindows) {
+      final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
+      if (target == null) return false;
+
+      try {
+        final profile = await getCapabilityProfile();
+        final generator = Generator(PaperSize.mm58, profile);
+        List<int> bytes = [];
+        final restName = restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Outlet';
+
+        if (isKot) {
+          bytes += generator.text(
+            'KOT TEST',
+            styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size1),
+          );
+          bytes += generator.text(restName, styles: const PosStyles(align: PosAlign.center, bold: true));
+          bytes += generator.text('Dine In-Table 01', styles: const PosStyles(align: PosAlign.center, bold: true));
+          bytes += generator.text(DateFormat('dd-MM-yyyy,hh:mm:ss a').format(DateTime.now()).toLowerCase(), styles: const PosStyles(align: PosAlign.center));
+          bytes += generator.hr(ch: '-');
+          bytes += generator.row([
+            PosColumn(text: 'Sn', width: 2, styles: const PosStyles(bold: true, align: PosAlign.left)),
+            PosColumn(text: 'Items', width: 8, styles: const PosStyles(bold: true, align: PosAlign.left)),
+            PosColumn(text: 'Qty', width: 2, styles: const PosStyles(bold: true, align: PosAlign.right)),
+          ]);
+          bytes += generator.hr(ch: '-');
+          bytes += generator.row([
+            PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.left, bold: true)),
+            PosColumn(text: 'Chicken Masala', width: 8, styles: const PosStyles(align: PosAlign.left)),
+            PosColumn(text: '1', width: 2, styles: const PosStyles(align: PosAlign.right, bold: true)),
+          ]);
+          bytes += generator.hr(ch: '-');
+          bytes += generator.text('Thank you for dining with us!', styles: const PosStyles(align: PosAlign.center));
+        } else {
+          final restAddress = restaurant?.address.isNotEmpty == true ? restaurant!.address : 'Main Market, City Center';
+          final restPhone = restaurant?.phone.isNotEmpty == true ? restaurant!.phone : '+91 98765 43210';
+          bytes += generator.text(restName, styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size2, width: PosTextSize.size2));
+          bytes += generator.text(restAddress, styles: const PosStyles(align: PosAlign.center));
+          bytes += generator.text('Tel: $restPhone', styles: const PosStyles(align: PosAlign.center));
+          bytes += generator.hr();
+          bytes += generator.text('THERMAL PRINTER TEST', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1));
+          bytes += generator.text('Status: Connected & Ready (${target.name})', styles: const PosStyles(align: PosAlign.center));
+          bytes += generator.hr();
+          bytes += generator.text('Thank you for using Apna POS', styles: const PosStyles(align: PosAlign.center));
+        }
+        bytes += generator.feed(3);
+        return await WindowsPrinterService().printRawBytes(target, bytes, docName: 'Apna POS Test');
+      } catch (e) {
+        if (kDebugMode) print('Error printing test receipt on Windows: $e');
+        return false;
+      }
+    }
+
     bool connected = await isConnected();
     if (!connected) {
       connected = await autoConnectSavedPrinter();
@@ -200,7 +319,7 @@ class BluetoothPrinterService {
     }
 
     try {
-      final profile = await CapabilityProfile.load();
+      final profile = await getCapabilityProfile();
       final generator = Generator(PaperSize.mm58, profile);
       List<int> bytes = [];
 
@@ -335,6 +454,11 @@ class BluetoothPrinterService {
         photoPath = dbUser?.profilePhotoPath?.trim() ?? '';
       }
 
+      // 0. Fast In-Memory Cache Check (0ms delay)
+      if (_cachedFormattedLogo != null && _cachedLogoKey == photoPath) {
+        return _cachedFormattedLogo;
+      }
+
       Uint8List? imageBytes;
 
       if (photoPath.isNotEmpty) {
@@ -368,7 +492,7 @@ class BluetoothPrinterService {
           final resolvedUrl = ApiEndpoints.resolveMediaUrl(photoPath);
           if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
             try {
-              final response = await http.get(Uri.parse(resolvedUrl)).timeout(const Duration(seconds: 5));
+              final response = await http.get(Uri.parse(resolvedUrl)).timeout(const Duration(seconds: 4));
               if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
                 imageBytes = response.bodyBytes;
               }
@@ -393,7 +517,10 @@ class BluetoothPrinterService {
       if (imageBytes != null && imageBytes.isNotEmpty) {
         final decoded = img.decodeImage(imageBytes);
         if (decoded != null) {
-          return _formatCircularLogo(decoded, targetSize: 320, borderWidth: 4.0);
+          final formatted = _formatCircularLogo(decoded, targetSize: 320, borderWidth: 4.0);
+          _cachedFormattedLogo = formatted;
+          _cachedLogoKey = photoPath;
+          return formatted;
         }
       }
     } catch (e) {
@@ -448,13 +575,270 @@ class BluetoothPrinterService {
     return img.grayscale(canvas);
   }
 
-  /// Print Thermal Bill Receipt for 58mm Mobile Thermal Printer
-  Future<bool> printBill({
+  /// Builds ESC/POS binary byte stream for Bill Receipt
+  Future<List<int>> _buildBillBytes({
+    required Generator generator,
     required OrderModel order,
     RestaurantModel? restaurant,
     UserModel? user,
     String currency = '₹',
   }) async {
+    List<int> bytes = [];
+
+    final restName = _toAscii(restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Store');
+    final restPhone = _toAscii(restaurant?.phone.isNotEmpty == true ? restaurant!.phone : '+91 98765 43210');
+    final gstNumber = _toAscii(restaurant?.gstNumber.isNotEmpty == true ? restaurant!.gstNumber : '');
+    final safeCurrency = (currency == '₹' || currency.contains('₹')) ? 'Rs.' : _toAscii(currency);
+    final double cgstAmount = order.taxAmount / 2;
+    final double sgstAmount = order.taxAmount / 2;
+
+    // 1. Company Logo Raster (Centered on 58mm thermal roll, enlarged & crisp)
+    try {
+      final logoImage = await _loadCompanyLogo(user: user, restaurant: restaurant);
+      if (logoImage != null) {
+        bytes += generator.imageRaster(logoImage, align: PosAlign.center);
+        bytes += generator.feed(1);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error printing logo: $e');
+    }
+
+    // 2. Restaurant Header Info (Standard Size1)
+    bytes += generator.text(
+      restName,
+      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
+    );
+    if (restPhone.isNotEmpty) {
+      bytes += generator.text('Mob: $restPhone', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
+    }
+
+    // 3. Order Details
+    final orderTypeStr = order.orderType == OrderType.dineIn
+        ? 'DineIn'
+        : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
+
+    bytes += generator.text(orderTypeStr, styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1));
+
+    if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty) {
+      final tableClean = order.tableNumber!.replaceAll(RegExp(r'[^0-9]'), '');
+      final tableDisplay = tableClean.isNotEmpty ? 'Table $tableClean' : order.tableNumber!;
+      bytes += generator.text('Dine In - $tableDisplay', styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
+
+    if (order.customerName != null && order.customerName!.isNotEmpty) {
+      bytes += generator.text('Customer Name: ${_toAscii(order.customerName!.toUpperCase())}', styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
+    if (order.customerPhone != null && order.customerPhone!.isNotEmpty) {
+      bytes += generator.text('Customer Mobile: ${_toAscii(order.customerPhone!)}', styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
+
+    final dt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
+    final dateStr = DateFormat('dd-MM-yyyy hh:mm:ss a').format(dt);
+    bytes += generator.text(dateStr, styles: const PosStyles(align: PosAlign.center));
+
+    bytes += generator.text('Bill: #${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center, bold: true));
+    bytes += generator.text('Invoice: #INV-${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center));
+    if (gstNumber.isNotEmpty) {
+      bytes += generator.text('GST: #$gstNumber', styles: const PosStyles(align: PosAlign.center, bold: true));
+    }
+
+    if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
+      bytes += generator.text('Delivery Address: ${_toAscii(order.deliveryAddress!)}', styles: const PosStyles(align: PosAlign.center));
+    }
+
+    bytes += generator.hr(ch: '-');
+
+    // 4. Items Table Header (4 Columns: ITEM, QTY, RATE, TOTAL)
+    bytes += generator.row([
+      PosColumn(text: 'ITEM', width: 5, styles: const PosStyles(bold: true, align: PosAlign.left)),
+      PosColumn(text: 'QTY', width: 2, styles: const PosStyles(bold: true, align: PosAlign.center)),
+      PosColumn(text: 'RATE', width: 2, styles: const PosStyles(bold: true, align: PosAlign.right)),
+      PosColumn(text: 'TOTAL', width: 3, styles: const PosStyles(bold: true, align: PosAlign.right)),
+    ]);
+    bytes += generator.hr(ch: '-');
+
+    // 5. Items List
+    for (int i = 0; i < order.items.length; i++) {
+      final cartItem = order.items[i];
+      final rateStr = _formatAmount(cartItem.item.price);
+      final lineTotalStr = _formatAmount(cartItem.totalPrice);
+
+      bytes += generator.row([
+        PosColumn(text: _toAscii(cartItem.item.name), width: 5, styles: const PosStyles(bold: true, align: PosAlign.left)),
+        PosColumn(text: '${cartItem.quantity}', width: 2, styles: const PosStyles(align: PosAlign.center)),
+        PosColumn(text: rateStr, width: 2, styles: const PosStyles(align: PosAlign.right)),
+        PosColumn(text: lineTotalStr, width: 3, styles: const PosStyles(bold: true, align: PosAlign.right)),
+      ]);
+
+      if (cartItem.note != null && cartItem.note!.trim().isNotEmpty) {
+        bytes += generator.text(
+          '  * ${_toAscii(cartItem.note!.trim())}',
+          styles: const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB),
+        );
+      }
+    }
+
+    bytes += generator.hr(ch: '-');
+
+    // 6. Financials Summary
+    bytes += generator.row([
+      PosColumn(text: 'Sub Total', width: 7),
+      PosColumn(text: '$safeCurrency${_formatAmount(order.subtotal)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    if (order.discountAmount > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'Discount', width: 7),
+        PosColumn(text: '-$safeCurrency${_formatAmount(order.discountAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    if (order.taxAmount > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'CGST', width: 7),
+        PosColumn(text: '$safeCurrency${_formatAmount(cgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+      bytes += generator.row([
+        PosColumn(text: 'SGST', width: 7),
+        PosColumn(text: '$safeCurrency${_formatAmount(sgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    if (order.tipAmount > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'Tip', width: 7),
+        PosColumn(text: '+$safeCurrency${_formatAmount(order.tipAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    if (order.deliveryCharge > 0) {
+      bytes += generator.row([
+        PosColumn(text: 'Delivery Charge', width: 7),
+        PosColumn(text: '+$safeCurrency${_formatAmount(order.deliveryCharge)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    if (order.roundOff.abs() > 0.001) {
+      final sign = order.roundOff >= 0 ? '+' : '';
+      bytes += generator.row([
+        PosColumn(text: 'Round Off', width: 7),
+        PosColumn(text: '$sign$safeCurrency${_formatAmount(order.roundOff)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+
+    bytes += generator.hr(ch: '-');
+
+    // 7. Net Amount Payable
+    bytes += generator.row([
+      PosColumn(
+        text: 'Total Amount',
+        width: 6,
+        styles: const PosStyles(bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
+      ),
+      PosColumn(
+        text: '$safeCurrency${_formatAmount(order.totalAmount)}',
+        width: 6,
+        styles: const PosStyles(bold: true, align: PosAlign.right, height: PosTextSize.size1, width: PosTextSize.size1),
+      ),
+    ]);
+    bytes += generator.hr(ch: '-');
+
+    bytes += generator.row([
+      PosColumn(text: 'Payment Method', width: 6),
+      PosColumn(text: _toAscii(order.paymentMethod.toUpperCase()), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    final bool isOrderPaid = order.isPaid || order.paymentStatus.toLowerCase() == 'paid' || order.status == OrderStatus.completed;
+    final String paymentStatusStr = isOrderPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING';
+    bytes += generator.row([
+      PosColumn(text: 'Payment Status', width: 6, styles: const PosStyles(bold: true)),
+      PosColumn(text: paymentStatusStr, width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+
+    // 8. Dynamic UPI QR Code Section (Always carries exact total payable amount)
+    final String upiId = (restaurant?.upiId.isNotEmpty == true)
+        ? restaurant!.upiId.trim()
+        : 'apnapos@upi';
+    final String payeeName = (restaurant?.name.isNotEmpty == true)
+        ? restaurant!.name.trim()
+        : 'Apna POS Store';
+    final String formattedAmount = order.totalAmount.toStringAsFixed(2);
+
+    final String dynamicUpiUrl = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(payeeName)}&am=$formattedAmount&cu=INR&tr=${order.orderNumber}&tn=${Uri.encodeComponent("Bill ${order.orderNumber}")}';
+
+    final String qrPayload = (order.qrIntentUrl != null && order.qrIntentUrl!.isNotEmpty && order.qrIntentUrl!.contains('&am='))
+        ? order.qrIntentUrl!
+        : dynamicUpiUrl;
+
+    if (qrPayload.isNotEmpty) {
+      bytes += generator.hr(ch: '-');
+      bytes += generator.text(
+        'SCAN & PAY WITH ANY UPI APP',
+        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
+      );
+
+      // High-contrast, enlarged 220px bitmap QR raster for 100% reliable camera scanning
+      try {
+        final qrRaster = await _generateQrRaster(qrPayload, size: 220);
+        if (qrRaster != null) {
+          bytes += generator.imageRaster(qrRaster, align: PosAlign.center);
+        } else {
+          bytes += generator.qrcode(qrPayload, size: QRSize.size6);
+        }
+      } catch (_) {
+        bytes += generator.qrcode(qrPayload, size: QRSize.size6);
+      }
+
+      bytes += generator.text(
+        'Amount: $safeCurrency${_formatAmount(order.totalAmount)}',
+        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
+      );
+      if (upiId.isNotEmpty) {
+        bytes += generator.text('UPI ID: ${_toAscii(upiId)}', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
+      }
+    }
+
+    bytes += generator.hr(ch: '-');
+
+    // 9. Footer
+    bytes += generator.text('Thank you! Visit Again!', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1));
+    bytes += generator.text('Powered by Apna POS', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
+
+    // 10. Tear Margin Feed (3 line feed so manual paper tear does not cut the footer text)
+    bytes += generator.feed(3);
+
+    return bytes;
+  }
+
+  /// Print Thermal Bill Receipt for 58mm/80mm Thermal Printer (Windows Native & Mobile Bluetooth)
+  Future<bool> printBill({
+    required OrderModel order,
+    RestaurantModel? restaurant,
+    UserModel? user,
+    String currency = '₹',
+    WindowsPrinterInfo? windowsPrinter,
+  }) async {
+    // --- Windows Native / Bluetooth Flow ---
+    if (!kIsWeb && Platform.isWindows) {
+      final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
+      if (target == null) {
+        if (kDebugMode) print('[printBill] No Windows or Bluetooth printer available.');
+        return false;
+      }
+
+      try {
+        final profile = await getCapabilityProfile();
+        final generator = Generator(PaperSize.mm58, profile);
+        final bytes = await _buildBillBytes(
+          generator: generator,
+          order: order,
+          restaurant: restaurant,
+          user: user,
+          currency: currency,
+        );
+
+        return await WindowsPrinterService().printRawBytes(target, bytes, docName: 'Bill ${order.orderNumber}');
+      } catch (e) {
+        if (kDebugMode) print('Error printing bill on Windows: $e');
+        return false;
+      }
+    }
+
+    // --- Android / iOS Mobile Bluetooth Flow ---
     bool connected = await isConnected();
     if (!connected) {
       connected = await autoConnectSavedPrinter();
@@ -462,225 +846,15 @@ class BluetoothPrinterService {
     }
 
     try {
-      final profile = await CapabilityProfile.load();
+      final profile = await getCapabilityProfile();
       final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
-
-      final restName = _toAscii(restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Store');
-      final restPhone = _toAscii(restaurant?.phone.isNotEmpty == true ? restaurant!.phone : '+91 98765 43210');
-      final gstNumber = _toAscii(restaurant?.gstNumber.isNotEmpty == true ? restaurant!.gstNumber : '');
-      final safeCurrency = (currency == '₹' || currency.contains('₹')) ? 'Rs.' : _toAscii(currency);
-      final double cgstAmount = order.taxAmount / 2;
-      final double sgstAmount = order.taxAmount / 2;
-
-      // 1. Company Logo Raster (Centered on 58mm thermal roll, enlarged & crisp)
-      try {
-        final logoImage = await _loadCompanyLogo(user: user, restaurant: restaurant);
-        if (logoImage != null) {
-          bytes += generator.imageRaster(logoImage, align: PosAlign.center);
-          bytes += generator.feed(1);
-        }
-      } catch (e) {
-        if (kDebugMode) print('Error printing logo: $e');
-      }
-
-      // 2. Restaurant Header Info (Standard Size1)
-      bytes += generator.text(
-        restName,
-        styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
+      final bytes = await _buildBillBytes(
+        generator: generator,
+        order: order,
+        restaurant: restaurant,
+        user: user,
+        currency: currency,
       );
-      if (restPhone.isNotEmpty) {
-        bytes += generator.text('Mob: $restPhone', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
-      }
-
-      // 3. Order Details
-      final orderTypeStr = order.orderType == OrderType.dineIn
-          ? 'DineIn'
-          : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
-
-      bytes += generator.text(orderTypeStr, styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1));
-
-      if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty) {
-        final tableClean = order.tableNumber!.replaceAll(RegExp(r'[^0-9]'), '');
-        final tableDisplay = tableClean.isNotEmpty ? 'Table $tableClean' : order.tableNumber!;
-        bytes += generator.text('Dine In - $tableDisplay', styles: const PosStyles(align: PosAlign.center, bold: true));
-      }
-
-      if (order.customerName != null && order.customerName!.isNotEmpty) {
-        bytes += generator.text('Customer Name: ${_toAscii(order.customerName!.toUpperCase())}', styles: const PosStyles(align: PosAlign.center, bold: true));
-      }
-      if (order.customerPhone != null && order.customerPhone!.isNotEmpty) {
-        bytes += generator.text('Customer Mobile: ${_toAscii(order.customerPhone!)}', styles: const PosStyles(align: PosAlign.center, bold: true));
-      }
-
-      final dt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
-      final dateStr = DateFormat('dd-MM-yyyy hh:mm:ss a').format(dt);
-      bytes += generator.text(dateStr, styles: const PosStyles(align: PosAlign.center));
-
-      bytes += generator.text('Bill: #${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center, bold: true));
-      bytes += generator.text('Invoice: #INV-${_toAscii(order.orderNumber)}', styles: const PosStyles(align: PosAlign.center));
-      if (gstNumber.isNotEmpty) {
-        bytes += generator.text('GST: #$gstNumber', styles: const PosStyles(align: PosAlign.center, bold: true));
-      }
-
-      if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
-        bytes += generator.text('Delivery Address: ${_toAscii(order.deliveryAddress!)}', styles: const PosStyles(align: PosAlign.center));
-      }
-
-      bytes += generator.hr(ch: '-');
-
-      // 4. Items Table Header (4 Columns: ITEM, QTY, RATE, TOTAL)
-      bytes += generator.row([
-        PosColumn(text: 'ITEM', width: 5, styles: const PosStyles(bold: true, align: PosAlign.left)),
-        PosColumn(text: 'QTY', width: 2, styles: const PosStyles(bold: true, align: PosAlign.center)),
-        PosColumn(text: 'RATE', width: 2, styles: const PosStyles(bold: true, align: PosAlign.right)),
-        PosColumn(text: 'TOTAL', width: 3, styles: const PosStyles(bold: true, align: PosAlign.right)),
-      ]);
-      bytes += generator.hr(ch: '-');
-
-      // 5. Items List
-      for (int i = 0; i < order.items.length; i++) {
-        final cartItem = order.items[i];
-        final rateStr = _formatAmount(cartItem.item.price);
-        final lineTotalStr = _formatAmount(cartItem.totalPrice);
-
-        bytes += generator.row([
-          PosColumn(text: _toAscii(cartItem.item.name), width: 5, styles: const PosStyles(bold: true, align: PosAlign.left)),
-          PosColumn(text: '${cartItem.quantity}', width: 2, styles: const PosStyles(align: PosAlign.center)),
-          PosColumn(text: rateStr, width: 2, styles: const PosStyles(align: PosAlign.right)),
-          PosColumn(text: lineTotalStr, width: 3, styles: const PosStyles(bold: true, align: PosAlign.right)),
-        ]);
-
-        if (cartItem.note != null && cartItem.note!.trim().isNotEmpty) {
-          bytes += generator.text(
-            '  * ${_toAscii(cartItem.note!.trim())}',
-            styles: const PosStyles(align: PosAlign.left, fontType: PosFontType.fontB),
-          );
-        }
-      }
-
-      bytes += generator.hr(ch: '-');
-
-      // 6. Financials Summary
-      bytes += generator.row([
-        PosColumn(text: 'Sub Total', width: 7),
-        PosColumn(text: '$safeCurrency${_formatAmount(order.subtotal)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-      ]);
-      if (order.discountAmount > 0) {
-        bytes += generator.row([
-          PosColumn(text: 'Discount', width: 7),
-          PosColumn(text: '-$safeCurrency${_formatAmount(order.discountAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      if (order.taxAmount > 0) {
-        bytes += generator.row([
-          PosColumn(text: 'CGST', width: 7),
-          PosColumn(text: '$safeCurrency${_formatAmount(cgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-        bytes += generator.row([
-          PosColumn(text: 'SGST', width: 7),
-          PosColumn(text: '$safeCurrency${_formatAmount(sgstAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      if (order.tipAmount > 0) {
-        bytes += generator.row([
-          PosColumn(text: 'Tip', width: 7),
-          PosColumn(text: '+$safeCurrency${_formatAmount(order.tipAmount)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      if (order.deliveryCharge > 0) {
-        bytes += generator.row([
-          PosColumn(text: 'Delivery Charge', width: 7),
-          PosColumn(text: '+$safeCurrency${_formatAmount(order.deliveryCharge)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-      if (order.roundOff.abs() > 0.001) {
-        final sign = order.roundOff >= 0 ? '+' : '';
-        bytes += generator.row([
-          PosColumn(text: 'Round Off', width: 7),
-          PosColumn(text: '$sign$safeCurrency${_formatAmount(order.roundOff)}', width: 5, styles: const PosStyles(align: PosAlign.right)),
-        ]);
-      }
-
-      bytes += generator.hr(ch: '-');
-
-      // 7. Net Amount Payable
-      bytes += generator.row([
-        PosColumn(
-          text: 'Total Amount',
-          width: 6,
-          styles: const PosStyles(bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
-        ),
-        PosColumn(
-          text: '$safeCurrency${_formatAmount(order.totalAmount)}',
-          width: 6,
-          styles: const PosStyles(bold: true, align: PosAlign.right, height: PosTextSize.size1, width: PosTextSize.size1),
-        ),
-      ]);
-      bytes += generator.hr(ch: '-');
-
-      bytes += generator.row([
-        PosColumn(text: 'Payment Method', width: 6),
-        PosColumn(text: _toAscii(order.paymentMethod.toUpperCase()), width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-      final bool isOrderPaid = order.isPaid || order.paymentStatus.toLowerCase() == 'paid' || order.status == OrderStatus.completed;
-      final String paymentStatusStr = isOrderPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING';
-      bytes += generator.row([
-        PosColumn(text: 'Payment Status', width: 6, styles: const PosStyles(bold: true)),
-        PosColumn(text: paymentStatusStr, width: 6, styles: const PosStyles(align: PosAlign.right, bold: true)),
-      ]);
-
-      // 8. Dynamic UPI QR Code Section (Always carries exact total payable amount)
-      final String upiId = (restaurant?.upiId.isNotEmpty == true)
-          ? restaurant!.upiId.trim()
-          : 'apnapos@upi';
-      final String payeeName = (restaurant?.name.isNotEmpty == true)
-          ? restaurant!.name.trim()
-          : 'Apna POS Store';
-      final String formattedAmount = order.totalAmount.toStringAsFixed(2);
-
-      final String dynamicUpiUrl = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(payeeName)}&am=$formattedAmount&cu=INR&tr=${order.orderNumber}&tn=${Uri.encodeComponent("Bill ${order.orderNumber}")}';
-
-      final String qrPayload = (order.qrIntentUrl != null && order.qrIntentUrl!.isNotEmpty && order.qrIntentUrl!.contains('&am='))
-          ? order.qrIntentUrl!
-          : dynamicUpiUrl;
-
-      if (qrPayload.isNotEmpty) {
-        bytes += generator.hr(ch: '-');
-        bytes += generator.text(
-          'SCAN & PAY WITH ANY UPI APP',
-          styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
-        );
-
-        // High-contrast, enlarged 220px bitmap QR raster for 100% reliable camera scanning
-        try {
-          final qrRaster = await _generateQrRaster(qrPayload, size: 220);
-          if (qrRaster != null) {
-            bytes += generator.imageRaster(qrRaster, align: PosAlign.center);
-          } else {
-            bytes += generator.qrcode(qrPayload, size: QRSize.size6);
-          }
-        } catch (_) {
-          bytes += generator.qrcode(qrPayload, size: QRSize.size6);
-        }
-
-        bytes += generator.text(
-          'Amount: $safeCurrency${_formatAmount(order.totalAmount)}',
-          styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
-        );
-        if (upiId.isNotEmpty) {
-          bytes += generator.text('UPI ID: ${_toAscii(upiId)}', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
-        }
-      }
-
-      bytes += generator.hr(ch: '-');
-
-      // 9. Footer
-      bytes += generator.text('Thank you! Visit Again!', styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1));
-      bytes += generator.text('Powered by Apna POS', styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1));
-
-      // 10. Tear Margin Feed (3 line feed so manual paper tear does not cut the footer text)
-      bytes += generator.feed(3);
 
       return await PrintBluetoothThermal.writeBytes(bytes);
     } catch (e) {
@@ -689,14 +863,232 @@ class BluetoothPrinterService {
     }
   }
 
-  /// Print Kitchen Order Ticket (KOT) Thermal Receipt for Single KOT Thermal Printer
+  /// Builds ESC/POS binary byte stream for Kitchen Order Ticket (KOT)
+  List<int> _buildKotBytes({
+    required Generator generator,
+    required OrderModel order,
+    RestaurantModel? restaurant,
+    String? kotNumber,
+    bool isReprint = false,
+    List<CartItemModel>? customItemsToPrint,
+  }) {
+    List<int> bytes = [];
+
+    final restName = restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Kitchen';
+
+    final dt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
+    final formattedDateTime = DateFormat('dd-MM-yyyy,hh:mm:ss a').format(dt).toLowerCase();
+
+    final orderTypeStr = order.orderType == OrderType.dineIn
+        ? 'DineIn'
+        : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
+
+    final tableTitle = order.orderType == OrderType.dineIn
+        ? (order.tableNumber != null && order.tableNumber!.isNotEmpty
+            ? (order.tableNumber!.toLowerCase().startsWith('table')
+                ? 'Dine In-${order.tableNumber}'
+                : 'Dine In-Table ${order.tableNumber!.replaceAll(RegExp(r'[^0-9]'), '').padLeft(2, '0')}')
+            : 'Dine In-Table 01')
+        : orderTypeStr;
+
+    // 1. Header: KOT or REPRINT (Centered & Bold)
+    final String headerTitle = isReprint
+        ? '*** KOT REPRINT ***'
+        : ((kotNumber != null && kotNumber.isNotEmpty) ? 'KOT #$kotNumber' : 'KOT');
+
+    bytes += generator.text(
+      headerTitle,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size2,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 2. Restaurant Name (Centered & Bold)
+    bytes += generator.text(
+      _toAscii(restName),
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 3. Order Type (DineIn)
+    bytes += generator.text(
+      orderTypeStr,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 4. Table Info (Dine In-Table 01)
+    bytes += generator.text(
+      tableTitle,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        bold: true,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 5. Order Number & Date Time
+    if (order.orderNumber.isNotEmpty) {
+      bytes += generator.text(
+        'Order: #${_toAscii(order.orderNumber)}',
+        styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1),
+      );
+    }
+    bytes += generator.text(
+      formattedDateTime,
+      styles: const PosStyles(
+        align: PosAlign.center,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 6. Dashed Line Divider
+    bytes += generator.hr(ch: '-');
+
+    // 7. Table Header (Sn | Items | Qty)
+    bytes += generator.row([
+      PosColumn(
+        text: 'Sn',
+        width: 2,
+        styles: const PosStyles(bold: true, align: PosAlign.left),
+      ),
+      PosColumn(
+        text: 'Items',
+        width: 8,
+        styles: const PosStyles(bold: true, align: PosAlign.left),
+      ),
+      PosColumn(
+        text: 'Qty',
+        width: 2,
+        styles: const PosStyles(bold: true, align: PosAlign.right),
+      ),
+    ]);
+
+    // 8. Dashed Line Divider
+    bytes += generator.hr(ch: '-');
+
+    // 9. Items List (Resolve pending delta items or full reprint list)
+    final List<CartItemModel> itemsToPrint = customItemsToPrint ??
+        (isReprint
+            ? order.items
+            : (order.items.any((i) => i.pendingKotQuantity > 0)
+                ? order.items.where((i) => i.pendingKotQuantity > 0).toList()
+                : order.items));
+
+    for (int i = 0; i < itemsToPrint.length; i++) {
+      final cartItem = itemsToPrint[i];
+      final sn = '${i + 1}';
+      final itemName = _toAscii(cartItem.item.name);
+
+      // Format quantity: if increased on existing sent item, format as +X, else normal qty
+      String qtyStr;
+      if (isReprint) {
+        qtyStr = '${cartItem.quantity}';
+      } else if (cartItem.kotQuantity > 0 && cartItem.pendingKotQuantity > 0) {
+        qtyStr = '+${cartItem.pendingKotQuantity}';
+      } else if (cartItem.pendingKotQuantity > 0) {
+        qtyStr = '${cartItem.pendingKotQuantity}';
+      } else {
+        qtyStr = '${cartItem.quantity}';
+      }
+
+      bytes += generator.row([
+        PosColumn(
+          text: sn,
+          width: 2,
+          styles: const PosStyles(align: PosAlign.left, bold: true),
+        ),
+        PosColumn(
+          text: itemName,
+          width: 8,
+          styles: const PosStyles(align: PosAlign.left),
+        ),
+        PosColumn(
+          text: qtyStr,
+          width: 2,
+          styles: const PosStyles(align: PosAlign.right, bold: true),
+        ),
+      ]);
+
+      if (cartItem.note != null && cartItem.note!.trim().isNotEmpty) {
+        bytes += generator.text(
+          '  * Note: ${_toAscii(cartItem.note!.trim())}',
+          styles: const PosStyles(
+            align: PosAlign.left,
+            fontType: PosFontType.fontB,
+          ),
+        );
+      }
+    }
+
+    // 10. Dashed Line Divider
+    bytes += generator.hr(ch: '-');
+
+    // 11. Thank you message
+    bytes += generator.text(
+      'Thank you for dining with us!',
+      styles: const PosStyles(
+        align: PosAlign.center,
+        height: PosTextSize.size1,
+        width: PosTextSize.size1,
+      ),
+    );
+
+    // 12. Tear Margin Feed (3 line feed so manual paper tear does not cut the footer text)
+    bytes += generator.feed(3);
+
+    return bytes;
+  }
+
+  /// Print Kitchen Order Ticket (KOT) Thermal Receipt for Single KOT Thermal Printer (Windows Native & Mobile Bluetooth)
   Future<bool> printKOT({
     required OrderModel order,
     RestaurantModel? restaurant,
     String? kotNumber,
     bool isReprint = false,
     List<CartItemModel>? customItemsToPrint,
+    WindowsPrinterInfo? windowsPrinter,
   }) async {
+    // --- Windows Native / Bluetooth Flow ---
+    if (!kIsWeb && Platform.isWindows) {
+      final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
+      if (target == null) {
+        if (kDebugMode) print('[printKOT] No Windows or Bluetooth printer available.');
+        return false;
+      }
+
+      try {
+        final profile = await getCapabilityProfile();
+        final generator = Generator(PaperSize.mm58, profile);
+        final bytes = _buildKotBytes(
+          generator: generator,
+          order: order,
+          restaurant: restaurant,
+          kotNumber: kotNumber,
+          isReprint: isReprint,
+          customItemsToPrint: customItemsToPrint,
+        );
+
+        return await WindowsPrinterService().printRawBytes(target, bytes, docName: 'KOT ${order.orderNumber}');
+      } catch (e) {
+        if (kDebugMode) print('Error sending KOT to Windows printer: $e');
+        return false;
+      }
+    }
+
+    // --- Android / iOS Mobile Bluetooth Flow ---
     bool connected = await isConnected();
     if (!connected) {
       connected = await autoConnectSavedPrinter();
@@ -704,184 +1096,16 @@ class BluetoothPrinterService {
     }
 
     try {
-      final profile = await CapabilityProfile.load();
+      final profile = await getCapabilityProfile();
       final generator = Generator(PaperSize.mm58, profile);
-      List<int> bytes = [];
-
-      final restName = restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS Kitchen';
-
-      final dt = DateTime.tryParse(order.createdAt) ?? DateTime.now();
-      final formattedDateTime = DateFormat('dd-MM-yyyy,hh:mm:ss a').format(dt).toLowerCase();
-
-      final orderTypeStr = order.orderType == OrderType.dineIn
-          ? 'DineIn'
-          : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
-
-      final tableTitle = order.orderType == OrderType.dineIn
-          ? (order.tableNumber != null && order.tableNumber!.isNotEmpty
-              ? (order.tableNumber!.toLowerCase().startsWith('table')
-                  ? 'Dine In-${order.tableNumber}'
-                  : 'Dine In-Table ${order.tableNumber!.replaceAll(RegExp(r'[^0-9]'), '').padLeft(2, '0')}')
-              : 'Dine In-Table 01')
-          : orderTypeStr;
-
-      // 1. Header: KOT or REPRINT (Centered & Bold)
-      final String headerTitle = isReprint
-          ? '*** KOT REPRINT ***'
-          : ((kotNumber != null && kotNumber.isNotEmpty) ? 'KOT #$kotNumber' : 'KOT');
-
-      bytes += generator.text(
-        headerTitle,
-        styles: const PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: PosTextSize.size2,
-          width: PosTextSize.size1,
-        ),
+      final bytes = _buildKotBytes(
+        generator: generator,
+        order: order,
+        restaurant: restaurant,
+        kotNumber: kotNumber,
+        isReprint: isReprint,
+        customItemsToPrint: customItemsToPrint,
       );
-
-      // 2. Restaurant Name (Centered & Bold)
-      bytes += generator.text(
-        _toAscii(restName),
-        styles: const PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
-
-      // 3. Order Type (DineIn)
-      bytes += generator.text(
-        orderTypeStr,
-        styles: const PosStyles(
-          align: PosAlign.center,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
-
-      // 4. Table Info (Dine In-Table 01)
-      bytes += generator.text(
-        tableTitle,
-        styles: const PosStyles(
-          align: PosAlign.center,
-          bold: true,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
-
-      // 5. Order Number & Date Time
-      if (order.orderNumber.isNotEmpty) {
-        bytes += generator.text(
-          'Order: #${_toAscii(order.orderNumber)}',
-          styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1),
-        );
-      }
-      bytes += generator.text(
-        formattedDateTime,
-        styles: const PosStyles(
-          align: PosAlign.center,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
-
-      // 6. Dashed Line Divider
-      bytes += generator.hr(ch: '-');
-
-      // 7. Table Header (Sn | Items | Qty)
-      bytes += generator.row([
-        PosColumn(
-          text: 'Sn',
-          width: 2,
-          styles: const PosStyles(bold: true, align: PosAlign.left),
-        ),
-        PosColumn(
-          text: 'Items',
-          width: 8,
-          styles: const PosStyles(bold: true, align: PosAlign.left),
-        ),
-        PosColumn(
-          text: 'Qty',
-          width: 2,
-          styles: const PosStyles(bold: true, align: PosAlign.right),
-        ),
-      ]);
-
-      // 8. Dashed Line Divider
-      bytes += generator.hr(ch: '-');
-
-      // 9. Items List (Resolve pending delta items or full reprint list)
-      final List<CartItemModel> itemsToPrint = customItemsToPrint ??
-          (isReprint
-              ? order.items
-              : (order.items.any((i) => i.pendingKotQuantity > 0)
-                  ? order.items.where((i) => i.pendingKotQuantity > 0).toList()
-                  : order.items));
-
-      for (int i = 0; i < itemsToPrint.length; i++) {
-        final cartItem = itemsToPrint[i];
-        final sn = '${i + 1}';
-        final itemName = _toAscii(cartItem.item.name);
-
-        // Format quantity: if increased on existing sent item, format as +X, else normal qty
-        String qtyStr;
-        if (isReprint) {
-          qtyStr = '${cartItem.quantity}';
-        } else if (cartItem.kotQuantity > 0 && cartItem.pendingKotQuantity > 0) {
-          qtyStr = '+${cartItem.pendingKotQuantity}';
-        } else if (cartItem.pendingKotQuantity > 0) {
-          qtyStr = '${cartItem.pendingKotQuantity}';
-        } else {
-          qtyStr = '${cartItem.quantity}';
-        }
-
-        bytes += generator.row([
-          PosColumn(
-            text: sn,
-            width: 2,
-            styles: const PosStyles(align: PosAlign.left, bold: true),
-          ),
-          PosColumn(
-            text: itemName,
-            width: 8,
-            styles: const PosStyles(align: PosAlign.left),
-          ),
-          PosColumn(
-            text: qtyStr,
-            width: 2,
-            styles: const PosStyles(align: PosAlign.right, bold: true),
-          ),
-        ]);
-
-        if (cartItem.note != null && cartItem.note!.trim().isNotEmpty) {
-          bytes += generator.text(
-            '  * Note: ${_toAscii(cartItem.note!.trim())}',
-            styles: const PosStyles(
-              align: PosAlign.left,
-              fontType: PosFontType.fontB,
-            ),
-          );
-        }
-      }
-
-      // 10. Dashed Line Divider
-      bytes += generator.hr(ch: '-');
-
-      // 11. Thank you message
-      bytes += generator.text(
-        'Thank you for dining with us!',
-        styles: const PosStyles(
-          align: PosAlign.center,
-          height: PosTextSize.size1,
-          width: PosTextSize.size1,
-        ),
-      );
-
-      // 12. Tear Margin Feed (3 line feed so manual paper tear does not cut the footer text)
-      bytes += generator.feed(3);
 
       return await PrintBluetoothThermal.writeBytes(bytes);
     } catch (e) {

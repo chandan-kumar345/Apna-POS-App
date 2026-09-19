@@ -24,6 +24,13 @@ class MenuManagementScreen extends StatefulWidget {
 class _MenuManagementScreenState extends State<MenuManagementScreen> {
   final DatabaseService _db = DatabaseService();
 
+  // Signature Deep Navy Theme Constants (Matching Brand Theme)
+  static const Color _primaryNavy = Color(0xFF051C48);
+  static const Color _primaryNavyDark = Color(0xFF071A36);
+  static const Color _primaryNavyLight = Color(0xFF0D2547);
+  static const Color _navyTint = Color(0xFFEFF4FA);
+  static const Color _navyBorder = Color(0xFFCBDDF7);
+
   // Selection & View State
   String? _selectedCategory;
   bool _isGridView = false; // List vs Grid View Toggle
@@ -239,7 +246,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     required bool value,
     required ValueChanged<bool> onChanged,
     double scale = 0.72,
-    Color activeColor = const Color(0xFF1E4E8C),
+    Color activeColor = _primaryNavy,
   }) {
     return Transform.scale(
       scale: scale,
@@ -327,7 +334,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       alignment: Alignment.center,
       child: Icon(
         Icons.restaurant_rounded,
-        color: const Color(0xFF0052FF),
+        color: _primaryNavy,
         size: (width * 0.45).clamp(12.0, 30.0),
       ),
     );
@@ -384,7 +391,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFDBEAFE) : const Color(0xFFF1F5F9),
+          color: isSelected ? _navyBorder.withValues(alpha: 0.35) : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(borderRadius),
         ),
         alignment: Alignment.center,
@@ -416,7 +423,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
     return Icon(
       icon,
-      color: isSelected ? const Color(0xFF1E4E8C) : const Color(0xFF475569),
+      color: isSelected ? _primaryNavy : const Color(0xFF475569),
       size: (width * 0.48).clamp(14.0, 26.0),
     );
   }
@@ -484,7 +491,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               Container(
                 padding: const EdgeInsets.all(7),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A),
+                  color: _primaryNavy,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 17),
@@ -526,21 +533,21 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               // Desktop Search Bar
               if (isDesktop)
                 Container(
-                  width: 200,
-                  height: 34,
+                  width: 210,
+                  height: 35,
                   margin: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
+                    color: const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
                   ),
                   child: TextField(
                     onChanged: (val) => setState(() => _globalSearch = val),
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
                       hintText: 'Search menu...',
                       hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
-                      prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 16),
+                      prefixIcon: const Icon(Icons.search_rounded, color: _primaryNavy, size: 16),
                       suffixIcon: _globalSearch.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF64748B)),
@@ -548,7 +555,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             )
                           : null,
                       border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 7),
                     ),
                   ),
                 )
@@ -556,7 +563,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 IconButton(
                   icon: Icon(
                     _mobileSearchExpanded ? Icons.search_off_rounded : Icons.search_rounded,
-                    color: const Color(0xFF0F172A),
+                    color: _primaryNavy,
                     size: 20,
                   ),
                   onPressed: () => setState(() => _mobileSearchExpanded = !_mobileSearchExpanded),
@@ -568,22 +575,22 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               if (isDesktop)
                 OutlinedButton.icon(
                   onPressed: _showCsvImportModal,
-                  icon: const Icon(Icons.file_upload_outlined, size: 14, color: Color(0xFF0052FF)),
+                  icon: const Icon(Icons.file_upload_outlined, size: 14, color: _primaryNavy),
                   label: const Text(
                     'Import CSV',
-                    style: TextStyle(color: Color(0xFF0052FF), fontWeight: FontWeight.w700, fontSize: 11.5),
+                    style: TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11.5),
                   ),
                   style: OutlinedButton.styleFrom(
-                    side: const BorderSide(color: Color(0xFFBFDBFE), width: 1.1),
+                    side: const BorderSide(color: _navyBorder, width: 1.2),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    backgroundColor: const Color(0xFFEFF6FF),
+                    backgroundColor: _navyTint,
                   ),
                 )
               else
                 IconButton(
                   tooltip: 'Import CSV',
-                  icon: const Icon(Icons.file_upload_outlined, size: 20, color: Color(0xFF0052FF)),
+                  icon: const Icon(Icons.file_upload_outlined, size: 20, color: _primaryNavy),
                   onPressed: _showCsvImportModal,
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -594,10 +601,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               if (isDesktop)
                 OutlinedButton.icon(
                   onPressed: _showMenuPreviewModal,
-                  icon: const Icon(Icons.visibility_outlined, size: 14, color: Color(0xFF0F172A)),
+                  icon: const Icon(Icons.visibility_outlined, size: 14, color: _primaryNavy),
                   label: const Text(
                     'Preview Menu',
-                    style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w700, fontSize: 11.5),
+                    style: TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11.5),
                   ),
                   style: OutlinedButton.styleFrom(
                     side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
@@ -609,7 +616,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               else
                 IconButton(
                   tooltip: 'Preview Menu',
-                  icon: const Icon(Icons.visibility_outlined, size: 20, color: Color(0xFF0F172A)),
+                  icon: const Icon(Icons.visibility_outlined, size: 20, color: _primaryNavy),
                   onPressed: _showMenuPreviewModal,
                   constraints: const BoxConstraints(),
                   padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -625,7 +632,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11.5),
                 ),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0052FF),
+                  backgroundColor: _primaryNavy,
+                  foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8, vertical: 7),
                   elevation: 0,
@@ -649,7 +657,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     value: 'import_csv',
                     child: Row(
                       children: [
-                        Icon(Icons.upload_file_rounded, size: 16, color: Color(0xFF0F172A)),
+                        Icon(Icons.upload_file_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
                         Text('Import CSV Spreadsheet', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                       ],
@@ -659,7 +667,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     value: 'export_csv',
                     child: Row(
                       children: [
-                        Icon(Icons.download_rounded, size: 16, color: Color(0xFF0F172A)),
+                        Icon(Icons.download_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
                         Text('Export Menu to CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                       ],
@@ -669,7 +677,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     value: 'sync',
                     child: Row(
                       children: [
-                        Icon(Icons.sync_rounded, size: 16, color: Color(0xFF0052FF)),
+                        Icon(Icons.sync_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
                         Text('Sync with Cloud', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                       ],
@@ -684,20 +692,20 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
           if (!isDesktop && _mobileSearchExpanded) ...[
             const SizedBox(height: 8),
             Container(
-              height: 36,
+              height: 38,
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+                color: const Color(0xFFF8FAFC),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                border: Border.all(color: _primaryNavy, width: 1.8),
               ),
               child: TextField(
                 autofocus: true,
                 onChanged: (val) => setState(() => _globalSearch = val),
-                style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
                   hintText: 'Search products by name or category...',
                   hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
-                  prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 16),
+                  prefixIcon: const Icon(Icons.search_rounded, color: _primaryNavy, size: 16),
                   suffixIcon: _globalSearch.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF64748B)),
@@ -705,7 +713,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 8),
                 ),
               ),
             ),
@@ -746,7 +754,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0F172A),
+                      color: _primaryNavy,
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Row(
@@ -816,16 +824,16 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       key: key,
       margin: const EdgeInsets.only(bottom: 6),
       decoration: BoxDecoration(
-        color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
+        color: isSelected ? _navyTint : Colors.white,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isSelected ? const Color(0xFF0052FF) : const Color(0xFFE2E8F0),
+          color: isSelected ? _primaryNavy : const Color(0xFFE2E8F0),
           width: isSelected ? 1.5 : 1.0,
         ),
         boxShadow: isSelected
             ? [
                 BoxShadow(
-                  color: const Color(0xFF0052FF).withValues(alpha: 0.08),
+                  color: _primaryNavy.withValues(alpha: 0.1),
                   blurRadius: 6,
                   offset: const Offset(0, 2),
                 ),
@@ -896,8 +904,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         '$productCount products',
                         style: TextStyle(
                           fontSize: 10.5,
-                          color: isSelected ? const Color(0xFF0052FF) : const Color(0xFF64748B),
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          color: isSelected ? _primaryNavy : const Color(0xFF64748B),
+                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                         ),
                       ),
                     ],
@@ -928,7 +936,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       value: 'edit',
                       child: Row(
                         children: [
-                          Icon(Icons.edit_outlined, size: 15, color: Color(0xFF0F172A)),
+                          Icon(Icons.edit_outlined, size: 15, color: _primaryNavy),
                           SizedBox(width: 8),
                           Text('Edit Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                         ],
@@ -1075,10 +1083,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
           // Edit Category Button
           OutlinedButton.icon(
             onPressed: () => _showEditCategoryModal(category),
-            icon: const Icon(Icons.edit_outlined, size: 13, color: Color(0xFF0F172A)),
+            icon: const Icon(Icons.edit_outlined, size: 13, color: _primaryNavy),
             label: Text(
               isDesktop ? 'Edit Category' : 'Edit',
-              style: const TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w700, fontSize: 11),
+              style: const TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11),
             ),
             style: OutlinedButton.styleFrom(
               side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
@@ -1104,7 +1112,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 value: 'add_product',
                 child: Row(
                   children: [
-                    Icon(Icons.add_circle_outline_rounded, size: 15, color: Color(0xFF0052FF)),
+                    Icon(Icons.add_circle_outline_rounded, size: 15, color: _primaryNavy),
                     SizedBox(width: 8),
                     Text('Add Product to Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                   ],
@@ -1135,14 +1143,14 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _productSortMode,
           dropdownColor: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: _primaryNavy),
           style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
           onChanged: (val) {
             if (val != null) setState(() => _productSortMode = val);
@@ -1165,14 +1173,14 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCBD5E1)),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _productFilter,
           dropdownColor: Colors.white,
           borderRadius: BorderRadius.circular(10),
-          icon: const Icon(Icons.filter_list_rounded, size: 16, color: Color(0xFF0F172A)),
+          icon: const Icon(Icons.filter_list_rounded, size: 16, color: _primaryNavy),
           style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
           onChanged: (val) {
             if (val != null) setState(() => _productFilter = val);
@@ -1195,7 +1203,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1218,16 +1226,16 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
     final importCsvBtn = OutlinedButton.icon(
       onPressed: _showCsvImportModal,
-      icon: const Icon(Icons.file_upload_outlined, size: 14, color: Color(0xFF0052FF)),
+      icon: const Icon(Icons.file_upload_outlined, size: 14, color: _primaryNavy),
       label: const Text(
         'Import CSV',
-        style: TextStyle(color: Color(0xFF0052FF), fontWeight: FontWeight.w700, fontSize: 11.5),
+        style: TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11.5),
       ),
       style: OutlinedButton.styleFrom(
-        side: const BorderSide(color: Color(0xFFBFDBFE), width: 1.1),
+        side: const BorderSide(color: _navyBorder, width: 1.2),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        backgroundColor: const Color(0xFFEFF6FF),
+        backgroundColor: _navyTint,
       ),
     );
 
@@ -1239,7 +1247,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 11.5),
       ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF0052FF),
+        backgroundColor: _primaryNavy,
+        foregroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         elevation: 0,
@@ -1291,7 +1300,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          color: isActive ? const Color(0xFF0F172A) : Colors.transparent,
+          color: isActive ? _primaryNavy : Colors.transparent,
           borderRadius: BorderRadius.circular(6),
         ),
         child: Row(
@@ -1359,7 +1368,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       });
                     },
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    activeColor: const Color(0xFF1E4E8C),
+                    activeColor: _primaryNavy,
                   ),
                 ),
                 const SizedBox(width: 26),
@@ -1439,7 +1448,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     final inStock = product.stockQuantity > 0;
 
     return Container(
-      color: isChecked ? const Color(0xFFF0F7FF) : Colors.transparent,
+      color: isChecked ? _navyTint : Colors.transparent,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
       child: Row(
         children: [
@@ -1475,7 +1484,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 });
               },
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-              activeColor: const Color(0xFF1E4E8C),
+              activeColor: _primaryNavy,
             ),
           ),
           const SizedBox(width: 4),
@@ -1582,7 +1591,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF0F172A),
+                color: _primaryNavy,
               ),
             ),
           ),
@@ -1598,7 +1607,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   borderRadius: BorderRadius.circular(6),
                   child: const Padding(
                     padding: EdgeInsets.all(6),
-                    child: Icon(Icons.edit_outlined, size: 16, color: Color(0xFF0F172A)),
+                    child: Icon(Icons.edit_outlined, size: 16, color: _primaryNavy),
                   ),
                 ),
                 const SizedBox(width: 4),
@@ -1639,10 +1648,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: isChecked ? const Color(0xFFF0F7FF) : Colors.white,
+            color: isChecked ? _navyTint : Colors.white,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isChecked ? const Color(0xFF0052FF) : const Color(0xFFE2E8F0),
+              color: isChecked ? _primaryNavy : const Color(0xFFE2E8F0),
               width: isChecked ? 1.4 : 1.0,
             ),
             boxShadow: [
@@ -1684,7 +1693,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     });
                   },
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  activeColor: const Color(0xFF1E4E8C),
+                  activeColor: _primaryNavy,
                 ),
               ),
               const SizedBox(width: 6),
@@ -1727,7 +1736,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       children: [
                         Text(
                           '₹${product.effectivePrice.toStringAsFixed(0)}',
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0052FF)),
+                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _primaryNavy),
                         ),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -1764,7 +1773,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     scale: 0.68,
                   ),
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 16, color: Color(0xFF0F172A)),
+                    icon: const Icon(Icons.edit_outlined, size: 16, color: _primaryNavy),
                     onPressed: () => _openAddEditProductScreen(product, category),
                     constraints: const BoxConstraints(),
                     padding: const EdgeInsets.all(4),
@@ -1807,7 +1816,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: isChecked ? const Color(0xFF0052FF) : const Color(0xFFE2E8F0),
+              color: isChecked ? _primaryNavy : const Color(0xFFE2E8F0),
               width: isChecked ? 1.5 : 1.0,
             ),
             boxShadow: [
@@ -1857,7 +1866,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             });
                           },
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                          activeColor: const Color(0xFF1E4E8C),
+                          activeColor: _primaryNavy,
                         ),
                       ),
                     ),
@@ -1917,7 +1926,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       children: [
                         Text(
                           '₹${product.effectivePrice.toStringAsFixed(0)}',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0052FF)),
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _primaryNavy),
                         ),
                         _buildToggleSwitch(
                           value: product.isAvailable,
@@ -1943,7 +1952,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF0F172A)),
+                      icon: const Icon(Icons.edit_outlined, size: 15, color: _primaryNavy),
                       onPressed: () => _openAddEditProductScreen(product, category),
                       constraints: const BoxConstraints(),
                       padding: const EdgeInsets.all(5),
@@ -2014,12 +2023,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   // ===========================================================================
   Widget _buildMobileTopSegmentedTabs() {
     return Container(
-      color: const Color(0xFF071A36),
+      color: _primaryNavyDark,
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       child: Container(
         padding: const EdgeInsets.all(3.5),
         decoration: BoxDecoration(
-          color: const Color(0xFF0D2547),
+          color: _primaryNavyLight,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
@@ -2033,12 +2042,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: _mobileActiveTab == 'categories' ? const Color(0xFF1E4E8C) : Colors.transparent,
+                    color: _mobileActiveTab == 'categories' ? _primaryNavy : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: _mobileActiveTab == 'categories'
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF1E4E8C).withValues(alpha: 0.35),
+                              color: _primaryNavy.withValues(alpha: 0.35),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             )
@@ -2078,12 +2087,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   duration: const Duration(milliseconds: 180),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
-                    color: _mobileActiveTab == 'products' ? const Color(0xFF1E4E8C) : Colors.transparent,
+                    color: _mobileActiveTab == 'products' ? _primaryNavy : Colors.transparent,
                     borderRadius: BorderRadius.circular(10),
                     boxShadow: _mobileActiveTab == 'products'
                         ? [
                             BoxShadow(
-                              color: const Color(0xFF1E4E8C).withValues(alpha: 0.35),
+                              color: _primaryNavy.withValues(alpha: 0.35),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             )
@@ -2170,7 +2179,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
-                    child: const Icon(Icons.search_rounded, size: 20, color: Color(0xFF1E4E8C)),
+                    child: const Icon(Icons.search_rounded, size: 20, color: _primaryNavy),
                   ),
                 ),
                 const Spacer(),
@@ -2183,11 +2192,11 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     height: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E4E8C),
+                      color: _primaryNavy,
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF1E4E8C).withValues(alpha: 0.25),
+                          color: _primaryNavy.withValues(alpha: 0.25),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -2210,12 +2219,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF1E4E8C), width: 1.5),
+                border: Border.all(color: _primaryNavy, width: 1.5),
               ),
               child: Row(
                 children: [
                   const SizedBox(width: 10),
-                  const Icon(Icons.search_rounded, color: Color(0xFF1E4E8C), size: 18),
+                  const Icon(Icons.search_rounded, color: _primaryNavy, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -2418,7 +2427,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     child: const Icon(
                       Icons.search_rounded,
                       size: 20,
-                      color: Color(0xFF1E4E8C),
+                      color: _primaryNavy,
                     ),
                   ),
                 ),
@@ -2433,12 +2442,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     width: 38,
                     decoration: BoxDecoration(
                       color: (_productFilter != 'all' || _productSortMode != 'custom')
-                          ? const Color(0xFFEFF6FF)
+                          ? _navyTint
                           : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: (_productFilter != 'all' || _productSortMode != 'custom')
-                            ? const Color(0xFF1E4E8C)
+                            ? _primaryNavy
                             : const Color(0xFFE2E8F0),
                       ),
                     ),
@@ -2449,7 +2458,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           Icons.filter_alt_outlined,
                           size: 18,
                           color: (_productFilter != 'all' || _productSortMode != 'custom')
-                              ? const Color(0xFF1E4E8C)
+                              ? _primaryNavy
                               : const Color(0xFF0F172A),
                         ),
                         if (_productFilter != 'all' || _productSortMode != 'custom')
@@ -2460,7 +2469,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               width: 6,
                               height: 6,
                               decoration: const BoxDecoration(
-                                color: Color(0xFF1E4E8C),
+                                color: _primaryNavy,
                                 shape: BoxShape.circle,
                               ),
                             ),
@@ -2479,19 +2488,19 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     height: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 11),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFEFF6FF),
+                      color: _navyTint,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                      border: Border.all(color: _navyBorder),
                     ),
                     child: const Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.file_upload_outlined, size: 15, color: Color(0xFF1E4E8C)),
+                        Icon(Icons.file_upload_outlined, size: 15, color: _primaryNavy),
                         SizedBox(width: 4),
                         Text(
                           'CSV',
                           style: TextStyle(
-                            color: Color(0xFF1E4E8C),
+                            color: _primaryNavy,
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
                           ),
@@ -2510,11 +2519,11 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     height: 38,
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF1E4E8C),
+                      color: _primaryNavy,
                       borderRadius: BorderRadius.circular(10),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF1E4E8C).withValues(alpha: 0.25),
+                          color: _primaryNavy.withValues(alpha: 0.25),
                           blurRadius: 4,
                           offset: const Offset(0, 2),
                         ),
@@ -2544,12 +2553,12 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFF1E4E8C), width: 1.5),
+                border: Border.all(color: _primaryNavy, width: 1.5),
               ),
               child: Row(
                 children: [
                   const SizedBox(width: 10),
-                  const Icon(Icons.search_rounded, color: Color(0xFF1E4E8C), size: 18),
+                  const Icon(Icons.search_rounded, color: _primaryNavy, size: 18),
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextField(
@@ -2624,9 +2633,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                         decoration: BoxDecoration(
-                          color: isAllSelected ? const Color(0xFF1E4E8C) : const Color(0xFFF1F5F9),
+                          color: isAllSelected ? _primaryNavy : const Color(0xFFF1F5F9),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isAllSelected ? const Color(0xFF1E4E8C) : const Color(0xFFE2E8F0)),
+                          border: Border.all(color: isAllSelected ? _primaryNavy : const Color(0xFFE2E8F0)),
                         ),
                         child: Text(
                           'All (${_db.menuItems.length})',
@@ -2653,9 +2662,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                       decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF1E4E8C) : const Color(0xFFF1F5F9),
+                        color: isSelected ? _primaryNavy : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isSelected ? const Color(0xFF1E4E8C) : const Color(0xFFE2E8F0)),
+                        border: Border.all(color: isSelected ? _primaryNavy : const Color(0xFFE2E8F0)),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
@@ -2768,7 +2777,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                       style: const TextStyle(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w800,
-                                        color: Color(0xFF0052FF),
+                                        color: _primaryNavy,
                                       ),
                                     ),
                                     Container(
@@ -2953,9 +2962,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       child: ElevatedButton(
                         onPressed: () => Navigator.pop(ctx),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0052FF),
+                          backgroundColor: _primaryNavy,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           padding: const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
                         ),
                         child: const Text('Apply Filter', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                       ),
@@ -2977,9 +2987,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF0052FF) : const Color(0xFFF1F5F9),
+          color: isSelected ? _primaryNavy : const Color(0xFFF1F5F9),
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isSelected ? const Color(0xFF0052FF) : const Color(0xFFE2E8F0)),
+          border: Border.all(color: isSelected ? _primaryNavy : const Color(0xFFE2E8F0)),
         ),
         child: Text(
           label,
@@ -3021,7 +3031,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               icon: const Icon(Icons.add_rounded, size: 14, color: Colors.white),
               label: const Text('Add Category', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0052FF),
+                backgroundColor: _primaryNavy,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 elevation: 0,
               ),
@@ -3084,7 +3094,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 icon: const Icon(Icons.add_rounded, size: 14, color: Colors.white),
                 label: const Text('Add Product', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0052FF),
+                  backgroundColor: _primaryNavy,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                   elevation: 0,
@@ -3122,7 +3132,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       Container(
                         padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0052FF),
+                          color: _primaryNavy,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.visibility_rounded, color: Colors.white, size: 18),
@@ -3228,7 +3238,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                       const SizedBox(height: 2),
                                       Text(
                                         '₹${item.effectivePrice.toStringAsFixed(0)}',
-                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0052FF)),
+                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _primaryNavy),
                                       ),
                                     ],
                                   ),
@@ -3276,7 +3286,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       Container(
                         padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0052FF),
+                          color: _primaryNavy,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.category_rounded, color: Colors.white, size: 16),
@@ -3307,7 +3317,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF0052FF), width: 1.5),
+                        borderSide: const BorderSide(color: _primaryNavy, width: 1.5),
                       ),
                     ),
                   ),
@@ -3333,17 +3343,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: _navyTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             padding: const EdgeInsets.all(8),
-                            child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0052FF)),
+                            child: const CircularProgressIndicator(strokeWidth: 2, color: _primaryNavy),
                           ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
                               'Uploading to Cloudflare R2...',
-                              style: TextStyle(fontSize: 11.5, color: Color(0xFF0052FF), fontWeight: FontWeight.w600),
+                              style: TextStyle(fontSize: 11.5, color: _primaryNavy, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ] else if (pickedImagePath != null && pickedImagePath!.isNotEmpty) ...[
@@ -3386,10 +3396,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: _navyTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF0052FF), size: 18),
+                            child: const Icon(Icons.add_photo_alternate_rounded, color: _primaryNavy, size: 18),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -3408,7 +3418,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 final fileItem = result.files.single;
                                 setModalState(() => isUploading = true);
                                 try {
-                                  if (fileItem.path != null && fileItem.path!.isNotEmpty) {
+                                    if (fileItem.path != null && fileItem.path!.isNotEmpty) {
                                     final uploadUrl = await UploadService().uploadImage(File(fileItem.path!), folder: 'categories');
                                     setModalState(() {
                                       pickedImagePath = (uploadUrl != null && uploadUrl.isNotEmpty) ? uploadUrl : fileItem.path;
@@ -3432,13 +3442,13 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 }
                               }
                             },
-                            icon: const Icon(Icons.upload_rounded, size: 13, color: Color(0xFF0052FF)),
-                            label: const Text('Browse', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0052FF))),
+                            icon: const Icon(Icons.upload_rounded, size: 13, color: _primaryNavy),
+                            label: const Text('Browse', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: _primaryNavy)),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFBFDBFE)),
+                              side: const BorderSide(color: _navyBorder),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                              backgroundColor: const Color(0xFFEFF6FF),
+                              backgroundColor: _navyTint,
                             ),
                           ),
                         ],
@@ -3485,7 +3495,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 }
                               },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0052FF),
+                          backgroundColor: _primaryNavy,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                           elevation: 0,
@@ -3530,7 +3540,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       Container(
                         padding: const EdgeInsets.all(7),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF0052FF),
+                          color: _primaryNavy,
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: const Icon(Icons.edit_rounded, color: Colors.white, size: 16),
@@ -3560,7 +3570,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFF0052FF), width: 1.5),
+                        borderSide: const BorderSide(color: _primaryNavy, width: 1.5),
                       ),
                     ),
                   ),
@@ -3586,17 +3596,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: _navyTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
                             padding: const EdgeInsets.all(8),
-                            child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0052FF)),
+                            child: const CircularProgressIndicator(strokeWidth: 2, color: _primaryNavy),
                           ),
                           const SizedBox(width: 8),
                           const Expanded(
                             child: Text(
                               'Uploading to Cloudflare R2...',
-                              style: TextStyle(fontSize: 11.5, color: Color(0xFF0052FF), fontWeight: FontWeight.w600),
+                              style: TextStyle(fontSize: 11.5, color: _primaryNavy, fontWeight: FontWeight.w600),
                             ),
                           ),
                         ] else if (pickedImagePath != null && pickedImagePath!.isNotEmpty) ...[
@@ -3639,10 +3649,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             width: 38,
                             height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: _navyTint,
                               borderRadius: BorderRadius.circular(6),
                             ),
-                            child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF0052FF), size: 18),
+                            child: const Icon(Icons.add_photo_alternate_rounded, color: _primaryNavy, size: 18),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -3685,13 +3695,13 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 }
                               }
                             },
-                            icon: const Icon(Icons.upload_rounded, size: 13, color: Color(0xFF0052FF)),
-                            label: const Text('Change', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0052FF))),
+                            icon: const Icon(Icons.upload_rounded, size: 13, color: _primaryNavy),
+                            label: const Text('Change', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: _primaryNavy)),
                             style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Color(0xFFBFDBFE)),
+                              side: const BorderSide(color: _navyBorder),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                              backgroundColor: const Color(0xFFEFF6FF),
+                              backgroundColor: _navyTint,
                             ),
                           ),
                         ],
@@ -3744,7 +3754,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 }
                               },
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0052FF),
+                          backgroundColor: _primaryNavy,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                           elevation: 0,
@@ -4012,7 +4022,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           Container(
                             padding: const EdgeInsets.all(7),
                             decoration: const BoxDecoration(
-                              color: Color(0xFF0F172A),
+                              color: _primaryNavy,
                               shape: BoxShape.circle,
                             ),
                             child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 17),
@@ -4175,7 +4185,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                     },
                               icon: isProcessing ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.file_upload_rounded, size: 14, color: Colors.white),
                               label: Text(isProcessing ? 'Importing...' : 'Choose & Upload CSV File', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF0052FF), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                              style: ElevatedButton.styleFrom(backgroundColor: _primaryNavy, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0),
                             ),
                           ],
                         ),

@@ -110,12 +110,23 @@ class SalesService {
     const skip = (Math.max(1, parseInt(page, 10)) - 1) * Math.max(1, parseInt(limit, 10));
     const parsedLimit = Math.max(1, parseInt(limit, 10));
 
-    const [orders, total] = await Promise.all([
-      Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit).lean(),
+    const [ordersRaw, total] = await Promise.all([
+      Order.find(query).sort({ createdAt: -1 }).skip(skip).limit(parsedLimit * 2).lean(),
       Order.countDocuments(query),
     ]);
 
-    const sales = orders.map((o) => ({
+    const seenOrderNums = new Set();
+    const uniqueSalesList = [];
+    for (const o of ordersRaw) {
+      const cleanNum = (o.orderNumber || '').toString().trim().replace(/^#/, '');
+      const key = cleanNum || o._id.toString();
+      if (seenOrderNums.has(key)) continue;
+      seenOrderNums.add(key);
+      uniqueSalesList.push(o);
+      if (uniqueSalesList.length >= parsedLimit) break;
+    }
+
+    const sales = uniqueSalesList.map((o) => ({
       id: o._id.toString(),
       orderNumber: o.orderNumber,
       orderType: o.orderType || 'dineIn',
@@ -156,9 +167,21 @@ class SalesService {
     const { start, end, resolvedPeriod } = this._resolveDateRange(query);
     const matchStage = this._getCompletedOrderMatch(bId, start, end);
 
+    const dedupeStages = [
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$orderNumber',
+          doc: { $first: '$$ROOT' },
+        },
+      },
+      { $replaceRoot: { newRoot: '$doc' } },
+    ];
+
     // 1. Summary Aggregation
     const summaryAgg = await Order.aggregate([
       { $match: matchStage },
+      ...dedupeStages,
       {
         $group: {
           _id: null,
@@ -199,6 +222,7 @@ class SalesService {
     // 2. Total Items Count Aggregation
     const totalItemsAgg = await Order.aggregate([
       { $match: matchStage },
+      ...dedupeStages,
       { $unwind: '$items' },
       {
         $group: {
@@ -212,6 +236,7 @@ class SalesService {
     // 3. Dynamic Payment Modes Aggregation into Canonical Buckets
     const paymentAgg = await Order.aggregate([
       { $match: matchStage },
+      ...dedupeStages,
       {
         $group: {
           _id: { $toUpper: { $ifNull: ['$paymentMethod', 'CASH'] } },
@@ -265,6 +290,7 @@ class SalesService {
     // 4. Order Types Breakdown
     const orderTypeAgg = await Order.aggregate([
       { $match: matchStage },
+      ...dedupeStages,
       {
         $group: {
           _id: '$orderType',
@@ -291,6 +317,7 @@ class SalesService {
     // 5. Top Selling Products
     const topProductsAgg = await Order.aggregate([
       { $match: matchStage },
+      ...dedupeStages,
       { $unwind: '$items' },
       {
         $group: {
@@ -313,14 +340,27 @@ class SalesService {
       },
     ]);
 
-    // 6. Orders / Bills List for the date range
+    // 6. Orders / Bills List for the date range (strictly deduplicated by orderNumber)
     const limit = Math.min(parseInt(query.limit, 10) || 500, 1000);
     const rawOrders = await Order.find(matchStage)
       .sort({ createdAt: -1 })
-      .limit(limit)
+      .limit(limit * 2)
       .lean();
 
-    const orders = rawOrders.map((o) => {
+    const seenOrderNumbers = new Set();
+    const uniqueOrders = [];
+    for (const o of rawOrders) {
+      const cleanNum = (o.orderNumber || '').toString().trim().replace(/^#/, '');
+      const key = cleanNum || o._id.toString();
+      if (seenOrderNumbers.has(key)) {
+        continue;
+      }
+      seenOrderNumbers.add(key);
+      uniqueOrders.push(o);
+      if (uniqueOrders.length >= limit) break;
+    }
+
+    const orders = uniqueOrders.map((o) => {
       const itemsCount = (o.items || []).reduce((sum, item) => sum + (item.quantity || 1), 0);
       return {
         id: o._id.toString(),

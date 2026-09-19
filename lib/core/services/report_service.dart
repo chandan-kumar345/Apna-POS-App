@@ -283,6 +283,7 @@ class SalesReportData {
     final ordersList = (json['orders'] as List<dynamic>? ?? [])
         .map((o) => OrderModel.fromJson(o as Map<String, dynamic>))
         .toList();
+    final deduplicatedOrders = DatabaseService().deduplicateOrdersList(ordersList);
 
     return SalesReportData(
       summary: SalesReportSummary.fromJson(summaryJson),
@@ -293,7 +294,7 @@ class SalesReportData {
       categoryWise: catList,
       staffWise: staffList,
       outletWise: outletList,
-      orders: ordersList,
+      orders: deduplicatedOrders,
       startDate: json['startDate']?.toString() ?? '',
       endDate: json['endDate']?.toString() ?? '',
       period: json['period']?.toString() ?? 'allTime',
@@ -526,7 +527,9 @@ class ReportService {
       }
     }
 
-    List<OrderModel> settled = ordersOverride ?? _db.getCompletedOrders(start: start, end: end);
+    List<OrderModel> settled = ordersOverride != null
+        ? _db.deduplicateOrdersList(ordersOverride)
+        : _db.getCompletedOrders(start: start, end: end);
 
     // Apply Payment Method Filter
     if (paymentMethod != null &&

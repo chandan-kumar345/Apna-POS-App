@@ -317,6 +317,136 @@ void main() {
       expect(summary.revenue, 105.0);
     });
 
+    test('Deduplication handles # prefix variations (#20260919-2333-T1 vs 20260919-2333-T1)', () {
+      final now = DateTime.now();
+      final burger = MenuItemModel(
+        id: 'item_burger',
+        name: 'Veggie Burger',
+        description: 'Tasty veggie burger',
+        category: 'Fast Food',
+        itemType: 'Veg',
+        price: 100.0,
+      );
+
+      final orderWithHash = OrderModel(
+        id: 'ord_hash_1',
+        orderNumber: '#20260919-2333-T1',
+        tableNumber: 'T1',
+        orderType: OrderType.dineIn,
+        status: OrderStatus.completed,
+        isPaid: true,
+        paymentStatus: 'paid',
+        paymentMethod: 'Card (Amex)',
+        subtotal: 800.0,
+        taxAmount: 39.0,
+        totalAmount: 839.0,
+        createdAt: now.toIso8601String(),
+        items: [CartItemModel(item: burger, quantity: 3)],
+      );
+
+      final orderWithoutHash = OrderModel(
+        id: 'ord_hash_2',
+        orderNumber: '20260919-2333-T1',
+        tableNumber: 'T1',
+        orderType: OrderType.dineIn,
+        status: OrderStatus.completed,
+        isPaid: true,
+        paymentStatus: 'paid',
+        paymentMethod: 'Card (Amex)',
+        subtotal: 800.0,
+        taxAmount: 39.0,
+        totalAmount: 839.0,
+        createdAt: now.toIso8601String(),
+        items: [CartItemModel(item: burger, quantity: 3)],
+      );
+
+      final deduplicated = db.deduplicateOrdersList([orderWithHash, orderWithoutHash]);
+      expect(deduplicated.length, 1);
+      expect(deduplicated.first.totalAmount, 839.0);
+    });
+
+    test('Deduplication upgrades pending order to completed order if duplicate arrived', () {
+      final now = DateTime.now();
+      final burger = MenuItemModel(
+        id: 'item_burger',
+        name: 'Veggie Burger',
+        description: 'Tasty veggie burger',
+        category: 'Fast Food',
+        itemType: 'Veg',
+        price: 100.0,
+      );
+
+      final pendingOrder = OrderModel(
+        id: 'ord_same_id',
+        orderNumber: '20260919-2333-T1',
+        tableNumber: 'T1',
+        orderType: OrderType.dineIn,
+        status: OrderStatus.pending,
+        isPaid: false,
+        paymentStatus: 'pending',
+        paymentMethod: 'unpaid',
+        subtotal: 800.0,
+        taxAmount: 39.0,
+        totalAmount: 839.0,
+        createdAt: now.toIso8601String(),
+        items: [CartItemModel(item: burger, quantity: 3)],
+      );
+
+      final completedOrder = OrderModel(
+        id: 'ord_same_id',
+        orderNumber: '20260919-2333-T1',
+        tableNumber: 'T1',
+        orderType: OrderType.dineIn,
+        status: OrderStatus.completed,
+        isPaid: true,
+        paymentStatus: 'paid',
+        paymentMethod: 'Card (Amex)',
+        subtotal: 800.0,
+        taxAmount: 39.0,
+        totalAmount: 839.0,
+        createdAt: now.toIso8601String(),
+        items: [CartItemModel(item: burger, quantity: 3)],
+      );
+
+      final deduplicated = db.deduplicateOrdersList([pendingOrder, completedOrder]);
+      expect(deduplicated.length, 1);
+      expect(deduplicated.first.status, OrderStatus.completed);
+      expect(deduplicated.first.isPaid, true);
+      expect(deduplicated.first.paymentMethod, 'Card (Amex)');
+    });
+
+    test('SalesReportData.fromJson deduplicates incoming duplicate orders array', () {
+      final json = {
+        'summary': {'totalRevenue': 839.0, 'totalOrders': 1},
+        'orders': [
+          {
+            'id': 'ord_1',
+            'orderNumber': '#20260919-2333-T1',
+            'totalAmount': 839.0,
+            'status': 'completed',
+            'paymentStatus': 'paid',
+            'isPaid': true,
+            'paymentMethod': 'Card (Amex)',
+            'items': [],
+          },
+          {
+            'id': 'ord_2',
+            'orderNumber': '20260919-2333-T1',
+            'totalAmount': 839.0,
+            'status': 'completed',
+            'paymentStatus': 'paid',
+            'isPaid': true,
+            'paymentMethod': 'Card (Amex)',
+            'items': [],
+          },
+        ],
+      };
+
+      final data = SalesReportData.fromJson(json);
+      expect(data.orders.length, 1);
+      expect(data.orders.first.totalAmount, 839.0);
+    });
+
     test('Dynamic date-filter Sales Trend multi-resolution bucketing', () async {
       final now = DateTime.now();
       final todayAt2PM = DateTime(now.year, now.month, now.day, 14, 30, 0);

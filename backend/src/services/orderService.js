@@ -65,7 +65,12 @@ class OrderService {
       searchConditions.push({ localOrderId: idempotencyKey });
     }
     if (lookupOrderNumber) {
+      const cleanNum = lookupOrderNumber.replace(/^#/, '').trim();
       searchConditions.push({ orderNumber: lookupOrderNumber });
+      if (cleanNum) {
+        searchConditions.push({ orderNumber: cleanNum });
+        searchConditions.push({ orderNumber: `#${cleanNum}` });
+      }
     }
     if (mongoose.Types.ObjectId.isValid(lookupOrderId)) {
       searchConditions.push({ _id: lookupOrderId });
@@ -358,8 +363,50 @@ class OrderService {
       customerId = customer ? customer._id : null;
     }
 
-    // 7. Create Order Document
+    // 7. Create or Update Order Document (Atomic deduplication)
     const invoiceNumber = `INV-${orderNumber}`;
+    const cleanNum = orderNumber.replace(/^#/, '').trim();
+    const existingConflict = await Order.findOne({
+      businessId,
+      orderNumber: { $in: [orderNumber, cleanNum, `#${cleanNum}`] },
+    });
+
+    if (existingConflict) {
+      existingConflict.status = status;
+      existingConflict.items = items.map((i) => ({
+        productId: i.productId && i.productId.length === 24 ? i.productId : undefined,
+        name: i.name,
+        price: Number(i.price) || 0,
+        quantity: Number(i.quantity) || 1,
+        foodType: (i.foodType || 'veg').toString().toLowerCase().replace('-', '_'),
+        note: i.note || '',
+      }));
+      existingConflict.subtotal = subtotal;
+      existingConflict.discountAmount = discountAmount;
+      existingConflict.taxAmount = taxAmount;
+      existingConflict.cgst = cgst;
+      existingConflict.sgst = sgst;
+      existingConflict.igst = igst;
+      existingConflict.tipAmount = tipAmount;
+      existingConflict.totalAmount = totalAmount;
+      if (rawData.paymentMethod) existingConflict.paymentMethod = rawData.paymentMethod;
+      if (rawData.customerName) existingConflict.customerName = rawData.customerName;
+      if (rawData.customerPhone) existingConflict.customerPhone = rawData.customerPhone;
+      await existingConflict.save();
+
+      return {
+        order: existingConflict,
+        sale: null,
+        invoice: {
+          invoiceNumber: existingConflict.invoiceNumber || `INV-${existingConflict.orderNumber}`,
+          invoiceDate: existingConflict.completedAt || existingConflict.createdAt,
+          totalAmount: existingConflict.totalAmount,
+        },
+        isExisting: true,
+        message: 'Order already exists and was synchronized',
+      };
+    }
+
     const order = await Order.create({
       businessId,
       orderNumber,
@@ -934,7 +981,12 @@ class OrderService {
       searchConditions.push({ _id: lookupOrderId });
     }
     if (lookupOrderNumber) {
+      const cleanNum = lookupOrderNumber.replace(/^#/, '').trim();
       searchConditions.push({ orderNumber: lookupOrderNumber });
+      if (cleanNum) {
+        searchConditions.push({ orderNumber: cleanNum });
+        searchConditions.push({ orderNumber: `#${cleanNum}` });
+      }
     }
     if (lookupSyncId) {
       searchConditions.push({ clientSyncId: lookupSyncId });
@@ -946,7 +998,6 @@ class OrderService {
       existingOrder = await Order.findOne({
         businessId: bId,
         $or: searchConditions,
-        status: { $nin: ['completed', 'cancelled'] },
       });
     }
 
@@ -1057,35 +1108,64 @@ class OrderService {
       order.printCount = (order.printCount || 0) + 1;
       await order.save();
     } else {
-      // CREATE NEW RUNNING ORDER
-      const invoiceNumber = `INV-${orderNumber}`;
-      order = await Order.create({
+      // Final guard: check if an order with this orderNumber already exists for this business
+      const cleanNum = orderNumber.replace(/^#/, '').trim();
+      const existingConflict = await Order.findOne({
         businessId: bId,
-        orderNumber,
-        orderType,
-        tableNumber,
-        deliveryAddress,
-        customerName,
-        customerPhone,
-        status: rawData.status || 'pending',
-        paymentStatus: 'pending',
-        paymentMethod: 'unpaid',
-        items: formattedItems,
-        subtotal,
-        discountAmount,
-        taxAmount,
-        cgst,
-        sgst,
-        igst,
-        tipAmount,
-        totalAmount,
-        notes,
-        qrIntentUrl,
-        invoiceNumber,
-        printCount: 1,
-        clientSyncId: lookupSyncId || undefined,
-        localOrderId: lookupSyncId || undefined,
+        orderNumber: { $in: [orderNumber, cleanNum, `#${cleanNum}`] },
       });
+
+      if (existingConflict) {
+        order = existingConflict;
+        order.items = formattedItems;
+        order.subtotal = subtotal;
+        order.discountAmount = discountAmount;
+        order.taxAmount = taxAmount;
+        order.cgst = cgst;
+        order.sgst = sgst;
+        order.igst = igst;
+        order.tipAmount = tipAmount;
+        order.totalAmount = totalAmount;
+        order.orderType = orderType;
+        order.tableNumber = tableNumber;
+        order.deliveryAddress = deliveryAddress;
+        if (customerName) order.customerName = customerName;
+        if (customerPhone) order.customerPhone = customerPhone;
+        if (notes) order.notes = notes;
+        order.qrIntentUrl = qrIntentUrl;
+        order.printCount = (order.printCount || 0) + 1;
+        await order.save();
+      } else {
+        // CREATE NEW RUNNING ORDER
+        const invoiceNumber = `INV-${orderNumber}`;
+        order = await Order.create({
+          businessId: bId,
+          orderNumber,
+          orderType,
+          tableNumber,
+          deliveryAddress,
+          customerName,
+          customerPhone,
+          status: rawData.status || 'pending',
+          paymentStatus: 'pending',
+          paymentMethod: 'unpaid',
+          items: formattedItems,
+          subtotal,
+          discountAmount,
+          taxAmount,
+          cgst,
+          sgst,
+          igst,
+          tipAmount,
+          totalAmount,
+          notes,
+          qrIntentUrl,
+          invoiceNumber,
+          printCount: 1,
+          clientSyncId: lookupSyncId || undefined,
+          localOrderId: lookupSyncId || undefined,
+        });
+      }
     }
 
     // Keep table occupied if dineIn (maintain runningKot if KOT is already running)
