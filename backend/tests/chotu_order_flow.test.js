@@ -137,6 +137,34 @@ describe('Chotu AI Voice Assistant - Automated Order Flow (/api/v1/chotu)', () =
       expect(cokeItem.matched).toBe(true);
     });
 
+    it('should parse pure Devanagari Hindi spoken order dynamically', async () => {
+      const res = await request(app)
+        .post('/api/v1/chotu/parse')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          text: 'टेबल 5 पर दो बटर नान और एक दाल मखनी लगा दो समझ गए',
+          sessionId: 'test_session_devanagari_1',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+
+      const cmd = res.body.data.command;
+      expect(cmd.intent).toBe('ADD_ITEM');
+      expect(cmd.table_number).toBe('5');
+      expect(cmd.items.length).toBe(2);
+
+      const naanItem = cmd.items.find((i) => i.product_name === 'Butter Naan');
+      expect(naanItem).toBeDefined();
+      expect(naanItem.quantity).toBe(2);
+      expect(naanItem.matched).toBe(true);
+
+      const dalItem = cmd.items.find((i) => i.product_name === 'Dal Makhani');
+      expect(dalItem).toBeDefined();
+      expect(dalItem.quantity).toBe(1);
+      expect(dalItem.matched).toBe(true);
+    });
+
     it('should distinguish UPDATE_QUANTITY ("Butter naan ko 4 kar do") from ADD_ITEM', async () => {
       const res = await request(app)
         .post('/api/v1/chotu/parse')

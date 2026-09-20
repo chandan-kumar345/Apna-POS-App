@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/theme/glass_theme.dart';
+import '../../core/utils/responsive_layout_helper.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
 
@@ -32,6 +35,10 @@ class _GetStartedScreenState extends State<GetStartedScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (ResponsiveLayoutHelper.isDesktop(context) || (!kIsWeb && Platform.isWindows)) {
+      return const LoginScreen();
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF040814),
       body: Stack(
@@ -84,7 +91,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                     child: _buildMotionBadge(
                       icon: Icons.soup_kitchen_rounded,
                       color: const Color(0xFFFF6B00),
-                      label: 'KDS Kitchen',
+                      label: 'Loyalty',
                     ),
                   ),
 
@@ -95,7 +102,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                     child: _buildMotionBadge(
                       icon: Icons.table_restaurant_rounded,
                       color: const Color(0xFF10B981),
-                      label: 'Tables',
+                      label: 'Campaigns',
                     ),
                   ),
 
@@ -125,12 +132,12 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                     child: Column(
                       children: [
                         // Positioned downside with generous top spacing to avoid any overlapping
-                        const SizedBox(height: 120),
+                        const SizedBox(height: 100),
 
                         // Centered Logo Container
                         Center(
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            padding: const EdgeInsets.symmetric(horizontal: 1, vertical: 10),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(28),
@@ -144,7 +151,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                               ],
                             ),
                             child: Image.asset(
-                              'assets/images/logo.png',
+                              'assets/images/apna_pos_brand_logo.png',
                               height: 120,
                               width: 170,
                               fit: BoxFit.contain,

@@ -21,6 +21,7 @@ import '../../core/services/table_service.dart';
 import '../loyalty/widgets/loyalty_redemption_dialog.dart';
 import 'widgets/pos_product_media_box.dart';
 import 'widgets/chotu_mic_button.dart';
+import '../../core/services/chotu_service.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
@@ -196,10 +197,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   bool get _hasDeliveryAddress => _deliveryAddress.trim().isNotEmpty;
 
+  final ChotuService _chotuService = ChotuService();
+
   @override
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
+    _chotuService.addActionListener(_onChotuCommandReceived);
     _initLoyaltyStatus();
     if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
@@ -210,11 +214,101 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   void dispose() {
     _promoCodeController.dispose();
     db.removeListener(_onDbChange);
+    _chotuService.removeActionListener(_onChotuCommandReceived);
     super.dispose();
   }
 
   void _onDbChange() {
     if (mounted) setState(() {});
+  }
+
+  void _onChotuCommandReceived(ChotuParsedCommand cmd) {
+    if (!mounted) return;
+
+    final targetTable = cmd.tableNumber;
+    if (targetTable != null && targetTable.isNotEmpty && !isSameTable(_selectedTable, targetTable)) {
+      _loadCartForTable(targetTable);
+    }
+
+    switch (cmd.intent) {
+      case 'ADD_ITEM':
+      case 'REMOVE_ITEM':
+      case 'UPDATE_QUANTITY':
+        if (_selectedTable != null && _selectedTable!.isNotEmpty) {
+          final liveCart = db.getLiveTableCart(_selectedTable!);
+          setState(() {
+            _cartItems.clear();
+            _cartItems.addAll(liveCart.map((i) => i.clone()));
+            _syncTableStatusWithCart();
+          });
+        }
+        break;
+
+      case 'SEND_KOT':
+        if (_cartItems.isNotEmpty) {
+          _sendKotOrder();
+        }
+        break;
+
+      case 'GENERATE_BILL':
+        if (_cartItems.isNotEmpty) {
+          _handleSaveAndPrint(null, context);
+        }
+        break;
+
+      case 'CLEAR_CART':
+        setState(() {
+          _cartItems.clear();
+          _resetDiscountAndPromoState();
+          _syncTableStatusWithCart();
+        });
+        break;
+
+      case 'APPLY_DISCOUNT':
+        setState(() {
+          if (cmd.isRemoveDiscount || (cmd.discountValue != null && cmd.discountValue == 0)) {
+            _resetDiscountAndPromoState();
+          } else if (cmd.discountValue != null) {
+            _discountInputValue = cmd.discountValue!;
+            _discountMode = cmd.discountType ?? 'percent';
+            _discountAmount = 0.0;
+          }
+          _saveCurrentDraft();
+        });
+        break;
+
+      case 'SWITCH_TABLE':
+        if (cmd.tableNumber != null && cmd.tableNumber!.isNotEmpty) {
+          _loadCartForTable(cmd.tableNumber!);
+        }
+        break;
+
+      case 'SET_CUSTOMER_DETAILS':
+        setState(() {
+          if (cmd.customerName != null && cmd.customerName!.isNotEmpty) {
+            _customerName = cmd.customerName!;
+          }
+          if (cmd.customerPhone != null && cmd.customerPhone!.isNotEmpty) {
+            _customerPhone = cmd.customerPhone!;
+          }
+        });
+        _checkCustomerLoyalty();
+        break;
+
+      case 'SET_ORDER_TYPE':
+        if (cmd.orderType != null) {
+          setState(() {
+            if (cmd.orderType == 'takeaway') {
+              _selectedOrderType = OrderType.takeaway;
+            } else if (cmd.orderType == 'delivery') {
+              _selectedOrderType = OrderType.delivery;
+            } else {
+              _selectedOrderType = OrderType.dineIn;
+            }
+          });
+        }
+        break;
+    }
   }
 
   @override

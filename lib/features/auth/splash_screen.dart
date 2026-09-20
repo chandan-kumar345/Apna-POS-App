@@ -1,12 +1,16 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/network_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/utils/responsive_layout_helper.dart';
 import '../notifications/services/notification_permission_helper.dart';
 
 import '../dashboard/main_layout.dart';
 import 'get_started_screen.dart';
+import 'login_screen.dart';
 import 'create_profile_screen.dart';
 import '../onboarding/restaurant_onboarding_screen.dart';
 import '../onboarding/add_business_address_screen.dart';
@@ -81,7 +85,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     if (_navigated || !mounted) return;
     _navigated = true;
 
-    Widget targetScreen = const GetStartedScreen();
+    final bool isDesktopPlatform = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final Widget defaultUnauthScreen = isDesktopPlatform ? const LoginScreen() : const GetStartedScreen();
+    Widget targetScreen = defaultUnauthScreen;
 
     try {
       // 1. Fast background check of ApiEndpoints & Connectivity without blocking indefinitely
@@ -155,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
           }
         }
       } else {
-        targetScreen = const GetStartedScreen();
+        targetScreen = defaultUnauthScreen;
       }
     } catch (e) {
       debugPrint('SplashScreen auth verification error/fallback: $e');
@@ -165,7 +171,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             ? const MainLayout()
             : const RestaurantOnboardingScreen();
       } else {
-        targetScreen = const GetStartedScreen();
+        targetScreen = defaultUnauthScreen;
       }
     }
 
@@ -258,9 +264,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                             ],
                           ),
                           child: Image.asset(
-                            'assets/images/logo.png',
+                            'assets/images/apna_pos_brand_logo.png',
                             height: 140,
-                            width: 200,
+                            width: 140,
                             fit: BoxFit.contain,
                           ),
                         ),

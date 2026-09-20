@@ -1451,7 +1451,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       // Official Apna POS Brand Logo in Top-Left
                       Image.asset(
                         'assets/images/apna_pos_brand_logo.png',
-                        height: 44,
+                        height: 48,
                         fit: BoxFit.contain,
                         errorBuilder: (context, error, stackTrace) => Row(
                           mainAxisSize: MainAxisSize.min,
@@ -1493,7 +1493,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 children: [
                                   Image.asset(
                                     'assets/images/apna_pos_brand_logo.png',
-                                    height: 190,
+                                    height: 220,
                                     fit: BoxFit.contain,
                                     errorBuilder: (context, error, stackTrace) => Container(
                                       height: 180,

@@ -7,6 +7,7 @@ import '../../../../core/services/speech_recognition_service.dart';
 
 enum ChotuSheetState {
   idle,
+  greeting,
   listening,
   processing,
   executed,
@@ -91,8 +92,11 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   void _onSpeechStateChanged() {
     if (mounted) {
       setState(() {});
-      if (_speechService.status == SpeechStatus.done && _speechService.liveTranscription.isNotEmpty) {
-        _sendToChotu(_speechService.liveTranscription);
+      if (_sheetState == ChotuSheetState.listening &&
+          _speechService.status == SpeechStatus.done &&
+          _speechService.liveTranscription.trim().isNotEmpty) {
+        final text = _speechService.liveTranscription.trim();
+        _sendToChotu(text);
       }
     }
   }
@@ -101,7 +105,25 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     if (mounted) setState(() {});
   }
 
+  /// Initial Hindi Greeting Flow: Chotu speaks "Kya hua sir?" then starts listening
+  Future<void> _startGreetingFlow() async {
+    if (!mounted) return;
+    setState(() {
+      _sheetState = ChotuSheetState.greeting;
+      _unmatchedItem = null;
+      _statusFeedback = null;
+    });
+
+    // Speak Hindi greeting aloud
+    await _ttsService.speakGreeting('Kya hua sir?');
+
+    if (mounted && _sheetState == ChotuSheetState.greeting) {
+      _startListening();
+    }
+  }
+
   void _startListening() {
+    if (!mounted) return;
     setState(() {
       _sheetState = ChotuSheetState.listening;
       _unmatchedItem = null;
@@ -115,24 +137,30 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
   }
 
   Future<void> _sendToChotu(String text) async {
-    if (text.trim().isEmpty) return;
+    // Strip conversation end triggers (understand, samjhe, etc.)
+    final clean = text
+        .replaceAll(RegExp(r'\b(understand|understood|samjhe|samajh\s*gaye|samjh\s*gaye|samjha|samjh)\b', caseSensitive: false), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    if (clean.isEmpty) return;
 
     setState(() {
       _sheetState = ChotuSheetState.processing;
     });
 
     await _chotuService.transcribe(
-      speechText: text,
+      speechText: clean,
       language: 'hinglish',
       tableNumber: widget.tableNumber,
     );
 
     final parsed = await _chotuService.parseCommand(
-      speechText: text,
+      speechText: clean,
       tableNumber: widget.tableNumber,
     );
 
-    // Check if any requested item is missing or out of stock
+    // Check if any requested item is missing or out of stock (for ADD_ITEM)
     final missing = _chotuService.checkUnmatchedOrOutOfStockItem(parsed);
     if (missing != null) {
       if (mounted) {
@@ -143,36 +171,41 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
       }
 
       final promptSpeech =
-          '${missing.productName} POS mein added nahi hai ya out of stock hai. Kya ise POS mein permanently add karna hai ya temporary?';
+          '${missing.productName} POS menu mein nahi mila sir. Kya ise permanently add karna hai ya temporary?';
       await _ttsService.speak(promptSpeech);
       return;
     }
 
-    // If all items are available, execute immediately
-    if (parsed.items.isNotEmpty) {
-      final result = await _chotuService.executeCommand(parsed);
-      final replyMsg = result['chotuMessage']?.toString() ?? parsed.chotuResponse;
-
-      if (mounted) {
-        setState(() {
-          _sheetState = ChotuSheetState.executed;
-          _statusFeedback = replyMsg;
-        });
-      }
-
-      await _ttsService.speak(replyMsg);
-      widget.onTranscriptionUpdated?.call();
-
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) _closeOverlay();
+    // When Chotu understands the command, speak "Ok" first, then execute
+    if (mounted) {
+      setState(() {
+        _statusFeedback = 'Ok sir... Order execute ho raha hai';
       });
-    } else {
-      if (mounted) {
-        setState(() {
-          _sheetState = ChotuSheetState.idle;
-        });
-      }
     }
+    await _ttsService.speak('Ok');
+
+    // Execute the command in POS
+    final result = await _chotuService.executeCommand(parsed);
+    final replyMsg = result['chotuMessage']?.toString() ??
+        (result['message']?.toString()) ??
+        parsed.chotuResponse;
+
+    if (mounted) {
+      setState(() {
+        _sheetState = ChotuSheetState.executed;
+        _statusFeedback = replyMsg;
+      });
+    }
+
+    await _ttsService.speak(replyMsg);
+    widget.onTranscriptionUpdated?.call();
+
+    // Auto close overlay after confirmation
+    Future.delayed(const Duration(milliseconds: 2200), () {
+      if (mounted && _sheetState == ChotuSheetState.executed) {
+        _closeOverlay();
+      }
+    });
   }
 
   Future<void> _resolveMissingItem({required bool permanently}) async {
@@ -190,7 +223,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         tableNumber: widget.tableNumber,
         price: item.price,
       );
-      final msg = '${item.productName} permanently POS mein add kar diya gaya hai.';
+      final msg = '${item.productName} permanently POS mein add kar diya gaya hai sir.';
       setState(() => _statusFeedback = msg);
       await _ttsService.speak(msg);
     } else {
@@ -200,14 +233,14 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         tableNumber: widget.tableNumber,
         price: item.price,
       );
-      final msg = '${item.productName} temporary is order ke liye add kar diya.';
+      final msg = '${item.productName} temporary is order ke liye add kar diya sir.';
       setState(() => _statusFeedback = msg);
       await _ttsService.speak(msg);
     }
 
     widget.onTranscriptionUpdated?.call();
 
-    Future.delayed(const Duration(milliseconds: 1600), () {
+    Future.delayed(const Duration(milliseconds: 2000), () {
       if (mounted) _closeOverlay();
     });
   }
@@ -222,7 +255,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    final isListening = _sheetState == ChotuSheetState.listening;
+    final isListening = _sheetState == ChotuSheetState.listening || _sheetState == ChotuSheetState.greeting;
     final isExecuted = _sheetState == ChotuSheetState.executed;
 
     return Material(
@@ -237,26 +270,46 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
               child: Container(
-                color: Colors.black.withValues(alpha: 0.55),
+                color: Colors.black.withValues(alpha: 0.65),
               ),
             ),
           ),
 
-          // 2. Chotu Robot in Big Frame + Interactive Section below
+          // 2. Top-Right Close Button
+          Positioned(
+            top: 24,
+            right: 24,
+            child: SafeArea(
+              child: IconButton(
+                icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 28),
+                onPressed: _closeOverlay,
+                tooltip: 'Close Chotu',
+              ),
+            ),
+          ),
+
+          // 3. Chotu Robot in Big Frame + Speech Bubble + Interactive Section below
           Center(
             child: FadeTransition(
               opacity: _growFade,
               child: ScaleTransition(
                 scale: _growScale,
                 child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Conversational Speech Bubble above Robot
+                      _buildSpeechBubble(),
+
+                      const SizedBox(height: 10),
+
                       // Floating Big Robot Character
                       GestureDetector(
                         onTap: () {
                           if (_sheetState == ChotuSheetState.idle) {
-                            _startListening();
+                            _startGreetingFlow();
                           } else if (isListening) {
                             _stopListening();
                           }
@@ -270,7 +323,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                               offset: Offset(0, floatY),
                               child: SizedBox(
                                 width: 270,
-                                height: 300,
+                                height: 280,
                                 child: Stack(
                                   alignment: Alignment.center,
                                   children: [
@@ -284,13 +337,13 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                                       size: const Size(270, 270),
                                     ),
 
-                                    // Ultra-clear HD Big Robot Character with "Chotu" Badge
+                                    // Ultra-clear HD Big Robot Character
                                     Hero(
                                       tag: 'chotu_robot_hero',
                                       child: Image.asset(
                                         'assets/images/chotu_robot.png',
                                         width: 220,
-                                        height: 280,
+                                        height: 260,
                                         fit: BoxFit.contain,
                                         filterQuality: FilterQuality.high,
                                       ),
@@ -303,9 +356,9 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
                         ),
                       ),
 
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 18),
 
-                      // Selected Section directly below the robot
+                      // Main Action Section directly below the robot (Start Button / Voice Status)
                       _buildBottomActionSection(),
                     ],
                   ),
@@ -318,10 +371,92 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     );
   }
 
+  /// Interactive Speech Bubble above Chotu
+  Widget _buildSpeechBubble() {
+    String text = 'Start dabayein Chotu se baat karne ke liye';
+    Color bubbleColor = const Color(0xFF6366F1);
+    IconData icon = Icons.chat_bubble_outline_rounded;
+
+    switch (_sheetState) {
+      case ChotuSheetState.idle:
+        text = 'Start dabayein Chotu se baat karne ke liye';
+        bubbleColor = const Color(0xFF6366F1);
+        icon = Icons.mic_rounded;
+        break;
+      case ChotuSheetState.greeting:
+        text = 'क्या हुआ सर? (Kya hua sir?)';
+        bubbleColor = const Color(0xFF00A86B);
+        icon = Icons.record_voice_over_rounded;
+        break;
+      case ChotuSheetState.listening:
+        text = _speechService.liveTranscription.isNotEmpty
+            ? _speechService.liveTranscription
+            : 'Listening... Command bolne ke baad boliye "Understand"';
+        bubbleColor = const Color(0xFF4285F4);
+        icon = Icons.mic_rounded;
+        break;
+      case ChotuSheetState.processing:
+        text = 'Command samajh raha hoon...';
+        bubbleColor = const Color(0xFF3B82F6);
+        icon = Icons.sync_rounded;
+        break;
+      case ChotuSheetState.unmatchedItem:
+        text = '${_unmatchedItem?.productName ?? "Item"} menu mein nahi mila sir';
+        bubbleColor = const Color(0xFFF59E0B);
+        icon = Icons.warning_amber_rounded;
+        break;
+      case ChotuSheetState.executed:
+        text = _statusFeedback ?? 'Command successfully executed!';
+        bubbleColor = const Color(0xFF10B981);
+        icon = Icons.check_circle_outline_rounded;
+        break;
+    }
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 420),
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: bubbleColor.withValues(alpha: 0.6), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: bubbleColor.withValues(alpha: 0.3),
+            blurRadius: 18,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: bubbleColor, size: 20),
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text(
+              text,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBottomActionSection() {
     switch (_sheetState) {
       case ChotuSheetState.idle:
         return _buildStartButton();
+
+      case ChotuSheetState.greeting:
+        return _buildGreetingPill();
 
       case ChotuSheetState.listening:
         return _buildListeningPill();
@@ -337,7 +472,7 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     }
   }
 
-  /// Start button in the selected section below the robot
+  /// Prominent Start button
   Widget _buildStartButton() {
     return Container(
       decoration: BoxDecoration(
@@ -345,28 +480,28 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF6366F1).withValues(alpha: 0.55),
-            blurRadius: 20,
+            blurRadius: 22,
             spreadRadius: 2,
             offset: const Offset(0, 4),
           ),
         ],
       ),
       child: ElevatedButton.icon(
-        onPressed: _startListening,
-        icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 22),
+        onPressed: _startGreetingFlow,
+        icon: const Icon(Icons.mic_rounded, color: Colors.white, size: 24),
         label: const Text(
           'Start',
           style: TextStyle(
             color: Colors.white,
             fontSize: 17,
             fontWeight: FontWeight.w800,
-            letterSpacing: 0.8,
+            letterSpacing: 0.5,
           ),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF6366F1),
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 42, vertical: 15),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
           elevation: 0,
         ),
@@ -374,31 +509,66 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
     );
   }
 
-  /// Active listening indicator
+  /// Greeting Speaking Pill
+  Widget _buildGreetingPill() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF00A86B).withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(26),
+        border: Border.all(color: const Color(0xFF00A86B).withValues(alpha: 0.7), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF00A86B).withValues(alpha: 0.35),
+            blurRadius: 16,
+            spreadRadius: 2,
+          ),
+        ],
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.record_voice_over_rounded, color: Color(0xFF5EEAD4), size: 20),
+          SizedBox(width: 8),
+          Text(
+            'Chotu: "क्या हुआ सर?"',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Active listening indicator with Google Voice Search style wave dots
   Widget _buildListeningPill() {
     return GestureDetector(
       onTap: _stopListening,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
         decoration: BoxDecoration(
-          color: const Color(0xFFEF4444).withValues(alpha: 0.2),
+          color: const Color(0xFF1E1E2E).withValues(alpha: 0.95),
           borderRadius: BorderRadius.circular(26),
-          border: Border.all(color: const Color(0xFFEF4444).withValues(alpha: 0.6), width: 1.5),
+          border: Border.all(color: const Color(0xFF4285F4).withValues(alpha: 0.8), width: 1.5),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFFEF4444).withValues(alpha: 0.3),
-              blurRadius: 16,
+              color: const Color(0xFF4285F4).withValues(alpha: 0.35),
+              blurRadius: 18,
               spreadRadius: 2,
             ),
           ],
         ),
-        child: const Row(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.mic_rounded, color: Color(0xFFFCA5A5), size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Listening... Bolie',
+            _buildGoogleVoiceWaveDots(),
+            const SizedBox(width: 10),
+            const Text(
+              'Listening... Boliye sir',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 14.5,
@@ -409,6 +579,39 @@ class _ChotuVoiceSheetState extends State<ChotuVoiceSheet> with TickerProviderSt
           ],
         ),
       ),
+    );
+  }
+
+  /// Google Voice Search style 4-dot animated voice equalizer
+  Widget _buildGoogleVoiceWaveDots() {
+    final level = _speechService.audioLevel;
+    const colors = [
+      Color(0xFF4285F4), // Google Blue
+      Color(0xFFEA4335), // Google Red
+      Color(0xFFFBBC05), // Google Yellow
+      Color(0xFF34A853), // Google Green
+    ];
+
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(4, (i) {
+            final wave = (math.sin((_pulseController.value * 2 * math.pi) + (i * 0.9)) + 1.0) / 2.0;
+            final dynamicHeight = 7.0 + (level > 0.05 ? (level * 16.0 * (0.5 + wave * 0.5)) : (wave * 6.0));
+            return Container(
+              width: 5,
+              height: dynamicHeight.clamp(5.0, 24.0),
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              decoration: BoxDecoration(
+                color: colors[i],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            );
+          }),
+        );
+      },
     );
   }
 

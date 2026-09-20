@@ -80,20 +80,25 @@ class CronService {
 
       totalSales = Math.round(totalSales * 100) / 100;
       revenue = Math.round(revenue * 100) / 100;
+      const avgOrderValue = orderCount > 0 ? Math.round(totalSales / orderCount) : 0;
+      const formattedSales = `₹${totalSales.toLocaleString('en-IN')}`;
+      const formattedAvg = `₹${avgOrderValue.toLocaleString('en-IN')}`;
 
       // Construct dynamic message
       let message = '';
       if (orderCount > 0) {
-        message = `Here’s your business summary for ${formattedDate}: Total Sales ₹${totalSales.toLocaleString('en-IN')} from ${orderCount} order${orderCount > 1 ? 's' : ''}, with revenue of ₹${revenue.toLocaleString('en-IN')}. Tap to view your complete sales report.`;
+        message = `🟢 Total Sales: ${formattedSales}  •  🔵 Total Orders: ${orderCount}  •  🟠 Avg Order Value: ${formattedAvg}`;
       } else {
-        message = `Your daily business summary for ${formattedDate} is ready. No orders were recorded today. Tap to view your sales report.`;
+        message = `Your daily business summary for ${formattedDate} is ready. No orders were recorded today. Tap to view sales report.`;
       }
+
+      const title = `Daily Sales Summary 📊 • ${formattedDate}`;
 
       const notification = await notificationService.createNotification({
         userId: business.ownerId,
         businessId: bId,
         type: 'daily_sales_summary',
-        title: 'Your Daily Business Summary 📊',
+        title,
         message,
         entityType: 'sales_report',
         entityId: dateStr,
@@ -103,6 +108,7 @@ class CronService {
           totalSales,
           revenue,
           ordersCount: orderCount,
+          avgOrderValue,
           timezone,
           orders: orderBreakdown,
         },
@@ -113,13 +119,14 @@ class CronService {
       const pushNotificationService = require('./pushNotificationService');
       pushNotificationService.sendPushNotification({
         userId: business.ownerId,
-        title: 'Your Daily Business Summary 📊',
+        title,
         message,
         data: {
           type: 'daily_sales_summary',
           date: dateStr,
           totalSales,
           ordersCount: orderCount,
+          avgOrderValue,
           orders: orderBreakdown,
         },
       }).catch(() => {});

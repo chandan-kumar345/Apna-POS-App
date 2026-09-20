@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,9 +27,11 @@ class SoundService {
       final prefs = await SharedPreferences.getInstance();
       soundEnabled = prefs.getBool(_prefKeySoundEnabled) ?? true;
 
-      await _buttonPlayer.setPlayerMode(PlayerMode.lowLatency);
-      await _keyPlayer.setPlayerMode(PlayerMode.lowLatency);
-      await _notificationPlayer.setPlayerMode(PlayerMode.lowLatency);
+      if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
+        await _buttonPlayer.setPlayerMode(PlayerMode.lowLatency);
+        await _keyPlayer.setPlayerMode(PlayerMode.lowLatency);
+        await _notificationPlayer.setPlayerMode(PlayerMode.lowLatency);
+      }
 
       await _buttonPlayer.setReleaseMode(ReleaseMode.stop);
       await _keyPlayer.setReleaseMode(ReleaseMode.stop);

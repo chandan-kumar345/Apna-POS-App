@@ -10,7 +10,7 @@ class NotificationPermissionHelper {
   /// directly via native Android system permission popups (no custom UI)
   static Future<void> requestAllAppPermissionsOnStartup() async {
     try {
-      if (kIsWeb) return;
+      if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
 
       final prefs = await SharedPreferences.getInstance();
       final alreadyRequested = prefs.getBool(_prefKeyInitialRequested) ?? false;

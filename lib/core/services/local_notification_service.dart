@@ -1,7 +1,10 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:intl/intl.dart';
 import '../../features/notifications/services/notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
+import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
 
 class LocalNotificationService {
@@ -63,6 +66,16 @@ class LocalNotificationService {
     String? entityId,
     Map<String, dynamic> metadata = const {},
     bool playSound = true,
+    StyleInformation? styleInformation,
+    String channelId = 'apna_pos_general_v2',
+    String channelName = 'General Alerts & Orders',
+    String channelDescription = 'Real-time notifications for orders, leads, and daily summaries',
+    Importance importance = Importance.max,
+    Priority priority = Priority.high,
+    List<AndroidNotificationAction>? actions,
+    Color? color,
+    NotificationVisibility visibility = NotificationVisibility.public,
+    AndroidNotificationCategory? category,
   }) async {
     // 1. Play immediate in-app audio feedback from assets
     if (playSound) {
@@ -77,16 +90,22 @@ class LocalNotificationService {
     if (!_isInitialized) await init();
 
     try {
-      const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        'apna_pos_general_v2',
-        'General Alerts & Orders',
-        channelDescription: 'Real-time notifications for orders, leads, and daily summaries',
-        importance: Importance.max,
-        priority: Priority.high,
+      final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+        channelId,
+        channelName,
+        channelDescription: channelDescription,
+        importance: importance,
+        priority: priority,
         showWhen: true,
         enableVibration: true,
         playSound: true,
-        sound: RawResourceAndroidNotificationSound('notification_sound'),
+        sound: const RawResourceAndroidNotificationSound('notification_sound'),
+        styleInformation: styleInformation,
+        largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+        actions: actions,
+        color: color,
+        visibility: visibility,
+        category: category,
       );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
@@ -96,7 +115,7 @@ class LocalNotificationService {
         sound: 'Notification_sound.mp3',
       );
 
-      const NotificationDetails platformDetails = NotificationDetails(
+      final NotificationDetails platformDetails = NotificationDetails(
         android: androidDetails,
         iOS: iosDetails,
       );
@@ -114,7 +133,7 @@ class LocalNotificationService {
     }
   }
 
-  /// Deliver daily business summary as a prominent system push notification & register in Notification Center
+  /// Deliver daily business summary as a prominent visual push notification in native notification center
   Future<void> deliverDailyBusinessSummaryPushNotification({
     required double totalSales,
     required int orderCount,
@@ -128,10 +147,34 @@ class LocalNotificationService {
           ? formattedDate.trim()
           : (dateStr ?? 'Today');
 
-      final title = 'Your Daily Business Summary 📊';
-      final body = orderCount > 0
-          ? 'Here’s your business summary for $dateLabel: Total Sales ₹${totalSales.toStringAsFixed(0)} from $orderCount orders. Tap to view orders breakdown.'
-          : 'Your daily summary for $dateLabel is ready. No orders recorded today. Tap to view report.';
+      final double avgOrderValue =
+          orderCount > 0 ? (totalSales / orderCount).roundToDouble() : 0.0;
+
+      final currencyFormatter = NumberFormat.currency(
+        locale: 'en_IN',
+        symbol: '₹',
+        decimalDigits: 0,
+      );
+
+      final String salesFormatted = currencyFormatter.format(totalSales.round());
+      final String avgFormatted = currencyFormatter.format(avgOrderValue.round());
+
+      final title = 'Daily Sales Summary 📊 • $dateLabel';
+      final String body;
+      final String expandedBigText;
+
+      if (orderCount > 0) {
+        body = '🟢 Sales: $salesFormatted  •  🔵 Orders: $orderCount  •  🟠 Avg: $avgFormatted';
+        expandedBigText = '🎉 Business Performance for $dateLabel:\n'
+            '• Revenue: $salesFormatted earned\n'
+            '• Orders: $orderCount completed\n'
+            '• Avg Ticket: $avgFormatted/order\n'
+            'Tap to inspect sales breakdown & payment methods.';
+      } else {
+        body = 'Your daily summary for $dateLabel is ready. No orders recorded today.';
+        expandedBigText =
+            'No sales recorded for $dateLabel. Your register and catalog are active and ready for tomorrow.';
+      }
 
       final Map<String, dynamic> metadata = {
         'date': dateStr ?? DateTime.now().toIso8601String().split('T')[0],
@@ -139,10 +182,38 @@ class LocalNotificationService {
         'totalSales': totalSales,
         'revenue': revenue,
         'ordersCount': orderCount,
+        'avgOrderValue': avgOrderValue,
         'orders': orders,
       };
 
-      // 1. Show device native push notification in system tray with sound
+      // 1. Generate 3-Card Visual Metric Banner for Native Notification Tray
+      String? bannerPath;
+      if (_isSupportedPlatform) {
+        bannerPath = await SalesNotificationBannerGenerator.generateBannerFile(
+          totalSales: totalSales,
+          orderCount: orderCount,
+          avgOrderValue: avgOrderValue,
+        );
+      }
+
+      StyleInformation? styleInfo;
+      if (bannerPath != null && bannerPath.isNotEmpty) {
+        styleInfo = BigPictureStyleInformation(
+          FilePathAndroidBitmap(bannerPath),
+          largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+          contentTitle: '📊 Daily Sales Summary • $dateLabel',
+          summaryText: '🟢 $salesFormatted  •  🔵 $orderCount Orders  •  🟠 Avg $avgFormatted',
+          hideExpandedLargeIcon: true,
+        );
+      } else {
+        styleInfo = BigTextStyleInformation(
+          expandedBigText,
+          contentTitle: title,
+          summaryText: '$salesFormatted • $orderCount Orders',
+        );
+      }
+
+      // 2. Show device native push notification in system tray with 3-card banner in extended mode
       await showPushNotification(
         id: 9991,
         title: title,
@@ -153,9 +224,26 @@ class LocalNotificationService {
         entityId: dateStr,
         metadata: metadata,
         playSound: true,
+        channelId: 'apna_pos_sales_v2',
+        channelName: 'Sales & Business Reports',
+        channelDescription: 'Extended high-priority daily sales summaries and business metrics',
+        importance: Importance.max,
+        priority: Priority.max,
+        color: const Color(0xFF0F9D58),
+        category: AndroidNotificationCategory.status,
+        visibility: NotificationVisibility.public,
+        actions: const [
+          AndroidNotificationAction(
+            'view_sales_report',
+            '📊 View Sales Report',
+            showsUserInterface: true,
+            cancelNotification: true,
+          ),
+        ],
+        styleInformation: styleInfo,
       );
 
-      // 2. Add directly to Notification Center list
+      // 3. Add directly to Notification Center list
       NotificationService().addLocalNotification(
         title: title,
         message: body,

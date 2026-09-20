@@ -303,6 +303,110 @@ class ChotuService {
         break;
       }
 
+      case 'SEND_KOT': {
+        // Update table status to runningKot if table exists
+        if (targetTableStr || tableNum) {
+          try {
+            await Table.findOneAndUpdate(
+              {
+                businessId,
+                $or: [{ name: targetTableStr }, { name: `T-${tableNum}` }, { tableNumber: parseInt(tableNum, 10) || 0 }],
+              },
+              { $set: { status: 'runningKot' } }
+            );
+            tableService.emitTableUpdateForTable(businessId, targetTableStr || tableNum);
+          } catch (_) {}
+        }
+
+        executionResult = {
+          success: true,
+          intent: 'SEND_KOT',
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || `Table ${tableNum || ''} ka KOT kitchen mein bhej diya sir.`,
+        };
+        break;
+      }
+
+      case 'GENERATE_BILL': {
+        executionResult = {
+          success: true,
+          intent: 'GENERATE_BILL',
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || `Table ${tableNum || ''} ka bill generate kar diya sir.`,
+        };
+        break;
+      }
+
+      case 'CLEAR_CART': {
+        try {
+          await cartService.clearCart(businessId, targetTableStr || tableNum, 'dineIn');
+          if (targetTableStr || tableNum) {
+            await Table.findOneAndUpdate(
+              {
+                businessId,
+                $or: [{ name: targetTableStr }, { name: `T-${tableNum}` }, { tableNumber: parseInt(tableNum, 10) || 0 }],
+              },
+              { $set: { status: 'free', occupiedSince: null } }
+            );
+            tableService.emitTableUpdateForTable(businessId, targetTableStr || tableNum);
+          }
+        } catch (_) {}
+
+        executionResult = {
+          success: true,
+          intent: 'CLEAR_CART',
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || 'Cart clear kar diya gaya hai sir.',
+        };
+        break;
+      }
+
+      case 'APPLY_DISCOUNT': {
+        executionResult = {
+          success: true,
+          intent: 'APPLY_DISCOUNT',
+          tableNumber: targetTableStr || tableNum,
+          discountValue: command.discount_value,
+          discountType: command.discount_type,
+          isRemove: command.is_remove,
+          chotuMessage: command.chotu_response || `${command.discount_value}% discount apply kar diya sir.`,
+        };
+        break;
+      }
+
+      case 'SWITCH_TABLE': {
+        executionResult = {
+          success: true,
+          intent: 'SWITCH_TABLE',
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || `Table ${tableNum} select kar liya sir.`,
+        };
+        break;
+      }
+
+      case 'SET_CUSTOMER_DETAILS': {
+        executionResult = {
+          success: true,
+          intent: 'SET_CUSTOMER_DETAILS',
+          customerName: command.customer_name,
+          customerPhone: command.customer_phone,
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || 'Customer details save kar di sir.',
+        };
+        break;
+      }
+
+      case 'SET_ORDER_TYPE': {
+        executionResult = {
+          success: true,
+          intent: 'SET_ORDER_TYPE',
+          orderType: command.order_type,
+          tableNumber: targetTableStr || tableNum,
+          chotuMessage: command.chotu_response || `Order type ${command.order_type} set kar diya sir.`,
+        };
+        break;
+      }
+
       case 'CHECK_ITEM_AVAILABILITY': {
         executionResult = {
           success: true,

@@ -85,8 +85,68 @@ class AICommandEngine {
     // 2. Identify Intent
     let intent = 'ADD_ITEM';
 
-    // A. Check for Search / Availability
+    // A. Check for Send KOT / Print KOT
     if (
+      (/\b(kot|kitchen|kitchin)\b/i.test(lower) &&
+        /\b(bhej|print|laga|daal|generate|send|karo|do|nikal)\b/i.test(lower)) ||
+      lower.includes('kot print') ||
+      lower.includes('print kot') ||
+      lower.includes('kitchen order')
+    ) {
+      intent = 'SEND_KOT';
+    }
+    // B. Check for Bill Generation / Checkout / Save & Print / Settle Order
+    else if (
+      lower.includes('bill print') ||
+      lower.includes('print bill') ||
+      lower.includes('settle order') ||
+      lower.includes('settle') ||
+      lower.includes('save and print') ||
+      lower.includes('save & print') ||
+      lower.includes('checkout') ||
+      ((lower.includes('bill') || lower.includes('payment') || lower.includes('paisa') || lower.includes('hisab')) &&
+        (lower.includes('bana') || lower.includes('print') || lower.includes('generate') || lower.includes('karo') || lower.includes('do') || lower.includes('nikal') || lower.includes('le') || lower.includes('settle')))
+    ) {
+      intent = 'GENERATE_BILL';
+    }
+    // C. Check for Clear Cart / Cancel Order
+    else if (
+      (lower.includes('clear') || lower.includes('cancel') || lower.includes('khali') || lower.includes('hata')) &&
+      (lower.includes('cart') || lower.includes('sab') || lower.includes('poora') || lower.includes('all') || lower.includes('order')) &&
+      !lower.includes('butter') && !lower.includes('naan') && !lower.includes('paneer') && !lower.includes('roti')
+    ) {
+      intent = 'CLEAR_CART';
+    }
+    // D. Check for Apply Discount
+    else if (
+      lower.includes('discount') || lower.includes('off') || lower.includes('chhoot') || lower.includes('coupon')
+    ) {
+      intent = 'APPLY_DISCOUNT';
+    }
+    // E. Check for Customer Details
+    else if (
+      (lower.includes('customer') || lower.includes('grahak')) &&
+      (lower.includes('naam') || lower.includes('name') || lower.includes('number') || lower.includes('phone') || lower.includes('mobile'))
+    ) {
+      intent = 'SET_CUSTOMER_DETAILS';
+    }
+    // F. Check for Order Type (Takeaway, Delivery, Dine In)
+    else if (
+      (lower.includes('takeaway') || lower.includes('take away') || lower.includes('delivery') || lower.includes('dine in') || lower.includes('parcel')) &&
+      (lower.includes('order') || lower.includes('kar') || lower.includes('karo') || lower.includes('hai'))
+    ) {
+      intent = 'SET_ORDER_TYPE';
+    }
+    // G. Check for Switch / Select Table only (without dish names)
+    else if (
+      (lower.includes('switch') || lower.includes('select') || lower.includes('open') || lower.includes('pe jao') || lower.includes('par jao')) &&
+      (lower.includes('table') || lower.includes('tbl') || lower.includes('mez')) &&
+      !lower.includes('add') && !lower.includes('laga') && !lower.includes('bhej')
+    ) {
+      intent = 'SWITCH_TABLE';
+    }
+    // H. Check for Search / Availability
+    else if (
       lower.includes('available') ||
       lower.includes('hai kya') ||
       lower.includes('kya hai') ||
@@ -96,14 +156,14 @@ class AICommandEngine {
     ) {
       intent = 'CHECK_ITEM_AVAILABILITY';
     }
-    // B. Check for View Order
+    // I. Check for View Order
     else if (
       (lower.includes('order dikhao') || lower.includes('show order') || lower.includes('view order') || lower.includes('order kya hai')) &&
       !lower.includes('add') && !lower.includes('laga')
     ) {
       intent = 'VIEW_TABLE_ORDER';
     }
-    // C. Check for Modify Quantity (e.g., "Butter naan ko 4 kar do", "naan 4 kar do", "set naan to 4")
+    // J. Check for Modify Quantity (e.g., "Butter naan ko 4 kar do", "naan 4 kar do", "set naan to 4")
     else if (
       /\b(?:ko|to)\s+(\d+)\s+(?:kar|karo|set|change)\b/i.test(lower) ||
       /\b(?:kar|karo|set)\s+(?:ko\s+)?(\d+)\b/i.test(lower) ||
@@ -111,7 +171,7 @@ class AICommandEngine {
     ) {
       intent = 'UPDATE_QUANTITY';
     }
-    // D. Check for Remove Item
+    // K. Check for Remove Item
     else if (
       lower.includes('hata do') ||
       lower.includes('hatao') ||
@@ -122,7 +182,7 @@ class AICommandEngine {
     ) {
       intent = 'REMOVE_ITEM';
     }
-    // E. Check for Modifiers
+    // L. Check for Modifiers
     else if (
       (lower.includes('spicy kar do') || lower.includes('extra cheese') || lower.includes('without onion')) &&
       !lower.includes('add') && !lower.includes('laga do')
@@ -132,6 +192,131 @@ class AICommandEngine {
 
     // 3. Process Intent-Specific Logic
     switch (intent) {
+      case 'SEND_KOT': {
+        return {
+          intent: 'SEND_KOT',
+          table_number: resolvedTable,
+          confidence: 0.98,
+          chotu_response: resolvedTable
+            ? `Table ${resolvedTable} ka KOT kitchen mein bhej diya sir.`
+            : 'KOT kitchen mein bhej diya sir.',
+        };
+      }
+
+      case 'GENERATE_BILL': {
+        return {
+          intent: 'GENERATE_BILL',
+          table_number: resolvedTable,
+          confidence: 0.98,
+          chotu_response: resolvedTable
+            ? `Table ${resolvedTable} ka bill generate kar diya sir.`
+            : 'Bill generate kar diya sir.',
+        };
+      }
+
+      case 'CLEAR_CART': {
+        return {
+          intent: 'CLEAR_CART',
+          table_number: resolvedTable,
+          confidence: 0.98,
+          chotu_response: resolvedTable
+            ? `Table ${resolvedTable} ka cart clear kar diya sir.`
+            : 'Cart clear kar diya gaya hai sir.',
+        };
+      }
+
+      case 'APPLY_DISCOUNT': {
+        let discountValue = 0;
+        let discountType = 'percent';
+
+        const percentMatch = lower.match(/(\d+)\s*(?:percent|%|pratishat)/i);
+        const flatMatch = lower.match(/(?:rupaye|rs|inr|₹)\s*(\d+)|(\d+)\s*(?:rupaye|rs|inr|₹|ka\s+discount)/i);
+
+        if (percentMatch) {
+          discountValue = parseFloat(percentMatch[1]);
+          discountType = 'percent';
+        } else if (flatMatch) {
+          discountValue = parseFloat(flatMatch[1] || flatMatch[2]);
+          discountType = 'flat';
+        } else {
+          const simpleNum = lower.match(/\b(\d+)\b/);
+          if (simpleNum) {
+            discountValue = parseFloat(simpleNum[1]);
+            discountType = discountValue <= 100 ? 'percent' : 'flat';
+          }
+        }
+
+        const isRemove = lower.includes('hata') || lower.includes('remove') || lower.includes('zero') || discountValue === 0;
+
+        return {
+          intent: 'APPLY_DISCOUNT',
+          table_number: resolvedTable,
+          discount_value: isRemove ? 0 : discountValue,
+          discount_type: discountType,
+          is_remove: isRemove,
+          confidence: 0.95,
+          chotu_response: isRemove
+            ? 'Discount hata diya gaya hai sir.'
+            : `${discountValue}${discountType === 'percent' ? '%' : '₹'} discount apply kar diya sir.`,
+        };
+      }
+
+      case 'SWITCH_TABLE': {
+        return {
+          intent: 'SWITCH_TABLE',
+          table_number: resolvedTable,
+          confidence: 0.98,
+          chotu_response: resolvedTable
+            ? `Table ${resolvedTable} select kar liya sir.`
+            : 'Kaunsi table select karni hai sir?',
+        };
+      }
+
+      case 'SET_CUSTOMER_DETAILS': {
+        // Extract phone number (10 digits)
+        const phoneMatch = normalized.match(/\b([6-9]\d{9})\b/);
+        const customerPhone = phoneMatch ? phoneMatch[1] : '';
+
+        // Extract customer name: e.g. "customer ka naam Rahul hai", "customer name Rahul"
+        let customerName = '';
+        const nameMatch = normalized.match(/(?:customer|grahak)?\s*(?:ka\s+)?(?:naam|name)\s*(?:is|hai)?\s*([a-zA-Z]+)/i);
+        if (nameMatch) {
+          customerName = nameMatch[1].trim();
+        }
+
+        return {
+          intent: 'SET_CUSTOMER_DETAILS',
+          customer_name: customerName,
+          customer_phone: customerPhone,
+          table_number: resolvedTable,
+          confidence: 0.95,
+          chotu_response: customerName || customerPhone
+            ? `Customer ${customerName ? customerName : customerPhone} details save kar di sir.`
+            : 'Customer details samajh nahi aayi sir.',
+        };
+      }
+
+      case 'SET_ORDER_TYPE': {
+        let orderType = 'dineIn';
+        if (lower.includes('takeaway') || lower.includes('take away') || lower.includes('parcel')) {
+          orderType = 'takeaway';
+        } else if (lower.includes('delivery')) {
+          orderType = 'delivery';
+        } else if (lower.includes('dine')) {
+          orderType = 'dineIn';
+        }
+
+        const typeLabels = { dineIn: 'Dine In', takeaway: 'Takeaway / Parcel', delivery: 'Delivery' };
+
+        return {
+          intent: 'SET_ORDER_TYPE',
+          order_type: orderType,
+          table_number: resolvedTable,
+          confidence: 0.95,
+          chotu_response: `Order type ${typeLabels[orderType] || orderType} set kar diya sir.`,
+        };
+      }
+
       case 'CHECK_ITEM_AVAILABILITY': {
         // Strip filler words to find the item
         const cleanQuery = lower
@@ -151,8 +336,8 @@ class AICommandEngine {
           } : null,
           confidence: matchResult.confidence,
           chotu_response: matchResult.match
-            ? `${matchResult.match.name} available hai, price ₹${matchResult.match.price}.`
-            : 'Ye item menu mein nahi mila.',
+            ? `${matchResult.match.name} available hai sir, price ₹${matchResult.match.price}.`
+            : 'Ye item menu mein nahi mila sir.',
         };
       }
 
@@ -162,15 +347,15 @@ class AICommandEngine {
           table_number: resolvedTable,
           confidence: 0.95,
           chotu_response: resolvedTable
-            ? `Table ${resolvedTable} ka order screen par show kar raha hoon.`
-            : 'Kaunsi table ka order dekhna hai?',
+            ? `Table ${resolvedTable} ka order screen par show kar raha hoon sir.`
+            : 'Kaunsi table ka order dekhna hai sir?',
         };
       }
 
       case 'UPDATE_QUANTITY': {
         // Find target quantity: e.g. "Butter naan ko 4 kar do"
         let targetQty = 1;
-        const qtyMatch = lower.match(/\b(?:ko\s+|to\s+)?(\d+)\s*(?:kar|karo|set|pieces)?\b/i);
+        const qtyMatch = lower.match(/\b(?:ko\s+|to\s+)?(\d+)\s*(?:kar|karo|set|pieces|plate)?\b/i);
         if (qtyMatch && qtyMatch[1]) {
           targetQty = parseInt(qtyMatch[1], 10);
         }
@@ -178,7 +363,7 @@ class AICommandEngine {
         // Clean out quantity and verbs to get product name
         const cleanProd = lower
           .replace(/\b(?:table|tbl)\s*\d+\b/gi, '')
-          .replace(/\b(pe|mein|ko|to|kar|karo|do|set|quantity|qty)\b/gi, '')
+          .replace(/\b(pe|mein|ko|to|kar|karo|do|set|quantity|qty|plate|pieces)\b/gi, '')
           .replace(/\b\d+\b/g, '')
           .trim();
 
@@ -197,22 +382,22 @@ class AICommandEngine {
           question: matchResult.question,
           confidence: matchResult.confidence,
           chotu_response: matchResult.match
-            ? `Table ${resolvedTable || ''} mein ${matchResult.match.name} ki quantity ${targetQty} set kar di.`
-            : (matchResult.question || 'Product nahi mila.'),
+            ? `Table ${resolvedTable || ''} mein ${matchResult.match.name} ki quantity ${targetQty} set kar di sir.`
+            : (matchResult.question || 'Product nahi mila sir.'),
         };
       }
 
       case 'REMOVE_ITEM': {
         // Find item and quantity to reduce (default 1)
         let removeQty = 1;
-        const qtyMatch = lower.match(/\b(\d+)\s+([a-zA-Z\s]+?)\s+(?:hata|remove|kam|nikal)\b/i);
+        const qtyMatch = lower.match(/\b(\d+)\s+([a-zA-Z\s]+?)\s+(?:hata|remove|kam|nikal|cancel)\b/i);
         if (qtyMatch && qtyMatch[1]) {
           removeQty = parseInt(qtyMatch[1], 10);
         }
 
         const cleanProd = lower
           .replace(/\b(?:table|tbl)\s*\d+\b/gi, '')
-          .replace(/\b(se|mein|pe|ek|do|hata|hatao|do|remove|delete|kam|kar|nikal)\b/gi, '')
+          .replace(/\b(se|mein|pe|ek|do|hata|hatao|do|remove|delete|kam|kar|nikal|cancel|plate)\b/gi, '')
           .replace(/\b\d+\b/g, '')
           .trim();
 
@@ -231,8 +416,8 @@ class AICommandEngine {
           question: matchResult.question,
           confidence: matchResult.confidence,
           chotu_response: matchResult.match
-            ? `Table ${resolvedTable || ''} se ${matchResult.match.name} remove kar diya.`
-            : (matchResult.question || 'Product nahi mila.'),
+            ? `Table ${resolvedTable || ''} se ${matchResult.match.name} remove kar diya sir.`
+            : (matchResult.question || 'Product nahi mila sir.'),
         };
       }
 
