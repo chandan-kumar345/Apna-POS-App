@@ -14,6 +14,17 @@ class StaffModel {
   final double salary;
   final DateTime? joiningDate;
   final String notes;
+  final String department;
+  final String workLocation;
+  final String reportingTo;
+  final String shift;
+  final String language;
+  final String theme;
+  final String defaultScreen;
+  final bool enableBiometric;
+  final bool sendWelcomeEmail;
+  final bool forcePasswordChange;
+  final String? password;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -31,6 +42,17 @@ class StaffModel {
     this.salary = 0.0,
     this.joiningDate,
     this.notes = '',
+    this.department = '',
+    this.workLocation = '',
+    this.reportingTo = '',
+    this.shift = 'Morning Shift (8 AM - 4 PM)',
+    this.language = 'English',
+    this.theme = 'Light',
+    this.defaultScreen = 'Dashboard',
+    this.enableBiometric = false,
+    this.sendWelcomeEmail = true,
+    this.forcePasswordChange = false,
+    this.password,
     required this.createdAt,
     this.updatedAt,
   });
@@ -109,6 +131,17 @@ class StaffModel {
     double? salary,
     DateTime? joiningDate,
     String? notes,
+    String? department,
+    String? workLocation,
+    String? reportingTo,
+    String? shift,
+    String? language,
+    String? theme,
+    String? defaultScreen,
+    bool? enableBiometric,
+    bool? sendWelcomeEmail,
+    bool? forcePasswordChange,
+    String? password,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -126,6 +159,17 @@ class StaffModel {
       salary: salary ?? this.salary,
       joiningDate: joiningDate ?? this.joiningDate,
       notes: notes ?? this.notes,
+      department: department ?? this.department,
+      workLocation: workLocation ?? this.workLocation,
+      reportingTo: reportingTo ?? this.reportingTo,
+      shift: shift ?? this.shift,
+      language: language ?? this.language,
+      theme: theme ?? this.theme,
+      defaultScreen: defaultScreen ?? this.defaultScreen,
+      enableBiometric: enableBiometric ?? this.enableBiometric,
+      sendWelcomeEmail: sendWelcomeEmail ?? this.sendWelcomeEmail,
+      forcePasswordChange: forcePasswordChange ?? this.forcePasswordChange,
+      password: password ?? this.password,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -146,6 +190,17 @@ class StaffModel {
       'salary': salary,
       'joiningDate': joiningDate?.toIso8601String(),
       'notes': notes,
+      'department': department,
+      'workLocation': workLocation,
+      'reportingTo': reportingTo,
+      'shift': shift,
+      'language': language,
+      'theme': theme,
+      'defaultScreen': defaultScreen,
+      'enableBiometric': enableBiometric,
+      'sendWelcomeEmail': sendWelcomeEmail,
+      'forcePasswordChange': forcePasswordChange,
+      if (password != null && password!.isNotEmpty) 'password': password,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt?.toIso8601String(),
     };
@@ -194,6 +249,16 @@ class StaffModel {
       salary: (json['salary'] as num?)?.toDouble() ?? 0.0,
       joiningDate: parsedJoining,
       notes: json['notes']?.toString() ?? '',
+      department: json['department']?.toString() ?? '',
+      workLocation: json['workLocation']?.toString() ?? '',
+      reportingTo: json['reportingTo']?.toString() ?? '',
+      shift: json['shift']?.toString() ?? 'Morning Shift (8 AM - 4 PM)',
+      language: json['language']?.toString() ?? 'English',
+      theme: json['theme']?.toString() ?? 'Light',
+      defaultScreen: json['defaultScreen']?.toString() ?? 'Dashboard',
+      enableBiometric: json['enableBiometric'] == true,
+      sendWelcomeEmail: json['sendWelcomeEmail'] != false,
+      forcePasswordChange: json['forcePasswordChange'] == true,
       createdAt: parsedCreated,
       updatedAt: parsedUpdated,
     );

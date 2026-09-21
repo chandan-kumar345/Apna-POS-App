@@ -26,8 +26,18 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: ['owner', 'manager', 'cashier', 'waiter'],
+      enum: ['owner', 'admin', 'manager', 'cashier', 'sales', 'inventory', 'support', 'chef', 'waiter', 'other'],
       default: 'owner',
+    },
+    businessId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Business',
+      index: true,
+    },
+    staffId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Staff',
+      index: true,
     },
     emailVerified: {
       type: Boolean,

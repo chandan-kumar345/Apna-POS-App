@@ -1,4 +1,5 @@
 const Staff = require('../models/Staff');
+const User = require('../models/User');
 
 class StaffService {
   async getStaff(businessId, query = {}) {
@@ -94,28 +95,102 @@ class StaffService {
       employeeId = `EMP${String(count + 1).padStart(3, '0')}`;
     }
 
+    const email = staffData.email ? staffData.email.trim().toLowerCase() : '';
+    const phone = staffData.phone ? staffData.phone.trim() : '';
+    const rawPassword = staffData.password || 'Staff@123';
+
+    let user = null;
+    if (email) {
+      const existingUser = await User.findOne({ email });
+      if (existingUser) {
+        throw new Error('An account with this email address already exists.');
+      }
+
+      const passwordHash = await User.hashPassword(rawPassword);
+      user = await User.create({
+        email,
+        phone: phone || undefined,
+        passwordHash,
+        role: (staffData.role || 'cashier').toLowerCase(),
+        businessId,
+        onboardingCompleted: true,
+        onboardingStep: 4,
+      });
+    }
+
     const staff = new Staff({
       ...staffData,
       businessId,
+      userId: user ? user._id : undefined,
       employeeId,
       status: staffData.status || 'Active',
       role: staffData.role || 'Cashier',
     });
 
     await staff.save();
+
+    if (user) {
+      user.staffId = staff._id;
+      await user.save();
+    }
+
     return staff;
   }
 
   async updateStaff(businessId, id, staffData) {
+    const existingStaff = await Staff.findOne({ _id: id, businessId });
+    if (!existingStaff) {
+      throw new Error('Staff member not found');
+    }
+
     const staff = await Staff.findOneAndUpdate(
       { _id: id, businessId },
       { $set: staffData },
       { new: true, runValidators: true }
     );
 
-    if (!staff) {
-      throw new Error('Staff member not found');
+    // Synchronize password or details with linked User
+    const email = staffData.email ? staffData.email.trim().toLowerCase() : staff.email;
+    const phone = staffData.phone !== undefined ? staffData.phone.trim() : staff.phone;
+
+    if (staff.userId) {
+      const userUpdates = {};
+      if (staffData.password && staffData.password.trim().length > 0) {
+        userUpdates.passwordHash = await User.hashPassword(staffData.password.trim());
+      }
+      if (staffData.role) {
+        userUpdates.role = staffData.role.toLowerCase();
+      }
+      if (staffData.email && staffData.email.trim().toLowerCase() !== existingStaff.email) {
+        userUpdates.email = staffData.email.trim().toLowerCase();
+      }
+      if (staffData.phone !== undefined) {
+        userUpdates.phone = staffData.phone.trim();
+      }
+
+      if (Object.keys(userUpdates).length > 0) {
+        await User.findByIdAndUpdate(staff.userId, { $set: userUpdates });
+      }
+    } else if (email && staffData.password && staffData.password.trim().length > 0) {
+      // Create user if not linked yet
+      const existingUser = await User.findOne({ email });
+      if (!existingUser) {
+        const passwordHash = await User.hashPassword(staffData.password.trim());
+        const user = await User.create({
+          email,
+          phone: phone || undefined,
+          passwordHash,
+          role: (staff.role || 'cashier').toLowerCase(),
+          businessId,
+          staffId: staff._id,
+          onboardingCompleted: true,
+          onboardingStep: 4,
+        });
+        staff.userId = user._id;
+        await staff.save();
+      }
     }
+
     return staff;
   }
 
@@ -135,6 +210,13 @@ class StaffService {
     if (!staff) {
       throw new Error('Staff member not found');
     }
+
+    if (staff.userId) {
+      try {
+        await User.findByIdAndDelete(staff.userId);
+      } catch (_) {}
+    }
+
     return { id, message: 'Staff member deleted successfully' };
   }
 }

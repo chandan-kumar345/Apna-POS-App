@@ -24,12 +24,22 @@ const authMiddleware = async (req, res, next) => {
 
     // Resolve or find linked business for multi-tenant data scoping
     const Business = require('../models/Business');
-    let business = await Business.findOne({ ownerId: user._id });
+    let business = null;
+    if (user.businessId) {
+      business = await Business.findById(user.businessId);
+    }
     if (!business) {
+      business = await Business.findOne({ ownerId: user._id });
+    }
+    if (!business && user.role === 'owner') {
       business = await Business.create({
         ownerId: user._id,
         profile: { name: user.email.split('@')[0], companyName: 'Apna POS Store' },
       });
+    }
+
+    if (!business) {
+      throw ApiError.unauthorized('No active business account associated with this user', 'BUSINESS_NOT_FOUND');
     }
 
     req.user = user;

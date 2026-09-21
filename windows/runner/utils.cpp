@@ -8,6 +8,14 @@
 #include <iostream>
 
 void CreateAndAttachConsole() {
+  HANDLE stdout_handle = ::GetStdHandle(STD_OUTPUT_HANDLE);
+  if (stdout_handle != NULL && stdout_handle != INVALID_HANDLE_VALUE) {
+    DWORD stdout_type = ::GetFileType(stdout_handle);
+    if (stdout_type == FILE_TYPE_PIPE || stdout_type == FILE_TYPE_CHAR || stdout_type == FILE_TYPE_DISK) {
+      return;
+    }
+  }
+
   if (::AttachConsole(ATTACH_PARENT_PROCESS) || ::AllocConsole()) {
     FILE *unused;
     if (freopen_s(&unused, "CONOUT$", "w", stdout) == 0) {

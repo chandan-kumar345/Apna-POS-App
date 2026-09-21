@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
 import '../../../core/services/staff_service.dart';
+import 'create_staff_screen.dart';
 
 class StaffManagementScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -237,18 +237,34 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
   }
 
-  void _showStaffFormDialog({StaffModel? existingStaff}) {
-    final isEdit = existingStaff != null;
-    final nameCtrl = TextEditingController(text: existingStaff?.name ?? '');
-    final empIdCtrl = TextEditingController(
-      text: existingStaff?.employeeId ?? 'EMP${(_db.staffList.length + 1).toString().padLeft(3, '0')}',
+  Future<void> _openCreateStaffScreen() async {
+    final created = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => CreateStaffScreen(
+          onStaffCreated: _loadStaffData,
+        ),
+      ),
     );
-    final phoneCtrl = TextEditingController(text: existingStaff?.phone ?? '');
-    final emailCtrl = TextEditingController(text: existingStaff?.email ?? '');
-    final pinCtrl = TextEditingController(text: existingStaff?.pin ?? '1234');
-    String formRole = existingStaff?.role ?? 'Cashier';
-    String formStatus = existingStaff?.status ?? 'Active';
-    final Set<String> formPermissions = Set.from(existingStaff?.permissions ?? ['pos', 'tables', 'orders']);
+    if (created == true) {
+      _loadStaffData();
+    }
+  }
+
+  void _showStaffFormDialog({StaffModel? existingStaff}) {
+    if (existingStaff == null) {
+      _openCreateStaffScreen();
+      return;
+    }
+    final staff = existingStaff;
+    final nameCtrl = TextEditingController(text: staff.name);
+    final empIdCtrl = TextEditingController(text: staff.employeeId);
+    final phoneCtrl = TextEditingController(text: staff.phone);
+    final emailCtrl = TextEditingController(text: staff.email);
+    final passwordCtrl = TextEditingController();
+    String formRole = staff.role;
+    String formStatus = staff.status;
+    final Set<String> formPermissions = Set.from(staff.permissions);
 
     final formKey = GlobalKey<FormState>();
 
@@ -257,8 +273,6 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setModalState) {
-          final isSmall = MediaQuery.of(context).size.width < 600;
-
           return Dialog(
             backgroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
@@ -286,22 +300,22 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                           child: const Icon(Icons.badge_rounded, color: Color(0xFF2563EB), size: 24),
                         ),
                         const SizedBox(width: 14),
-                        Expanded(
+                        const Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                isEdit ? 'Edit Staff Member' : 'Create New Staff',
-                                style: const TextStyle(
+                                'Edit Staff Member',
+                                style: TextStyle(
                                   fontSize: 19,
                                   fontWeight: FontWeight.w800,
                                   color: Color(0xFF0F172A),
                                 ),
                               ),
-                              const SizedBox(height: 2),
+                              SizedBox(height: 2),
                               Text(
-                                isEdit ? 'Update details, role and permissions' : 'Add team member, role and terminal PIN',
-                                style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+                                'Update details, role and permissions',
+                                style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
                               ),
                             ],
                           ),
@@ -415,7 +429,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                               ),
                               const SizedBox(height: 16),
 
-                              // Terminal Quick PIN & Status Row
+                              // Password & Status Row
                               Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -423,14 +437,12 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        const Text('4-Digit Quick PIN', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
+                                        const Text('New Password (Optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
                                         const SizedBox(height: 6),
                                         TextFormField(
-                                          controller: pinCtrl,
-                                          keyboardType: TextInputType.number,
-                                          maxLength: 6,
-                                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                                          decoration: _inputDecoration(hint: '1234', icon: Icons.pin_outlined).copyWith(counterText: ''),
+                                          controller: passwordCtrl,
+                                          obscureText: true,
+                                          decoration: _inputDecoration(hint: 'Leave blank to keep unchanged', icon: Icons.lock_outline_rounded),
                                         ),
                                       ],
                                     ),
@@ -511,38 +523,31 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             elevation: 0,
                           ),
-                          icon: Icon(isEdit ? Icons.check_rounded : Icons.person_add_rounded, size: 18),
-                          label: Text(isEdit ? 'Save Changes' : 'Create Staff', style: const TextStyle(fontWeight: FontWeight.w700)),
+                          icon: const Icon(Icons.check_rounded, size: 18),
+                          label: const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.w700)),
                           onPressed: () async {
                             if (formKey.currentState?.validate() != true) return;
 
-                            final staff = StaffModel(
-                              id: isEdit ? existingStaff.id : 'st_${DateTime.now().millisecondsSinceEpoch}',
+                            final updatedStaff = staff.copyWith(
                               name: nameCtrl.text.trim(),
                               employeeId: empIdCtrl.text.trim(),
                               phone: phoneCtrl.text.trim(),
                               email: emailCtrl.text.trim(),
                               role: formRole,
                               status: formStatus,
-                              pin: pinCtrl.text.trim().isNotEmpty ? pinCtrl.text.trim() : '1234',
+                              password: passwordCtrl.text.trim().isNotEmpty ? passwordCtrl.text.trim() : null,
                               permissions: formPermissions.toList(),
-                              createdAt: isEdit ? existingStaff.createdAt : DateTime.now(),
                               updatedAt: DateTime.now(),
                             );
 
                             Navigator.pop(ctx);
-
-                            if (isEdit) {
-                              await _staffService.updateStaff(staff);
-                            } else {
-                              await _staffService.createStaff(staff);
-                            }
+                            await _staffService.updateStaff(updatedStaff);
 
                             if (mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(isEdit ? 'Staff member updated' : 'New staff member added successfully'),
-                                  backgroundColor: const Color(0xFF16A34A),
+                                const SnackBar(
+                                  content: Text('Staff member updated successfully'),
+                                  backgroundColor: Color(0xFF16A34A),
                                 ),
                               );
                               _loadStaffData();
@@ -696,7 +701,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
 
         // "+ Create Staff" CTA Button
         ElevatedButton.icon(
-          onPressed: () => _showStaffFormDialog(),
+          onPressed: _openCreateStaffScreen,
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xFF2563EB),
             foregroundColor: Colors.white,

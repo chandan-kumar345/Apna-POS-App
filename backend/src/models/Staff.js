@@ -53,6 +53,65 @@ const staffSchema = new mongoose.Schema(
       type: [String],
       default: ['pos', 'tables', 'orders'],
     },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      index: true,
+    },
+    department: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    workLocation: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    reportingTo: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    forcePasswordChange: {
+      type: Boolean,
+      default: false,
+    },
+    shift: {
+      type: String,
+      trim: true,
+      default: 'Morning Shift (8 AM - 4 PM)',
+    },
+    language: {
+      type: String,
+      trim: true,
+      default: 'English',
+    },
+    theme: {
+      type: String,
+      trim: true,
+      default: 'Light',
+    },
+    defaultScreen: {
+      type: String,
+      trim: true,
+      default: 'Dashboard',
+    },
+    enableBiometric: {
+      type: Boolean,
+      default: false,
+    },
+    sendWelcomeEmail: {
+      type: Boolean,
+      default: true,
+    },
+    lastLogin: {
+      type: Date,
+    },
+    lastLoginDevice: {
+      type: String,
+      default: 'From Windows',
+    },
     salary: {
       type: Number,
       default: 0,

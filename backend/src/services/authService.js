@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const Business = require('../models/Business');
+const Staff = require('../models/Staff');
 const tokenService = require('./tokenService');
 const notificationService = require('./notificationService');
 const ApiError = require('../utils/ApiError');
@@ -98,16 +99,33 @@ class AuthService {
       throw ApiError.unauthorized('Incorrect password. Please check your password and try again.', 'INVALID_CREDENTIALS');
     }
 
-    // Generate tokens and fetch business in parallel for speed
-    const [tokens, business] = await Promise.all([
-      tokenService.generateAuthTokens(user),
-      Business.findOne({ ownerId: user._id }).lean(),
-    ]);
+    // Check staff status if user is linked to staff
+    let staff = null;
+    if (user.staffId) {
+      staff = await Staff.findById(user.staffId).lean();
+    } else if (user.businessId) {
+      staff = await Staff.findOne({ userId: user._id, businessId: user.businessId }).lean();
+    }
+
+    if (staff && staff.status === 'Inactive') {
+      throw ApiError.forbidden('Your staff account is currently inactive. Please contact your manager or administrator.', 'ACCOUNT_INACTIVE');
+    }
+
+    // Resolve business
+    let business = null;
+    if (user.businessId) {
+      business = await Business.findById(user.businessId).lean();
+    } else {
+      business = await Business.findOne({ ownerId: user._id }).lean();
+    }
+
+    // Generate tokens
+    const tokens = await tokenService.generateAuthTokens(user);
 
     // Ensure Welcome Notification exists asynchronously without blocking login response
     setImmediate(async () => {
       try {
-        const userName = business?.profile?.name || user.email.split('@')[0] || 'User';
+        const userName = staff?.name || business?.profile?.name || user.email.split('@')[0] || 'User';
         await notificationService.createNotification({
           userId: user._id,
           businessId: business?._id,
@@ -122,17 +140,21 @@ class AuthService {
       } catch (_) {}
     });
 
+    const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
+
     return {
       user: {
         id: user._id,
         email: user.email,
-        phone: user.phone || business?.profile?.phone || '',
-        name: business?.profile?.name || '',
+        phone: staff?.phone || user.phone || business?.profile?.phone || '',
+        name: staff?.name || business?.profile?.name || '',
         companyName: business?.profile?.companyName || '',
-        profilePhotoPath: business?.profile?.profileImage || '',
-        role: user.role,
-        onboardingCompleted: user.onboardingCompleted,
-        onboardingStep: user.onboardingStep,
+        profilePhotoPath: staff?.avatarUrl || business?.profile?.profileImage || '',
+        role: staff?.role || user.role,
+        employeeId: staff?.employeeId || '',
+        permissions: staff?.permissions || [],
+        onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
+        onboardingStep: isStaffUser ? 4 : user.onboardingStep,
         business: business || null,
       },
       ...tokens,
@@ -158,24 +180,40 @@ class AuthService {
       throw ApiError.notFound('User not found', 'USER_NOT_FOUND');
     }
 
-    let business = await Business.findOne({ ownerId: user._id });
-    if (!business) {
-      business = await Business.create({ ownerId: user._id });
+    let staff = null;
+    if (user.staffId) {
+      staff = await Staff.findById(user.staffId).lean();
+    } else if (user.businessId) {
+      staff = await Staff.findOne({ userId: user._id, businessId: user.businessId }).lean();
     }
+
+    let business = null;
+    if (user.businessId) {
+      business = await Business.findById(user.businessId);
+    } else {
+      business = await Business.findOne({ ownerId: user._id });
+      if (!business) {
+        business = await Business.create({ ownerId: user._id });
+      }
+    }
+
+    const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
 
     return {
       user: {
         id: user._id,
         email: user.email,
-        phone: user.phone || business?.profile?.phone || '',
-        name: business?.profile?.name || '',
+        phone: staff?.phone || user.phone || business?.profile?.phone || '',
+        name: staff?.name || business?.profile?.name || '',
         companyName: business?.profile?.companyName || '',
-        profilePhotoPath: business?.profile?.profileImage || '',
-        role: user.role,
+        profilePhotoPath: staff?.avatarUrl || business?.profile?.profileImage || '',
+        role: staff?.role || user.role,
+        employeeId: staff?.employeeId || '',
+        permissions: staff?.permissions || [],
         emailVerified: user.emailVerified,
         phoneVerified: user.phoneVerified,
-        onboardingCompleted: user.onboardingCompleted,
-        onboardingStep: user.onboardingStep,
+        onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
+        onboardingStep: isStaffUser ? 4 : user.onboardingStep,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
