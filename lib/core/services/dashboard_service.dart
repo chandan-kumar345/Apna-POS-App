@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -450,23 +451,53 @@ class DashboardService {
     );
 
     // 6. Customers
+    bool isSameCust(OrderModel o1, String targetPhone, String targetName) {
+      final p1 = (o1.customerPhone ?? '').replaceAll(RegExp(r'[^0-9]'), '');
+      final p2 = targetPhone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (p1.isNotEmpty && p2.isNotEmpty) {
+        final sub1 = p1.length >= 10 ? p1.substring(p1.length - 10) : p1;
+        final sub2 = p2.length >= 10 ? p2.substring(p2.length - 10) : p2;
+        return sub1 == sub2;
+      }
+      if (targetName.isNotEmpty && targetName != 'Customer' && targetName != 'Guest Customer') {
+        return (o1.customerName ?? '').trim().toLowerCase() == targetName.trim().toLowerCase();
+      }
+      return false;
+    }
+
     final Map<String, CustomerInsightItem> custMap = {};
+    final dbCusts = DatabaseService().customers;
+
     for (final o in report.orders) {
+      if (o.status == OrderStatus.cancelled) continue;
       final name = (o.customerName ?? '').trim();
       final phone = (o.customerPhone ?? '').trim();
-      final key = phone.isNotEmpty ? phone : name;
+      final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
+      final p10 = cleanPhone.length >= 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
+      final key = p10.isNotEmpty ? p10 : (name.isNotEmpty && name != 'Customer' ? name.toLowerCase() : '');
       if (key.isEmpty) continue;
 
       if (!custMap.containsKey(key)) {
         final totalVisits = allOrders.where((ao) {
-          final aPhone = (ao.customerPhone ?? '').trim();
-          final aName = (ao.customerName ?? '').trim();
-          return (phone.isNotEmpty && aPhone == phone) || (name.isNotEmpty && aName == name);
+          if (ao.status == OrderStatus.cancelled) return false;
+          return isSameCust(ao, phone, name);
         }).length;
+
+        int baselineOrders = 0;
+        for (final c in dbCusts) {
+          final cClean = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+          final c10 = cClean.length >= 10 ? cClean.substring(cClean.length - 10) : cClean;
+          if ((p10.isNotEmpty && c10 == p10) || (name.isNotEmpty && name != 'Customer' && c.name.trim().toLowerCase() == name.toLowerCase())) {
+            baselineOrders = math.max(baselineOrders, c.totalOrders);
+          }
+        }
+
+        final effVisits = math.max(totalVisits, baselineOrders);
+
         custMap[key] = CustomerInsightItem(
           name: name.isNotEmpty ? name : 'Customer',
           phone: phone,
-          visitCount: totalVisits > 0 ? totalVisits : 1,
+          visitCount: effVisits > 0 ? effVisits : 1,
         );
       }
     }

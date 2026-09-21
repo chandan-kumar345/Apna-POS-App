@@ -408,6 +408,12 @@ class ApiEndpoints {
   static const String chotu = '/chotu';
   static const String chotuTranscribe = '/chotu/transcribe';
   static const String chotuParse = '/chotu/parse';
+
+  // Staff Management endpoints
+  static const String staff = '/staff';
+  static const String staffStats = '/staff/stats';
+  static String staffById(String id) => '/staff/$id';
+  static String staffStatus(String id) => '/staff/$id/status';
   static const String chotuExecute = '/chotu/execute';
   static const String chotuHealth = '/chotu/health';
   static const String chotuLogs = '/chotu/logs';

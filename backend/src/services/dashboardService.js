@@ -230,10 +230,17 @@ class DashboardService {
     const nameSet = new Set();
     const periodCustomersMap = new Map();
 
+    const extractPhone10 = (p) => {
+      if (!p) return '';
+      const digits = String(p).replace(/\D/g, '');
+      return digits.length >= 10 ? digits.slice(-10) : digits;
+    };
+
     for (const ord of ordersInRange) {
       const phone = (ord.customerPhone || '').trim();
       const name = (ord.customerName || '').trim();
-      const key = phone || name;
+      const p10 = extractPhone10(phone);
+      const key = p10 || (name && name !== 'Customer' ? name.toLowerCase() : '');
       if (!key) continue;
 
       if (phone) phoneSet.add(phone);
@@ -243,12 +250,15 @@ class DashboardService {
         periodCustomersMap.set(key, {
           name: name || 'Customer',
           phone: phone || '',
+          cleanPhone10: p10,
           earliestInPeriod: ord.createdAt,
           orderCount: 1,
         });
       } else {
         const item = periodCustomersMap.get(key);
         item.orderCount += 1;
+        if (phone && !item.phone) item.phone = phone;
+        if (name && name !== 'Customer' && (!item.name || item.name === 'Customer')) item.name = name;
         if (ord.createdAt < item.earliestInPeriod) {
           item.earliestInPeriod = ord.createdAt;
         }
@@ -267,7 +277,7 @@ class DashboardService {
           ...(namesList.length > 0 ? [{ name: { $in: namesList } }] : []),
         ],
       })
-        .select('name phone firstVisit createdAt totalOrders')
+        .select('name phone firstVisit createdAt totalOrders visitCount')
         .lean(),
       Customer.find({
         businessId: bId,
@@ -277,42 +287,33 @@ class DashboardService {
           { lastVisit: { $gte: start, $lte: end } },
         ],
       })
-        .select('name phone firstVisit createdAt totalOrders')
+        .select('name phone firstVisit createdAt totalOrders visitCount')
         .lean(),
     ]);
 
     const crmCustomerMap = new Map();
-    for (const c of crmCustomerDocs) {
+    for (const c of [...crmCustomerDocs, ...directTouched]) {
+      const p10 = extractPhone10(c.phone);
+      if (p10) crmCustomerMap.set(p10, c);
       if (c.phone) crmCustomerMap.set(c.phone, c);
-      if (c.name) crmCustomerMap.set(c.name, c);
-    }
-
-    for (const c of directTouched) {
-      const key = (c.phone || c.name || '').trim();
-      if (key && !periodCustomersMap.has(key)) {
-        periodCustomersMap.set(key, {
-          name: c.name || 'Customer',
-          phone: c.phone || '',
-          earliestInPeriod: c.firstVisit || c.createdAt || start,
-          orderCount: c.totalOrders || 1,
-        });
-      }
-      if (c.phone) crmCustomerMap.set(c.phone, c);
-      if (c.name) crmCustomerMap.set(c.name, c);
+      if (c.name && c.name !== 'Customer') crmCustomerMap.set(c.name.toLowerCase(), c);
     }
 
     const newCustomers = [];
     const returningCustomers = [];
 
     for (const [key, info] of periodCustomersMap.entries()) {
-      const crmDoc = crmCustomerMap.get(info.phone) || crmCustomerMap.get(info.name);
+      const crmDoc = (info.cleanPhone10 && crmCustomerMap.get(info.cleanPhone10)) ||
+                     (info.phone && crmCustomerMap.get(info.phone)) ||
+                     (info.name && crmCustomerMap.get(info.name.toLowerCase()));
       let earliestDate = info.earliestInPeriod;
       let totalVisits = info.orderCount;
 
       if (crmDoc) {
         if (crmDoc.firstVisit) earliestDate = crmDoc.firstVisit;
         else if (crmDoc.createdAt) earliestDate = crmDoc.createdAt;
-        if (crmDoc.totalOrders) totalVisits = Math.max(totalVisits, crmDoc.totalOrders);
+        const baseline = crmDoc.totalOrders || crmDoc.visitCount || 0;
+        if (baseline > 0) totalVisits = Math.max(totalVisits, baseline);
       }
 
       const isNew = earliestDate >= start && earliestDate <= end;

@@ -266,5 +266,44 @@ void main() {
       expect(db.tables[0].status, TableStatus.free);
       expect(db.getLiveTableCart('Table 3'), isEmpty);
     });
+
+    test('When products are added to a table on peer device, table becomes Occupied with timer and total on all devices in real time', () {
+      // 1. Initial State: Table 5 is free
+      final table5 = TableModel(
+        id: 'tbl_5',
+        tableNumber: 5,
+        name: 'T-5',
+        floor: 'Ground Floor',
+        capacity: 4,
+        status: TableStatus.free,
+      );
+      db.tables.add(table5);
+
+      expect(db.tables.last.status, TableStatus.free);
+
+      // 2. Peer device adds products to Table 5 -> Socket broadcast received
+      final occupiedTable5 = table5.copyWith(
+        status: TableStatus.occupied,
+        occupiedSince: DateTime.now().toIso8601String(),
+        activeOrderTotal: 340.0,
+        activeItemCount: 2,
+      );
+
+      db.socketService.onTableUpdated?.call(occupiedTable5);
+
+      // Verify Table 5 is Occupied on this device in real time!
+      final currentT5 = db.tables.firstWhere((t) => t.id == 'tbl_5');
+      expect(currentT5.status, TableStatus.occupied);
+      expect(currentT5.activeOrderTotal, 340.0);
+      expect(currentT5.activeItemCount, 2);
+      expect(currentT5.occupiedSince, isNotNull);
+      expect(db.getLiveCartTotal('T-5'), 340.0);
+
+      // 3. Background reconciliation runs without erasing remote occupied status
+      db.syncTablesAndOrdersSilently();
+      final reconciledT5 = db.tables.firstWhere((t) => t.id == 'tbl_5');
+      expect(reconciledT5.status, TableStatus.occupied);
+      expect(reconciledT5.activeOrderTotal, 340.0);
+    });
   });
 }

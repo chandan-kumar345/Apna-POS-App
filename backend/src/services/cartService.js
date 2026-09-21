@@ -1,4 +1,7 @@
 const Cart = require('../models/Cart');
+const Table = require('../models/Table');
+const Order = require('../models/Order');
+const tableService = require('./tableService');
 
 class CartService {
   /**
@@ -95,6 +98,9 @@ class CartService {
 
     cart.recalculateTotals();
     await cart.save();
+    if (oType === 'dineIn' && tbl) {
+      await this._syncTableStateOnCartChange(businessId, tbl, cart);
+    }
     return cart;
   }
 
@@ -130,6 +136,9 @@ class CartService {
       });
       cart.recalculateTotals();
       await cart.save();
+      if (oType === 'dineIn' && tbl) {
+        await this._syncTableStateOnCartChange(businessId, tbl, cart);
+      }
       return cart;
     }
 
@@ -146,6 +155,9 @@ class CartService {
 
     cart.recalculateTotals();
     await cart.save();
+    if (oType === 'dineIn' && tbl) {
+      await this._syncTableStateOnCartChange(businessId, tbl, cart);
+    }
     return cart;
   }
 
@@ -178,6 +190,9 @@ class CartService {
       });
       cart.recalculateTotals();
       await cart.save();
+      if (oType === 'dineIn' && tbl) {
+        await this._syncTableStateOnCartChange(businessId, tbl, cart);
+      }
       return cart;
     }
 
@@ -187,6 +202,9 @@ class CartService {
 
     cart.recalculateTotals();
     await cart.save();
+    if (oType === 'dineIn' && tbl) {
+      await this._syncTableStateOnCartChange(businessId, tbl, cart);
+    }
     return cart;
   }
 
@@ -245,6 +263,9 @@ class CartService {
 
     cart.recalculateTotals();
     await cart.save();
+    if (oType === 'dineIn' && tbl) {
+      await this._syncTableStateOnCartChange(businessId, tbl, cart);
+    }
     return cart;
   }
 
@@ -265,6 +286,9 @@ class CartService {
       cart.items = [];
       cart.recalculateTotals();
       await cart.save();
+      if (oType === 'dineIn' && tbl) {
+        await this._syncTableStateOnCartChange(businessId, tbl, cart);
+      }
       return cart;
     }
 
@@ -276,7 +300,79 @@ class CartService {
     });
     cart.recalculateTotals();
     await cart.save();
+    if (oType === 'dineIn' && tbl) {
+      await this._syncTableStateOnCartChange(businessId, tbl, cart);
+    }
     return cart;
+  }
+
+  /**
+   * Helper to synchronize Table model status & occupiedSince and broadcast real-time socket events
+   */
+  async _syncTableStateOnCartChange(businessId, tableNumber, cart) {
+    if (!businessId || !tableNumber) return;
+    try {
+      const cleanRef = tableNumber.toString().trim();
+      if (!cleanRef) return;
+      const numOnly = parseInt(cleanRef.replace(/\D/g, ''), 10) || 0;
+
+      // Find active order for this table
+      const activeOrder = await Order.findOne({
+        businessId,
+        status: { $in: ['pending', 'preparing'] },
+        orderType: 'dineIn',
+        $or: [
+          { tableNumber: { $regex: new RegExp(`^${cleanRef}$`, 'i') } },
+          ...(numOnly > 0 ? [{ tableNumber: numOnly.toString() }, { tableNumber: `T-${numOnly}` }, { tableNumber: `T${numOnly}` }] : []),
+        ],
+      }).lean();
+
+      // Find matching table
+      const tableDoc = await Table.findOne({
+        businessId,
+        $or: [
+          { name: { $regex: new RegExp(`^${cleanRef}$`, 'i') } },
+          ...(numOnly > 0 ? [{ name: `T-${numOnly}` }, { tableNumber: numOnly }] : []),
+        ],
+      });
+
+      if (tableDoc) {
+        const hasCartItems = cart && cart.items && cart.items.length > 0;
+        if (activeOrder) {
+          // Table has running KOT order
+          tableDoc.status = 'runningKot';
+          tableDoc.occupiedSince = tableDoc.occupiedSince || activeOrder.createdAt || new Date();
+          tableDoc.currentOrderId = activeOrder._id;
+          tableDoc.currentOrderNumber = activeOrder.orderNumber;
+          tableDoc.currentOrderTotal = (activeOrder.totalAmount || 0) + (hasCartItems ? (cart.subtotal || 0) : 0);
+          tableDoc.activeItemCount = (activeOrder.items ? activeOrder.items.length : 0) + (hasCartItems ? cart.items.length : 0);
+        } else if (hasCartItems) {
+          // Products added to table -> Occupied!
+          if (tableDoc.status !== 'reserved') {
+            tableDoc.status = 'occupied';
+          }
+          tableDoc.occupiedSince = tableDoc.occupiedSince || new Date();
+          tableDoc.currentOrderTotal = cart.subtotal || 0;
+          tableDoc.activeItemCount = cart.items.length;
+        } else {
+          // Cart is empty and no active order exists -> Free
+          if (tableDoc.status !== 'reserved') {
+            tableDoc.status = 'free';
+            tableDoc.occupiedSince = null;
+            tableDoc.currentOrderId = null;
+            tableDoc.currentOrderNumber = null;
+            tableDoc.currentOrderTotal = 0;
+            tableDoc.activeItemCount = 0;
+          }
+        }
+        await tableDoc.save();
+      }
+
+      // Broadcast real-time table update to all connected devices in the business room
+      await tableService.emitTableUpdateForTable(businessId, cleanRef);
+    } catch (err) {
+      // Non-blocking
+    }
   }
 }
 

@@ -350,15 +350,19 @@ class TableService {
   }
 
   async updateTableStatus(businessId, tableId, { status, currentOrderId, occupiedSince }) {
-    const isObjectId = mongoose.Types.ObjectId.isValid(tableId);
+    const cleanId = (tableId || '').toString().trim();
+    const isObjectId = mongoose.Types.ObjectId.isValid(cleanId);
     let normalizedStatus = status === 'running_kot' ? 'runningKot' : status;
     const update = { status: normalizedStatus };
+    const numOnly = parseInt(cleanId.replace(/\D/g, ''), 10) || 0;
 
     const query = {
       businessId,
-      ...(isObjectId
-        ? { _id: tableId }
-        : { $or: [{ name: tableId }, { tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 0 }] }),
+      $or: [
+        ...(isObjectId ? [{ _id: cleanId }] : []),
+        { name: { $regex: new RegExp(`^${cleanId}$`, 'i') } },
+        ...(numOnly > 0 ? [{ name: `T-${numOnly}` }, { tableNumber: numOnly }] : []),
+      ],
     };
 
     if (normalizedStatus === 'occupied' || normalizedStatus === 'runningKot') {

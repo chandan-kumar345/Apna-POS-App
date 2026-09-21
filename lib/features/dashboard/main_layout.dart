@@ -24,6 +24,7 @@ import '../auth/login_screen.dart';
 import 'dashboard_screen.dart';
 import '../subscription/screens/subscription_screen.dart';
 import '../campaign/screens/campaign_screen.dart';
+import '../staff/screens/staff_management_screen.dart';
 
 
 class MainLayout extends StatefulWidget {
@@ -315,6 +316,16 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                 ),
                 _buildNavItem(
                   index: 10,
+                  title: 'Staff Setting',
+                  icon: Icons.badge_rounded,
+                  iconColor: const Color(0xFF2563EB),
+                  iconBgColor: const Color(0xFFEFF6FF),
+                  badge: '${db.staffList.length}',
+                  isSmallScreen: isSmallScreen,
+                  isCollapsed: isCollapsed,
+                ),
+                _buildNavItem(
+                  index: 11,
                   title: 'Business Setting',
                   icon: Icons.settings_rounded,
                   iconColor: const Color(0xFF475569),
@@ -763,6 +774,10 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                     ),
                                     LoyaltyLandingScreen(onBack: () => _selectTab(0)),
                                     CampaignScreen(onBack: () => _selectTab(0)),
+                                    StaffManagementScreen(
+                                      onOpenDrawer: _toggleSidebar,
+                                      onNavigateToDashboard: () => _selectTab(0),
+                                    ),
                                     const BusinessSettingsHubScreen(),
                                   ],
                                 ),

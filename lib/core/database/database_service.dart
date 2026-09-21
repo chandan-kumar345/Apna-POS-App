@@ -10,6 +10,7 @@ import '../models/order_model.dart';
 import '../models/inventory_model.dart';
 import '../models/extra_model.dart';
 import '../models/print_log_model.dart';
+import '../models/staff_model.dart';
 import '../../features/auth/domain/entities/user_entity.dart';
 import '../../features/auth/domain/repositories/i_auth_repository.dart';
 import '../../features/auth/data/repositories/auth_repository_factory.dart';
@@ -37,6 +38,7 @@ class DatabaseService extends ChangeNotifier {
   factory DatabaseService() => _instance;
   DatabaseService._internal() {
     _initSocketListeners();
+    _initDefaultStaff();
   }
 
   SharedPreferences? _prefs;
@@ -80,6 +82,7 @@ class DatabaseService extends ChangeNotifier {
   List<OrderModel> orders = [];
   List<InventoryItemModel> inventoryItems = [];
   List<CustomerModel> customers = [];
+  List<StaffModel> staffList = [];
   List<ExtraModel> extras = [];
   final List<OrderModel> _holdOrders = [];
   List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
@@ -194,12 +197,14 @@ class DatabaseService extends ChangeNotifier {
     if (tIdx >= 0) {
       final current = tables[tIdx];
       if (items.isNotEmpty && (current.status == TableStatus.free || current.occupiedSince == null)) {
+        final newOccupiedSince = current.occupiedSince ?? DateTime.now().toIso8601String();
         tables[tIdx] = current.copyWith(
           status: TableStatus.occupied,
-          occupiedSince: current.occupiedSince ?? DateTime.now().toIso8601String(),
+          occupiedSince: newOccupiedSince,
           activeItemCount: items.length,
         );
         _saveTablesToPrefs();
+        updateTableStatus(current.id, TableStatus.occupied, occupiedSince: newOccupiedSince);
       }
     }
 
@@ -449,33 +454,41 @@ class DatabaseService extends ChangeNotifier {
         // No active pending/preparing order exists for this table
         final hasDraftCart = (_liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty) ||
             (_liveTableCarts.containsKey('T-${tbl.tableNumber}') && _liveTableCarts['T-${tbl.tableNumber}']!.isNotEmpty);
-        if (!hasDraftCart) {
-          if (tbl.status != TableStatus.reserved) {
-            tables[i] = tbl.copyWith(
-              status: TableStatus.free,
-              currentOrderId: null,
-              activeOrderNumber: null,
-              activeOrderTotal: 0.0,
-              activeItemCount: 0,
-              occupiedSince: null,
-            );
+        if (hasDraftCart) {
+          // Has local draft cart products before KOT is printed -> status is Occupied
+          final cartItems = getLiveTableCart(tbl.name);
+          final cartTotal = getLiveCartTotal(tbl.name);
+          tables[i] = tbl.copyWith(
+            status: TableStatus.occupied,
+            activeOrderTotal: cartTotal,
+            activeItemCount: cartItems.length,
+            occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
+          );
+        } else if (tbl.status == TableStatus.occupied) {
+          // Table was marked Occupied remotely (items added on peer device / server)
+          // Preserve occupied state, active totals, and timer!
+          if (tbl.activeOrderTotal > 0) {
+            _liveCartTotals[tbl.name] = tbl.activeOrderTotal;
           }
+          tables[i] = tbl.copyWith(
+            status: TableStatus.occupied,
+            occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
+          );
+        } else if (tbl.status == TableStatus.reserved) {
+          // Preserve reserved status
+        } else {
+          tables[i] = tbl.copyWith(
+            status: TableStatus.free,
+            currentOrderId: null,
+            activeOrderNumber: null,
+            activeOrderTotal: 0.0,
+            activeItemCount: 0,
+            occupiedSince: null,
+          );
           _liveCartTotals.remove(tbl.name);
           _liveTableCarts.remove(tbl.name);
           _liveCartTotals.remove('T-${tbl.tableNumber}');
           _liveTableCarts.remove('T-${tbl.tableNumber}');
-        } else {
-          // Has draft cart products before KOT is printed -> status is Occupied
-          if (tbl.status == TableStatus.free) {
-            final cartItems = getLiveTableCart(tbl.name);
-            final cartTotal = getLiveCartTotal(tbl.name);
-            tables[i] = tbl.copyWith(
-              status: TableStatus.occupied,
-              activeOrderTotal: cartTotal,
-              activeItemCount: cartItems.length,
-              occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
-            );
-          }
         }
       }
     }
@@ -4058,6 +4071,204 @@ class DatabaseService extends ChangeNotifier {
         .toList();
 
     return [...historyMatches, ...menuMatches].take(8).toList();
+  }
+
+  // ==================== STAFF MANAGEMENT ====================
+  void _initDefaultStaff() {
+    if (staffList.isNotEmpty) return;
+    staffList = [
+      StaffModel(
+        id: 'st_001',
+        name: 'Amit Sharma',
+        employeeId: 'EMP001',
+        phone: '9876543210',
+        email: 'amit.sharma@apnapos.com',
+        role: 'Admin',
+        status: 'Active',
+        pin: '1111',
+        permissions: const ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports', 'crm', 'loyalty', 'campaign', 'settings'],
+        createdAt: DateTime.now().subtract(const Duration(days: 180)),
+      ),
+      StaffModel(
+        id: 'st_002',
+        name: 'Neha Verma',
+        employeeId: 'EMP002',
+        phone: '9876543211',
+        email: 'neha.verma@apnapos.com',
+        role: 'Manager',
+        status: 'Active',
+        pin: '2222',
+        permissions: const ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports', 'crm', 'loyalty'],
+        createdAt: DateTime.now().subtract(const Duration(days: 150)),
+      ),
+      StaffModel(
+        id: 'st_003',
+        name: 'Rohan Mehta',
+        employeeId: 'EMP003',
+        phone: '9876543212',
+        email: 'rohan.mehta@apnapos.com',
+        role: 'Cashier',
+        status: 'Active',
+        pin: '3333',
+        permissions: const ['pos', 'tables', 'orders'],
+        createdAt: DateTime.now().subtract(const Duration(days: 120)),
+      ),
+      StaffModel(
+        id: 'st_004',
+        name: 'Priya Singh',
+        employeeId: 'EMP004',
+        phone: '9876543213',
+        email: 'priya.singh@apnapos.com',
+        role: 'Sales',
+        status: 'Active',
+        pin: '4444',
+        permissions: const ['pos', 'orders', 'crm'],
+        createdAt: DateTime.now().subtract(const Duration(days: 100)),
+      ),
+      StaffModel(
+        id: 'st_005',
+        name: 'Vikram Patel',
+        employeeId: 'EMP005',
+        phone: '9876543214',
+        email: 'vikram.patel@apnapos.com',
+        role: 'Inventory',
+        status: 'Active',
+        pin: '5555',
+        permissions: const ['inventory', 'menu'],
+        createdAt: DateTime.now().subtract(const Duration(days: 90)),
+      ),
+      StaffModel(
+        id: 'st_006',
+        name: 'Karan Joshi',
+        employeeId: 'EMP006',
+        phone: '9876543215',
+        email: 'karan.joshi@apnapos.com',
+        role: 'Support',
+        status: 'Inactive',
+        pin: '6666',
+        permissions: const ['orders', 'crm'],
+        createdAt: DateTime.now().subtract(const Duration(days: 80)),
+      ),
+      StaffModel(
+        id: 'st_007',
+        name: 'Sneha Kapoor',
+        employeeId: 'EMP007',
+        phone: '9876543216',
+        email: 'sneha.kapoor@apnapos.com',
+        role: 'Cashier',
+        status: 'Active',
+        pin: '7777',
+        permissions: const ['pos', 'tables', 'orders'],
+        createdAt: DateTime.now().subtract(const Duration(days: 70)),
+      ),
+      StaffModel(
+        id: 'st_008',
+        name: 'Arjun Rao',
+        employeeId: 'EMP008',
+        phone: '9876543217',
+        email: 'arjun.rao@apnapos.com',
+        role: 'Sales',
+        status: 'Active',
+        pin: '8888',
+        permissions: const ['pos', 'orders', 'crm'],
+        createdAt: DateTime.now().subtract(const Duration(days: 60)),
+      ),
+      StaffModel(
+        id: 'st_009',
+        name: 'Pooja Nair',
+        employeeId: 'EMP009',
+        phone: '9876543218',
+        email: 'pooja.nair@apnapos.com',
+        role: 'Admin',
+        status: 'Active',
+        pin: '9999',
+        permissions: const ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports', 'crm', 'loyalty', 'campaign', 'settings'],
+        createdAt: DateTime.now().subtract(const Duration(days: 50)),
+      ),
+      StaffModel(
+        id: 'st_010',
+        name: 'Rajesh Kumar',
+        employeeId: 'EMP010',
+        phone: '9876543219',
+        email: 'rajesh.kumar@apnapos.com',
+        role: 'Admin',
+        status: 'Active',
+        pin: '1010',
+        permissions: const ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports', 'crm', 'loyalty', 'campaign', 'settings'],
+        createdAt: DateTime.now().subtract(const Duration(days: 40)),
+      ),
+      StaffModel(
+        id: 'st_011',
+        name: 'Sunita Devi',
+        employeeId: 'EMP011',
+        phone: '9876543220',
+        email: 'sunita.devi@apnapos.com',
+        role: 'Support',
+        status: 'Inactive',
+        pin: '1112',
+        permissions: const ['orders'],
+        createdAt: DateTime.now().subtract(const Duration(days: 30)),
+      ),
+      StaffModel(
+        id: 'st_012',
+        name: 'Deepak Verma',
+        employeeId: 'EMP012',
+        phone: '9876543221',
+        email: 'deepak.verma@apnapos.com',
+        role: 'Manager',
+        status: 'Active',
+        pin: '1212',
+        permissions: const ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports'],
+        createdAt: DateTime.now().subtract(const Duration(days: 20)),
+      ),
+    ];
+  }
+
+  void syncStaffList(List<StaffModel> remoteStaff) {
+    if (remoteStaff.isEmpty) return;
+    final Map<String, StaffModel> map = {};
+    for (final s in staffList) {
+      map[s.id] = s;
+    }
+    for (final s in remoteStaff) {
+      map[s.id] = s;
+    }
+    staffList = map.values.toList();
+    notifyListeners();
+  }
+
+  void addStaff(StaffModel staff) {
+    staffList.removeWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
+    staffList.insert(0, staff);
+    notifyListeners();
+  }
+
+  void updateStaff(StaffModel staff) {
+    final idx = staffList.indexWhere((s) => s.id == staff.id);
+    if (idx != -1) {
+      staffList[idx] = staff;
+      notifyListeners();
+    } else {
+      addStaff(staff);
+    }
+  }
+
+  StaffModel? toggleStaffStatus(String id) {
+    final idx = staffList.indexWhere((s) => s.id == id);
+    if (idx != -1) {
+      final current = staffList[idx];
+      final newStatus = current.isActive ? 'Inactive' : 'Active';
+      final updated = current.copyWith(status: newStatus, updatedAt: DateTime.now());
+      staffList[idx] = updated;
+      notifyListeners();
+      return updated;
+    }
+    return null;
+  }
+
+  void deleteStaff(String id) {
+    staffList.removeWhere((s) => s.id == id);
+    notifyListeners();
   }
 }
 

@@ -86,7 +86,7 @@ const customerSchema = new mongoose.Schema(
     },
     source: {
       type: String,
-      default: 'Dine In',
+      default: 'POS',
       trim: true,
     },
     customerType: {

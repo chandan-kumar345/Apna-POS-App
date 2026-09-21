@@ -3,7 +3,7 @@ import 'package:apna_pos/core/models/crm_model.dart';
 
 void main() {
   group('CRM Lead Dynamic Data & Metric Tests', () {
-    test('CrmLeadModel accurately parses totalOrders, visitCount, totalSpent from JSON', () {
+    test('CrmLeadModel accurately parses totalOrders, visitCount, totalSpent and normalizes Dine In source to POS', () {
       final json = {
         'id': 'lead_123',
         'name': 'Rahul Sharma',
@@ -14,7 +14,7 @@ void main() {
         'stage': 'Won',
         'status': 'Won',
         'customerType': 'Regular Customer',
-        'tags': ['Regular Customer', 'Dine In'],
+        'tags': ['Regular Customer', 'POS'],
         'totalOrders': 7,
         'visitCount': 5,
         'totalSpent': 3450.50,
@@ -37,6 +37,7 @@ void main() {
       expect(lead.id, 'lead_123');
       expect(lead.name, 'Rahul Sharma');
       expect(lead.phone, '9876543210');
+      expect(lead.source, 'POS'); // Dine In normalized to POS
       expect(lead.totalOrders, 7);
       expect(lead.visitCount, 5);
       expect(lead.totalSpent, 3450.50);
@@ -164,6 +165,22 @@ void main() {
       expect(lead.visitCount, 8);
       expect(lead.totalSpent, 4500.75);
       expect(lead.returnCount, 0);
+    });
+
+    test('CrmLeadModel normalizes all Dine In, Takeaway, Delivery sources to POS while preserving other channels', () {
+      final dineInLead = CrmLeadModel.fromJson({'name': 'A', 'phone': '1', 'source': 'Dine In'});
+      final takeawayLead = CrmLeadModel.fromJson({'name': 'B', 'phone': '2', 'source': 'takeaway'});
+      final deliveryLead = CrmLeadModel.fromJson({'name': 'C', 'phone': '3', 'source': 'Delivery'});
+      final emptySourceLead = CrmLeadModel.fromJson({'name': 'D', 'phone': '4', 'source': ''});
+      final onlineLead = CrmLeadModel.fromJson({'name': 'E', 'phone': '5', 'source': 'Online'});
+      final waLead = CrmLeadModel.fromJson({'name': 'F', 'phone': '6', 'source': 'WhatsApp'});
+
+      expect(dineInLead.source, 'POS');
+      expect(takeawayLead.source, 'POS');
+      expect(deliveryLead.source, 'POS');
+      expect(emptySourceLead.source, 'POS');
+      expect(onlineLead.source, 'Online');
+      expect(waLead.source, 'WhatsApp');
     });
   });
 }

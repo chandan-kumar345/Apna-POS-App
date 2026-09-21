@@ -34,7 +34,7 @@ class CrmLeadModel {
     required this.phone,
     this.email = '',
     this.address = '',
-    this.source = 'Dine In',
+    this.source = 'POS',
     this.stage = 'New Lead',
     this.status = 'New Lead',
     this.customerType = 'New Customer',
@@ -91,6 +91,15 @@ class CrmLeadModel {
       parsedNotesList = json['notesList'] as List<dynamic>;
     }
 
+    String rawSource = (json['source']?.toString() ?? '').trim();
+    if (rawSource.isEmpty ||
+        rawSource.toLowerCase() == 'dine in' ||
+        rawSource.toLowerCase() == 'dinein' ||
+        rawSource.toLowerCase() == 'takeaway' ||
+        rawSource.toLowerCase() == 'delivery') {
+      rawSource = 'POS';
+    }
+
     return CrmLeadModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       name: (json['name']?.toString() ?? '').trim().isNotEmpty
@@ -99,9 +108,7 @@ class CrmLeadModel {
       phone: json['phone']?.toString() ?? '',
       email: json['email']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
-      source: (json['source']?.toString() ?? '').trim().isNotEmpty
-          ? json['source'].toString().trim()
-          : 'Dine In',
+      source: rawSource,
       stage: json['stage']?.toString() ?? 'New Lead',
       status: json['status']?.toString() ?? 'New Lead',
       customerType: json['customerType']?.toString() ?? (parsedTags.isNotEmpty ? parsedTags.first : 'New Customer'),

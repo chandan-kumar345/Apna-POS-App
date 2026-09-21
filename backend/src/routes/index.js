@@ -20,6 +20,7 @@ const crmRoutes = require('./crmRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const subscriptionRoutes = require('./subscriptionRoutes');
 const chotuRoutes = require('./chotuRoutes');
+const staffRoutes = require('./staffRoutes');
 
 const router = express.Router();
 
@@ -57,5 +58,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/subscription', subscriptionRoutes);
 router.use('/subscriptions', subscriptionRoutes);
 router.use('/chotu', chotuRoutes);
+router.use('/staff', staffRoutes);
 
 module.exports = router;

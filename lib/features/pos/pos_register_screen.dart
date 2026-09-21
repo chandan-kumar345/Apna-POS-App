@@ -2404,6 +2404,12 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _cartItems.removeWhere((i) => i.item.id == item.id);
       _syncTableStatusWithCart();
     });
+
+    _cartApiService.removeItemFromCart(
+      productId: item.productId.isNotEmpty ? item.productId : item.id,
+      tableNumber: _selectedTable,
+      orderType: _selectedOrderType.name,
+    );
   }
 
   Widget _buildStatusLegendDot(Color color, String label) {

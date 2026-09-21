@@ -1,0 +1,231 @@
+import 'package:flutter/material.dart';
+
+class StaffModel {
+  final String id;
+  final String name;
+  final String employeeId;
+  final String phone;
+  final String email;
+  final String role;
+  final String status;
+  final String pin;
+  final String avatarUrl;
+  final List<String> permissions;
+  final double salary;
+  final DateTime? joiningDate;
+  final String notes;
+  final DateTime createdAt;
+  final DateTime? updatedAt;
+
+  const StaffModel({
+    required this.id,
+    required this.name,
+    required this.employeeId,
+    this.phone = '',
+    this.email = '',
+    this.role = 'Cashier',
+    this.status = 'Active',
+    this.pin = '1234',
+    this.avatarUrl = '',
+    this.permissions = const ['pos', 'tables', 'orders'],
+    this.salary = 0.0,
+    this.joiningDate,
+    this.notes = '',
+    required this.createdAt,
+    this.updatedAt,
+  });
+
+  bool get isActive => status.toLowerCase() == 'active';
+  bool get isAdmin => role.toLowerCase() == 'admin';
+  bool get isManager => role.toLowerCase() == 'manager';
+  bool get isCashier => role.toLowerCase() == 'cashier';
+
+  String get initials {
+    if (name.trim().isEmpty) return 'ST';
+    final parts = name.trim().split(RegExp(r'\s+'));
+    if (parts.length >= 2) {
+      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+    }
+    return parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+  }
+
+  Color get roleTextColor {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return const Color(0xFF7C3AED);
+      case 'manager':
+        return const Color(0xFF2563EB);
+      case 'cashier':
+        return const Color(0xFF0284C7);
+      case 'sales':
+        return const Color(0xFFEA580C);
+      case 'inventory':
+      case 'support':
+        return const Color(0xFF475569);
+      case 'chef':
+      case 'kitchen':
+        return const Color(0xFFD97706);
+      case 'waiter':
+        return const Color(0xFF9333EA);
+      default:
+        return const Color(0xFF475569);
+    }
+  }
+
+  Color get roleBgColor {
+    switch (role.toLowerCase()) {
+      case 'admin':
+        return const Color(0xFFEDE9FE);
+      case 'manager':
+        return const Color(0xFFDBEAFE);
+      case 'cashier':
+        return const Color(0xFFE0F2FE);
+      case 'sales':
+        return const Color(0xFFFFEDD5);
+      case 'inventory':
+      case 'support':
+        return const Color(0xFFF1F5F9);
+      case 'chef':
+      case 'kitchen':
+        return const Color(0xFFFEF3C7);
+      case 'waiter':
+        return const Color(0xFFF3E8FF);
+      default:
+        return const Color(0xFFF1F5F9);
+    }
+  }
+
+  StaffModel copyWith({
+    String? id,
+    String? name,
+    String? employeeId,
+    String? phone,
+    String? email,
+    String? role,
+    String? status,
+    String? pin,
+    String? avatarUrl,
+    List<String>? permissions,
+    double? salary,
+    DateTime? joiningDate,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return StaffModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      employeeId: employeeId ?? this.employeeId,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      role: role ?? this.role,
+      status: status ?? this.status,
+      pin: pin ?? this.pin,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
+      permissions: permissions ?? this.permissions,
+      salary: salary ?? this.salary,
+      joiningDate: joiningDate ?? this.joiningDate,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'name': name,
+      'employeeId': employeeId,
+      'phone': phone,
+      'email': email,
+      'role': role,
+      'status': status,
+      'pin': pin,
+      'avatarUrl': avatarUrl,
+      'permissions': permissions,
+      'salary': salary,
+      'joiningDate': joiningDate?.toIso8601String(),
+      'notes': notes,
+      'createdAt': createdAt.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+    };
+  }
+
+  factory StaffModel.fromJson(Map<String, dynamic> json) {
+    DateTime parsedCreated = DateTime.now();
+    if (json['createdAt'] != null) {
+      try {
+        parsedCreated = DateTime.parse(json['createdAt'].toString());
+      } catch (_) {}
+    }
+
+    DateTime? parsedJoining;
+    if (json['joiningDate'] != null) {
+      try {
+        parsedJoining = DateTime.parse(json['joiningDate'].toString());
+      } catch (_) {}
+    }
+
+    DateTime? parsedUpdated;
+    if (json['updatedAt'] != null) {
+      try {
+        parsedUpdated = DateTime.parse(json['updatedAt'].toString());
+      } catch (_) {}
+    }
+
+    List<String> parsedPermissions = [];
+    if (json['permissions'] is List) {
+      parsedPermissions = (json['permissions'] as List).map((p) => p.toString()).toList();
+    } else {
+      parsedPermissions = ['pos', 'tables', 'orders'];
+    }
+
+    return StaffModel(
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      name: json['name']?.toString() ?? 'Staff Member',
+      employeeId: json['employeeId']?.toString() ?? '',
+      phone: json['phone']?.toString() ?? '',
+      email: json['email']?.toString() ?? '',
+      role: json['role']?.toString() ?? 'Cashier',
+      status: json['status']?.toString() ?? 'Active',
+      pin: json['pin']?.toString() ?? '1234',
+      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      permissions: parsedPermissions,
+      salary: (json['salary'] as num?)?.toDouble() ?? 0.0,
+      joiningDate: parsedJoining,
+      notes: json['notes']?.toString() ?? '',
+      createdAt: parsedCreated,
+      updatedAt: parsedUpdated,
+    );
+  }
+}
+
+class StaffStatsModel {
+  final int total;
+  final int active;
+  final int inactive;
+  final int admins;
+
+  const StaffStatsModel({
+    this.total = 0,
+    this.active = 0,
+    this.inactive = 0,
+    this.admins = 0,
+  });
+
+  factory StaffStatsModel.fromJson(Map<String, dynamic> json) {
+    return StaffStatsModel(
+      total: (json['total'] as num?)?.toInt() ?? 0,
+      active: (json['active'] as num?)?.toInt() ?? 0,
+      inactive: (json['inactive'] as num?)?.toInt() ?? 0,
+      admins: (json['admins'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'total': total,
+        'active': active,
+        'inactive': inactive,
+        'admins': admins,
+      };
+}

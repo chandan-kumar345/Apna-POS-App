@@ -85,7 +85,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
   final List<String> _allSources = [
     'All Sources',
-    'Dine In',
     'POS',
     'Online',
     'WhatsApp',
@@ -115,6 +114,146 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     super.dispose();
   }
 
+  /// Normalizes lead acquisition sources by eliminating Dine In / Takeaway / Delivery in favor of POS
+  String _normalizeLeadSource(String? source) {
+    final s = (source ?? '').trim().toLowerCase();
+    if (s.isEmpty || s == 'dine in' || s == 'dinein' || s == 'takeaway' || s == 'delivery') {
+      return 'POS';
+    }
+    if (s == 'pos') return 'POS';
+    if (s == 'online') return 'Online';
+    if (s == 'whatsapp') return 'WhatsApp';
+    if (s == 'social media' || s == 'social') return 'Social Media';
+    if (s == 'referral') return 'Referral';
+    if (s == 'website') return 'Website';
+    return (source ?? '').trim().isNotEmpty ? source!.trim() : 'POS';
+  }
+
+  /// Compares phone numbers using 10-digit normalized extraction
+  bool _isSamePhone(String? p1, String? p2) {
+    if (p1 == null || p2 == null) return false;
+    final clean1 = p1.replaceAll(RegExp(r'[^0-9]'), '');
+    final clean2 = p2.replaceAll(RegExp(r'[^0-9]'), '');
+    if (clean1.isEmpty || clean2.isEmpty) return false;
+    if (clean1 == clean2) return true;
+    final last10_1 = clean1.length >= 10 ? clean1.substring(clean1.length - 10) : clean1;
+    final last10_2 = clean2.length >= 10 ? clean2.substring(clean2.length - 10) : clean2;
+    return last10_1.isNotEmpty && last10_1 == last10_2;
+  }
+
+  /// Enriches a lead with accurate local order metrics, distinct visit dates, and rich order history
+  CrmLeadModel _enrichLeadWithOrders(CrmLeadModel lead) {
+    final normSource = _normalizeLeadSource(lead.source);
+    final localOrders = DatabaseService().orders;
+    final matchingLocalOrders = localOrders.where((o) {
+      if (lead.phone.isNotEmpty && o.customerPhone != null && o.customerPhone!.trim().isNotEmpty) {
+        return _isSamePhone(lead.phone, o.customerPhone);
+      }
+      if (lead.name.isNotEmpty && lead.name != 'Customer' && lead.name != 'Guest Customer') {
+        return (o.customerName ?? '').trim().toLowerCase() == lead.name.trim().toLowerCase();
+      }
+      return false;
+    }).toList();
+
+    // Filter out cancelled orders from total spend and order counts
+    final nonCancelledLocalOrders = matchingLocalOrders.where((o) {
+      final st = o.status.name.toLowerCase();
+      return st != 'cancelled' && st != 'canceled';
+    }).toList();
+
+    final cancelledLocalOrdersCount = matchingLocalOrders.length - nonCancelledLocalOrders.length;
+
+    // Calculate unique visit dates (YYYY-MM-DD) from local non-cancelled orders
+    final Set<String> localVisitDates = {};
+    double localTotalSpent = 0.0;
+    for (final o in nonCancelledLocalOrders) {
+      localTotalSpent += o.totalAmount;
+      final parsedDate = DateTime.tryParse(o.createdAt);
+      if (parsedDate != null) {
+        localVisitDates.add(DateFormat('yyyy-MM-dd').format(parsedDate));
+      }
+    }
+
+    final localOrderCount = nonCancelledLocalOrders.length;
+    final localVisitCount = localVisitDates.length;
+
+    // Take max / merged values between backend lead data and local orders
+    final int effTotalOrders = math.max(lead.totalOrders, localOrderCount);
+    final double effTotalSpent = math.max(lead.totalSpent, localTotalSpent);
+    // In Apna POS (POS/restaurant), each completed order represents a customer visit, ensuring 100% parity with Dashboard analytics
+    final int effVisitCount = effTotalOrders > 0 ? effTotalOrders : (lead.visitCount > 0 ? lead.visitCount : 0);
+    final int effReturnCount = math.max(lead.returnCount, cancelledLocalOrdersCount);
+
+    // Merge recent orders for Orders Tab display
+    final List<Map<String, dynamic>> enrichedRecentOrders = [];
+    final Set<String> seenOrderIds = {};
+
+    // 1. Add matching local orders first (most fresh)
+    for (final o in matchingLocalOrders) {
+      final orderId = o.orderNumber.isNotEmpty ? o.orderNumber : o.id;
+      if (seenOrderIds.contains(orderId)) continue;
+      seenOrderIds.add(orderId);
+
+      final itemsList = o.items.map((it) => {
+        'name': it.item.name,
+        'quantity': it.quantity,
+        'price': it.item.effectivePrice,
+      }).toList();
+
+      enrichedRecentOrders.add({
+        'id': orderId,
+        'orderNumber': o.orderNumber.isNotEmpty ? o.orderNumber : orderId,
+        'orderType': 'POS',
+        'status': o.status.name,
+        'totalAmount': o.totalAmount,
+        'amount': o.totalAmount,
+        'createdAt': o.createdAt,
+        'date': o.createdAt,
+        'items': itemsList,
+      });
+    }
+
+    // 2. Add backend recentOrders if not already seen
+    for (final ord in lead.recentOrders) {
+      if (ord is Map) {
+        final id = ord['id']?.toString() ?? ord['_id']?.toString() ?? ord['orderNumber']?.toString() ?? '';
+        if (id.isNotEmpty && seenOrderIds.contains(id)) continue;
+        if (id.isNotEmpty) seenOrderIds.add(id);
+
+        enrichedRecentOrders.add({
+          'id': id.isNotEmpty ? id : 'Order',
+          'orderNumber': ord['orderNumber'] ?? id,
+          'orderType': 'POS',
+          'status': ord['status']?.toString() ?? 'completed',
+          'totalAmount': ord['totalAmount'] ?? ord['amount'] ?? 0.0,
+          'amount': ord['totalAmount'] ?? ord['amount'] ?? 0.0,
+          'createdAt': ord['createdAt'] ?? ord['date'],
+          'date': ord['date'] ?? ord['createdAt'],
+          'items': ord['items'] is List ? ord['items'] : [],
+        });
+      }
+    }
+
+    // Sort recent orders newest first
+    enrichedRecentOrders.sort((a, b) {
+      final da = DateTime.tryParse(a['date']?.toString() ?? a['createdAt']?.toString() ?? '') ?? DateTime(1970);
+      final db = DateTime.tryParse(b['date']?.toString() ?? b['createdAt']?.toString() ?? '') ?? DateTime(1970);
+      return db.compareTo(da);
+    });
+
+    final isRegular = effTotalOrders > 1 || lead.customerType.toLowerCase().contains('regular');
+
+    return lead.copyWith(
+      source: normSource,
+      totalOrders: effTotalOrders,
+      totalSpent: effTotalSpent,
+      visitCount: effVisitCount,
+      returnCount: effReturnCount,
+      customerType: isRegular ? 'Regular Customer' : (lead.customerType.isNotEmpty ? lead.customerType : 'New Customer'),
+      recentOrders: enrichedRecentOrders,
+    );
+  }
+
   /// Load leads dynamically from all sources (CRM API + Customer DB + POS Live Orders)
   Future<void> _loadLeadsFromBackend() async {
     setState(() {
@@ -122,92 +261,154 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     });
 
     try {
-      final stageParam = _selectedStageTab == 'All' ? null : _selectedStageTab;
-      final searchParam = _searchController.text.trim().isEmpty ? null : _searchController.text.trim();
-      final sourceParam = _selectedSourceFilter == 'All Sources' ? null : _selectedSourceFilter;
-      final startParam = _selectedDateRange?.start.toIso8601String();
-      final endParam = _selectedDateRange?.end.toIso8601String();
+      final Map<String, CrmLeadModel> aggregatedMap = {};
 
-      // 1. Fetch from CRM Backend API (Source of Truth for leads, orders, visits & spend)
+      // 1. Fetch from CRM Backend API (Request large limit to populate client-side filters & full dataset)
       CrmFetchResult? crmApiResult;
       try {
         crmApiResult = await _crmService.fetchLeads(
-          page: _currentPage,
-          limit: _pageSize,
-          stage: stageParam,
-          search: searchParam,
-          source: sourceParam,
-          startDate: startParam,
-          endDate: endParam,
+          page: 1,
+          limit: 1000,
         );
       } catch (e) {
         debugPrint('[CrmLeadsScreen] API fetch error: $e');
       }
 
-      if (crmApiResult != null) {
-        // Direct binding from API
-        final leads = crmApiResult.leads.map((l) {
-          final key = l.phone.trim().isNotEmpty ? l.phone.trim() : l.name.trim();
+      if (crmApiResult != null && crmApiResult.leads.isNotEmpty) {
+        for (final l in crmApiResult.leads) {
+          final key = l.phone.trim().isNotEmpty ? l.phone.trim() : (l.id.isNotEmpty ? l.id : l.name.trim());
+          if (key.isEmpty) continue;
           final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[l.id];
-          if (stageOverride != null && stageOverride != l.stage) {
-            return l.copyWith(stage: stageOverride, status: stageOverride);
-          }
-          return l;
-        }).toList();
-
-        if (mounted) {
-          _allLeads = leads;
-          _totalCount = crmApiResult.totalCount;
-          _totalPages = crmApiResult.totalPages;
-          _stats = crmApiResult.stats;
-          _applyLocalFilter();
+          final leadWithOverride = (stageOverride != null && stageOverride != l.stage)
+              ? l.copyWith(stage: stageOverride, status: stageOverride)
+              : l;
+          aggregatedMap[key] = _enrichLeadWithOrders(leadWithOverride);
         }
-        return;
       }
 
-      // 2. Offline Fallback: Fetch from Customer Database & synced orders
-      List<CustomerModel> dbCustomers = [];
+      // 2. Offline / Local fallback: Fetch from Customer Service
       try {
-        dbCustomers = await _customerService.fetchCustomers(
-          search: searchParam,
-          limit: 100,
-        );
-      } catch (_) {}
+        final dbCustomers = await _customerService.fetchCustomers(limit: 1000);
+        for (final cust in dbCustomers) {
+          final key = cust.phone.trim().isNotEmpty ? cust.phone.trim() : (cust.id.isNotEmpty ? cust.id : cust.name.trim());
+          if (key.isEmpty) continue;
 
-      final Map<String, CrmLeadModel> aggregatedMap = {};
-      for (final cust in dbCustomers) {
-        final key = cust.phone.trim().isNotEmpty ? cust.phone.trim() : cust.name.trim();
-        if (key.isEmpty) continue;
+          if (!aggregatedMap.containsKey(key)) {
+            final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[cust.id];
+            final isRegular = cust.totalOrders > 1;
+            final defaultStage = isRegular ? 'Won' : 'New Lead';
+            final effStage = stageOverride ?? defaultStage;
 
-        final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[cust.id];
-        final isRegular = cust.totalOrders > 1;
-        final defaultStage = isRegular ? 'Won' : 'New Lead';
-        final effStage = stageOverride ?? defaultStage;
-
-        aggregatedMap[key] = CrmLeadModel(
-          id: cust.id.isNotEmpty ? cust.id : 'cust_${cust.phone}',
-          name: cust.name.isNotEmpty ? cust.name : 'Customer',
-          phone: cust.phone,
-          email: cust.email,
-          address: cust.address,
-          source: 'POS',
-          stage: effStage,
-          status: effStage,
-          customerType: isRegular ? 'Regular Customer' : 'New Customer',
-          tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
-          totalOrders: cust.totalOrders,
-          totalSpent: cust.totalSpent,
-          visitCount: cust.totalOrders > 0 ? cust.totalOrders : 0,
-          returnCount: 0,
-          createdAt: DateTime.now(),
-          lastVisit: cust.lastVisit != null ? DateTime.tryParse(cust.lastVisit!) : DateTime.now(),
-        );
+            final baseLead = CrmLeadModel(
+              id: cust.id.isNotEmpty ? cust.id : 'cust_${cust.phone}',
+              name: cust.name.isNotEmpty ? cust.name : 'Customer',
+              phone: cust.phone,
+              email: cust.email,
+              address: cust.address,
+              source: 'POS',
+              stage: effStage,
+              status: effStage,
+              customerType: isRegular ? 'Regular Customer' : 'New Customer',
+              tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
+              totalOrders: cust.totalOrders,
+              totalSpent: cust.totalSpent,
+              visitCount: cust.totalOrders > 0 ? cust.totalOrders : 0,
+              returnCount: 0,
+              createdAt: DateTime.now(),
+              lastVisit: cust.lastVisit != null ? DateTime.tryParse(cust.lastVisit!) : DateTime.now(),
+            );
+            aggregatedMap[key] = _enrichLeadWithOrders(baseLead);
+          }
+        }
+      } catch (e) {
+        debugPrint('[CrmLeadsScreen] CustomerService fetch error: $e');
       }
 
-      final dynamicList = aggregatedMap.values.toList();
+      // 3. DatabaseService fallback: Check DatabaseService().customers
+      try {
+        final localCusts = DatabaseService().customers;
+        for (final cust in localCusts) {
+          final key = cust.phone.trim().isNotEmpty ? cust.phone.trim() : (cust.id.isNotEmpty ? cust.id : cust.name.trim());
+          if (key.isEmpty) continue;
+
+          if (!aggregatedMap.containsKey(key)) {
+            final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[cust.id];
+            final isRegular = cust.totalOrders > 1;
+            final defaultStage = isRegular ? 'Won' : 'New Lead';
+            final effStage = stageOverride ?? defaultStage;
+
+            final baseLead = CrmLeadModel(
+              id: cust.id.isNotEmpty ? cust.id : 'cust_${cust.phone}',
+              name: cust.name.isNotEmpty ? cust.name : 'Customer',
+              phone: cust.phone,
+              email: cust.email,
+              address: cust.address,
+              source: 'POS',
+              stage: effStage,
+              status: effStage,
+              customerType: isRegular ? 'Regular Customer' : 'New Customer',
+              tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
+              totalOrders: cust.totalOrders,
+              totalSpent: cust.totalSpent,
+              visitCount: cust.totalOrders > 0 ? cust.totalOrders : 0,
+              returnCount: 0,
+              createdAt: DateTime.now(),
+              lastVisit: cust.lastVisit != null ? DateTime.tryParse(cust.lastVisit!) : DateTime.now(),
+            );
+            aggregatedMap[key] = _enrichLeadWithOrders(baseLead);
+          }
+        }
+      } catch (e) {
+        debugPrint('[CrmLeadsScreen] DatabaseService.customers fallback error: $e');
+      }
+
+      // 4. Extract distinct customers from local orders (DatabaseService().orders)
+      try {
+        final localOrders = DatabaseService().orders;
+        for (final ord in localOrders) {
+          final p = (ord.customerPhone ?? '').trim();
+          final n = (ord.customerName ?? '').trim();
+          if (p.isEmpty && n.isEmpty) continue;
+          final key = p.isNotEmpty ? p : n;
+
+          if (!aggregatedMap.containsKey(key)) {
+            final stageOverride = _persistedLeadStages[key] ?? _persistedLeadStages[ord.id];
+            final effStage = stageOverride ?? 'New Lead';
+
+            // Calculate orders for this customer from local orders
+            final customerOrders = localOrders.where((o) => (p.isNotEmpty && _isSamePhone(o.customerPhone, p)) || (p.isEmpty && (o.customerName ?? '').trim() == n)).toList();
+            final nonCancelledOrders = customerOrders.where((o) => o.status.name.toLowerCase() != 'cancelled' && o.status.name.toLowerCase() != 'canceled').toList();
+            final orderCount = nonCancelledOrders.length;
+            final totalSpent = nonCancelledOrders.fold<double>(0.0, (sum, o) => sum + o.totalAmount);
+            final isRegular = orderCount > 1;
+
+            final baseLead = CrmLeadModel(
+              id: 'ord_${ord.id}',
+              name: n.isNotEmpty ? n : 'Guest Customer',
+              phone: p,
+              email: '',
+              address: ord.deliveryAddress ?? '',
+              source: 'POS',
+              stage: isRegular ? 'Won' : effStage,
+              status: isRegular ? 'Won' : effStage,
+              customerType: isRegular ? 'Regular Customer' : 'New Customer',
+              tags: isRegular ? const ['Regular Customer', 'POS'] : const ['New Customer', 'POS'],
+              totalOrders: orderCount,
+              totalSpent: totalSpent,
+              visitCount: orderCount,
+              returnCount: customerOrders.length - nonCancelledOrders.length,
+              createdAt: DateTime.tryParse(ord.createdAt) ?? DateTime.now(),
+              lastVisit: DateTime.tryParse(ord.createdAt) ?? DateTime.now(),
+            );
+            aggregatedMap[key] = _enrichLeadWithOrders(baseLead);
+          }
+        }
+      } catch (e) {
+        debugPrint('[CrmLeadsScreen] DatabaseService.orders fallback error: $e');
+      }
 
       if (mounted) {
-        _allLeads = dynamicList;
+        _allLeads = aggregatedMap.values.map(_enrichLeadWithOrders).toList();
         _applyLocalFilter();
       }
     } catch (e) {
@@ -332,18 +533,20 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   // --- Actions ---
 
   void _onSelectLead(CrmLeadModel lead) {
+    final enriched = _enrichLeadWithOrders(lead);
     setState(() {
-      _selectedLead = lead;
+      _selectedLead = enriched;
     });
 
     if (lead.id.isNotEmpty && !lead.id.startsWith('cust_') && !lead.id.startsWith('ord_')) {
       _crmService.fetchLeadById(lead.id).then((freshLead) {
         if (freshLead != null && mounted && _selectedLead?.id == lead.id) {
+          final freshEnriched = _enrichLeadWithOrders(freshLead);
           setState(() {
-            _selectedLead = freshLead;
-            final idx = _allLeads.indexWhere((l) => l.id == freshLead.id);
+            _selectedLead = freshEnriched;
+            final idx = _allLeads.indexWhere((l) => l.id == freshEnriched.id);
             if (idx != -1) {
-              _allLeads[idx] = freshLead;
+              _allLeads[idx] = freshEnriched;
             }
           });
         }
@@ -1094,7 +1297,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   // --- UI Colors & Badge Helpers ---
   Color _getSourceBgColor(String source) {
     switch (source.toLowerCase()) {
-      case 'dine in':
       case 'pos':
         return const Color(0xFFE0F2FE); // light blue
       case 'online':
@@ -1107,13 +1309,12 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       case 'website':
         return const Color(0xFFFEF3C7); // warm yellow
       default:
-        return const Color(0xFFF1F5F9);
+        return const Color(0xFFE0F2FE); // default light blue for POS
     }
   }
 
   Color _getSourceTextColor(String source) {
     switch (source.toLowerCase()) {
-      case 'dine in':
       case 'pos':
         return const Color(0xFF0284C7); // blue
       case 'online':
@@ -1127,7 +1328,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       case 'website':
         return const Color(0xFFB45309); // amber
       default:
-        return const Color(0xFF475569);
+        return const Color(0xFF0284C7); // default blue for POS
     }
   }
 
@@ -3685,65 +3886,167 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         const SizedBox(height: 12),
 
         if (lead.recentOrders.isNotEmpty) ...[
-          const Text(
-            'Recent Orders',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textDark),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Recent Orders',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: textDark),
+              ),
+              Text(
+                '${lead.recentOrders.length} ${lead.recentOrders.length == 1 ? 'order' : 'orders'}',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSubtle),
+              ),
+            ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           ...lead.recentOrders.map((ord) {
-            final id = ord is Map ? (ord['id'] ?? ord['_id'] ?? 'Order') : 'Order';
+            final orderNum = ord is Map ? (ord['orderNumber'] ?? ord['id'] ?? ord['_id'] ?? 'Order') : 'Order';
             final amt = ord is Map ? (ord['totalAmount'] ?? ord['amount'] ?? 0) : 0;
-            final dateRaw = ord is Map ? ord['date'] : null;
+            final dateRaw = ord is Map ? (ord['date'] ?? ord['createdAt']) : null;
             final dateStr = dateRaw != null
-                ? DateFormat('dd MMM yyyy').format(DateTime.tryParse(dateRaw.toString()) ?? DateTime.now())
+                ? DateFormat('dd MMM yyyy, hh:mm a').format(DateTime.tryParse(dateRaw.toString()) ?? DateTime.now())
                 : '';
-            final statusStr = ord is Map ? (ord['status']?.toString() ?? '') : '';
+            final statusStr = ord is Map ? (ord['status']?.toString() ?? 'completed') : 'completed';
+            final isCancelled = statusStr.toLowerCase() == 'cancelled' || statusStr.toLowerCase() == 'canceled';
+
+            // Extract item names & quantities
+            List<String> itemsSummary = [];
+            if (ord is Map && ord['items'] is List) {
+              for (final it in ord['items']) {
+                if (it is Map) {
+                  final name = it['name']?.toString() ?? it['itemName']?.toString() ?? '';
+                  final qty = it['quantity']?.toString() ?? '1';
+                  if (name.isNotEmpty) {
+                    itemsSummary.add('${qty}x $name');
+                  }
+                }
+              }
+            }
 
             return Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: boxBorder),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x04000000),
+                    blurRadius: 4,
+                    offset: Offset(0, 1),
+                  ),
+                ],
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '$id',
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Order Number
+                      Text(
+                        '#$orderNum',
+                        style: TextStyle(
+                          fontSize: isMobile ? 12 : 13,
+                          fontWeight: FontWeight.w800,
+                          color: textDark,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // POS source badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE0F2FE),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          'POS',
                           style: TextStyle(
-                            fontSize: isMobile ? 11.5 : 12.5,
+                            fontSize: 9,
                             fontWeight: FontWeight.w700,
-                            color: textDark,
+                            color: Color(0xFF0284C7),
                           ),
                         ),
-                        if (dateStr.isNotEmpty || statusStr.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            [dateStr, statusStr].where((s) => s.isNotEmpty).join(' • '),
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: textSubtle,
+                      ),
+                      const SizedBox(width: 6),
+                      // Status Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isCancelled ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          statusStr.toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w700,
+                            color: isCancelled ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+                      // Total Amount
+                      Text(
+                        '₹$amt',
+                        style: TextStyle(
+                          fontSize: isMobile ? 13 : 14.5,
+                          fontWeight: FontWeight.w800,
+                          color: isCancelled ? const Color(0xFF94A3B8) : const Color(0xFF16A34A),
+                          decoration: isCancelled ? TextDecoration.lineThrough : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (dateStr.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF94A3B8)),
+                        const SizedBox(width: 4),
+                        Text(
+                          dateStr,
+                          style: const TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                            color: textSubtle,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (itemsSummary.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: boxBg,
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFF1F5F9)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.restaurant_menu_rounded, size: 12, color: primaryNavy),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              itemsSummary.join(', '),
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF334155),
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  Text(
-                    '₹$amt',
-                    style: TextStyle(
-                      fontSize: isMobile ? 12.5 : 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF16A34A),
-                    ),
-                  ),
+                  ],
                 ],
               ),
             );
@@ -3751,10 +4054,16 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         ] else ...[
           const Center(
             child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text(
-                'No orders recorded yet.',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8)),
+              padding: EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  Icon(Icons.receipt_long_outlined, size: 36, color: Color(0xFFCBD5E1)),
+                  SizedBox(height: 8),
+                  Text(
+                    'No orders recorded yet.',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF94A3B8)),
+                  ),
+                ],
               ),
             ),
           ),
@@ -4039,7 +4348,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     final phoneCtrl = TextEditingController(text: existingLead?.phone ?? '');
     final emailCtrl = TextEditingController(text: existingLead?.email ?? '');
     final addressCtrl = TextEditingController(text: existingLead?.address ?? '');
-    final sourceCtrl = TextEditingController(text: existingLead?.source ?? 'Dine In');
+    final sourceCtrl = TextEditingController(text: existingLead != null ? _normalizeLeadSource(existingLead.source) : 'POS');
     final stageCtrl = TextEditingController(text: existingLead?.stage ?? 'New Lead');
     final typeCtrl = TextEditingController(text: existingLead?.customerType ?? 'New Customer');
     final notesCtrl = TextEditingController(text: existingLead?.notes ?? '');
@@ -4117,7 +4426,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       child: DropdownButtonFormField<String>(
                         initialValue: _allSources.contains(sourceCtrl.text) && sourceCtrl.text != 'All Sources'
                             ? sourceCtrl.text
-                            : 'Dine In',
+                            : 'POS',
                         dropdownColor: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                         style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
@@ -4132,7 +4441,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                           enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
                           focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
                         ),
-                        items: ['Dine In', 'POS', 'Online', 'WhatsApp', 'Social Media', 'Referral', 'Website']
+                        items: ['POS', 'Online', 'WhatsApp', 'Social Media', 'Referral', 'Website']
                             .map((s) => DropdownMenuItem(
                                   value: s,
                                   child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
@@ -4223,13 +4532,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                           return;
                         }
 
+                        final normSource = _normalizeLeadSource(sourceCtrl.text);
                         final newLead = CrmLeadModel(
                           id: isEditing ? existingLead.id : DateTime.now().millisecondsSinceEpoch.toString(),
                           name: name.isNotEmpty ? name : 'Guest Customer',
                           phone: phone,
                           email: emailCtrl.text.trim(),
                           address: addressCtrl.text.trim(),
-                          source: sourceCtrl.text,
+                          source: normSource,
                           stage: stageCtrl.text,
                           status: stageCtrl.text,
                           customerType: typeCtrl.text.trim().isNotEmpty ? typeCtrl.text.trim() : 'New Customer',
@@ -4239,16 +4549,18 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                           lastVisit: DateTime.now(),
                         );
 
+                        final enrichedNewLead = _enrichLeadWithOrders(newLead);
+
                         Navigator.pop(ctx);
 
                         setState(() {
                           if (isEditing) {
                             final idx = _allLeads.indexWhere((l) => l.id == existingLead.id);
-                            if (idx != -1) _allLeads[idx] = newLead;
+                            if (idx != -1) _allLeads[idx] = enrichedNewLead;
                           } else {
-                            _allLeads.insert(0, newLead);
+                            _allLeads.insert(0, enrichedNewLead);
                           }
-                          _selectedLead = newLead;
+                          _selectedLead = enrichedNewLead;
                           _applyLocalFilter();
                         });
 
@@ -4256,9 +4568,9 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
                         try {
                           if (isEditing) {
-                            await _crmService.updateLead(newLead.id, newLead.toJson());
+                            await _crmService.updateLead(enrichedNewLead.id, enrichedNewLead.toJson());
                           } else {
-                            await _crmService.createLead(newLead.toJson());
+                            await _crmService.createLead(enrichedNewLead.toJson());
                           }
                         } catch (_) {}
                       },
@@ -4346,7 +4658,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 maxLines: 4,
                 style: const TextStyle(fontSize: 12.5, color: textDark),
                 decoration: InputDecoration(
-                  hintText: 'Aarav Kumar, 9876543211, Dine In, New Lead\nSimran Kaur, 9811223344, Online, Prospect',
+                  hintText: 'Aarav Kumar, 9876543211, POS, New Lead\nSimran Kaur, 9811223344, Online, Prospect',
                   hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
                   filled: true,
                   fillColor: boxBg,
@@ -4382,20 +4694,22 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               for (final line in lines) {
                 final parts = line.split(',');
                 if (parts.length >= 2) {
+                  final rawSource = parts.length > 2 ? parts[2].trim() : 'POS';
                   final lead = CrmLeadModel(
                     id: DateTime.now().millisecondsSinceEpoch.toString() + count.toString(),
                     name: parts[0].trim(),
                     phone: parts[1].trim(),
-                    source: parts.length > 2 ? parts[2].trim() : 'Dine In',
+                    source: _normalizeLeadSource(rawSource),
                     stage: parts.length > 3 ? parts[3].trim() : 'New Lead',
                     status: parts.length > 3 ? parts[3].trim() : 'New Lead',
                     customerType: 'New Customer',
                     createdAt: DateTime.now(),
                     lastVisit: DateTime.now(),
                   );
-                  _allLeads.insert(0, lead);
+                  final enriched = _enrichLeadWithOrders(lead);
+                  _allLeads.insert(0, enriched);
                   count++;
-                  _crmService.createLead(lead.toJson()).catchError((_) => lead);
+                  _crmService.createLead(enriched.toJson()).catchError((_) => enriched);
                 }
               }
 
