@@ -39,9 +39,9 @@ class _OrdersScreenState extends State<OrdersScreen> {
   DateTime? _customEndDate;
   DateTimeRange? _customDateRange;
 
-  // REMOVED 'All' OPTION; DEFAULT TO 'DineIn' & 'Preparing'
-  String _selectedOrderTypeFilter = 'DineIn'; // 'DineIn', 'TakeAway', 'Delivery'
-  String _selectedStatusFilter = 'Preparing'; // 'Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'
+  // Filter state defaulting to All to ensure all placed orders are immediately visible
+  String _selectedOrderTypeFilter = 'All'; // 'All', 'DineIn', 'TakeAway', 'Delivery'
+  String _selectedStatusFilter = 'All'; // 'All', 'Pending', 'Preparing', 'Ready', 'Completed', 'Cancelled'
   String _searchQuery = '';
   bool _isManualRefreshing = false;
   bool _hasCheckedInitialOrder = false;
@@ -215,18 +215,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   bool _matchesDateFilter(OrderModel o) {
     if (_selectedDateFilter == OrderDateFilter.allTime) return true;
-    if (o.createdAt.trim().isEmpty) return true;
-
-    DateTime? orderDate = DateTime.tryParse(o.createdAt);
-    if (orderDate == null) {
-      try {
-        orderDate = DateFormat('yyyy-MM-dd HH:mm:ss').parse(o.createdAt, true);
-      } catch (_) {
-        return true;
-      }
-    }
-    orderDate = orderDate.toLocal();
-
+    final orderDate = o.createdDateTime;
     final now = DateTime.now();
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
@@ -921,15 +910,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return ListenableBuilder(
       listenable: db,
       builder: (context, _) {
-        // Filter orders by OrderType (NO 'All' option) and Date Filter
+        // Filter orders by OrderType (with 'All' option) and Date Filter
         List<OrderModel> typeFilteredOrders = db.orders.where((o) {
-          final matchesType = (_selectedOrderTypeFilter == 'Delivery')
-              ? o.orderType == OrderType.delivery
-              : (_selectedOrderTypeFilter == 'DineIn')
-                  ? o.orderType == OrderType.dineIn
-                  : (_selectedOrderTypeFilter == 'TakeAway')
-                      ? o.orderType == OrderType.takeaway
-                      : true;
+          final matchesType = (_selectedOrderTypeFilter == 'All' || _selectedOrderTypeFilter.isEmpty)
+              ? true
+              : (_selectedOrderTypeFilter == 'Delivery')
+                  ? o.orderType == OrderType.delivery
+                  : (_selectedOrderTypeFilter == 'DineIn')
+                      ? o.orderType == OrderType.dineIn
+                      : (_selectedOrderTypeFilter == 'TakeAway')
+                          ? o.orderType == OrderType.takeaway
+                          : true;
           return matchesType && _matchesDateFilter(o);
         }).toList();
 
@@ -952,6 +943,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
           }).length;
         }
 
+        final allCount = typeFilteredOrders.length;
         final pendingCount = countForStatus(OrderStatus.pending);
         final preparingCount = countForStatus(OrderStatus.preparing);
         final readyCount = countForStatus(OrderStatus.ready);
@@ -960,6 +952,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
         // Filter orders by selected status with Running KOT auto-classification
         List<OrderModel> filteredOrders = typeFilteredOrders.where((o) {
+          if (_selectedStatusFilter == 'All' || _selectedStatusFilter.isEmpty) return true;
           if (_selectedStatusFilter == 'Pending') return o.status == OrderStatus.pending;
           if (_selectedStatusFilter == 'Preparing') {
             if (o.status == OrderStatus.cancelled || o.status == OrderStatus.completed) return false;
@@ -990,8 +983,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
           }).toList();
         }
 
-        // Sort latest orders first
-        filteredOrders.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        // Sort latest orders first using timezone-aware createdDateTime
+        filteredOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
 
         return Scaffold(
           resizeToAvoidBottomInset: false,
@@ -1064,19 +1057,19 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     if (!isMobile)
                       _buildDateFilterBar(),
 
-                // 1) Order Type Section Chips (NO 'All' OPTION)
+                // 1) Order Type Section Chips (Includes 'All' Option)
                 SizedBox(
                   height: 42,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: ['DineIn', 'TakeAway', 'Delivery'].map((type) {
+                    children: ['All', 'DineIn', 'TakeAway', 'Delivery'].map((type) {
                       final isSel = _selectedOrderTypeFilter == type;
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ChoiceChip(
-                          label: Text(type),
+                          label: Text(type == 'All' ? 'All Types' : type),
                           selected: isSel,
                           selectedColor: const Color(0xFF051C48),
                           backgroundColor: Colors.white,
@@ -1096,7 +1089,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
                 const SizedBox(height: 10),
 
-                // 2) Order Status Pills Row (NO 'All' OPTION)
+                // 2) Order Status Pills Row (Includes 'All Orders' Option)
                 SizedBox(
                   height: 38,
                   child: ListView(
@@ -1104,6 +1097,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     physics: const BouncingScrollPhysics(),
                     padding: const EdgeInsets.symmetric(horizontal: 16),
                     children: [
+                      _buildStatusPill('All', '📦 All Orders', allCount, const Color(0xFF051C48)),
+                      const SizedBox(width: 8),
                       _buildStatusPill('Pending', '⏳ Pending', pendingCount, const Color(0xFFF59E0B)),
                       const SizedBox(width: 8),
                       _buildStatusPill('Preparing', '👨‍🍳 Preparing', preparingCount, const Color(0xFF051C48)),

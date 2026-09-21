@@ -241,15 +241,16 @@ class OrderModel {
     );
   }
 
-  /// Helper to safely resolve the exact DateTime of this order
+  /// Helper to safely resolve the exact DateTime of this order in local timezone
   DateTime get createdDateTime {
     if (createdAt.isNotEmpty) {
       final parsed = DateTime.tryParse(createdAt);
-      if (parsed != null) return parsed;
+      if (parsed != null) return parsed.isUtc ? parsed.toLocal() : parsed;
     }
     // Fallback: try parsing orderNumber if formatted with date prefix (e.g. YYYYMMDD-...)
-    if (orderNumber.length >= 8) {
-      final dStr = orderNumber.substring(0, 8);
+    final cleanNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim();
+    if (cleanNum.length >= 8) {
+      final dStr = cleanNum.substring(0, 8);
       final y = int.tryParse(dStr.substring(0, 4));
       final m = int.tryParse(dStr.substring(4, 6));
       final d = int.tryParse(dStr.substring(6, 8));

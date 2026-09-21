@@ -529,7 +529,7 @@ class ReportService {
 
     List<OrderModel> settled = ordersOverride != null
         ? _db.deduplicateOrdersList(ordersOverride)
-        : _db.getCompletedOrders(start: start, end: end);
+        : _db.getValidOrders(start: start, end: end);
 
     // Apply Payment Method Filter
     if (paymentMethod != null &&

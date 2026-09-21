@@ -726,7 +726,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
                               Expanded(
                                 child: SmoothAnimatedIndexedStack(
-                                  index: _selectedIndex.clamp(0, 10),
+                                  index: _selectedIndex.clamp(0, 11),
                                   children: [
                                     GlassDashboardScreen(
                                       key: _dashboardKey,

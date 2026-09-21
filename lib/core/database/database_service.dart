@@ -3547,6 +3547,8 @@ class DatabaseService extends ChangeNotifier {
   }
 
   /// Deduplicate order list ensuring 1 order = 1 bill, purging rapid duplicate taps and identical bills
+  /// Deduplicates an orders list strictly by unique database ID or unique order number.
+  /// Never collapses distinct orders based on timestamp proximity or price similarity.
   List<OrderModel> deduplicateOrdersList(List<OrderModel> sourceOrders) {
     if (sourceOrders.isEmpty) return [];
 
@@ -3558,8 +3560,8 @@ class DatabaseService extends ChangeNotifier {
       final cleanId = order.id.trim();
       final cleanOrderNum = order.orderNumber.replaceAll(RegExp(r'^#'), '').trim();
 
-      // 1. Check ID collision
-      if (cleanId.isNotEmpty && seenIdsIndex.containsKey(cleanId)) {
+      // 1. Check ID collision (valid, non-empty, non-generic ID)
+      if (cleanId.isNotEmpty && cleanId != '0' && cleanId != 'null' && seenIdsIndex.containsKey(cleanId)) {
         final existingIdx = seenIdsIndex[cleanId]!;
         final existing = result[existingIdx];
         if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
@@ -3569,7 +3571,7 @@ class DatabaseService extends ChangeNotifier {
       }
 
       // 2. Check Order Number collision (if non-empty and valid)
-      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && seenOrderNumbersIndex.containsKey(cleanOrderNum)) {
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && cleanOrderNum != 'null' && seenOrderNumbersIndex.containsKey(cleanOrderNum)) {
         final existingIdx = seenOrderNumbersIndex[cleanOrderNum]!;
         final existing = result[existingIdx];
         if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
@@ -3578,40 +3580,32 @@ class DatabaseService extends ChangeNotifier {
         continue;
       }
 
-      // 3. Check rapid-succession duplicate collision (same table/orderType, same amount, created within 5s)
-      bool isRapidDuplicate = false;
-      for (int i = 0; i < result.length; i++) {
-        final existing = result[i];
-        final sameType = existing.orderType == order.orderType;
-        final sameAmount = (existing.totalAmount - order.totalAmount).abs() < 0.01;
-        final sameTableOrNone = (existing.tableNumber == null && order.tableNumber == null) ||
-            (existing.tableNumber != null && order.tableNumber != null && isSameTable(existing.tableNumber, order.tableNumber));
-        if (sameType && sameAmount && sameTableOrNone) {
-          final diffSec = existing.createdDateTime.difference(order.createdDateTime).inSeconds.abs();
-          if (diffSec <= 5 && existing.items.length == order.items.length) {
-            isRapidDuplicate = true;
-            if (!existing.isPaid && (order.isPaid || order.status == OrderStatus.completed)) {
-              result[i] = order;
-            }
-            break;
-          }
-        }
-      }
-
-      if (isRapidDuplicate) {
-        continue;
-      }
-
       final newIdx = result.length;
-      if (cleanId.isNotEmpty) seenIdsIndex[cleanId] = newIdx;
-      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000') seenOrderNumbersIndex[cleanOrderNum] = newIdx;
+      if (cleanId.isNotEmpty && cleanId != '0' && cleanId != 'null') seenIdsIndex[cleanId] = newIdx;
+      if (cleanOrderNum.isNotEmpty && cleanOrderNum != '0000' && cleanOrderNum != 'null') seenOrderNumbersIndex[cleanOrderNum] = newIdx;
       result.add(order);
     }
 
     return result;
   }
 
-  /// Unified authoritative helper to get all settled/completed revenue orders within a date range
+  /// Authoritative helper to get all valid placed orders (non-cancelled) within a date range
+  List<OrderModel> getValidOrders({DateTime? start, DateTime? end}) {
+    final deduplicated = deduplicateOrdersList(orders);
+    return deduplicated.where((o) {
+      // Exclude cancelled / void orders
+      if (o.status == OrderStatus.cancelled) return false;
+
+      // Timezone-safe local date check
+      final oDate = o.createdDateTime.toLocal();
+      if (start != null && oDate.isBefore(start)) return false;
+      if (end != null && oDate.isAfter(end)) return false;
+
+      return true;
+    }).toList();
+  }
+
+  /// Authoritative helper to get all settled/completed revenue orders within a date range
   List<OrderModel> getCompletedOrders({DateTime? start, DateTime? end}) {
     final deduplicated = deduplicateOrdersList(orders);
     return deduplicated.where((o) {

@@ -71,18 +71,9 @@ class SalesService {
       businessId: { $in: [bIdObj, bId.toString()] },
       status: { $nin: ['cancelled', 'void'] },
       $or: [
-        { status: { $in: ['completed', 'paid'] } },
-        { paymentStatus: 'paid' },
-        { isPaid: true },
-      ],
-      $and: [
-        {
-          $or: [
-            { completedAt: { $gte: start, $lte: end } },
-            { createdAt: { $gte: start, $lte: end } },
-            { saleDate: { $gte: start, $lte: end } },
-          ],
-        },
+        { createdAt: { $gte: start, $lte: end } },
+        { completedAt: { $gte: start, $lte: end } },
+        { saleDate: { $gte: start, $lte: end } },
       ],
       ...extraMatch,
     };

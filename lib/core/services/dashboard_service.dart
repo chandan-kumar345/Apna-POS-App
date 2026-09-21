@@ -525,14 +525,16 @@ class DashboardService {
           }).toList()
         : allOrders;
 
+    final nonCancelledInRange = allInRange.where((o) => o.status != OrderStatus.cancelled).toList();
+    final successfulCount = nonCancelledInRange.where((o) => o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid').length;
     final cancelledCount = allInRange.where((o) => o.status == OrderStatus.cancelled).length;
-    final otherCount = allInRange.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length;
+    final otherCount = nonCancelledInRange.length - successfulCount;
 
     final orderStats = OrderStatsSummaryData(
-      successfulOrders: report.summary.totalOrders,
+      successfulOrders: successfulCount,
       cancelledOrders: cancelledCount,
       otherOrders: otherCount,
-      totalOrders: report.summary.totalOrders + cancelledCount + otherCount,
+      totalOrders: nonCancelledInRange.length,
     );
 
     return DashboardOverviewData(
@@ -668,10 +670,10 @@ class DashboardService {
       }
     }
 
-    // Default chart data points based on local settled orders
+    // Default chart data points based on local valid placed orders
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final settled = _db.getCompletedOrders();
-    final avgRev = settled.isNotEmpty ? settled.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
-    return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (settled.length / 7).ceil())).toList();
+    final validOrders = _db.getValidOrders();
+    final avgRev = validOrders.isNotEmpty ? validOrders.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
+    return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (validOrders.length / 7).ceil())).toList();
   }
 }

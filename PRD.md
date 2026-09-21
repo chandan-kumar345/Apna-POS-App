@@ -214,3 +214,24 @@ This document outlines the product requirements and operational specifications f
 5. **Cross-Platform Compatibility:**
    - [x] 100% test pass rate across unit, widget, and integration tests.
 
+---
+
+## 10. Sales & Order Parity, Lifecycle & Counting Rules (Permanent Standard)
+
+### 10.1 Zero-Drop Order Inclusion Rule
+* **Requirement 10.1.1 (Immutable Transaction Record):** Every order created via POS (Dine-In, Takeaway, Delivery, Quick Billing, Save & Print, KOT) represents an active, valid business transaction for that business date unless explicitly cancelled (`OrderStatus.cancelled` or `status === 'cancelled'`).
+* **Requirement 10.1.2 (Total Order Count Parity):** Total Order count displayed on Dashboard metrics, Sales Reports, and Order History must count **ALL non-cancelled placed orders** (`pending`, `preparing`, `ready`, `completed`, `paid`). Active or in-kitchen orders must NEVER be hidden or excluded from order counts.
+* **Requirement 10.1.3 (Revenue Separation):** Settled Revenue aggregates all completed and paid orders, while gross placed value and active in-kitchen order counts remain visible to provide a 100% complete picture of store operations.
+
+### 10.2 Identity-Only Deduplication Standard
+* **Requirement 10.2.1 (Unique ID & Order Number Deduplication):** Orders must be deduplicated strictly and exclusively by non-empty database `id` or unique `orderNumber`.
+* **Requirement 10.2.2 (Prohibition of Heuristic Proximity Collapse):** The system must NEVER collapse or discard distinct orders based on timestamp proximity, matching table numbers, or matching total amounts. Separate legitimate orders placed in rapid succession must all be preserved.
+
+### 10.3 Timezone-Aware Local Date Range Boundaries
+* **Requirement 10.3.1 (Local Start and End Boundaries):** All date filters (`Today`, `Yesterday`, `This Week`, `This Month`, `This Year`, `Custom Date Range`) must calculate exact local timezone boundaries (`00:00:00.000` to `23:59:59.999` in store local time, e.g. IST / UTC+5:30).
+* **Requirement 10.3.2 (Timezone-Safe Cloud Querying):** Date range filters passed to MongoDB or backend APIs must convert local start-of-day and end-of-day to UTC ISO strings, ensuring midnight date rollovers do not bleed or truncate orders across dates.
+* **Requirement 10.3.3 (Order Model DateTime Conversion):** `OrderModel.createdDateTime` must always parse ISO strings to local system timezone (`.toLocal()`) before evaluating date ranges.
+
+### 10.4 Orders Management & History Screen Visibility
+* **Requirement 10.4.1 (Omnipresent 'All' Filter):** The Orders & History screen must provide an `'All'` option for Order Types (`All`, `DineIn`, `TakeAway`, `Delivery`) and an `'All'` pill for Statuses (`All`, `Pending`, `Preparing`, `Ready`, `Completed`, `Cancelled`).
+* **Requirement 10.4.2 (Default Overview Mode):** The Orders screen defaults to `'All'` Order Types and `'All'` Statuses to immediately display all orders placed on the selected date without requiring manual tab switches.

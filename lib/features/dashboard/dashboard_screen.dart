@@ -2139,12 +2139,16 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       final end = range.end;
 
       final allOrders = _db.deduplicateOrdersList(_db.orders);
-      final filteredOrders = _db.getCompletedOrders(start: start, end: end);
+      final filteredOrders = _db.getValidOrders(start: start, end: end);
+      final settledOrders = filteredOrders.where((o) =>
+          o.status == OrderStatus.completed ||
+          o.isPaid ||
+          o.paymentStatus.toLowerCase() == 'paid').toList();
 
       final int totalOrders = filteredOrders.length;
       final double totalRevenue = filteredOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
       final int activeOrdersCount = allOrders.where((o) =>
-          o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length;
+          o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready).length;
       final int totalProductsCount = _db.menuItems.length;
 
       int dineInCount = 0;
@@ -2336,9 +2340,12 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           igst: 0,
         ),
         orderStats: OrderStatsSummaryData(
-          successfulOrders: totalOrders,
-          cancelledOrders: allOrders.where((o) => o.status == OrderStatus.cancelled).length,
-          otherOrders: 0,
+          successfulOrders: settledOrders.length,
+          cancelledOrders: allOrders.where((o) {
+            final oDate = o.createdDateTime.toLocal();
+            return o.status == OrderStatus.cancelled && !oDate.isBefore(start) && !oDate.isAfter(end);
+          }).length,
+          otherOrders: totalOrders - settledOrders.length,
           totalOrders: totalOrders,
         ),
       );
