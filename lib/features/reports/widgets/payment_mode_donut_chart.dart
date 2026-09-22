@@ -180,12 +180,25 @@ class PaymentModeDonutChart extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(7),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF0F172A),
+                      width: isMobile ? 40 : 46,
+                      height: isMobile ? 40 : 46,
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F172A).withValues(alpha: 0.08),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(Icons.credit_card_rounded, color: Colors.white, size: 16),
+                      alignment: Alignment.center,
+                      child: Image.asset(
+                        'assets/images/sales report icon/payment mode.png',
+                        width: isMobile ? 28 : 34,
+                        height: isMobile ? 28 : 34,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(
+                          Icons.credit_card_rounded,
+                          color: const Color(0xFF0F172A),
+                          size: isMobile ? 20 : 24,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Text(

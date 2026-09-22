@@ -341,5 +341,72 @@ void main() {
       expect(db.tables[0].occupiedSince, isNull);
       expect(db.tables[0].getRunningDuration(), isNull);
     });
+
+    testWidgets('TableManagementScreen mobile view places Takeaway and Delivery buttons below Add Table', (tester) async {
+      OrderType? triggeredOrderType;
+      await tester.binding.setSurfaceSize(const Size(400, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TableManagementScreen(
+              onTakeOrderForType: (type) {
+                triggeredOrderType = type;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Takeaway'), findsOneWidget);
+      expect(find.text('Delivery'), findsOneWidget);
+      expect(find.text('Add Table'), findsOneWidget);
+
+      final addTableTop = tester.getTopLeft(find.text('Add Table')).dy;
+      final takeawayTop = tester.getTopLeft(find.text('Takeaway')).dy;
+      final deliveryTop = tester.getTopLeft(find.text('Delivery')).dy;
+
+      // On mobile view, Takeaway and Delivery are positioned below Add Table
+      expect(takeawayTop, greaterThan(addTableTop));
+      expect(deliveryTop, greaterThan(addTableTop));
+
+      // Tap Takeaway button
+      await tester.tap(find.text('Takeaway'));
+      await tester.pumpAndSettle();
+      expect(triggeredOrderType, OrderType.takeaway);
+
+      // Tap Delivery button
+      await tester.tap(find.text('Delivery'));
+      await tester.pumpAndSettle();
+      expect(triggeredOrderType, OrderType.delivery);
+    });
+
+    testWidgets('TableManagementScreen desktop view places Takeaway, Delivery, and Add Table inline', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TableManagementScreen(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Takeaway'), findsOneWidget);
+      expect(find.text('Delivery'), findsOneWidget);
+      expect(find.text('Add Table'), findsOneWidget);
+
+      final addTableTop = tester.getTopLeft(find.text('Add Table')).dy;
+      final takeawayTop = tester.getTopLeft(find.text('Takeaway')).dy;
+      final deliveryTop = tester.getTopLeft(find.text('Delivery')).dy;
+
+      // On desktop view, all action buttons are on the same horizontal row
+      expect((takeawayTop - addTableTop).abs(), lessThan(5.0));
+      expect((deliveryTop - addTableTop).abs(), lessThan(5.0));
+    });
   });
 }

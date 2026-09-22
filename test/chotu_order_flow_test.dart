@@ -146,7 +146,7 @@ void main() {
       await tester.tap(find.text('Start'));
       await tester.pump();
 
-      expect(find.text('Listening... Bolie'), findsOneWidget);
+      expect(find.textContaining('Listening... Boliye sir'), findsOneWidget);
     });
 
     test('ChotuService handles permanent and temporary missing product addition', () async {

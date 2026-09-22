@@ -43,6 +43,12 @@ class ChotuTtsService extends ChangeNotifier {
     _isSpeaking = true;
     notifyListeners();
 
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      _isSpeaking = false;
+      notifyListeners();
+      return;
+    }
+
     bool playedOnline = false;
 
     // 1. Try High-Quality Open Source Hindi TTS via AudioPlayer

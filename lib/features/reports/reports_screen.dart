@@ -1011,6 +1011,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required bool isDesktop,
   }) {
     final card1 = _buildKpiCard(
+      iconAsset: 'assets/images/sales report icon/total sales.png',
       icon: Icons.south_west_rounded,
       iconBgColor: const Color(0xFFDCFCE7),
       iconColor: const Color(0xFF16A34A),
@@ -1028,6 +1029,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     final card2 = _buildKpiCard(
+      iconAsset: 'assets/images/sales report icon/total orders.png',
       icon: Icons.description_rounded,
       iconBgColor: const Color(0xFFEFF6FF),
       iconColor: const Color(0xFF2563EB),
@@ -1045,6 +1047,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     final card3 = _buildKpiCard(
+      iconAsset: 'assets/images/sales report icon/avg order value.png',
       icon: Icons.shopping_cart_rounded,
       iconBgColor: const Color(0xFFFEF3C7),
       iconColor: const Color(0xFFD97706),
@@ -1062,6 +1065,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     final card4 = _buildKpiCard(
+      iconAsset: 'assets/images/sales report icon/items sold.png',
       icon: Icons.inventory_2_rounded,
       iconBgColor: const Color(0xFFF3E8FF),
       iconColor: const Color(0xFF7C3AED),
@@ -1079,6 +1083,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
 
     final card5 = _buildKpiCard(
+      iconAsset: 'assets/images/sales report icon/Total bills.png',
       icon: Icons.receipt_rounded,
       iconBgColor: const Color(0xFFFCE7F3),
       iconColor: const Color(0xFFDB2777),
@@ -1150,7 +1155,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
   }
 
   Widget _buildKpiCard({
-    required IconData icon,
+    String? iconAsset,
+    IconData? icon,
     required Color iconBgColor,
     required Color iconColor,
     required Gradient cardGradient,
@@ -1179,12 +1185,31 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                width: isMobile ? 42 : 48,
+                height: isMobile ? 42 : 48,
+                padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
                   color: iconBgColor,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: iconColor, size: isMobile ? 15 : 17),
+                alignment: Alignment.center,
+                child: iconAsset != null
+                    ? Image.asset(
+                        iconAsset,
+                        width: isMobile ? 30 : 36,
+                        height: isMobile ? 30 : 36,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(
+                          icon ?? Icons.analytics_rounded,
+                          color: iconColor,
+                          size: isMobile ? 22 : 26,
+                        ),
+                      )
+                    : Icon(
+                        icon ?? Icons.analytics_rounded,
+                        color: iconColor,
+                        size: isMobile ? 22 : 26,
+                      ),
               ),
               const SizedBox(width: 8),
               Expanded(

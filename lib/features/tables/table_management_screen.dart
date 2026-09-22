@@ -7,8 +7,13 @@ import '../pos/pos_register_screen.dart';
 
 class TableManagementScreen extends StatefulWidget {
   final Function(String tableName)? onTakeOrder;
+  final Function(OrderType orderType)? onTakeOrderForType;
 
-  const TableManagementScreen({super.key, this.onTakeOrder});
+  const TableManagementScreen({
+    super.key,
+    this.onTakeOrder,
+    this.onTakeOrderForType,
+  });
 
   @override
   State<TableManagementScreen> createState() => _TableManagementScreenState();
@@ -115,6 +120,21 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
         context,
         MaterialPageRoute(
           builder: (_) => PosRegisterScreen(initialTable: tableName),
+        ),
+      );
+    }
+  }
+
+  void _openPosForOrderType(OrderType orderType) {
+    if (widget.onTakeOrderForType != null) {
+      widget.onTakeOrderForType!(orderType);
+    } else if (widget.onTakeOrder != null) {
+      widget.onTakeOrder!(orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PosRegisterScreen(initialOrderType: orderType),
         ),
       );
     }
@@ -319,6 +339,117 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     );
   }
 
+  Widget _buildFloorFilterChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text(
+            'Floor:',
+            style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 6),
+          ...floors.map((flr) {
+            final isSel = _selectedFloor == flr;
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ChoiceChip(
+                label: Text(flr),
+                labelStyle: TextStyle(
+                  color: isSel ? Colors.white : const Color(0xFF475569),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                selected: isSel,
+                selectedColor: const Color(0xFF051C48),
+                backgroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
+                onSelected: (_) => setState(() => _selectedFloor = flr),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTakeawayButton({bool isExpanded = false}) {
+    final btn = SizedBox(
+      height: 38,
+      child: ElevatedButton.icon(
+        onPressed: () => _openPosForOrderType(OrderType.takeaway),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF0284C7),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          elevation: 2,
+        ),
+        icon: Image.asset(
+          'assets/images/takeaway.png',
+          width: 17,
+          height: 17,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.local_mall_rounded, color: Colors.white, size: 16),
+        ),
+        label: const Text(
+          'Takeaway',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+        ),
+      ),
+    );
+    return isExpanded ? Expanded(child: btn) : btn;
+  }
+
+  Widget _buildDeliveryButton({bool isExpanded = false}) {
+    final btn = SizedBox(
+      height: 38,
+      child: ElevatedButton.icon(
+        onPressed: () => _openPosForOrderType(OrderType.delivery),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFFEA580C),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          elevation: 2,
+        ),
+        icon: Image.asset(
+          'assets/images/delivery.png',
+          width: 17,
+          height: 17,
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 16),
+        ),
+        label: const Text(
+          'Delivery',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
+        ),
+      ),
+    );
+    return isExpanded ? Expanded(child: btn) : btn;
+  }
+
+  Widget _buildAddTableButton() {
+    return SizedBox(
+      height: 38,
+      child: ElevatedButton.icon(
+        onPressed: _showAddTableDialog,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF051C48),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+          elevation: 2,
+        ),
+        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 16),
+        label: const Text('Add Table', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -338,79 +469,72 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
         return Material(
           color: Colors.transparent,
           child: SafeArea(
-            child: Column(
-            children: [
-              // Stats Bar
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isMobile = constraints.maxWidth < 650;
+                return Column(
                   children: [
-                    _buildStatCard('Free Tables', '$freeCount', 'Ready for Guests', Icons.check_circle_rounded, const Color(0xFF10B981)),
-                    const SizedBox(width: 8),
-                    _buildStatCard('Occupied', '$occupiedCount', 'Seated & Ordering', Icons.people_alt_rounded, const Color(0xFF051C48)),
-                    const SizedBox(width: 8),
-                    _buildStatCard('Running KOT', '$kotCount', 'In Kitchen Prep', Icons.soup_kitchen_rounded, const Color(0xFFEF4444)),
-                    const SizedBox(width: 8),
-                    _buildStatCard('Reserved', '$reservedCount', 'Advance Booking', Icons.bookmark_added_rounded, const Color(0xFF8B5CF6)),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // Floor Filter Tabs & DECREASED WIDTH "+ Add Table" Button
-              Row(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
+                    // Stats Bar
+                    SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       physics: const BouncingScrollPhysics(),
                       child: Row(
                         children: [
-                          const Text(
-                            'Floor:',
-                            style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 6),
-                          ...floors.map((flr) {
-                            final isSel = _selectedFloor == flr;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 6),
-                              child: ChoiceChip(
-                                label: Text(flr),
-                                labelStyle: TextStyle(color: isSel ? Colors.white : const Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12),
-                                selected: isSel,
-                                selectedColor: const Color(0xFF051C48),
-                                backgroundColor: Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
-                                onSelected: (_) => setState(() => _selectedFloor = flr),
-                              ),
-                            );
-                          }),
+                          _buildStatCard('Free Tables', '$freeCount', 'Ready for Guests', Icons.check_circle_rounded, const Color(0xFF10B981)),
+                          const SizedBox(width: 8),
+                          _buildStatCard('Occupied', '$occupiedCount', 'Seated & Ordering', Icons.people_alt_rounded, const Color(0xFF051C48)),
+                          const SizedBox(width: 8),
+                          _buildStatCard('Running KOT', '$kotCount', 'In Kitchen Prep', Icons.soup_kitchen_rounded, const Color(0xFFEF4444)),
+                          const SizedBox(width: 8),
+                          _buildStatCard('Reserved', '$reservedCount', 'Advance Booking', Icons.bookmark_added_rounded, const Color(0xFF8B5CF6)),
                         ],
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  // DECREASED WIDTH "+ ADD TABLE" BUTTON
-                  SizedBox(
-                    height: 38,
-                    child: ElevatedButton.icon(
-                      onPressed: _showAddTableDialog,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF051C48),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                        elevation: 2,
+                    const SizedBox(height: 12),
+
+                    // Floor Filter Tabs & Action Buttons (Mobile vs Desktop Layout)
+                    if (isMobile) ...[
+                      // Mobile Row 1: Floor Filter on left, Add Table button on right
+                      Row(
+                        children: [
+                          Expanded(child: _buildFloorFilterChips()),
+                          const SizedBox(width: 6),
+                          _buildAddTableButton(),
+                        ],
                       ),
-                      icon: const Icon(Icons.add_rounded, color: Colors.white, size: 16),
-                      label: const Text('Add Table', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
+                      const SizedBox(height: 8),
+                      // Mobile Row 2: Takeaway and Delivery buttons below Add Table
+                      Row(
+                        children: [
+                          _buildTakeawayButton(isExpanded: true),
+                          const SizedBox(width: 8),
+                          _buildDeliveryButton(isExpanded: true),
+                        ],
+                      ),
+                    ] else ...[
+                      // Desktop/Widescreen Row: Floor Filter on left, Takeaway + Delivery + Add Table inline on right
+                      Row(
+                        children: [
+                          Expanded(child: _buildFloorFilterChips()),
+                          const SizedBox(width: 6),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildTakeawayButton(),
+                                const SizedBox(width: 6),
+                                _buildDeliveryButton(),
+                                const SizedBox(width: 6),
+                                _buildAddTableButton(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 12),
 
               // Floor-wise Sequenced Tables Grid View
               Expanded(
@@ -463,17 +587,17 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                         ? 7
                                         : width >= 720
                                             ? 6
-                                            : width >= 540
-                                                ? 5
-                                                : width >= 380
-                                                    ? 4
-                                                    : 3;
+                                            : width >= 500
+                                                ? 4
+                                                : width >= 320
+                                                    ? 3
+                                                    : 2;
                             return GridView.builder(
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: cols,
-                            childAspectRatio: width >= 600 ? 1.15 : 1.0,
+                            childAspectRatio: width >= 600 ? 1.15 : (width >= 360 ? 1.05 : 0.95),
                             crossAxisSpacing: 8,
                             mainAxisSpacing: 8,
                           ),
@@ -632,23 +756,32 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         if (activeAmount > 0)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: statusColor.withOpacity(0.12),
-                                              borderRadius: BorderRadius.circular(5),
-                                              border: Border.all(color: statusColor.withOpacity(0.4)),
-                                            ),
-                                            child: Text(
-                                              '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
-                                              style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9.5),
+                                          Flexible(
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: statusColor.withOpacity(0.12),
+                                                borderRadius: BorderRadius.circular(5),
+                                                border: Border.all(color: statusColor.withOpacity(0.4)),
+                                              ),
+                                              child: Text(
+                                                '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
+                                                style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9.5),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                           )
                                         else
-                                          const Text(
-                                            'No Order',
-                                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.0, fontWeight: FontWeight.w600),
+                                          const Expanded(
+                                            child: Text(
+                                              'No Order',
+                                              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.0, fontWeight: FontWeight.w600),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
                                           ),
+                                        const SizedBox(width: 4),
 
                                         // IF PRODUCTS IN CART: SHOW ONLY VIEW ICON. ELSE: SHOW GREEN ADD TO CART ICON
                                         if (hasProductsInCart)
@@ -710,12 +843,14 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                 ),
               ),
             ],
-          ),
-        ),
-      );
-    },
+          );
+        },
+      ),
+    ),
   );
-  }
+},
+);
+}
 
   Widget _buildStatCard(String title, String value, String subtitle, IconData icon, Color color) {
     return Container(

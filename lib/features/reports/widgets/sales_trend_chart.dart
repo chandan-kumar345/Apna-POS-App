@@ -138,12 +138,25 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              padding: const EdgeInsets.all(7),
-              decoration: const BoxDecoration(
-                color: Color(0xFF0F172A),
+              width: widget.isMobile ? 40 : 46,
+              height: widget.isMobile ? 40 : 46,
+              padding: const EdgeInsets.all(5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.08),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.analytics_rounded, color: Colors.white, size: 16),
+              alignment: Alignment.center,
+              child: Image.asset(
+                'assets/images/sales report icon/sales trend.png',
+                width: widget.isMobile ? 28 : 34,
+                height: widget.isMobile ? 28 : 34,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.analytics_rounded,
+                  color: const Color(0xFF0F172A),
+                  size: widget.isMobile ? 20 : 24,
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             Text(
@@ -157,7 +170,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
           ],
         ),
 
-        // Legends & Frequency Dropdown
+        // Legends (Sales & Orders)
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -209,35 +222,6 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                 ),
               ],
             ),
-
-            if (widget.isMobile) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedFrequency,
-                    isDense: true,
-                    icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF475569)),
-                    items: const [
-                      DropdownMenuItem(value: 'Daily', child: Text('Daily', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-                      DropdownMenuItem(value: 'Weekly', child: Text('Weekly', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
-                    ],
-                    onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _selectedFrequency = val);
-                        widget.onFrequencyChanged?.call(val);
-                      }
-                    },
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
       ],

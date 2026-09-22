@@ -939,18 +939,29 @@ class _LoginScreenState extends State<LoginScreen> {
         _showPhoneOtpVerificationDialog(fullPhone, phone);
         return;
       } else {
-        // Email & Password Mode
-        final email = _emailController.text.trim().toLowerCase();
+        // Email / Staff ID / Phone & Password Mode
+        final rawIdentifier = _emailController.text.trim();
         final password = _passwordController.text.trim();
 
-        final emailErr = FormValidators.validateEmail(email);
-        if (emailErr != null) {
+        if (rawIdentifier.isEmpty) {
           setState(() {
-            _errorMessage = emailErr;
+            _errorMessage = 'Please enter your email, phone, or employee ID.';
             _isLoading = false;
           });
           return;
         }
+
+        if (rawIdentifier.contains('@')) {
+          final emailErr = FormValidators.validateEmail(rawIdentifier);
+          if (emailErr != null) {
+            setState(() {
+              _errorMessage = emailErr;
+              _isLoading = false;
+            });
+            return;
+          }
+        }
+
         if (password.isEmpty) {
           setState(() {
             _errorMessage = 'Please enter your password.';
@@ -959,23 +970,27 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // 1. Direct fast backend authentication
-        final result = await AuthService().login(email, password);
+        // 1. Direct fast backend authentication (supports email, employeeId, or phone)
+        final result = await AuthService().login(rawIdentifier, password);
         final userJson = result['user'] as Map<String, dynamic>?;
-        final bool onboardingCompleted = userJson?['onboardingCompleted'] == true;
-        final int currentStep = (userJson?['onboardingStep'] as num?)?.toInt() ?? 0;
+        final String role = (userJson?['role'] ?? 'Owner').toString().toLowerCase();
+        final bool isStaff = role != 'owner';
+        final bool onboardingCompleted = isStaff || userJson?['onboardingCompleted'] == true;
+        final int currentStep = (userJson?['onboardingStep'] as num?)?.toInt() ?? (isStaff ? 4 : 0);
 
         // 2. Synchronize Firebase Auth & Firestore in non-blocking background task
         unawaited(() async {
           try {
-            final auth = FirebaseAuth.instance;
-            try {
-              await auth.signInWithEmailAndPassword(email: email, password: password);
-            } on FirebaseAuthException catch (fbErr) {
-              if (fbErr.code == 'user-not-found' || fbErr.code == 'invalid-credential') {
-                try {
-                  await auth.createUserWithEmailAndPassword(email: email, password: password);
-                } catch (_) {}
+            if (rawIdentifier.contains('@')) {
+              final auth = FirebaseAuth.instance;
+              try {
+                await auth.signInWithEmailAndPassword(email: rawIdentifier, password: password);
+              } on FirebaseAuthException catch (fbErr) {
+                if (fbErr.code == 'user-not-found' || fbErr.code == 'invalid-credential') {
+                  try {
+                    await auth.createUserWithEmailAndPassword(email: rawIdentifier, password: password);
+                  } catch (_) {}
+                }
               }
             }
           } catch (_) {}
@@ -991,7 +1006,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (!mounted) return;
 
         void navigateToNext() {
-          if (onboardingCompleted) {
+          if (onboardingCompleted || isStaff) {
             Navigator.pushAndRemoveUntil(
               context,
               SlideUpPageRoute(page: const MainLayout()),
@@ -1025,7 +1040,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         await _promptSaveCredentialsIfRequested(
-          identifier: email,
+          identifier: rawIdentifier,
           onProceed: navigateToNext,
         );
         return;
@@ -1884,11 +1899,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                                   children: [
                                                     // Email & Password Fields
                                                     _buildDesktopInputCard(
-                                                      label: 'Email Address',
-                                                      hint: 'Enter your email',
-                                                      icon: Icons.mail_outline_rounded,
+                                                      label: 'Email, Staff ID or Phone',
+                                                      hint: 'e.g. EMP001, phone or email',
+                                                      icon: Icons.badge_outlined,
                                                       controller: _emailController,
-                                                      keyboardType: TextInputType.emailAddress,
+                                                      keyboardType: TextInputType.text,
                                                     ),
                                                     const SizedBox(height: 12),
                                                     _buildDesktopInputCard(
@@ -2496,14 +2511,14 @@ class _LoginScreenState extends State<LoginScreen> {
                                 key: const ValueKey('email_login_form'),
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Email Address Field
-                                  _buildInputCard(
-                                    label: 'Email Address',
-                                    hint: 'Enter email address',
-                                    icon: Icons.mail_outline_rounded,
-                                    controller: _emailController,
-                                    keyboardType: TextInputType.emailAddress,
-                                  ),
+                                   // Email / Staff ID / Phone Field
+                                   _buildInputCard(
+                                     label: 'Email, Staff ID or Phone',
+                                     hint: 'e.g. EMP001, phone or email',
+                                     icon: Icons.badge_outlined,
+                                     controller: _emailController,
+                                     keyboardType: TextInputType.text,
+                                   ),
 
                                   const SizedBox(height: 12),
 

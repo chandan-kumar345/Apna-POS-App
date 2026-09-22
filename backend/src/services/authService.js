@@ -67,6 +67,7 @@ class AuthService {
         companyName: business?.profile?.companyName || '',
         profilePhotoPath: business?.profile?.profileImage || '',
         role: user.role,
+        permissions: ['*'],
         onboardingCompleted: user.onboardingCompleted,
         onboardingStep: user.onboardingStep,
       },
@@ -74,13 +75,18 @@ class AuthService {
     };
   }
 
-  // Login with email or phone and password
-  async login(identifier, password) {
+  // Login with email, phone, or employeeId and password/PIN
+  async login(identifier, password, options = {}) {
+    if (!identifier || (!password && !options.pin)) {
+      throw ApiError.badRequest('Identifier and password or PIN are required', 'MISSING_CREDENTIALS');
+    }
+
     const cleanId = identifier.trim().toLowerCase();
     const rawId = identifier.trim();
+    const pin = options.pin ? options.pin.trim() : null;
 
-    // Find user by email or phone
-    const user = await User.findOne({
+    // 1. Try finding user directly by email or phone
+    let user = await User.findOne({
       $or: [
         { email: cleanId },
         { phone: cleanId },
@@ -89,58 +95,118 @@ class AuthService {
       ],
     }).select('+passwordHash');
 
-    if (!user) {
-      throw ApiError.unauthorized('No account found with this email or phone number. Please sign up first.', 'USER_NOT_FOUND');
-    }
-
-    // Verify password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      throw ApiError.unauthorized('Incorrect password. Please check your password and try again.', 'INVALID_CREDENTIALS');
-    }
-
-    // Check staff status if user is linked to staff
     let staff = null;
-    if (user.staffId) {
-      staff = await Staff.findById(user.staffId).lean();
-    } else if (user.businessId) {
-      staff = await Staff.findOne({ userId: user._id, businessId: user.businessId }).lean();
+
+    // 2. If user not found, try searching in Staff collection by employeeId, email, or phone
+    if (!user) {
+      staff = await Staff.findOne({
+        $or: [
+          { employeeId: new RegExp(`^${rawId}$`, 'i') },
+          { email: cleanId },
+          { phone: rawId },
+          { phone: rawId.replace(/\s+/g, '') },
+        ],
+      });
+
+      if (staff) {
+        if (staff.userId) {
+          user = await User.findById(staff.userId).select('+passwordHash');
+        }
+      }
+    } else {
+      // If user was found directly, check if linked to staff
+      if (user.staffId) {
+        staff = await Staff.findById(user.staffId);
+      } else if (user.businessId) {
+        staff = await Staff.findOne({ userId: user._id, businessId: user.businessId });
+      }
     }
 
+    // 3. If neither user nor staff found
+    if (!user && !staff) {
+      throw ApiError.unauthorized('No account found with these credentials. Please check and try again.', 'USER_NOT_FOUND');
+    }
+
+    // 4. Check staff active status
     if (staff && staff.status === 'Inactive') {
-      throw ApiError.forbidden('Your staff account is currently inactive. Please contact your manager or administrator.', 'ACCOUNT_INACTIVE');
+      throw ApiError.forbidden('Your staff account is currently inactive. Please contact your administrator.', 'ACCOUNT_INACTIVE');
     }
 
-    // Resolve business
+    // 5. Verify credentials (password or PIN)
+    let isAuthValid = false;
+
+    if (user && user.passwordHash && password) {
+      isAuthValid = await user.comparePassword(password);
+    }
+
+    // Also allow PIN check if staff exists and PIN matches
+    if (!isAuthValid && staff) {
+      if (pin && staff.pin === pin) {
+        isAuthValid = true;
+      } else if (password && staff.pin === password) {
+        isAuthValid = true;
+      }
+    }
+
+    if (!isAuthValid) {
+      throw ApiError.unauthorized('Incorrect password or PIN. Please check and try again.', 'INVALID_CREDENTIALS');
+    }
+
+    // 6. Ensure user record exists for token generation
+    if (!user && staff) {
+      const emailPlaceholder = staff.email ? staff.email.toLowerCase() : `${staff.employeeId.toLowerCase()}@apnapos.internal`;
+      user = await User.findOne({ email: emailPlaceholder }).select('+passwordHash');
+      if (!user) {
+        const dummyHash = await User.hashPassword(password || 'Staff@123');
+        user = await User.create({
+          email: emailPlaceholder,
+          phone: staff.phone || undefined,
+          passwordHash: dummyHash,
+          role: (staff.role || 'cashier').toLowerCase(),
+          businessId: staff.businessId,
+          staffId: staff._id,
+          onboardingCompleted: true,
+          onboardingStep: 4,
+        });
+        staff.userId = user._id;
+        await staff.save();
+      }
+    }
+
+    // 7. Resolve business
     let business = null;
     if (user.businessId) {
       business = await Business.findById(user.businessId).lean();
+    } else if (staff?.businessId) {
+      business = await Business.findById(staff.businessId).lean();
     } else {
       business = await Business.findOne({ ownerId: user._id }).lean();
     }
 
-    // Generate tokens
+    // 8. Generate tokens
     const tokens = await tokenService.generateAuthTokens(user);
 
-    // Ensure Welcome Notification exists asynchronously without blocking login response
-    setImmediate(async () => {
+    const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
+
+    let permissions = [];
+    if (user.role && user.role.toLowerCase() === 'owner') {
+      permissions = ['*'];
+    } else if (staff?.role && staff.role.toLowerCase() === 'admin') {
+      permissions = ['*'];
+    } else if (staff?.permissions && Array.isArray(staff.permissions)) {
+      permissions = staff.permissions;
+    } else {
+      permissions = ['pos', 'tables', 'orders'];
+    }
+
+    // Update staff last login
+    if (staff) {
       try {
-        const userName = staff?.name || business?.profile?.name || user.email.split('@')[0] || 'User';
-        await notificationService.createNotification({
-          userId: user._id,
-          businessId: business?._id,
-          type: 'welcome',
-          title: 'Welcome to Apna POS 🎉',
-          message: `Hi ${userName}, welcome to Apna POS! Your all-in-one POS partner is here to help you manage your sales, orders, customers, payments, and business operations with ease. Let’s make your business smarter, faster, and simpler.`,
-          entityType: 'user',
-          entityId: user._id.toString(),
-          metadata: { userName },
-          idempotencyKey: `welcome_${user._id.toString()}`,
+        await Staff.findByIdAndUpdate(staff._id || staff.id, {
+          lastLogin: new Date(),
         });
       } catch (_) {}
-    });
-
-    const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
+    }
 
     return {
       user: {
@@ -152,13 +218,22 @@ class AuthService {
         profilePhotoPath: staff?.avatarUrl || business?.profile?.profileImage || '',
         role: staff?.role || user.role,
         employeeId: staff?.employeeId || '',
-        permissions: staff?.permissions || [],
+        permissions,
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
         onboardingStep: isStaffUser ? 4 : user.onboardingStep,
         business: business || null,
       },
       ...tokens,
     };
+  }
+
+  // Dedicated staff login method
+  async staffLogin(data) {
+    const identifier = data.employeeId || data.identifier || data.email || data.phone || '';
+    const password = data.password || '';
+    const pin = data.pin || '';
+
+    return this.login(identifier, password, { pin });
   }
 
   // Refresh token
@@ -190,6 +265,8 @@ class AuthService {
     let business = null;
     if (user.businessId) {
       business = await Business.findById(user.businessId);
+    } else if (staff?.businessId) {
+      business = await Business.findById(staff.businessId);
     } else {
       business = await Business.findOne({ ownerId: user._id });
       if (!business) {
@@ -198,6 +275,17 @@ class AuthService {
     }
 
     const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
+
+    let permissions = [];
+    if (user.role && user.role.toLowerCase() === 'owner') {
+      permissions = ['*'];
+    } else if (staff?.role && staff.role.toLowerCase() === 'admin') {
+      permissions = ['*'];
+    } else if (staff?.permissions && Array.isArray(staff.permissions)) {
+      permissions = staff.permissions;
+    } else {
+      permissions = ['pos', 'tables', 'orders'];
+    }
 
     return {
       user: {
@@ -209,7 +297,7 @@ class AuthService {
         profilePhotoPath: staff?.avatarUrl || business?.profile?.profileImage || '',
         role: staff?.role || user.role,
         employeeId: staff?.employeeId || '',
-        permissions: staff?.permissions || [],
+        permissions,
         emailVerified: user.emailVerified,
         phoneVerified: user.phoneVerified,
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
@@ -220,7 +308,6 @@ class AuthService {
       business,
     };
   }
-
 
   // Reset password
   async resetPassword(email, newPassword) {
@@ -247,4 +334,3 @@ class AuthService {
 }
 
 module.exports = new AuthService();
-

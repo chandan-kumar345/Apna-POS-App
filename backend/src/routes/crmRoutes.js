@@ -1,10 +1,12 @@
 const express = require('express');
 const crmController = require('../controllers/crmController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(requirePermission('crm', 'customers_view', 'customers_crm', 'customers'));
 
 router.get('/leads', (req, res, next) => crmController.getLeads(req, res, next));
 router.get('/stats', (req, res, next) => crmController.getStats(req, res, next));

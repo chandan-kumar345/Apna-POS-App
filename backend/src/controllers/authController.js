@@ -16,9 +16,20 @@ class AuthController {
   // Login
   async login(req, res, next) {
     try {
-      const { email, password } = req.body;
-      const result = await authService.login(email, password);
+      const identifier = req.body.email || req.body.identifier || req.body.phone || req.body.employeeId;
+      const { password, pin } = req.body;
+      const result = await authService.login(identifier, password, { pin });
       return ApiResponse.success(res, result, 'Login successful');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Dedicated Staff Login
+  async staffLogin(req, res, next) {
+    try {
+      const result = await authService.staffLogin(req.body);
+      return ApiResponse.success(res, result, 'Staff login successful');
     } catch (error) {
       next(error);
     }

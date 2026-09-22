@@ -16,8 +16,12 @@ router.post('/register', validate(registerSchema), (req, res, next) =>
   authController.register(req, res, next)
 );
 
-router.post('/login', validate(loginSchema), (req, res, next) =>
+router.post('/login', (req, res, next) =>
   authController.login(req, res, next)
+);
+
+router.post('/staff-login', (req, res, next) =>
+  authController.staffLogin(req, res, next)
 );
 
 router.post('/reset-password', validate(resetPasswordSchema), (req, res, next) =>

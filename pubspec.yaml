@@ -94,6 +94,8 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/Side bar icons/
+    - assets/images/sales report icon/
     - assets/sounds/
 
   # An image asset can refer to one or more resolution-specific "variants", see

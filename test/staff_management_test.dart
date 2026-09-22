@@ -92,6 +92,26 @@ void main() {
       expect(stats.inactive, 2);
       expect(stats.admins, 3);
     });
+
+    test('StaffStatsModel handles null and string values gracefully', () {
+      final stats = StaffStatsModel.fromJson({
+        'total': '5',
+        'active': '3',
+        'inactive': '2',
+        'admins': '1',
+      });
+
+      expect(stats.total, 5);
+      expect(stats.active, 3);
+      expect(stats.inactive, 2);
+      expect(stats.admins, 1);
+
+      final emptyStats = StaffStatsModel.fromJson(null);
+      expect(emptyStats.total, 0);
+      expect(emptyStats.active, 0);
+      expect(emptyStats.inactive, 0);
+      expect(emptyStats.admins, 0);
+    });
   });
 
   group('DatabaseService Staff Operations', () {

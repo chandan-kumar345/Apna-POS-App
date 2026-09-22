@@ -25,6 +25,7 @@ import '../../core/services/chotu_service.dart';
 
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
+  final OrderType? initialOrderType;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onOpenTablesTab;
   final bool isFullScreen;
@@ -34,6 +35,7 @@ class PosRegisterScreen extends StatefulWidget {
   const PosRegisterScreen({
     super.key,
     this.initialTable,
+    this.initialOrderType,
     this.onOpenDrawer,
     this.onOpenTablesTab,
     this.isFullScreen = false,
@@ -205,7 +207,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     db.addListener(_onDbChange);
     _chotuService.addActionListener(_onChotuCommandReceived);
     _initLoyaltyStatus();
-    if (widget.initialTable != null) {
+    if (widget.initialOrderType != null && widget.initialOrderType != OrderType.dineIn) {
+      _switchOrderType(widget.initialOrderType!);
+    } else if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
   }
@@ -314,7 +318,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void didUpdateWidget(PosRegisterScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialTable != null && widget.initialTable != oldWidget.initialTable) {
+    if (widget.initialOrderType != null && widget.initialOrderType != oldWidget.initialOrderType) {
+      _switchOrderType(widget.initialOrderType!);
+    } else if (widget.initialTable != null && widget.initialTable != oldWidget.initialTable) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
   }
@@ -6448,6 +6454,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           _selectedOrderType = OrderType.dineIn;
                         });
                       }
+                      Navigator.pop(dialogCtx);
+                    },
+                    onTakeOrderForType: (orderType) {
+                      _switchOrderType(orderType, setStateCart);
                       Navigator.pop(dialogCtx);
                     },
                   ),

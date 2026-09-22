@@ -1,6 +1,7 @@
 const express = require('express');
 const inventoryController = require('../controllers/inventoryController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 const validate = require('../middleware/validationMiddleware');
 const {
   createInventorySchema,
@@ -10,6 +11,7 @@ const {
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(requirePermission('inventory', 'inventory_view', 'inventory_adjust'));
 
 router.get('/', (req, res, next) => inventoryController.getInventory(req, res, next));
 router.post('/', validate(createInventorySchema), (req, res, next) =>

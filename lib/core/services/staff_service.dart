@@ -30,7 +30,7 @@ class StaffService {
   factory StaffService() => _instance;
   StaffService._internal();
 
-  /// Fetch paginated staff list with filtering and stats
+  /// Fetch paginated staff list with filtering and stats dynamically from API
   Future<StaffFetchResult?> fetchStaff({
     int page = 1,
     int limit = 8,
@@ -49,10 +49,10 @@ class StaffService {
         'limit': limit,
       };
       if (role != null && role.isNotEmpty && role != 'All Roles' && role != 'All') {
-        queryParams['role'] = role;
+        queryParams['role'] = role.trim();
       }
       if (status != null && status.isNotEmpty && status != 'All Status' && status != 'All') {
-        queryParams['status'] = status;
+        queryParams['status'] = status.trim();
       }
       if (search != null && search.trim().isNotEmpty) {
         queryParams['search'] = search.trim();
@@ -63,32 +63,59 @@ class StaffService {
         queryParameters: queryParams,
       );
 
-      if (response != null && response['success'] == true && response['data'] != null) {
-        final data = response['data'] as Map<String, dynamic>;
-        final rawList = data['staff'] as List<dynamic>? ?? [];
+      if (response != null) {
+        List<dynamic> rawList = [];
+        Map<String, dynamic> pagination = {};
+        StaffStatsModel? statsFromResponse;
+
+        if (response is Map<String, dynamic>) {
+          if (response['data'] is Map<String, dynamic>) {
+            final data = response['data'] as Map<String, dynamic>;
+            if (data['staff'] is List) {
+              rawList = data['staff'] as List<dynamic>;
+            } else if (data['data'] is List) {
+              rawList = data['data'] as List<dynamic>;
+            }
+            if (data['pagination'] is Map<String, dynamic>) {
+              pagination = data['pagination'] as Map<String, dynamic>;
+            }
+            if (data['stats'] is Map<String, dynamic>) {
+              statsFromResponse = StaffStatsModel.fromJson(data['stats'] as Map<String, dynamic>);
+            }
+          } else if (response['data'] is List) {
+            rawList = response['data'] as List<dynamic>;
+          } else if (response['staff'] is List) {
+            rawList = response['staff'] as List<dynamic>;
+          }
+        } else if (response is List) {
+          rawList = response;
+        }
+
         final staffMembers = rawList
-            .map((s) => StaffModel.fromJson(s as Map<String, dynamic>))
+            .whereType<Map>()
+            .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
             .toList();
 
-        final pagination = data['pagination'] as Map<String, dynamic>? ?? {};
-        final totalCount = (pagination['total'] as num?)?.toInt() ?? staffMembers.length;
-        final totalPages = (pagination['totalPages'] as num?)?.toInt() ?? 1;
+        final totalCount = (pagination['total'] as num?)?.toInt() ??
+            int.tryParse(pagination['total']?.toString() ?? '') ??
+            staffMembers.length;
+        final totalPages = (pagination['totalPages'] as num?)?.toInt() ??
+            int.tryParse(pagination['totalPages']?.toString() ?? '') ??
+            ((totalCount / limit).ceil() > 0 ? (totalCount / limit).ceil() : 1);
 
-        if (staffMembers.isNotEmpty) {
-          // Sync local cache
-          _db.syncStaffList(staffMembers);
+        // Sync local cache with remote results
+        _db.syncStaffList(staffMembers);
 
-          // Fetch / compute stats
-          final stats = await fetchStats() ?? _computeStats(_db.staffList);
+        // Fetch dynamic stats or compute from response/cache
+        final stats = statsFromResponse ?? await fetchStats() ?? _computeStats(_db.staffList);
 
-          return StaffFetchResult(
-            staff: staffMembers,
-            totalCount: totalCount,
-            page: page,
-            totalPages: totalPages,
-            stats: stats,
-          );
-        }
+        return StaffFetchResult(
+          staff: staffMembers,
+          totalCount: totalCount,
+          page: page,
+          totalPages: totalPages,
+          stats: stats,
+        );
       }
     } catch (e) {
       debugPrint('[StaffService] fetchStaff error: $e. Falling back to local cache.');
@@ -97,7 +124,7 @@ class StaffService {
     return _getLocalStaff(page: page, limit: limit, role: role, status: status, search: search);
   }
 
-  /// Fetch overall staff statistics
+  /// Fetch overall staff statistics dynamically from API
   Future<StaffStatsModel?> fetchStats() async {
     try {
       final isAuth = await _authService.isAuthenticated();
@@ -106,8 +133,15 @@ class StaffService {
       }
 
       final response = await _apiClient.get(ApiEndpoints.staffStats);
-      if (response != null && response['success'] == true && response['data'] != null) {
-        return StaffStatsModel.fromJson(response['data'] as Map<String, dynamic>);
+      if (response != null) {
+        if (response is Map<String, dynamic>) {
+          if (response['data'] is Map<String, dynamic>) {
+            return StaffStatsModel.fromJson(response['data'] as Map<String, dynamic>);
+          }
+          if (response['total'] != null) {
+            return StaffStatsModel.fromJson(response);
+          }
+        }
       }
     } catch (e) {
       debugPrint('[StaffService] fetchStats error: $e');
@@ -115,7 +149,7 @@ class StaffService {
     return _computeStats(_db.staffList);
   }
 
-  /// Create a new staff member
+  /// Create a new staff member dynamically via API
   Future<StaffModel?> createStaff(StaffModel staff) async {
     try {
       final payload = staff.toJson();
@@ -124,10 +158,22 @@ class StaffService {
         data: payload,
       );
 
-      if (response != null && response['success'] == true && response['data'] != null) {
-        final created = StaffModel.fromJson(response['data'] as Map<String, dynamic>);
-        _db.addStaff(created);
-        return created;
+      if (response != null) {
+        Map<String, dynamic>? data;
+        if (response is Map<String, dynamic>) {
+          if (response['data'] is Map<String, dynamic>) {
+            data = response['data'] as Map<String, dynamic>;
+          } else if (response['staff'] is Map<String, dynamic>) {
+            data = response['staff'] as Map<String, dynamic>;
+          } else if (response['id'] != null || response['_id'] != null) {
+            data = response;
+          }
+        }
+        if (data != null) {
+          final created = StaffModel.fromJson(data);
+          _db.addStaff(created);
+          return created;
+        }
       }
     } catch (e) {
       debugPrint('[StaffService] createStaff API error: $e. Saving locally.');
@@ -138,7 +184,7 @@ class StaffService {
     return staff;
   }
 
-  /// Update an existing staff member
+  /// Update an existing staff member dynamically via API
   Future<StaffModel?> updateStaff(StaffModel staff) async {
     try {
       final payload = staff.toJson();
@@ -147,10 +193,20 @@ class StaffService {
         data: payload,
       );
 
-      if (response != null && response['success'] == true && response['data'] != null) {
-        final updated = StaffModel.fromJson(response['data'] as Map<String, dynamic>);
-        _db.updateStaff(updated);
-        return updated;
+      if (response != null) {
+        Map<String, dynamic>? data;
+        if (response is Map<String, dynamic>) {
+          if (response['data'] is Map<String, dynamic>) {
+            data = response['data'] as Map<String, dynamic>;
+          } else if (response['id'] != null || response['_id'] != null) {
+            data = response;
+          }
+        }
+        if (data != null) {
+          final updated = StaffModel.fromJson(data);
+          _db.updateStaff(updated);
+          return updated;
+        }
       }
     } catch (e) {
       debugPrint('[StaffService] updateStaff API error: $e. Updating locally.');
@@ -161,17 +217,27 @@ class StaffService {
     return staff;
   }
 
-  /// Toggle Active / Inactive status of staff
+  /// Toggle Active / Inactive status of staff dynamically via API
   Future<StaffModel?> toggleStatus(String id) async {
     try {
       final response = await _apiClient.patch(
         ApiEndpoints.staffStatus(id),
       );
 
-      if (response != null && response['success'] == true && response['data'] != null) {
-        final updated = StaffModel.fromJson(response['data'] as Map<String, dynamic>);
-        _db.updateStaff(updated);
-        return updated;
+      if (response != null) {
+        Map<String, dynamic>? data;
+        if (response is Map<String, dynamic>) {
+          if (response['data'] is Map<String, dynamic>) {
+            data = response['data'] as Map<String, dynamic>;
+          } else if (response['id'] != null || response['_id'] != null) {
+            data = response;
+          }
+        }
+        if (data != null) {
+          final updated = StaffModel.fromJson(data);
+          _db.updateStaff(updated);
+          return updated;
+        }
       }
     } catch (e) {
       debugPrint('[StaffService] toggleStatus API error: $e. Toggling locally.');
@@ -181,14 +247,14 @@ class StaffService {
     return _db.toggleStaffStatus(id);
   }
 
-  /// Delete a staff member
+  /// Delete a staff member dynamically via API
   Future<bool> deleteStaff(String id) async {
     try {
       final response = await _apiClient.delete(
         ApiEndpoints.staffById(id),
       );
 
-      if (response != null && response['success'] == true) {
+      if (response != null && (response['success'] == true || response['data'] != null)) {
         _db.deleteStaff(id);
         return true;
       }

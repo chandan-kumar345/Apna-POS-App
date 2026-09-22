@@ -58,8 +58,8 @@ class AuthService {
     return data;
   }
 
-  // Login (by email or phone)
-  Future<Map<String, dynamic>> login(String identifier, String password) async {
+  // Login (by email, phone, or employee ID)
+  Future<Map<String, dynamic>> login(String identifier, String password, {String? pin}) async {
     final cleanIdentifier = identifier.trim().contains('@')
         ? identifier.trim().toLowerCase()
         : identifier.trim();
@@ -67,8 +67,10 @@ class AuthService {
     final response = await _apiClient.post(
       ApiEndpoints.login,
       data: {
+        'identifier': cleanIdentifier,
         'email': cleanIdentifier,
         'password': password,
+        if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),
       },
     );
 
@@ -147,6 +149,104 @@ class AuthService {
     }));
 
     // Deliver welcome push notification upon login in background
+    unawaited(Future(() => LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name)));
+
+    return data;
+  }
+
+  // Dedicated Staff Login (by employeeId, email, or phone with password or PIN)
+  Future<Map<String, dynamic>> staffLogin({
+    required String identifier,
+    String? password,
+    String? pin,
+    String? businessId,
+  }) async {
+    final cleanIdentifier = identifier.trim().contains('@')
+        ? identifier.trim().toLowerCase()
+        : identifier.trim();
+
+    final response = await _apiClient.post(
+      ApiEndpoints.staffLogin,
+      data: {
+        'identifier': cleanIdentifier,
+        'employeeId': cleanIdentifier,
+        'email': cleanIdentifier,
+        if (password != null && password.trim().isNotEmpty) 'password': password.trim(),
+        if (pin != null && pin.trim().isNotEmpty) 'pin': pin.trim(),
+        if (businessId != null && businessId.trim().isNotEmpty) 'businessId': businessId.trim(),
+      },
+    );
+
+    final data = response['data'] as Map<String, dynamic>;
+    final accessToken = data['accessToken'] as String?;
+    final refreshToken = data['refreshToken'] as String?;
+    final userJson = data['user'] as Map<String, dynamic>;
+
+    if (accessToken != null) {
+      await _storage.saveAccessToken(accessToken);
+    }
+    if (refreshToken != null) {
+      await _storage.saveRefreshToken(refreshToken);
+    }
+
+    ProductService.clearPosCache();
+
+    final businessJson = (data['business'] ?? userJson['business']) as Map<String, dynamic>?;
+    if (businessJson != null && businessJson['profile'] != null && businessJson['profile'] is Map) {
+      final profile = businessJson['profile'] as Map<String, dynamic>;
+      if ((userJson['name'] == null || (userJson['name'] as String).isEmpty) && profile['name'] != null) {
+        userJson['name'] = profile['name'];
+      }
+      if ((userJson['companyName'] == null || (userJson['companyName'] as String).isEmpty) && profile['companyName'] != null) {
+        userJson['companyName'] = profile['companyName'];
+      }
+      if ((userJson['profilePhotoPath'] == null || (userJson['profilePhotoPath'] as String).isEmpty) && profile['profileImage'] != null) {
+        userJson['profilePhotoPath'] = profile['profileImage'];
+      }
+      if ((userJson['phone'] == null || (userJson['phone'] as String).isEmpty) && profile['phone'] != null) {
+        userJson['phone'] = profile['phone'];
+      }
+    }
+
+    final user = UserModel.fromJson(userJson);
+    await _storage.saveUserId(user.id);
+    await _sessionManager.saveSession(user.id);
+    await _db.saveActiveUser(user);
+    await _db.loadUserDataForActiveUser(user.id);
+
+    if (businessJson != null) {
+      try {
+        final business = BusinessModel.fromJson(businessJson);
+        final rest = _db.restaurant;
+        final updated = (rest ?? RestaurantModel(
+          id: user.id,
+          name: business.profile.companyName.isNotEmpty ? business.profile.companyName : 'My Restaurant',
+          tagline: 'Smart POS',
+          phone: business.profile.phone,
+          address: business.address.addressLine,
+          cuisineType: business.business.businessType.isNotEmpty ? business.business.businessType : 'Restaurant',
+          currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
+          tableCount: business.orderSettings.tableCount,
+          isOnboarded: user.onboardingCompleted,
+        )).copyWith(
+          name: business.profile.companyName.isNotEmpty ? business.profile.companyName : rest?.name,
+          phone: business.profile.phone.isNotEmpty ? business.profile.phone : rest?.phone,
+          address: business.address.addressLine.isNotEmpty ? business.address.addressLine : rest?.address,
+          cuisineType: business.business.businessType.isNotEmpty ? business.business.businessType : rest?.cuisineType,
+          currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
+          tableCount: business.orderSettings.tableCount,
+          isOnboarded: user.onboardingCompleted,
+        );
+        await _db.saveRestaurantOnboarding(updated);
+      } catch (e) {
+        debugPrint('Error caching business from staffLogin: $e');
+      }
+    }
+
+    unawaited(_db.syncWithBackend().catchError((e) {
+      debugPrint('[AuthService] background sync notice: $e');
+    }));
+
     unawaited(Future(() => LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name)));
 
     return data;

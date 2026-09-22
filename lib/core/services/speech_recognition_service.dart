@@ -83,6 +83,10 @@ class SpeechRecognitionService extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
+    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+
     // Overall max listening timeout
     _speechTimeoutTimer = Timer(timeout, () {
       if (_status == SpeechStatus.listening) {

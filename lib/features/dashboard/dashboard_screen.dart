@@ -645,6 +645,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         amount: _orderTypesData.dineIn.amount,
         count: _orderTypesData.dineIn.count,
         icon: Icons.restaurant_rounded,
+        imageAsset: 'assets/images/dinein.png',
         accentColor: const Color(0xFF8B5CF6),
         bgColor: const Color(0xFFF5F3FF),
         borderColor: const Color(0xFFDDD6FE),
@@ -654,6 +655,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         amount: _orderTypesData.takeaway.amount,
         count: _orderTypesData.takeaway.count,
         icon: Icons.local_mall_rounded,
+        imageAsset: 'assets/images/takeaway.png',
         accentColor: const Color(0xFF0284C7),
         bgColor: const Color(0xFFF0F9FF),
         borderColor: const Color(0xFFBAE6FD),
@@ -663,6 +665,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         amount: _orderTypesData.delivery.amount,
         count: _orderTypesData.delivery.count,
         icon: Icons.two_wheeler_rounded,
+        imageAsset: 'assets/images/delivery.png',
         accentColor: const Color(0xFFF97316),
         bgColor: const Color(0xFFFFF7ED),
         borderColor: const Color(0xFFFED7AA),
@@ -685,6 +688,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     required int count,
     required double amount,
     required IconData icon,
+    String? imageAsset,
     required Color accentColor,
     required Color bgColor,
     required Color borderColor,
@@ -699,7 +703,9 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(5),
+              width: 30,
+              height: 30,
+              padding: const EdgeInsets.all(3),
               decoration: BoxDecoration(
                 color: accentColor.withOpacity(0.12),
                 shape: BoxShape.circle,
@@ -708,7 +714,16 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   width: 1,
                 ),
               ),
-              child: Icon(icon, color: accentColor, size: 16),
+              alignment: Alignment.center,
+              child: imageAsset != null && imageAsset.isNotEmpty
+                  ? Image.asset(
+                      imageAsset,
+                      width: 20,
+                      height: 20,
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Icon(icon, color: accentColor, size: 16),
+                    )
+                  : Icon(icon, color: accentColor, size: 16),
             ),
             const SizedBox(height: 3),
             Text(

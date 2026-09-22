@@ -66,9 +66,19 @@ const resetPasswordSchema = Joi.object({
     }),
 });
 
+const staffLoginSchema = Joi.object({
+  identifier: Joi.string().allow('', null).optional(),
+  employeeId: Joi.string().allow('', null).optional(),
+  email: Joi.string().allow('', null).optional(),
+  phone: Joi.string().allow('', null).optional(),
+  password: Joi.string().allow('', null).optional(),
+  pin: Joi.string().allow('', null).optional(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
+  staffLoginSchema,
   refreshSchema,
   resetPasswordSchema,
 };

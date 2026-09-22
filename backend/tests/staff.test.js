@@ -162,5 +162,56 @@ describe('Staff Management & Authentication APIs', () => {
       expect(newLoginRes.status).toBe(200);
       expect(newLoginRes.body.data.user.role).toBe('Admin');
     });
+
+    it('should allow staff to log in using Employee ID and password via /auth/staff-login', async () => {
+      const staffPayload = {
+        name: 'Vikas Cashier',
+        employeeId: 'EMP777',
+        email: 'vikas.cashier@example.com',
+        role: 'Cashier',
+        password: 'VikasPassword@123',
+        pin: '7777',
+        status: 'Active',
+        permissions: ['pos', 'tables', 'orders'],
+      };
+
+      await request(app)
+        .post('/api/v1/staff')
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send(staffPayload);
+
+      // Log in via staff-login endpoint using employeeId
+      const loginRes = await request(app)
+        .post('/api/v1/auth/staff-login')
+        .send({
+          employeeId: 'EMP777',
+          password: 'VikasPassword@123',
+        });
+
+      expect(loginRes.status).toBe(200);
+      expect(loginRes.body.success).toBe(true);
+      expect(loginRes.body.data.user.employeeId).toBe('EMP777');
+      expect(loginRes.body.data.user.permissions).toEqual(expect.arrayContaining(['pos']));
+
+      const cashierToken = loginRes.body.data.accessToken;
+
+      // Cashier should be blocked from staff management API
+      const staffListRes = await request(app)
+        .get('/api/v1/staff')
+        .set('Authorization', `Bearer ${cashierToken}`);
+
+      expect(staffListRes.status).toBe(403);
+      expect(staffListRes.body.success).toBe(false);
+      expect(staffListRes.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+
+      // Cashier should be blocked from inventory API
+      const invRes = await request(app)
+        .get('/api/v1/inventory')
+        .set('Authorization', `Bearer ${cashierToken}`);
+
+      expect(invRes.status).toBe(403);
+      expect(invRes.body.success).toBe(false);
+      expect(invRes.body.error.code).toBe('INSUFFICIENT_PERMISSIONS');
+    });
   });
 });

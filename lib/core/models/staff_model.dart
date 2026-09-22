@@ -209,30 +209,34 @@ class StaffModel {
   factory StaffModel.fromJson(Map<String, dynamic> json) {
     DateTime parsedCreated = DateTime.now();
     if (json['createdAt'] != null) {
-      try {
-        parsedCreated = DateTime.parse(json['createdAt'].toString());
-      } catch (_) {}
+      final parsed = DateTime.tryParse(json['createdAt'].toString());
+      if (parsed != null) parsedCreated = parsed;
     }
 
     DateTime? parsedJoining;
     if (json['joiningDate'] != null) {
-      try {
-        parsedJoining = DateTime.parse(json['joiningDate'].toString());
-      } catch (_) {}
+      parsedJoining = DateTime.tryParse(json['joiningDate'].toString());
     }
 
     DateTime? parsedUpdated;
     if (json['updatedAt'] != null) {
-      try {
-        parsedUpdated = DateTime.parse(json['updatedAt'].toString());
-      } catch (_) {}
+      parsedUpdated = DateTime.tryParse(json['updatedAt'].toString());
     }
 
     List<String> parsedPermissions = [];
     if (json['permissions'] is List) {
       parsedPermissions = (json['permissions'] as List).map((p) => p.toString()).toList();
+    } else if (json['permissions'] is String && (json['permissions'] as String).isNotEmpty) {
+      parsedPermissions = (json['permissions'] as String).split(',').map((p) => p.trim()).toList();
     } else {
       parsedPermissions = ['pos', 'tables', 'orders'];
+    }
+
+    double parsedSalary = 0.0;
+    if (json['salary'] is num) {
+      parsedSalary = (json['salary'] as num).toDouble();
+    } else if (json['salary'] != null) {
+      parsedSalary = double.tryParse(json['salary'].toString()) ?? 0.0;
     }
 
     return StaffModel(
@@ -246,7 +250,7 @@ class StaffModel {
       pin: json['pin']?.toString() ?? '1234',
       avatarUrl: json['avatarUrl']?.toString() ?? '',
       permissions: parsedPermissions,
-      salary: (json['salary'] as num?)?.toDouble() ?? 0.0,
+      salary: parsedSalary,
       joiningDate: parsedJoining,
       notes: json['notes']?.toString() ?? '',
       department: json['department']?.toString() ?? '',
@@ -278,12 +282,19 @@ class StaffStatsModel {
     this.admins = 0,
   });
 
-  factory StaffStatsModel.fromJson(Map<String, dynamic> json) {
+  factory StaffStatsModel.fromJson(Map<String, dynamic>? json) {
+    if (json == null) return const StaffStatsModel();
+    int parseInt(dynamic val) {
+      if (val is num) return val.toInt();
+      if (val != null) return int.tryParse(val.toString()) ?? 0;
+      return 0;
+    }
+
     return StaffStatsModel(
-      total: (json['total'] as num?)?.toInt() ?? 0,
-      active: (json['active'] as num?)?.toInt() ?? 0,
-      inactive: (json['inactive'] as num?)?.toInt() ?? 0,
-      admins: (json['admins'] as num?)?.toInt() ?? 0,
+      total: parseInt(json['total']),
+      active: parseInt(json['active']),
+      inactive: parseInt(json['inactive']),
+      admins: parseInt(json['admins']),
     );
   }
 

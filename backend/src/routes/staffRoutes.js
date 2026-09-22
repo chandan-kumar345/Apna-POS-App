@@ -1,10 +1,12 @@
 const express = require('express');
 const staffController = require('../controllers/staffController');
 const authMiddleware = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/permissionMiddleware');
 
 const router = express.Router();
 
 router.use(authMiddleware);
+router.use(requirePermission('settings_staff', 'staff', 'settings'));
 
 router.get('/', (req, res, next) => staffController.getStaff(req, res, next));
 router.get('/stats', (req, res, next) => staffController.getStats(req, res, next));

@@ -298,6 +298,7 @@ class ApiEndpoints {
   // Auth endpoints
   static const String register = '/auth/register';
   static const String login = '/auth/login';
+  static const String staffLogin = '/auth/staff-login';
   static const String resetPassword = '/auth/reset-password';
   static const String refresh = '/auth/refresh';
   static const String logout = '/auth/logout';
