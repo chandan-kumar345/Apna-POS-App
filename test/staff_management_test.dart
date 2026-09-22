@@ -4,6 +4,7 @@ import 'package:apna_pos/core/models/staff_model.dart';
 import 'package:apna_pos/core/database/database_service.dart';
 import 'package:apna_pos/features/staff/screens/staff_management_screen.dart';
 import 'package:apna_pos/features/staff/screens/create_staff_screen.dart';
+import 'package:apna_pos/features/staff/screens/staff_settings_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -236,4 +237,124 @@ void main() {
       expect(find.widgetWithText(ElevatedButton, 'Create Staff'), findsOneWidget);
     });
   });
+
+  group('StaffSettingsScreen Widget & Flow Tests', () {
+    testWidgets('StaffSettingsScreen renders hero card, 5 tabs, profile fields, and save CTA', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+
+      final testStaff = StaffModel(
+        id: 'st_mock_001',
+        name: 'Rahul Verma',
+        employeeId: 'EMP002',
+        phone: '9876543211',
+        email: 'rahul.verma@apnapos.com',
+        role: 'Manager',
+        status: 'Active',
+        department: 'Operations',
+        workLocation: 'Main Outlet',
+        reportingTo: 'Amit Sharma',
+        salary: 35000,
+        pin: '1234',
+        permissions: const ['pos_access', 'pos_apply_discount', 'pos_manage_tables'],
+        createdAt: DateTime(2026, 1, 1),
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StaffSettingsScreen(
+            staff: testStaff,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Top Bar
+      expect(find.text('Staff Settings'), findsOneWidget);
+      expect(find.text('Save Changes'), findsOneWidget);
+
+      // Hero Card
+      expect(find.text('Rahul Verma'), findsWidgets);
+      expect(find.text('EMP002'), findsWidgets);
+      expect(find.text('rahul.verma@apnapos.com'), findsWidgets);
+      expect(find.text('Reports to: Amit Sharma'), findsOneWidget);
+
+      // Tab bar tabs
+      expect(find.text('Profile'), findsOneWidget);
+      expect(find.text('Permissions'), findsOneWidget);
+      expect(find.text('Work Settings'), findsOneWidget);
+      expect(find.text('Security'), findsOneWidget);
+      expect(find.text('Activity'), findsOneWidget);
+
+      // Tab 0 (Profile) contents
+      expect(find.text('Personal Information'), findsOneWidget);
+      expect(find.text('Work Information'), findsOneWidget);
+      expect(find.text('Preferences'), findsOneWidget);
+      expect(find.text('Login & Security'), findsOneWidget);
+      expect(find.text('Account Status'), findsOneWidget);
+      expect(find.text('Delete Staff'), findsOneWidget);
+
+      // Switch to Tab 1 (Permissions)
+      await tester.tap(find.text('Permissions'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('POS & Orders'), findsOneWidget);
+      expect(find.text('Products & Menu'), findsOneWidget);
+      expect(find.text('Inventory'), findsOneWidget);
+      expect(find.text('Customers & CRM'), findsOneWidget);
+      expect(find.text('Reports & Analytics'), findsOneWidget);
+      expect(find.text('Settings & Business'), findsOneWidget);
+      expect(find.text('System & Others'), findsOneWidget);
+      expect(find.textContaining('Role Presets'), findsOneWidget);
+
+      // Switch to Tab 2 (Work Settings)
+      await tester.tap(find.text('Work Settings'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Shift & Compensation'), findsOneWidget);
+      expect(find.text('Assigned Shift'), findsOneWidget);
+      expect(find.text('Joining Date'), findsOneWidget);
+
+      // Switch to Tab 3 (Security)
+      await tester.tap(find.text('Security'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Security & Access Control'), findsOneWidget);
+      expect(find.text('Reset PIN'), findsOneWidget);
+      expect(find.text('Force Password Change on Next Login'), findsOneWidget);
+
+      // Switch to Tab 4 (Activity)
+      await tester.tap(find.text('Activity'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Staff Activity & Audit Trail'), findsOneWidget);
+      expect(find.text('Logged into Windows POS Counter'), findsOneWidget);
+    });
+
+    testWidgets('Tapping staff row in StaffManagementScreen navigates to StaffSettingsScreen', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 800));
+
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: StaffManagementScreen(),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(milliseconds: 500));
+
+      // Verify seed staff row exists
+      expect(find.text('Amit Sharma'), findsOneWidget);
+
+      // Tap on the Amit Sharma row
+      await tester.tap(find.text('Amit Sharma'));
+      await tester.pumpAndSettle();
+
+      // Verify Staff Settings screen opened
+      expect(find.text('Staff Settings'), findsOneWidget);
+      expect(find.text('Save Changes'), findsOneWidget);
+      expect(find.text('Personal Information'), findsOneWidget);
+      expect(find.textContaining('Reports to:'), findsOneWidget);
+    });
+  });
 }
+

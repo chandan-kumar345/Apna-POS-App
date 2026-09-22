@@ -74,19 +74,21 @@ class StaffService {
         final totalCount = (pagination['total'] as num?)?.toInt() ?? staffMembers.length;
         final totalPages = (pagination['totalPages'] as num?)?.toInt() ?? 1;
 
-        // Fetch / compute stats
-        final stats = await fetchStats() ?? _computeStats(staffMembers);
+        if (staffMembers.isNotEmpty) {
+          // Sync local cache
+          _db.syncStaffList(staffMembers);
 
-        // Sync local cache
-        _db.syncStaffList(staffMembers);
+          // Fetch / compute stats
+          final stats = await fetchStats() ?? _computeStats(_db.staffList);
 
-        return StaffFetchResult(
-          staff: staffMembers,
-          totalCount: totalCount,
-          page: page,
-          totalPages: totalPages,
-          stats: stats,
-        );
+          return StaffFetchResult(
+            staff: staffMembers,
+            totalCount: totalCount,
+            page: page,
+            totalPages: totalPages,
+            stats: stats,
+          );
+        }
       }
     } catch (e) {
       debugPrint('[StaffService] fetchStaff error: $e. Falling back to local cache.');

@@ -671,6 +671,9 @@ class DatabaseService extends ChangeNotifier {
     // 10. Load manual products history
     _loadManualProductsHistoryFromPrefs();
 
+    // 11. Load Staff List (User-scoped)
+    _loadStaffFromPrefs();
+
     notifyListeners();
 
     // Asynchronously sync customers from backend server
@@ -4216,6 +4219,36 @@ class DatabaseService extends ChangeNotifier {
         createdAt: DateTime.now().subtract(const Duration(days: 20)),
       ),
     ];
+    _saveStaffToPrefs();
+  }
+
+  Future<void> _saveStaffToPrefs() async {
+    try {
+      final jsonStr = jsonEncode(staffList.map((s) => s.toJson()).toList());
+      await _prefs?.setString(_userKey('staff_list'), jsonStr);
+      final isGuest = currentUser == null || currentUser?.id.isEmpty == true || currentUser?.id == 'guest';
+      if (isGuest) {
+        await _prefs?.setString('apna_pos_staff_list', jsonStr);
+      }
+    } catch (_) {}
+  }
+
+  void _loadStaffFromPrefs() {
+    try {
+      final jsonStr = _prefs?.getString(_userKey('staff_list')) ??
+          _prefs?.getString('apna_pos_staff_list');
+      if (jsonStr != null && jsonStr.isNotEmpty) {
+        final List raw = jsonDecode(jsonStr);
+        staffList = raw
+            .whereType<Map>()
+            .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
+            .toList();
+        if (staffList.isNotEmpty) {
+          return;
+        }
+      }
+    } catch (_) {}
+    _initDefaultStaff();
   }
 
   void syncStaffList(List<StaffModel> remoteStaff) {
@@ -4228,12 +4261,14 @@ class DatabaseService extends ChangeNotifier {
       map[s.id] = s;
     }
     staffList = map.values.toList();
+    _saveStaffToPrefs();
     notifyListeners();
   }
 
   void addStaff(StaffModel staff) {
     staffList.removeWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
     staffList.insert(0, staff);
+    _saveStaffToPrefs();
     notifyListeners();
   }
 
@@ -4241,10 +4276,11 @@ class DatabaseService extends ChangeNotifier {
     final idx = staffList.indexWhere((s) => s.id == staff.id);
     if (idx != -1) {
       staffList[idx] = staff;
-      notifyListeners();
     } else {
-      addStaff(staff);
+      staffList.insert(0, staff);
     }
+    _saveStaffToPrefs();
+    notifyListeners();
   }
 
   StaffModel? toggleStaffStatus(String id) {
@@ -4254,6 +4290,7 @@ class DatabaseService extends ChangeNotifier {
       final newStatus = current.isActive ? 'Inactive' : 'Active';
       final updated = current.copyWith(status: newStatus, updatedAt: DateTime.now());
       staffList[idx] = updated;
+      _saveStaffToPrefs();
       notifyListeners();
       return updated;
     }
@@ -4262,6 +4299,7 @@ class DatabaseService extends ChangeNotifier {
 
   void deleteStaff(String id) {
     staffList.removeWhere((s) => s.id == id);
+    _saveStaffToPrefs();
     notifyListeners();
   }
 }

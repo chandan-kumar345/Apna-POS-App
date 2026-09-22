@@ -235,3 +235,31 @@ This document outlines the product requirements and operational specifications f
 ### 10.4 Orders Management & History Screen Visibility
 * **Requirement 10.4.1 (Omnipresent 'All' Filter):** The Orders & History screen must provide an `'All'` option for Order Types (`All`, `DineIn`, `TakeAway`, `Delivery`) and an `'All'` pill for Statuses (`All`, `Pending`, `Preparing`, `Ready`, `Completed`, `Cancelled`).
 * **Requirement 10.4.2 (Default Overview Mode):** The Orders screen defaults to `'All'` Order Types and `'All'` Statuses to immediately display all orders placed on the selected date without requiring manual tab switches.
+
+---
+
+## 11. CRM Leads & Customer Metrics Standards
+
+### 11.1 Dynamic Customer Aggregation
+* **Requirement 11.1.1 (Visit and Order Count Accuracy):** Customer `visitCount`, `totalOrders`, and `totalSpent` must calculate from real transaction history and store databases.
+* **Requirement 11.1.2 (Normalized Source):** In the CRM customer overview and orders tab, all orders processed directly through the POS terminal (Dine In, Takeaway, Counter Delivery) display their source channel as `"POS"` rather than internal order type tags.
+
+---
+
+## 12. Staff Management, Dynamic Permissions & Staff Settings Architecture
+
+### 12.1 Local Storage & Dual-Layer Persistence
+* **Requirement 12.1.1 (User-Scoped Persistence):** All newly created, updated, and deleted staff members persist immediately into `SharedPreferences` under active user-scoped storage (`staff_list_${userId}`) with fallback to guest storage.
+* **Requirement 12.1.2 (Offline & Cloud Resilience):** If the cloud backend is offline or returns an empty array, `StaffService.fetchStaff()` falls back to locally persisted records to ensure staff members are never hidden or wiped out.
+* **Requirement 12.1.3 (Auto-Load on Startup):** Staff data is automatically loaded during app startup (`init()`) and whenever the active authenticated user switches.
+
+### 12.2 Staff Settings & Profile Editing Screen
+* **Requirement 12.2.1 (Row Tap Navigation):** Tapping anywhere on a staff row or card in `StaffManagementScreen` directly navigates to `StaffSettingsScreen` for comprehensive profile and permission editing.
+* **Requirement 12.2.2 (Top Bar & Hero Card):** Displays back navigation, screen title, "+ Save Changes" CTA, user avatar with photo upload badge, active status pill, role pill, EMP ID, email, phone, and reporting supervisor.
+* **Requirement 12.2.3 (5-Tab Structure):**
+  - **Tab 0: Profile:** Personal Information, Work Information, Preferences, Login & PIN modal, Account Status, and Delete Staff card.
+  - **Tab 1: Permissions:** Dynamic Permissions Matrix across POS & Orders, Products & Menu, Inventory, Customers & CRM, Reports & Analytics, Settings & Business, and System & Others, with granular switches and quick Role Presets (Admin, Manager, Cashier, Waiter, Chef).
+  - **Tab 2: Work Settings:** Shift assignment, salary compensation, joining date picker, and internal notes.
+  - **Tab 3: Security:** 4-digit PIN access manager, force password change switch, and welcome email credentials switch.
+  - **Tab 4: Activity:** Live staff audit trail and event activity timeline.
+

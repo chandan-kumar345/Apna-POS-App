@@ -3,6 +3,7 @@ import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
 import '../../../core/services/staff_service.dart';
 import 'create_staff_screen.dart';
+import 'staff_settings_screen.dart';
 
 class StaffManagementScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -251,343 +252,27 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
   }
 
+  Future<void> _openStaffSettingsScreen(StaffModel staff) async {
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => StaffSettingsScreen(
+          staff: staff,
+          onStaffUpdated: _loadStaffData,
+        ),
+      ),
+    );
+    if (updated == true) {
+      _loadStaffData();
+    }
+  }
+
   void _showStaffFormDialog({StaffModel? existingStaff}) {
     if (existingStaff == null) {
       _openCreateStaffScreen();
       return;
     }
-    final staff = existingStaff;
-    final nameCtrl = TextEditingController(text: staff.name);
-    final empIdCtrl = TextEditingController(text: staff.employeeId);
-    final phoneCtrl = TextEditingController(text: staff.phone);
-    final emailCtrl = TextEditingController(text: staff.email);
-    final passwordCtrl = TextEditingController();
-    String formRole = staff.role;
-    String formStatus = staff.status;
-    final Set<String> formPermissions = Set.from(staff.permissions);
-
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return Dialog(
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 580,
-                maxHeight: MediaQuery.of(context).size.height * 0.9,
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Modal Header
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: const Icon(Icons.badge_rounded, color: Color(0xFF2563EB), size: 24),
-                        ),
-                        const SizedBox(width: 14),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Edit Staff Member',
-                                style: TextStyle(
-                                  fontSize: 19,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0F172A),
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Update details, role and permissions',
-                                style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
-                          tooltip: 'Close',
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(color: Color(0xFFE2E8F0), height: 1),
-                    const SizedBox(height: 16),
-
-                    // Scrollable Form Body
-                    Flexible(
-                      child: SingleChildScrollView(
-                        physics: const BouncingScrollPhysics(),
-                        child: Form(
-                          key: formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Full Name
-                              const Text('Full Name *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                              const SizedBox(height: 6),
-                              TextFormField(
-                                controller: nameCtrl,
-                                decoration: _inputDecoration(hint: 'e.g. Amit Sharma', icon: Icons.person_outline_rounded),
-                                validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter staff name' : null,
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Employee ID & Role Row
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Employee ID', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        TextFormField(
-                                          controller: empIdCtrl,
-                                          decoration: _inputDecoration(hint: 'EMP001', icon: Icons.tag_rounded),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Role *', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        DropdownButtonFormField<String>(
-                                          value: formRole,
-                                          decoration: _inputDecoration(hint: 'Select Role', icon: Icons.work_outline_rounded),
-                                          items: _roleOptions
-                                              .where((r) => r != 'All Roles')
-                                              .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                                              .toList(),
-                                          onChanged: (v) {
-                                            if (v != null) setModalState(() => formRole = v);
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Phone & Email Row
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Phone Number', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        TextFormField(
-                                          controller: phoneCtrl,
-                                          keyboardType: TextInputType.phone,
-                                          decoration: _inputDecoration(hint: 'e.g. 9876543210', icon: Icons.phone_outlined),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Email Address', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        TextFormField(
-                                          controller: emailCtrl,
-                                          keyboardType: TextInputType.emailAddress,
-                                          decoration: _inputDecoration(hint: 'staff@domain.com', icon: Icons.email_outlined),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Password & Status Row
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('New Password (Optional)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        TextFormField(
-                                          controller: passwordCtrl,
-                                          obscureText: true,
-                                          decoration: _inputDecoration(hint: 'Leave blank to keep unchanged', icon: Icons.lock_outline_rounded),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text('Status', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                                        const SizedBox(height: 6),
-                                        DropdownButtonFormField<String>(
-                                          value: formStatus,
-                                          decoration: _inputDecoration(hint: 'Status', icon: Icons.toggle_on_outlined),
-                                          items: const [
-                                            DropdownMenuItem(value: 'Active', child: Text('Active')),
-                                            DropdownMenuItem(value: 'Inactive', child: Text('Inactive')),
-                                          ],
-                                          onChanged: (v) {
-                                            if (v != null) setModalState(() => formStatus = v);
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 18),
-
-                              // Permissions Checklist
-                              const Text('Module Permissions', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF334155))),
-                              const SizedBox(height: 8),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _permissionChip('POS Billing', 'pos', formPermissions, setModalState),
-                                  _permissionChip('Table Management', 'tables', formPermissions, setModalState),
-                                  _permissionChip('Orders', 'orders', formPermissions, setModalState),
-                                  _permissionChip('Menu & Items', 'menu', formPermissions, setModalState),
-                                  _permissionChip('Inventory', 'inventory', formPermissions, setModalState),
-                                  _permissionChip('Reports', 'reports', formPermissions, setModalState),
-                                  _permissionChip('CRM Leads', 'crm', formPermissions, setModalState),
-                                  _permissionChip('Loyalty', 'loyalty', formPermissions, setModalState),
-                                  _permissionChip('Discounts', 'discounts', formPermissions, setModalState),
-                                  _permissionChip('Settings', 'settings', formPermissions, setModalState),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Divider(color: Color(0xFFE2E8F0), height: 1),
-                    const SizedBox(height: 16),
-
-                    // Actions Footer
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF64748B),
-                            side: const BorderSide(color: Color(0xFFCBD5E1)),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600)),
-                        ),
-                        const SizedBox(width: 12),
-                        ElevatedButton.icon(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2563EB),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            elevation: 0,
-                          ),
-                          icon: const Icon(Icons.check_rounded, size: 18),
-                          label: const Text('Save Changes', style: TextStyle(fontWeight: FontWeight.w700)),
-                          onPressed: () async {
-                            if (formKey.currentState?.validate() != true) return;
-
-                            final updatedStaff = staff.copyWith(
-                              name: nameCtrl.text.trim(),
-                              employeeId: empIdCtrl.text.trim(),
-                              phone: phoneCtrl.text.trim(),
-                              email: emailCtrl.text.trim(),
-                              role: formRole,
-                              status: formStatus,
-                              password: passwordCtrl.text.trim().isNotEmpty ? passwordCtrl.text.trim() : null,
-                              permissions: formPermissions.toList(),
-                              updatedAt: DateTime.now(),
-                            );
-
-                            Navigator.pop(ctx);
-                            await _staffService.updateStaff(updatedStaff);
-
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Staff member updated successfully'),
-                                  backgroundColor: Color(0xFF16A34A),
-                                ),
-                              );
-                              _loadStaffData();
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _permissionChip(String label, String key, Set<String> perms, StateSetter setModalState) {
-    final isSelected = perms.contains(key);
-    return FilterChip(
-      label: Text(label, style: TextStyle(fontSize: 12, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500, color: isSelected ? const Color(0xFF1D4ED8) : const Color(0xFF475569))),
-      selected: isSelected,
-      onSelected: (val) {
-        setModalState(() {
-          if (val) {
-            perms.add(key);
-          } else {
-            perms.remove(key);
-          }
-        });
-      },
-      backgroundColor: const Color(0xFFF8FAFC),
-      selectedColor: const Color(0xFFDBEAFE),
-      checkmarkColor: const Color(0xFF1D4ED8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(color: isSelected ? const Color(0xFF93C5FD) : const Color(0xFFE2E8F0)),
-      ),
-    );
+    _openStaffSettingsScreen(existingStaff);
   }
 
   InputDecoration _inputDecoration({required String hint, required IconData icon}) {
@@ -1056,9 +741,11 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Widget _buildStaffRow(StaffModel staff, int rowNumber) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
+    return InkWell(
+      onTap: () => _openStaffSettingsScreen(staff),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
         children: [
           // # Index Column
           SizedBox(
@@ -1226,8 +913,9 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildAvatar(StaffModel staff) {
     return Container(
