@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/database/database_service.dart';
+import '../../core/models/user_model.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
@@ -27,6 +29,31 @@ import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
 
 
+/// Declarative Navigation Item Definition for dynamic sidebar rendering
+class NavItemDef {
+  final int index;
+  final String title;
+  final IconData icon;
+  final String imageAsset;
+  final Color iconColor;
+  final Color iconBgColor;
+  final bool isPremium;
+  final String? Function(DatabaseService db) getBadge;
+  final bool Function(dynamic user) canAccess;
+
+  const NavItemDef({
+    required this.index,
+    required this.title,
+    required this.icon,
+    required this.imageAsset,
+    required this.iconColor,
+    required this.iconBgColor,
+    this.isPremium = false,
+    required this.getBadge,
+    required this.canAccess,
+  });
+}
+
 class MainLayout extends StatefulWidget {
   const MainLayout({super.key});
 
@@ -34,7 +61,7 @@ class MainLayout extends StatefulWidget {
   State<MainLayout> createState() => _MainLayoutState();
 }
 
-class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
+class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateMixin {
   final GlobalKey<GlassDashboardScreenState> _dashboardKey = GlobalKey<GlassDashboardScreenState>();
   int _selectedIndex = 1;
   final List<int> _tabHistory = [];
@@ -53,15 +80,15 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       case 1: // POS
         return user.hasPermission('pos');
       case 2: // Tables
-        return user.hasPermission('tables') || user.hasPermission('pos');
+        return user.hasPermission('tables');
       case 3: // My Orders
-        return user.hasPermission('orders') || user.hasPermission('pos');
+        return user.hasPermission('orders');
       case 4: // Menu & Categories
         return user.hasPermission('menu') || user.hasPermission('products');
       case 5: // Inventory
         return user.hasPermission('inventory');
       case 6: // Sales Report
-        return user.hasPermission('reports');
+        return true; // Staff can always access their own Sales Report
       case 7: // CRM
         return user.hasPermission('crm') || user.hasPermission('customers');
       case 8: // Loyalty
@@ -77,14 +104,230 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     }
   }
 
+  List<NavItemDef> _getAvailableNavItems() {
+    final allItems = [
+      NavItemDef(
+        index: 0,
+        title: 'Dashboard',
+        icon: Icons.home_rounded,
+        imageAsset: 'assets/images/Side bar icons/home.png',
+        iconColor: const Color(0xFF1D4ED8),
+        iconBgColor: const Color(0xFFEBF2FE),
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(0),
+      ),
+      NavItemDef(
+        index: 1,
+        title: 'POS',
+        icon: Icons.point_of_sale_rounded,
+        imageAsset: 'assets/images/Side bar icons/POS.png',
+        iconColor: const Color(0xFF1D4ED8),
+        iconBgColor: const Color(0xFFDCEBFE),
+        getBadge: (db) => '${db.menuItems.length}',
+        canAccess: (user) => _canAccessTab(1),
+      ),
+      NavItemDef(
+        index: 2,
+        title: 'Tables',
+        icon: Icons.table_restaurant_rounded,
+        imageAsset: 'assets/images/Side bar icons/tables.png',
+        iconColor: const Color(0xFF10B981),
+        iconBgColor: const Color(0xFFDCFCE7),
+        getBadge: (db) => '${db.tables.where((t) => t.status != TableStatus.free).length}',
+        canAccess: (user) => _canAccessTab(2),
+      ),
+      NavItemDef(
+        index: 3,
+        title: 'My Orders',
+        icon: Icons.receipt_long_rounded,
+        imageAsset: 'assets/images/Side bar icons/my orders.png',
+        iconColor: const Color(0xFF7C3AED),
+        iconBgColor: const Color(0xFFF3E8FF),
+        getBadge: (db) => '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}',
+        canAccess: (user) => _canAccessTab(3),
+      ),
+      NavItemDef(
+        index: 4,
+        title: 'Menu & Categories',
+        icon: Icons.dinner_dining_rounded,
+        imageAsset: 'assets/images/Side bar icons/menu & categories.png',
+        iconColor: const Color(0xFFEA580C),
+        iconBgColor: const Color(0xFFFFEDD5),
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(4),
+      ),
+      NavItemDef(
+        index: 5,
+        title: 'Inventory',
+        icon: Icons.inventory_2_rounded,
+        imageAsset: 'assets/images/Side bar icons/inventory.png',
+        iconColor: const Color(0xFFEA580C),
+        iconBgColor: const Color(0xFFFFEDD5),
+        isPremium: true,
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(5),
+      ),
+      NavItemDef(
+        index: 6,
+        title: 'Sales Report',
+        icon: Icons.bar_chart_rounded,
+        imageAsset: 'assets/images/Side bar icons/sale.png',
+        iconColor: const Color(0xFF0284C7),
+        iconBgColor: const Color(0xFFE0F2FE),
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(6),
+      ),
+      NavItemDef(
+        index: 7,
+        title: 'CRM',
+        icon: Icons.people_alt_rounded,
+        imageAsset: 'assets/images/Side bar icons/crm.png',
+        iconColor: const Color(0xFFDB2777),
+        iconBgColor: const Color(0xFFFCE7F3),
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(7),
+      ),
+      NavItemDef(
+        index: 8,
+        title: 'Loyalty',
+        icon: Icons.card_giftcard_rounded,
+        imageAsset: 'assets/images/Side bar icons/Loyalty.png',
+        iconColor: const Color(0xFFD97706),
+        iconBgColor: const Color(0xFFFEF08A),
+        isPremium: true,
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(8),
+      ),
+      NavItemDef(
+        index: 9,
+        title: 'Campaign',
+        icon: Icons.campaign_rounded,
+        imageAsset: 'assets/images/Side bar icons/campaign.png',
+        iconColor: const Color(0xFFEA580C),
+        iconBgColor: const Color(0xFFFFE4E6),
+        isPremium: true,
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(9),
+      ),
+      NavItemDef(
+        index: 10,
+        title: 'Staff Setting',
+        icon: Icons.badge_rounded,
+        imageAsset: 'assets/images/Side bar icons/staff.png',
+        iconColor: const Color(0xFF2563EB),
+        iconBgColor: const Color(0xFFEFF6FF),
+        getBadge: (db) => '${db.staffList.length}',
+        canAccess: (user) => _canAccessTab(10),
+      ),
+      NavItemDef(
+        index: 11,
+        title: 'Business Setting',
+        icon: Icons.settings_rounded,
+        imageAsset: 'assets/images/Side bar icons/setting.png',
+        iconColor: const Color(0xFF475569),
+        iconBgColor: const Color(0xFFF1F5F9),
+        getBadge: (db) => null,
+        canAccess: (user) => _canAccessTab(11),
+      ),
+    ];
+
+    final user = db.currentUser;
+    if (user == null || user.isOwner || user.isAdmin) {
+      return allItems;
+    }
+
+    final permittedItems = allItems.where((item) => item.canAccess(user)).toList();
+    if (permittedItems.isEmpty) {
+      return [allItems[1]]; // POS fallback
+    }
+    return permittedItems;
+  }
+
   void _initInitialAccessibleTab() {
-    if (!_canAccessTab(_selectedIndex)) {
+    final user = db.currentUser;
+    final visibleNavItems = _getAvailableNavItems();
+
+    // If staff has a defaultScreen configured in StaffModel, try to land on it first
+    if (user != null && !user.isOwner && !user.isAdmin) {
+      final staffMatch = db.staffList.where((s) => s.id == user.id || (s.employeeId.isNotEmpty && s.employeeId == user.employeeId)).firstOrNull;
+      final defaultScreen = staffMatch?.defaultScreen;
+      if (defaultScreen != null && defaultScreen.isNotEmpty) {
+        int? targetIdx;
+        if (defaultScreen.contains('Dashboard')) {
+          targetIdx = 0;
+        } else if (defaultScreen.contains('POS')) {
+          targetIdx = 1;
+        } else if (defaultScreen.contains('Table')) {
+          targetIdx = 2;
+        } else if (defaultScreen.contains('Order') || defaultScreen.contains('Kitchen') || defaultScreen.contains('KDS')) {
+          targetIdx = 3;
+        } else if (defaultScreen.contains('Menu') || defaultScreen.contains('Product')) {
+          targetIdx = 4;
+        } else if (defaultScreen.contains('Inventory') || defaultScreen.contains('Stock')) {
+          targetIdx = 5;
+        } else if (defaultScreen.contains('Report')) {
+          targetIdx = 6;
+        } else if (defaultScreen.contains('Customer') || defaultScreen.contains('CRM')) {
+          targetIdx = 7;
+        } else if (defaultScreen.contains('Loyalty')) {
+          targetIdx = 8;
+        } else if (defaultScreen.contains('Campaign')) {
+          targetIdx = 9;
+        } else if (defaultScreen.contains('Staff')) {
+          targetIdx = 10;
+        } else if (defaultScreen.contains('Setting')) {
+          targetIdx = 11;
+        }
+
+        if (targetIdx != null && _canAccessTab(targetIdx)) {
+          _selectedIndex = targetIdx;
+          return;
+        }
+      }
+    }
+
+    // Default to POS if permitted
+    if (_canAccessTab(1)) {
+      _selectedIndex = 1;
+      return;
+    }
+
+    // Otherwise select the first accessible tab
+    if (visibleNavItems.isNotEmpty) {
+      _selectedIndex = visibleNavItems.first.index;
+    } else {
       for (int i = 0; i <= 11; i++) {
         if (_canAccessTab(i)) {
           _selectedIndex = i;
           break;
         }
       }
+    }
+  }
+
+  UserModel? _lastNotifiedUser;
+  List<int>? _lastPermittedIndices;
+
+  void _onDbUserChanged() {
+    if (!mounted) return;
+    final currentUser = db.currentUser;
+    final currentNavItems = _getAvailableNavItems();
+    final currentIndices = currentNavItems.map((i) => i.index).toList();
+
+    final bool userChanged = _lastNotifiedUser?.id != currentUser?.id ||
+        _lastNotifiedUser?.role != currentUser?.role ||
+        !listEquals(_lastNotifiedUser?.permissions, currentUser?.permissions);
+
+    final bool navChanged = !listEquals(_lastPermittedIndices, currentIndices);
+
+    if (userChanged || navChanged || !_canAccessTab(_selectedIndex)) {
+      _lastNotifiedUser = currentUser;
+      _lastPermittedIndices = currentIndices;
+      setState(() {
+        if (!_canAccessTab(_selectedIndex)) {
+          _initInitialAccessibleTab();
+        }
+      });
     }
   }
 
@@ -117,8 +360,17 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     }
   }
 
+  void _navigateToRootTab() {
+    final available = _getAvailableNavItems();
+    final rootIndex = available.any((i) => i.index == 1)
+        ? 1
+        : (available.any((i) => i.index == 0)
+            ? 0
+            : (available.isNotEmpty ? available.first.index : 1));
+    _selectTab(rootIndex);
+  }
+
   // Animation controllers
-  late final AnimationController _shimmerController;
   late final AnimationController _sidebarController;
   late final Animation<double> _sidebarAnimation;
   late final Animation<Offset> _sidebarSlideAnimation;
@@ -128,19 +380,16 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    db.addListener(_onDbUserChanged);
     _initInitialAccessibleTab();
-
-    // Border shimmer: sweeping gradient
-    _shimmerController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 2000),
-    )..repeat();
+    _lastNotifiedUser = db.currentUser;
+    _lastPermittedIndices = _getAvailableNavItems().map((i) => i.index).toList();
 
     // Smooth sidebar frame transition with enhanced physics
     _sidebarController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 320),
-      reverseDuration: const Duration(milliseconds: 260),
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 240),
     );
 
     _sidebarAnimation = CurvedAnimation(
@@ -165,7 +414,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     );
 
     _sidebarScaleAnimation = Tween<double>(
-      begin: 0.94,
+      begin: 0.95,
       end: 1.0,
     ).animate(CurvedAnimation(
       parent: _sidebarController,
@@ -179,7 +428,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    _shimmerController.dispose();
+    db.removeListener(_onDbUserChanged);
     _sidebarController.dispose();
     super.dispose();
   }
@@ -219,9 +468,89 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
 
 
 
-  Widget _buildProfileAvatarImage(double size) {
+  Widget _buildCompanyProfileLogo(double size) {
+    final logoPath = db.companyLogoPath;
+    if (logoPath != null && logoPath.isNotEmpty) {
+      if (!logoPath.contains('_selected') && File(logoPath).existsSync()) {
+        return ClipOval(
+          child: Image.file(
+            File(logoPath),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+          ),
+        );
+      } else if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+        return ClipOval(
+          child: Image.network(
+            logoPath,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+          ),
+        );
+      } else if (logoPath.startsWith('data:image') || (logoPath.length > 50 && !logoPath.startsWith('/'))) {
+        try {
+          final cleanBase64 = logoPath.contains(',') ? logoPath.split(',').last : logoPath;
+          final bytes = base64Decode(cleanBase64);
+          return ClipOval(
+            child: Image.memory(
+              bytes,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+            ),
+          );
+        } catch (_) {}
+      }
+    }
+
+    return _buildCompanyFallbackInitial(size);
+  }
+
+  Widget _buildCompanyFallbackInitial(double size) {
+    final companyName = db.restaurant?.name ?? db.currentUser?.companyName ?? 'Apna POS';
+    String initial = 'A';
+    if (companyName.trim().isNotEmpty) {
+      initial = companyName.trim()[0].toUpperCase();
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: size * 0.44,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStaffAvatarImage(double size) {
     final user = db.currentUser;
-    final photoPath = user?.profilePhotoPath;
+    var photoPath = user?.profilePhotoPath;
+
+    if ((photoPath == null || photoPath.isEmpty) && user != null) {
+      final staff = db.staffList.where((s) => s.id == user.id || (s.employeeId.isNotEmpty && s.employeeId == user.employeeId)).firstOrNull;
+      if (staff != null && staff.avatarUrl.isNotEmpty) {
+        photoPath = staff.avatarUrl;
+      }
+    }
 
     if (photoPath != null && photoPath.isNotEmpty) {
       if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
@@ -231,6 +560,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             width: size,
             height: size,
             fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
           ),
         );
       } else if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
@@ -240,7 +570,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildFallbackInitial(size),
+            errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
           ),
         );
       } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
@@ -253,30 +583,61 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
               width: size,
               height: size,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildFallbackInitial(size),
+              errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
             ),
           );
         } catch (_) {}
       }
     }
 
-    return _buildFallbackInitial(size);
+    return _buildStaffFallbackInitial(size);
   }
 
-  Widget _buildFallbackInitial(double size) {
-    return Center(
-      child: Icon(
-        Icons.person_rounded,
-        color: const Color(0xFF1D4ED8),
-        size: size * 0.62,
+  Widget _buildStaffFallbackInitial(double size) {
+    final user = db.currentUser;
+    String initials = '';
+    if (user != null && user.name.trim().isNotEmpty) {
+      final parts = user.name.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2) {
+        initials = '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+      } else {
+        initials = parts[0].substring(0, parts[0].length >= 2 ? 2 : 1).toUpperCase();
+      }
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: LinearGradient(
+          colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initials.isNotEmpty ? initials : 'ST',
+        style: TextStyle(
+          fontSize: size * 0.40,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
       ),
     );
+  }
+
+
+  Widget _buildProfileAvatarImage(double size) {
+    return _buildStaffAvatarImage(size);
   }
 
   Widget _buildSidebarContent(bool isSmallScreen, {double expansionFactor = 1.0, bool isCollapsed = false}) {
     final rest = db.restaurant;
     final user = db.currentUser;
     final double textOpacity = isSmallScreen ? 1.0 : ((expansionFactor - 0.25) / 0.75).clamp(0.0, 1.0);
+    final visibleNavItems = _getAvailableNavItems();
 
     return Container(
       margin: isSmallScreen
@@ -300,152 +661,30 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
       ),
       child: Column(
         children: [
-          // Navigation Items (11 Items)
+          // Dynamic Navigation Items strictly filtered by staff permissions
           Expanded(
-            child: ListView(
-              physics: const BouncingScrollPhysics(),
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
               padding: EdgeInsets.zero,
-              children: [
-                _buildNavItem(
-                  index: 0,
-                  title: 'Dashboard',
-                  icon: Icons.home_rounded,
-                  imageAsset: 'assets/images/Side bar icons/home.png',
-                  iconColor: const Color(0xFF1D4ED8),
-                  iconBgColor: const Color(0xFFEBF2FE),
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 1,
-                  title: 'POS',
-                  icon: Icons.point_of_sale_rounded,
-                  imageAsset: 'assets/images/Side bar icons/POS.png',
-                  iconColor: const Color(0xFF1D4ED8),
-                  iconBgColor: const Color(0xFFDCEBFE),
-                  badge: '${db.menuItems.length}',
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 2,
-                  title: 'Tables',
-                  icon: Icons.table_restaurant_rounded,
-                  imageAsset: 'assets/images/Side bar icons/tables.png',
-                  iconColor: const Color(0xFF10B981),
-                  iconBgColor: const Color(0xFFDCFCE7),
-                  badge: '${db.tables.where((t) => t.status != TableStatus.free).length}',
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 3,
-                  title: 'My Orders',
-                  icon: Icons.receipt_long_rounded,
-                  imageAsset: 'assets/images/Side bar icons/my orders.png',
-                  iconColor: const Color(0xFF7C3AED),
-                  iconBgColor: const Color(0xFFF3E8FF),
-                  badge: '${db.orders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).length}',
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 4,
-                  title: 'Menu & Categories',
-                  icon: Icons.dinner_dining_rounded,
-                  imageAsset: 'assets/images/Side bar icons/menu & categories.png',
-                  iconColor: const Color(0xFFEA580C),
-                  iconBgColor: const Color(0xFFFFEDD5),
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 5,
-                  title: 'Inventory',
-                  icon: Icons.inventory_2_rounded,
-                  imageAsset: 'assets/images/Side bar icons/inventory.png',
-                  iconColor: const Color(0xFFEA580C),
-                  iconBgColor: const Color(0xFFFFEDD5),
-                  isPremium: true,
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 6,
-                  title: 'Sales Report',
-                  icon: Icons.bar_chart_rounded,
-                  imageAsset: 'assets/images/Side bar icons/sale.png',
-                  iconColor: const Color(0xFF0284C7),
-                  iconBgColor: const Color(0xFFE0F2FE),
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 7,
-                  title: 'CRM',
-                  icon: Icons.people_alt_rounded,
-                  imageAsset: 'assets/images/Side bar icons/crm.png',
-                  iconColor: const Color(0xFFDB2777),
-                  iconBgColor: const Color(0xFFFCE7F3),
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 8,
-                  title: 'Loyalty',
-                  icon: Icons.card_giftcard_rounded,
-                  imageAsset: 'assets/images/Side bar icons/Loyalty.png',
-                  iconColor: const Color(0xFFD97706),
-                  iconBgColor: const Color(0xFFFEF08A),
-                  isPremium: true,
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 9,
-                  title: 'Campaign',
-                  icon: Icons.campaign_rounded,
-                  imageAsset: 'assets/images/Side bar icons/campaign.png',
-                  iconColor: const Color(0xFFEA580C),
-                  iconBgColor: const Color(0xFFFFE4E6),
-                  isPremium: true,
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 10,
-                  title: 'Staff Setting',
-                  icon: Icons.badge_rounded,
-                  imageAsset: 'assets/images/Side bar icons/staff.png',
-                  iconColor: const Color(0xFF2563EB),
-                  iconBgColor: const Color(0xFFEFF6FF),
-                  badge: '${db.staffList.length}',
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-                _buildNavItem(
-                  index: 11,
-                  title: 'Business Setting',
-                  icon: Icons.settings_rounded,
-                  imageAsset: 'assets/images/Side bar icons/setting.png',
-                  iconColor: const Color(0xFF475569),
-                  iconBgColor: const Color(0xFFF1F5F9),
-                  isSmallScreen: isSmallScreen,
-                  isCollapsed: isCollapsed,
-                  expansionFactor: expansionFactor,
-                ),
-              ],
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: visibleNavItems.map((item) {
+                  return _buildNavItem(
+                    key: ValueKey('nav_item_${item.index}'),
+                    index: item.index,
+                    title: item.title,
+                    icon: item.icon,
+                    imageAsset: item.imageAsset,
+                    iconColor: item.iconColor,
+                    iconBgColor: item.iconBgColor,
+                    badge: item.getBadge(db),
+                    isPremium: item.isPremium,
+                    isSmallScreen: isSmallScreen,
+                    isCollapsed: isCollapsed,
+                    expansionFactor: expansionFactor,
+                  );
+                }).toList(),
+              ),
             ),
           ),
 
@@ -553,7 +792,11 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                               ),
                               const SizedBox(height: 1),
                               Text(
-                                (user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : 'owner',
+                                (user?.role.isNotEmpty == true)
+                                    ? (user!.isOwner || user.isAdmin
+                                        ? user.role.toLowerCase()
+                                        : '${user.role}${user.employeeId != null && user.employeeId!.isNotEmpty ? ' • ${user.employeeId}' : ''}')
+                                    : 'owner',
                                 style: const TextStyle(
                                   color: Color(0xFF64748B),
                                   fontSize: 12,
@@ -706,23 +949,27 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
         }
 
         // 2. If user navigated to other tabs, navigate back through tab history
-        if (_tabHistory.isNotEmpty) {
+        while (_tabHistory.isNotEmpty) {
           final prevIndex = _tabHistory.removeLast();
+          if (_canAccessTab(prevIndex) && prevIndex != _selectedIndex) {
+            setState(() {
+              _selectedIndex = prevIndex;
+            });
+            return;
+          }
+        }
+
+        // 3. If currently on a non-root tab, return to root accessible tab (POS if permitted, else first available)
+        final available = _getAvailableNavItems();
+        final rootIndex = available.any((i) => i.index == 1) ? 1 : (available.isNotEmpty ? available.first.index : 1);
+        if (_selectedIndex != rootIndex) {
           setState(() {
-            _selectedIndex = prevIndex;
+            _selectedIndex = rootIndex;
           });
           return;
         }
 
-        // 3. If currently on a non-POS tab, return to POS billing screen
-        if (_selectedIndex != 1) {
-          setState(() {
-            _selectedIndex = 1;
-          });
-          return;
-        }
-
-        // 4. User is on POS billing screen (root of app) -> Close/exit the app cleanly
+        // 4. User is on root accessible screen -> Close/exit the app cleanly
         SystemNavigator.pop();
       },
       child: Scaffold(
@@ -756,16 +1003,6 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         ),
                         child: Row(
                           children: [
-                            // MENU TOGGLE BUTTON (HAMBURGER) - Always available on all screen sizes
-                            IconButton(
-                              icon: const Icon(Icons.menu_rounded, color: Colors.white, size: 24),
-                              onPressed: _toggleSidebar,
-                              tooltip: 'Open / Close Navigation',
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                            ),
-                            const SizedBox(width: 6),
-
                             // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
                             InkWell(
                               onTap: _toggleSidebar,
@@ -783,13 +1020,13 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                       ],
                                     ),
                                     child: Container(
-                                      width: 34,
-                                      height: 34,
+                                      width: 36,
+                                      height: 36,
                                       decoration: const BoxDecoration(
                                         color: Colors.white,
                                         shape: BoxShape.circle,
                                       ),
-                                      child: _buildProfileAvatarImage(34),
+                                      child: _buildCompanyProfileLogo(36),
                                     ),
                                   ),
                                   const SizedBox(width: 10),
@@ -922,7 +1159,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                         ? const MenuManagementScreen()
                                         : _buildAccessDeniedScreen('Menu & Categories'),
                                     _canAccessTab(5)
-                                        ? InventoryScreen(onBack: () => _selectTab(0))
+                                        ? InventoryScreen(onBack: _navigateToRootTab)
                                         : _buildAccessDeniedScreen('Inventory'),
                                     _canAccessTab(6)
                                         ? const ReportsScreen()
@@ -930,19 +1167,19 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                     _canAccessTab(7)
                                         ? CrmLeadsScreen(
                                             onOpenDrawer: _toggleSidebar,
-                                            onNavigateToDashboard: () => _selectTab(0),
+                                            onNavigateToDashboard: _navigateToRootTab,
                                           )
                                         : _buildAccessDeniedScreen('CRM'),
                                     _canAccessTab(8)
-                                        ? LoyaltyLandingScreen(onBack: () => _selectTab(0))
+                                        ? LoyaltyLandingScreen(onBack: _navigateToRootTab)
                                         : _buildAccessDeniedScreen('Loyalty'),
                                     _canAccessTab(9)
-                                        ? CampaignScreen(onBack: () => _selectTab(0))
+                                        ? CampaignScreen(onBack: _navigateToRootTab)
                                         : _buildAccessDeniedScreen('Campaign'),
                                     _canAccessTab(10)
                                         ? StaffManagementScreen(
                                             onOpenDrawer: _toggleSidebar,
-                                            onNavigateToDashboard: () => _selectTab(0),
+                                            onNavigateToDashboard: _navigateToRootTab,
                                           )
                                         : _buildAccessDeniedScreen('Staff Setting'),
                                     _canAccessTab(11)
@@ -1090,14 +1327,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
               ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
-                onPressed: () {
-                  for (int i = 0; i <= 11; i++) {
-                    if (_canAccessTab(i)) {
-                      _selectTab(i);
-                      break;
-                    }
-                  }
-                },
+                onPressed: _navigateToRootTab,
                 icon: const Icon(Icons.arrow_back_rounded, size: 16),
                 label: const Text('Back to Available Screen'),
                 style: ElevatedButton.styleFrom(
@@ -1116,6 +1346,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
   }
 
   Widget _buildNavItem({
+    Key? key,
     required int index,
     required String title,
     IconData? icon,
@@ -1133,7 +1364,7 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
     final double textOpacity = isSmallScreen ? 1.0 : ((expansionFactor - 0.25) / 0.75).clamp(0.0, 1.0);
     final double badgeCornerOpacity = isSmallScreen ? 0.0 : (1.0 - (expansionFactor / 0.35)).clamp(0.0, 1.0);
 
-    final void Function() onTapAction = () {
+    void onTapAction() {
       if (!isPermitted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1171,12 +1402,13 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
           _closeSidebar();
         }
       }
-    };
+    }
 
     final bool isCollapsedRail = !isSmallScreen && expansionFactor < 0.35;
     final bool showTileHighlight = isSelected && !isCollapsedRail;
 
     return Padding(
+      key: key,
       padding: const EdgeInsets.only(bottom: 3),
       child: Tooltip(
         message: isCollapsedRail
@@ -1226,9 +1458,9 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                         alignment: Alignment.center,
                         children: [
                           AnimatedScale(
-                            scale: isSelected ? (isCollapsedRail ? 1.22 : 1.08) : 1.0,
-                            duration: const Duration(milliseconds: 220),
-                            curve: Curves.easeOutBack,
+                            scale: isSelected ? (isCollapsedRail ? 1.12 : 1.04) : 1.0,
+                            duration: const Duration(milliseconds: 200),
+                            curve: Curves.easeOutCubic,
                             child: Container(
                               width: 38,
                               height: 38,
@@ -1254,31 +1486,26 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                                     : null,
                               ),
                               alignment: Alignment.center,
-                              child: AnimatedScale(
-                                scale: isSelected ? 1.10 : 1.0,
-                                duration: const Duration(milliseconds: 220),
-                                curve: Curves.easeOutBack,
-                                child: imageAsset != null && imageAsset.isNotEmpty
-                                    ? Opacity(
-                                        opacity: isPermitted ? 1.0 : 0.45,
-                                        child: Image.asset(
-                                          imageAsset,
-                                          width: 26,
-                                          height: 26,
-                                          fit: BoxFit.contain,
-                                          errorBuilder: (_, __, ___) => Icon(
-                                            icon ?? Icons.circle_outlined,
-                                            color: isPermitted ? iconColor : const Color(0xFF94A3B8),
-                                            size: 24,
-                                          ),
+                              child: imageAsset != null && imageAsset.isNotEmpty
+                                  ? Opacity(
+                                      opacity: isPermitted ? 1.0 : 0.45,
+                                      child: Image.asset(
+                                        imageAsset,
+                                        width: 24,
+                                        height: 24,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (context, error, stackTrace) => Icon(
+                                          icon ?? Icons.circle_outlined,
+                                          color: isPermitted ? iconColor : const Color(0xFF94A3B8),
+                                          size: 24,
                                         ),
-                                      )
-                                    : Icon(
-                                        icon ?? Icons.circle_outlined,
-                                        color: isPermitted ? iconColor : const Color(0xFF94A3B8),
-                                        size: 24,
                                       ),
-                              ),
+                                    )
+                                  : Icon(
+                                      icon ?? Icons.circle_outlined,
+                                      color: isPermitted ? iconColor : const Color(0xFF94A3B8),
+                                      size: 24,
+                                    ),
                             ),
                           ),
                           // Corner badge when collapsed (smoothly fades out as sidebar expands)
@@ -1341,28 +1568,22 @@ class _MainLayoutState extends State<MainLayout> with TickerProviderStateMixin {
                             opacity: textOpacity,
                             child: Transform.translate(
                               offset: Offset(-8 * (1.0 - textOpacity), 0),
-                              child: AnimatedScale(
-                                scale: isSelected ? 1.04 : 1.0,
-                                alignment: Alignment.centerLeft,
-                                duration: const Duration(milliseconds: 220),
-                                curve: Curves.easeOutBack,
-                                child: Text(
-                                  title,
-                                  style: TextStyle(
-                                    color: isSelected
-                                        ? const Color(0xFF1D4ED8)
-                                        : (!isPermitted
-                                            ? const Color(0xFF94A3B8)
-                                            : (isPremium ? const Color(0xFF92400E) : const Color(0xFF0F172A))),
-                                    fontWeight: isSelected
-                                        ? FontWeight.w900
-                                        : (isPremium ? FontWeight.w800 : FontWeight.w700),
-                                    fontSize: 14.5,
-                                    letterSpacing: 0.1,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                              child: Text(
+                                title,
+                                style: TextStyle(
+                                  color: isSelected
+                                      ? const Color(0xFF1D4ED8)
+                                      : (!isPermitted
+                                          ? const Color(0xFF94A3B8)
+                                          : (isPremium ? const Color(0xFF92400E) : const Color(0xFF0F172A))),
+                                  fontWeight: isSelected
+                                      ? FontWeight.w900
+                                      : (isPremium ? FontWeight.w800 : FontWeight.w700),
+                                  fontSize: 14.5,
+                                  letterSpacing: 0.1,
                                 ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ),

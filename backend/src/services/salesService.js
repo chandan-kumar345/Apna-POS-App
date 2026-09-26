@@ -8,6 +8,38 @@ class SalesService {
    */
   _resolveDateRange({ period, startDate, endDate, from, to, fromDate, toDate } = {}) {
     const now = new Date();
+    const p = (period || '').toLowerCase().trim();
+
+    // 1. If an explicit known named period is provided, resolve it directly
+    if (p === 'today') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return { start, end, resolvedPeriod: 'today' };
+    } else if (p === 'yesterday') {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
+      return { start, end, resolvedPeriod: 'yesterday' };
+    } else if (p === 'thisweek' || p === 'week' || p === 'this week') {
+      const day = now.getDay();
+      const diffToMonday = (day === 0 ? -6 : 1) - day;
+      let start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
+      if (start > now) {
+        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        start.setHours(0, 0, 0, 0);
+      }
+      const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      return { start, end, resolvedPeriod: 'thisWeek' };
+    } else if (p === 'thismonth' || p === 'month' || p === 'this month') {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+      return { start, end, resolvedPeriod: 'thisMonth' };
+    } else if (p === 'thisyear' || p === 'year' || p === 'this year') {
+      const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+      return { start, end, resolvedPeriod: 'thisYear' };
+    }
+
+    // 2. Custom Date Range resolution
     const effectiveFrom = fromDate || from || startDate;
     const effectiveTo = toDate || to || endDate;
 
@@ -26,43 +58,19 @@ class SalesService {
       } else if (typeof effectiveTo === 'string' && !effectiveTo.includes('T') && !effectiveTo.includes(':')) {
         end.setHours(23, 59, 59, 999);
       }
-      return { start, end, resolvedPeriod: 'custom' };
+
+      const isSingleDayCustom = (end.getTime() - start.getTime()) <= (24 * 60 * 60 * 1000 + 1000) ||
+        (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate());
+
+      return { start, end, resolvedPeriod: isSingleDayCustom ? 'singleDay' : 'custom' };
     }
 
-    const p = (period || 'allTime').toLowerCase().trim();
-
-    let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    let end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    let resolvedPeriod = p;
-
-    if (p === 'today') {
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    } else if (p === 'yesterday') {
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 23, 59, 59, 999);
-    } else if (p === 'thisweek' || p === 'week' || p === 'this week') {
-      const day = now.getDay();
-      const diffToMonday = (day === 0 ? -6 : 1) - day;
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate() + diffToMonday, 0, 0, 0, 0);
-      if (start > now) {
-        start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        start.setHours(0, 0, 0, 0);
-      }
-      end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    } else if (p === 'thismonth' || p === 'month' || p === 'this month') {
-      start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    } else if (p === 'thisyear' || p === 'year' || p === 'this year') {
-      start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
-      end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
-    } else if (p === 'alltime' || p === 'all time' || p === 'all') {
-      start = new Date(0);
-      end = new Date(now.getFullYear() + 1, 11, 31, 23, 59, 59, 999);
-      resolvedPeriod = 'allTime';
-    }
-
-    return { start, end, resolvedPeriod };
+    // 3. Fallback: allTime
+    return {
+      start: new Date(0),
+      end: new Date(now.getFullYear() + 1, 11, 31, 23, 59, 59, 999),
+      resolvedPeriod: 'allTime',
+    };
   }
 
   _getCompletedOrderMatch(bId, start, end, extraMatch = {}) {
@@ -372,6 +380,10 @@ class SalesService {
         totalAmount: Number((o.totalAmount || 0).toFixed(2)),
         customerName: o.customerName || '',
         customerPhone: o.customerPhone || '',
+        staffId: (o.staffId || o.waiterId || o.cashierId || o.venderUserId || o.createdByUserId || '').toString().trim(),
+        staffName: (o.staffName || o.servedBy || o.waiterName || o.cashierName || '').toString().trim(),
+        staffRole: (o.staffRole || '').toString().trim(),
+        servedBy: (o.servedBy || o.staffName || '').toString().trim(),
         items: (o.items || []).map((i) => ({
           productId: i.productId ? i.productId.toString() : '',
           name: i.name || '',
@@ -382,11 +394,51 @@ class SalesService {
       };
     });
 
+    // 6b. Staff Wise Performance Breakdown
+    const staffMap = {};
+    for (const o of orders) {
+      const sName = o.staffName || (o.customerName && o.customerName.startsWith('Staff:') ? o.customerName.replace('Staff:', '').trim() : 'Owner / Admin');
+      const sId = o.staffId || '';
+      const sRole = o.staffRole || (sName.toLowerCase().includes('owner') || sName.toLowerCase().includes('admin') ? 'Owner' : 'Staff');
+
+      if (!staffMap[sName]) {
+        staffMap[sName] = {
+          staffId: sId,
+          staffName: sName,
+          role: sRole,
+          billsCount: 0,
+          totalRevenue: 0,
+          orders: [],
+        };
+      }
+      staffMap[sName].billsCount += 1;
+      staffMap[sName].totalRevenue += o.totalAmount;
+      staffMap[sName].orders.push(o);
+    }
+
+    const staffWise = Object.values(staffMap).map((s) => {
+      const rev = Number(s.totalRevenue.toFixed(2));
+      const pct = totalRevenue > 0 ? Number(((rev / totalRevenue) * 100).toFixed(1)) : 0.0;
+      const avg = s.billsCount > 0 ? Number((rev / s.billsCount).toFixed(2)) : 0.0;
+      return {
+        staffId: s.staffId,
+        staffName: s.staffName,
+        role: s.role,
+        billsCount: s.billsCount,
+        totalRevenue: rev,
+        percentage: pct,
+        avgTicket: avg,
+        orders: s.orders,
+      };
+    });
+
     // 7. Multi-resolution Dynamic Sales Trend Aggregation
     const trendPoints = [];
     const pLower = (resolvedPeriod || 'allTime').toLowerCase().trim();
     const isSingleDay = pLower === 'today' ||
       pLower === 'yesterday' ||
+      pLower === 'singleday' ||
+      (end.getTime() - start.getTime()) <= (24 * 60 * 60 * 1000 + 1000) ||
       (start.getFullYear() === end.getFullYear() &&
        start.getMonth() === end.getMonth() &&
        start.getDate() === end.getDate());
@@ -409,7 +461,7 @@ class SalesService {
         let slotAmount = 0;
         let slotOrders = 0;
 
-        for (const o of rawOrders) {
+        for (const o of uniqueOrders) {
           const oDate = new Date(o.createdAt || o.saleDate);
           if (!isNaN(oDate.getTime())) {
             const h = oDate.getHours();
@@ -538,6 +590,7 @@ class SalesService {
       salesByOrderType,
       topProducts: topProductsAgg,
       salesTrend: trendPoints,
+      staffWise,
       orders,
       startDate: start.toISOString(),
       endDate: end.toISOString(),

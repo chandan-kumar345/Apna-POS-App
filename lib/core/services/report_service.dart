@@ -185,23 +185,39 @@ class CategorySaleStat {
 
 /// Staff Performance Stat
 class StaffSaleStat {
+  final String staffId;
   final String staffName;
+  final String role;
   final int billsCount;
   final double totalRevenue;
   final double percentage;
+  final double avgTicket;
+  final List<OrderModel> orders;
 
   StaffSaleStat({
+    this.staffId = '',
     required this.staffName,
+    this.role = 'Staff',
     this.billsCount = 0,
     this.totalRevenue = 0.0,
     this.percentage = 0.0,
+    this.avgTicket = 0.0,
+    this.orders = const [],
   });
 
   factory StaffSaleStat.fromJson(Map<String, dynamic> json) => StaffSaleStat(
-        staffName: json['staffName']?.toString() ?? 'Staff',
+        staffId: json['staffId']?.toString() ?? '',
+        staffName: json['staffName']?.toString() ?? json['name']?.toString() ?? 'Staff',
+        role: json['role']?.toString() ?? 'Staff',
         billsCount: (json['billsCount'] as num?)?.toInt() ?? 0,
         totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
         percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
+        avgTicket: (json['avgTicket'] as num?)?.toDouble() ?? 0.0,
+        orders: (json['orders'] as List<dynamic>?)
+                ?.map((e) => e is Map ? OrderModel.fromJson(e) : null)
+                .whereType<OrderModel>()
+                .toList() ??
+            const [],
       );
 }
 
@@ -351,6 +367,7 @@ class ReportService {
     String? paymentMethod,
     String? orderType,
     String? outlet,
+    String? staff,
     String? search,
     int limit = 500,
   }) async {
@@ -368,8 +385,12 @@ class ReportService {
         if (paymentMethod != null && paymentMethod.isNotEmpty && paymentMethod != 'All' && paymentMethod != 'All Payments' && paymentMethod != 'All Payment Modes') {
           queryParams['paymentMethod'] = paymentMethod;
         }
-        if (orderType != null && orderType.isNotEmpty && orderType != 'All' && orderType != 'All Orders' && orderType != 'All Order Types') {
-          queryParams['orderType'] = orderType;
+        final currentUser = _db.currentUser;
+        final bool isStaffSession = currentUser != null && !currentUser.isOwner && !currentUser.isAdmin;
+        if (isStaffSession) {
+          queryParams['staff'] = currentUser.name.isNotEmpty ? currentUser.name : (currentUser.employeeId ?? currentUser.id);
+        } else if (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') {
+          queryParams['staff'] = staff;
         }
         if (search != null && search.trim().isNotEmpty) {
           queryParams['search'] = search.trim();
@@ -382,8 +403,10 @@ class ReportService {
 
         if (response != null && response['data'] != null) {
           final serverReport = SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
-          // If server didn't generate trend/category stats, supplement with robust local computed analytics
-          if (serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty) {
+          final pLower = (period ?? 'allTime').toLowerCase().trim();
+          final bool isSingleDayPeriod = pLower == 'today' || pLower == 'yesterday' || pLower == 'singleday';
+
+          if (isStaffSession || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1) {
             final local = _buildLocalSalesReport(
               period: period,
               startDate: startDate ?? fromDate,
@@ -391,19 +414,23 @@ class ReportService {
               paymentMethod: paymentMethod,
               orderType: orderType,
               outlet: outlet,
+              staff: isStaffSession ? currentUser.name : staff,
               search: search,
-              ordersOverride: serverReport.orders,
+              ordersOverride: serverReport.orders.isNotEmpty ? serverReport.orders : null,
             );
+            if (isStaffSession) {
+              return local;
+            }
             return SalesReportData(
-              summary: serverReport.summary,
-              paymentModes: serverReport.paymentModes,
-              salesByOrderType: serverReport.salesByOrderType,
-              topProducts: serverReport.topProducts,
-              salesTrend: serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend,
+              summary: serverReport.summary.totalRevenue > 0 ? serverReport.summary : local.summary,
+              paymentModes: serverReport.paymentModes.isNotEmpty ? serverReport.paymentModes : local.paymentModes,
+              salesByOrderType: serverReport.salesByOrderType.isNotEmpty ? serverReport.salesByOrderType : local.salesByOrderType,
+              topProducts: serverReport.topProducts.isNotEmpty ? serverReport.topProducts : local.topProducts,
+              salesTrend: (isSingleDayPeriod || serverReport.salesTrend.length <= 1) ? local.salesTrend : (serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend),
               categoryWise: serverReport.categoryWise.isNotEmpty ? serverReport.categoryWise : local.categoryWise,
               staffWise: serverReport.staffWise.isNotEmpty ? serverReport.staffWise : local.staffWise,
               outletWise: serverReport.outletWise.isNotEmpty ? serverReport.outletWise : local.outletWise,
-              orders: serverReport.orders,
+              orders: serverReport.orders.isNotEmpty ? serverReport.orders : local.orders,
               startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : local.startDate,
               endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : local.endDate,
               period: serverReport.period.isNotEmpty ? serverReport.period : local.period,
@@ -426,6 +453,7 @@ class ReportService {
       paymentMethod: paymentMethod,
       orderType: orderType,
       outlet: outlet,
+      staff: staff,
       search: search,
     );
   }
@@ -440,6 +468,7 @@ class ReportService {
     String? paymentMethod,
     String? orderType,
     String? outlet,
+    String? staff,
     String? search,
     int limit = 500,
   }) async {
@@ -452,6 +481,7 @@ class ReportService {
       paymentMethod: paymentMethod,
       orderType: orderType,
       outlet: outlet,
+      staff: staff,
       search: search,
       limit: limit,
     );
@@ -466,6 +496,7 @@ class ReportService {
     String? paymentMethod,
     String? orderType,
     String? outlet,
+    String? staff,
     String? search,
   }) {
     return _buildLocalSalesReport(
@@ -475,6 +506,7 @@ class ReportService {
       paymentMethod: paymentMethod,
       orderType: orderType,
       outlet: outlet,
+      staff: staff,
       search: search,
     );
   }
@@ -487,49 +519,115 @@ class ReportService {
     String? paymentMethod,
     String? orderType,
     String? outlet,
+    String? staff,
     String? search,
     List<OrderModel>? ordersOverride,
   }) {
+    final now = DateTime.now();
+    final pLower = (period ?? 'allTime').toLowerCase().trim();
     DateTime? start;
     DateTime? end;
-    if (startDate != null && startDate.isNotEmpty) {
-      final s = DateTime.tryParse(startDate);
-      if (s != null) {
-        start = s.isUtc ? s.toLocal() : s;
+
+    if (pLower == 'today') {
+      start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else if (pLower == 'yesterday') {
+      final y = now.subtract(const Duration(days: 1));
+      start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+      end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+    } else if (pLower == 'thisweek' || pLower == 'week' || pLower == 'this week') {
+      final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+      final mon = now.subtract(Duration(days: diff));
+      start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+    } else if (pLower == 'thismonth' || pLower == 'month' || pLower == 'this month') {
+      start = DateTime(now.year, now.month, 1, 0, 0, 0);
+      final lastDay = DateTime(now.year, now.month + 1, 0).day;
+      end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+    } else {
+      if (startDate != null && startDate.isNotEmpty) {
+        final s = DateTime.tryParse(startDate);
+        if (s != null) {
+          start = s.isUtc ? s.toLocal() : s;
+        }
       }
-    }
-    if (endDate != null && endDate.isNotEmpty) {
-      final e = DateTime.tryParse(endDate);
-      if (e != null) {
-        end = e.isUtc ? e.toLocal() : e;
+      if (endDate != null && endDate.isNotEmpty) {
+        final e = DateTime.tryParse(endDate);
+        if (e != null) {
+          end = e.isUtc ? e.toLocal() : e;
+        }
       }
     }
 
-    final now = DateTime.now();
-    if (start == null || end == null) {
-      final p = (period ?? 'allTime').toLowerCase().trim();
-      if (p == 'today') {
-        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
-        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-      } else if (p == 'yesterday') {
-        final y = now.subtract(const Duration(days: 1));
-        start = DateTime(y.year, y.month, y.day, 0, 0, 0);
-        end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
-      } else if (p == 'thisweek' || p == 'week' || p == 'this week') {
-        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
-        final mon = now.subtract(Duration(days: diff));
-        start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
-        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-      } else if (p == 'thismonth' || p == 'month' || p == 'this month') {
-        start = DateTime(now.year, now.month, 1, 0, 0, 0);
-        final lastDay = DateTime(now.year, now.month + 1, 0).day;
-        end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+    List<OrderModel> settled;
+    if (ordersOverride != null) {
+      settled = _db.deduplicateOrdersList(ordersOverride);
+      if (start != null || end != null) {
+        settled = settled.where((o) {
+          final oDate = o.createdDateTime.toLocal();
+          if (start != null && oDate.isBefore(start)) return false;
+          if (end != null && oDate.isAfter(end)) return false;
+          return true;
+        }).toList();
       }
+    } else {
+      settled = _db.getValidOrders(start: start, end: end);
     }
 
-    List<OrderModel> settled = ordersOverride != null
-        ? _db.deduplicateOrdersList(ordersOverride)
-        : _db.getValidOrders(start: start, end: end);
+    // If logged in as staff (not Owner / Admin), strictly filter to ONLY this staff member's orders
+    final currentUser = _db.currentUser;
+    final bool isStaffSession = currentUser != null && !currentUser.isOwner && !currentUser.isAdmin;
+    if (isStaffSession) {
+      final staffId = currentUser.id.trim().toLowerCase();
+      final staffEmpId = (currentUser.employeeId ?? '').trim().toLowerCase();
+      final staffName = currentUser.name.trim().toLowerCase();
+      final staffEmail = currentUser.email.trim().toLowerCase();
+
+      bool matchesCurrentStaff(OrderModel o) {
+        final oStaffId = (o.staffId ?? '').trim().toLowerCase();
+        final oStaffName = (o.staffName ?? '').trim().toLowerCase();
+        final oCustName = (o.customerName ?? '').trim().toLowerCase();
+
+        // 1. Direct ID matching
+        if (oStaffId.isNotEmpty) {
+          if (oStaffId == staffId) return true;
+          if (staffEmpId.isNotEmpty && (oStaffId == staffEmpId || oStaffId.contains(staffEmpId) || staffEmpId.contains(oStaffId))) return true;
+          if (staffEmail.isNotEmpty && oStaffId == staffEmail) return true;
+        }
+
+        // 2. Name matching
+        if (oStaffName.isNotEmpty) {
+          if (oStaffName == staffName) return true;
+          if (staffName.isNotEmpty && (oStaffName.contains(staffName) || staffName.contains(oStaffName))) return true;
+        }
+
+        // 3. Customer name prefix (e.g. "Staff: Amit Sharma")
+        if (oCustName.isNotEmpty) {
+          if (oCustName.contains(staffName) || (staffEmpId.isNotEmpty && oCustName.contains(staffEmpId))) return true;
+        }
+
+        // 4. Check staffList cross-reference
+        for (final s in _db.staffList) {
+          final sIdMatch = (s.id.toLowerCase() == staffId || (staffEmpId.isNotEmpty && s.employeeId.toLowerCase() == staffEmpId) || s.name.toLowerCase() == staffName);
+          if (sIdMatch) {
+            if (oStaffId.isNotEmpty && (s.id.toLowerCase() == oStaffId || s.employeeId.toLowerCase() == oStaffId)) return true;
+            if (oStaffName.isNotEmpty && s.name.toLowerCase() == oStaffName) return true;
+          }
+        }
+
+        return false;
+      }
+
+      settled = settled.where(matchesCurrentStaff).toList();
+    } else if (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') {
+      final targetStaff = staff.trim().toLowerCase();
+      settled = settled.where((o) {
+        if (o.staffId != null && o.staffId!.toLowerCase() == targetStaff) return true;
+        if (o.staffName != null && o.staffName!.trim().toLowerCase() == targetStaff) return true;
+        if (o.staffName != null && o.staffName!.trim().toLowerCase().contains(targetStaff)) return true;
+        return false;
+      }).toList();
+    }
 
     // Apply Payment Method Filter
     if (paymentMethod != null &&
@@ -572,6 +670,7 @@ class ReportService {
         return o.orderNumber.toLowerCase().contains(q) ||
             (o.customerName?.toLowerCase().contains(q) ?? false) ||
             (o.customerPhone?.toLowerCase().contains(q) ?? false) ||
+            (o.staffName?.toLowerCase().contains(q) ?? false) ||
             (o.tableNumber?.toLowerCase().contains(q) ?? false);
       }).toList();
     }
@@ -588,6 +687,25 @@ class ReportService {
     final Map<String, TopProductData> prodMap = {};
     final Map<String, CategorySaleStat> catMap = {};
     final Map<String, StaffSaleStat> staffMap = {};
+
+    // Seed all active staff from _db.staffList if owner/admin is viewing
+    if (_db.currentUser?.isOwner == true || _db.currentUser?.isAdmin == true) {
+      for (final s in _db.staffList) {
+        final sName = s.name.trim();
+        if (sName.isNotEmpty) {
+          staffMap[sName] = StaffSaleStat(
+            staffId: s.id.isNotEmpty ? s.id : s.employeeId,
+            staffName: sName,
+            role: s.role.isNotEmpty ? s.role : 'Staff',
+            billsCount: 0,
+            totalRevenue: 0.0,
+            percentage: 0.0,
+            avgTicket: 0.0,
+            orders: [],
+          );
+        }
+      }
+    }
 
     for (final o in settled) {
       totalRev += o.totalAmount;
@@ -640,15 +758,34 @@ class ReportService {
       otMap[ot] = (otMap[ot] ?? 0.0) + o.totalAmount;
       otCount[ot] = (otCount[ot] ?? 0) + 1;
 
-      final staffName = (o.customerName != null && o.customerName!.isNotEmpty)
-          ? (o.customerName!.startsWith('Staff:') ? o.customerName! : 'Cashier / POS Counter')
-          : 'Cashier / POS Counter';
-      final stExisting = staffMap[staffName];
-      staffMap[staffName] = StaffSaleStat(
-        staffName: staffName,
+      final resolvedStaffName = (o.staffName != null && o.staffName!.trim().isNotEmpty)
+          ? o.staffName!.trim()
+          : (o.staffId != null && o.staffId!.isNotEmpty
+              ? (_db.staffList.where((s) => s.id.toLowerCase() == o.staffId!.toLowerCase() || (s.employeeId.isNotEmpty && s.employeeId.toLowerCase() == o.staffId!.toLowerCase())).firstOrNull?.name ?? 'Staff (${o.staffId})')
+              : ((o.customerName != null && o.customerName!.startsWith('Staff:'))
+                  ? o.customerName!.replaceFirst('Staff:', '').trim()
+                  : (_db.currentUser?.isOwner == true ? 'Owner / Admin' : (_db.currentUser?.name ?? 'Owner / Admin'))));
+
+      final resolvedStaffId = (o.staffId != null && o.staffId!.isNotEmpty)
+          ? o.staffId!
+          : (_db.staffList.where((s) => s.name.toLowerCase() == resolvedStaffName.toLowerCase()).firstOrNull?.id ?? '');
+
+      final resolvedRole = (o.staffRole != null && o.staffRole!.isNotEmpty)
+          ? o.staffRole!
+          : (_db.staffList.where((s) => s.name.toLowerCase() == resolvedStaffName.toLowerCase() || (resolvedStaffId.isNotEmpty && s.id == resolvedStaffId)).firstOrNull?.role ??
+              (resolvedStaffName.toLowerCase().contains('owner') || resolvedStaffName.toLowerCase().contains('admin') ? 'Owner' : 'Staff'));
+
+      final stExisting = staffMap[resolvedStaffName];
+      final List<OrderModel> sOrders = [...(stExisting?.orders ?? []), o];
+      staffMap[resolvedStaffName] = StaffSaleStat(
+        staffId: resolvedStaffId.isNotEmpty ? resolvedStaffId : (stExisting?.staffId ?? ''),
+        staffName: resolvedStaffName,
+        role: resolvedRole,
         billsCount: (stExisting?.billsCount ?? 0) + 1,
         totalRevenue: (stExisting?.totalRevenue ?? 0.0) + o.totalAmount,
         percentage: 0.0,
+        avgTicket: 0.0,
+        orders: sOrders,
       );
     }
 
@@ -701,10 +838,10 @@ class ReportService {
 
     // Multi-resolution Dynamic Sales Trend computation
     final List<DailySalesTrendPoint> trendPoints = [];
-    final pLower = (period ?? 'allTime').toLowerCase().trim();
 
     final bool isSingleDay = pLower == 'today' ||
         pLower == 'yesterday' ||
+        pLower == 'singleday' ||
         (start != null &&
             end != null &&
             start.year == end.year &&
@@ -713,7 +850,9 @@ class ReportService {
 
     if (isSingleDay) {
       // 1. Single Day: Generate 8 intraday time slots across business day (8 AM to 10 PM)
-      final targetDate = start ?? (pLower == 'yesterday' ? now.subtract(const Duration(days: 1)) : now);
+      final targetDate = (pLower == 'yesterday')
+          ? now.subtract(const Duration(days: 1))
+          : (start ?? now);
       final List<(String, int, int)> hourlySlots = [
         ('8 AM', 0, 9),    // 00:00 - 09:59
         ('10 AM', 10, 11), // 10:00 - 11:59
@@ -734,16 +873,13 @@ class ReportService {
         int slotOrders = 0;
 
         for (final o in settled) {
-          final oDate = DateTime.tryParse(o.createdAt);
-          if (oDate != null) {
-            final localO = oDate.isUtc ? oDate.toLocal() : oDate;
-            if (localO.year == targetDate.year &&
-                localO.month == targetDate.month &&
-                localO.day == targetDate.day) {
-              if (localO.hour >= startHour && localO.hour <= endHour) {
-                slotAmount += o.totalAmount;
-                slotOrders += 1;
-              }
+          final localO = o.createdDateTime.toLocal();
+          if (localO.year == targetDate.year &&
+              localO.month == targetDate.month &&
+              localO.day == targetDate.day) {
+            if (localO.hour >= startHour && localO.hour <= endHour) {
+              slotAmount += o.totalAmount;
+              slotOrders += 1;
             }
           }
         }
@@ -758,8 +894,27 @@ class ReportService {
         );
       }
     } else {
-      DateTime trendStart = start ?? (pLower == 'thisweek' ? now.subtract(Duration(days: (now.weekday == 7 ? 6 : now.weekday - 1))) : now.subtract(const Duration(days: 6)));
+      DateTime trendStart;
       DateTime trendEnd = end ?? now;
+
+      if (start != null) {
+        trendStart = start;
+      } else if (pLower == 'thisweek' || pLower == 'week') {
+        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+        trendStart = now.subtract(Duration(days: diff));
+      } else if (pLower == 'thismonth' || pLower == 'month') {
+        trendStart = DateTime(now.year, now.month, 1);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        trendEnd = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
+      } else {
+        // allTime: find date range of actual orders or default to last 7 days
+        if (settled.isNotEmpty) {
+          final earliest = settled.map((o) => o.createdDateTime.toLocal()).reduce((a, b) => a.isBefore(b) ? a : b);
+          trendStart = DateTime(earliest.year, earliest.month, earliest.day);
+        } else {
+          trendStart = now.subtract(const Duration(days: 6));
+        }
+      }
 
       final totalDays = trendEnd.difference(trendStart).inDays.abs() + 1;
 
@@ -773,15 +928,12 @@ class ReportService {
           int dayOrders = 0;
 
           for (final o in settled) {
-            final oDate = DateTime.tryParse(o.createdAt);
-            if (oDate != null) {
-              final localO = oDate.isUtc ? oDate.toLocal() : oDate;
-              if (localO.year == currentDay.year &&
-                  localO.month == currentDay.month &&
-                  localO.day == currentDay.day) {
-                dayAmount += o.totalAmount;
-                dayOrders += 1;
-              }
+            final localO = o.createdDateTime.toLocal();
+            if (localO.year == currentDay.year &&
+                localO.month == currentDay.month &&
+                localO.day == currentDay.day) {
+              dayAmount += o.totalAmount;
+              dayOrders += 1;
             }
           }
 
@@ -795,11 +947,8 @@ class ReportService {
           );
         }
       } else {
-        // 3. Multi-Month or All Time (> 31 Days)
-        final int startYear = trendStart.year > 2000 ? trendStart.year : (now.year - (now.month < 6 ? 1 : 0));
-        final int startMonth = trendStart.year > 2000 ? trendStart.month : ((now.month - 5) <= 0 ? (now.month + 7) : (now.month - 5));
-
-        DateTime cursor = DateTime(startYear, startMonth, 1);
+        // 3. Multi-Month (> 31 Days)
+        DateTime cursor = DateTime(trendStart.year, trendStart.month, 1);
         final DateTime endLimit = DateTime(trendEnd.year, trendEnd.month, 1);
 
         int safety = 0;
@@ -812,13 +961,10 @@ class ReportService {
           int monthOrders = 0;
 
           for (final o in settled) {
-            final oDate = DateTime.tryParse(o.createdAt);
-            if (oDate != null) {
-              final localO = oDate.isUtc ? oDate.toLocal() : oDate;
-              if (localO.year == cursor.year && localO.month == cursor.month) {
-                monthAmount += o.totalAmount;
-                monthOrders += 1;
-              }
+            final localO = o.createdDateTime.toLocal();
+            if (localO.year == cursor.year && localO.month == cursor.month) {
+              monthAmount += o.totalAmount;
+              monthOrders += 1;
             }
           }
 
@@ -834,7 +980,6 @@ class ReportService {
           cursor = nextMonth;
         }
 
-        // If less than 6 months generated for allTime, ensure at least 6 months
         if (trendPoints.length < 6) {
           trendPoints.clear();
           for (int m = 5; m >= 0; m--) {
@@ -844,13 +989,10 @@ class ReportService {
             int monthOrders = 0;
 
             for (final o in settled) {
-              final oDate = DateTime.tryParse(o.createdAt);
-              if (oDate != null) {
-                final localO = oDate.isUtc ? oDate.toLocal() : oDate;
-                if (localO.year == d.year && localO.month == d.month) {
-                  monthAmount += o.totalAmount;
-                  monthOrders += 1;
-                }
+              final localO = o.createdDateTime.toLocal();
+              if (localO.year == d.year && localO.month == d.month) {
+                monthAmount += o.totalAmount;
+                monthOrders += 1;
               }
             }
 
@@ -878,11 +1020,17 @@ class ReportService {
       ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));
 
     final staffWise = staffMap.values.map((s) {
+      final double pct = totalRev > 0 ? (s.totalRevenue / totalRev) * 100 : 0.0;
+      final double aov = s.billsCount > 0 ? s.totalRevenue / s.billsCount : 0.0;
       return StaffSaleStat(
+        staffId: s.staffId,
         staffName: s.staffName,
+        role: s.role,
         billsCount: s.billsCount,
         totalRevenue: s.totalRevenue,
-        percentage: totalRev > 0 ? (s.totalRevenue / totalRev) * 100 : 0.0,
+        percentage: pct,
+        avgTicket: aov,
+        orders: s.orders,
       );
     }).toList()
       ..sort((a, b) => b.totalRevenue.compareTo(a.totalRevenue));

@@ -229,30 +229,65 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     _notesController = TextEditingController(text: _currentStaff.notes);
     _pinController = TextEditingController(text: _currentStaff.pin);
 
-    _selectedRole = _roleOptions.contains(_currentStaff.role)
-        ? _currentStaff.role
-        : 'Manager';
-    _selectedDepartment = _departmentOptions.contains(_currentStaff.department)
-        ? _currentStaff.department
-        : 'Operations';
-    _selectedLocation = _locationOptions.contains(_currentStaff.workLocation)
-        ? _currentStaff.workLocation
-        : 'Main Outlet';
-    _selectedReportingTo = _reportingToOptions.contains(_currentStaff.reportingTo)
-        ? _currentStaff.reportingTo
-        : 'Amit Sharma';
-    _selectedShift = _shiftOptions.contains(_currentStaff.shift)
-        ? _currentStaff.shift
-        : 'Morning Shift (8 AM - 4 PM)';
-    _selectedLanguage = _languageOptions.contains(_currentStaff.language)
-        ? _currentStaff.language
-        : 'English';
-    _selectedTheme = _themeOptions.contains(_currentStaff.theme)
-        ? _currentStaff.theme
-        : 'Light';
-    _selectedDefaultScreen = _defaultScreenOptions.contains(_currentStaff.defaultScreen)
-        ? _currentStaff.defaultScreen
-        : 'Dashboard';
+    // Dynamically match & preserve current staff dropdown options
+    if (_currentStaff.role.isNotEmpty && !_roleOptions.any((r) => r.toLowerCase() == _currentStaff.role.toLowerCase())) {
+      _roleOptions.insert(_roleOptions.length - 1, _currentStaff.role);
+    }
+    _selectedRole = _roleOptions.firstWhere(
+      (r) => r.toLowerCase() == _currentStaff.role.toLowerCase(),
+      orElse: () => _roleOptions.firstWhere((r) => r.toLowerCase() == 'cashier', orElse: () => _roleOptions.first),
+    );
+
+    if (_currentStaff.department.isNotEmpty && !_departmentOptions.any((d) => d.toLowerCase() == _currentStaff.department.toLowerCase())) {
+      _departmentOptions.insert(_departmentOptions.length - 1, _currentStaff.department);
+    }
+    _selectedDepartment = _departmentOptions.firstWhere(
+      (d) => d.toLowerCase() == _currentStaff.department.toLowerCase(),
+      orElse: () => _departmentOptions.first,
+    );
+
+    if (_currentStaff.workLocation.isNotEmpty && !_locationOptions.any((l) => l.toLowerCase() == _currentStaff.workLocation.toLowerCase())) {
+      _locationOptions.insert(_locationOptions.length - 1, _currentStaff.workLocation);
+    }
+    _selectedLocation = _locationOptions.firstWhere(
+      (l) => l.toLowerCase() == _currentStaff.workLocation.toLowerCase(),
+      orElse: () => _locationOptions.first,
+    );
+
+    final ownerName = _db.currentUser?.isOwner == true ? _db.currentUser?.name : (_db.registeredUsers.where((u) => u.isOwner).firstOrNull?.name ?? 'Store Owner / Admin');
+    if (ownerName != null && ownerName.isNotEmpty && !_reportingToOptions.contains(ownerName)) {
+      _reportingToOptions.insert(0, ownerName);
+    }
+    if (_currentStaff.reportingTo.isNotEmpty && !_reportingToOptions.any((r) => r.toLowerCase() == _currentStaff.reportingTo.toLowerCase())) {
+      _reportingToOptions.insert(1, _currentStaff.reportingTo);
+    }
+    _selectedReportingTo = _reportingToOptions.firstWhere(
+      (r) => r.toLowerCase() == _currentStaff.reportingTo.toLowerCase(),
+      orElse: () => _reportingToOptions.first,
+    );
+
+    if (_currentStaff.shift.isNotEmpty && !_shiftOptions.any((s) => s.toLowerCase() == _currentStaff.shift.toLowerCase())) {
+      _shiftOptions.add(_currentStaff.shift);
+    }
+    _selectedShift = _shiftOptions.firstWhere(
+      (s) => s.toLowerCase() == _currentStaff.shift.toLowerCase(),
+      orElse: () => _shiftOptions.first,
+    );
+
+    _selectedLanguage = _languageOptions.firstWhere(
+      (l) => l.toLowerCase() == _currentStaff.language.toLowerCase(),
+      orElse: () => 'English',
+    );
+
+    _selectedTheme = _themeOptions.firstWhere(
+      (t) => t.toLowerCase() == _currentStaff.theme.toLowerCase(),
+      orElse: () => 'Light',
+    );
+
+    _selectedDefaultScreen = _defaultScreenOptions.firstWhere(
+      (d) => d.toLowerCase() == _currentStaff.defaultScreen.toLowerCase(),
+      orElse: () => 'Dashboard',
+    );
 
     _enableBiometric = _currentStaff.enableBiometric;
     _isActive = _currentStaff.isActive;
@@ -407,6 +442,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
         defaultScreen: _selectedDefaultScreen,
         enableBiometric: _enableBiometric,
         status: _isActive ? 'Active' : 'Inactive',
+        avatarUrl: _avatarImageFile != null ? _avatarImageFile!.path : _currentStaff.avatarUrl,
         pin: _pinController.text.trim().isNotEmpty ? _pinController.text.trim() : _currentStaff.pin,
         salary: double.tryParse(_salaryController.text.trim()) ?? _currentStaff.salary,
         notes: _notesController.text.trim(),
@@ -472,12 +508,14 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Row(
           children: [
             Icon(Icons.lock_outline_rounded, color: Color(0xFF2563EB), size: 22),
             SizedBox(width: 8),
-            Text('Change Login PIN', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+            Text('Change Login PIN', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18, color: Color(0xFF0F172A))),
           ],
         ),
         content: Column(
@@ -494,7 +532,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
               keyboardType: TextInputType.number,
               maxLength: 4,
               obscureText: true,
-              style: const TextStyle(fontSize: 20, letterSpacing: 8, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 20, letterSpacing: 8, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
               textAlign: TextAlign.center,
               decoration: InputDecoration(
                 hintText: '••••',
@@ -547,6 +585,8 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text('Delete Staff Member',
             style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
@@ -592,36 +632,68 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 820),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 1. Top Header Bar
-                    _buildTopHeader(),
-                    const SizedBox(height: 18),
+    return Theme(
+      data: ThemeData.light().copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        canvasColor: Colors.white,
+        cardColor: Colors.white,
+        dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF2563EB),
+          surface: Colors.white,
+          onSurface: Color(0xFF0F172A),
+        ),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF2563EB);
+            }
+            return const Color(0xFF94A3B8);
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF93C5FD);
+            }
+            return const Color(0xFFE2E8F0);
+          }),
+          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+        ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: const Color(0xFF0F172A),
+          displayColor: const Color(0xFF0F172A),
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 820),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 1. Top Header Bar
+                      _buildTopHeader(),
+                      const SizedBox(height: 18),
 
-                    // 2. Staff Profile Hero Card
-                    _buildHeroHeaderCard(),
-                    const SizedBox(height: 16),
+                      // 2. Staff Profile Hero Card
+                      _buildHeroHeaderCard(),
+                      const SizedBox(height: 16),
 
-                    // 3. Tab Bar Navigation
-                    _buildCustomTabBar(),
-                    const SizedBox(height: 16),
+                      // 3. Tab Bar Navigation
+                      _buildCustomTabBar(),
+                      const SizedBox(height: 16),
 
-                    // 4. Tab Content Container
-                    _buildActiveTabContent(),
-                    const SizedBox(height: 30),
-                  ],
+                      // 4. Tab Content Container
+                      _buildActiveTabContent(),
+                      const SizedBox(height: 30),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -633,82 +705,90 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
 
   // --- 1. Top Header Bar ---
   Widget _buildTopHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        // Back Button + Title + Subtitle
-        Expanded(
-          child: Row(
-            children: [
-              InkWell(
-                onTap: () => Navigator.of(context).pop(),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Back Button + Title + Subtitle
+            Expanded(
+              child: Row(
+                children: [
+                  InkWell(
+                    onTap: () => Navigator.of(context).pop(),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFFDBEAFE)),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFDBEAFE)),
+                      ),
+                      child: const Icon(Icons.arrow_back_rounded, color: Color(0xFF1E40AF), size: 20),
+                    ),
                   ),
-                  child: const Icon(Icons.arrow_back_rounded, color: Color(0xFF1E40AF), size: 20),
-                ),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Staff Settings',
-                      style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0F172A),
-                        letterSpacing: -0.4,
-                      ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Staff Settings',
+                          style: TextStyle(
+                            fontSize: isMobile ? 18 : 22,
+                            fontWeight: FontWeight.w900,
+                            color: const Color(0xFF0F172A),
+                            letterSpacing: -0.4,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (!isMobile) ...[
+                          const SizedBox(height: 2),
+                          const Text(
+                            'Update staff information, permissions and preferences',
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Update staff information, permissions and preferences',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
+            ),
+            const SizedBox(width: 8),
 
-        // "+ Save Changes" Solid Blue Button
-        ElevatedButton.icon(
-          onPressed: _isSaving ? null : _handleSaveChanges,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF2563EB),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-          icon: _isSaving
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                )
-              : const Icon(Icons.add_rounded, size: 20),
-          label: Text(
-            _isSaving ? 'Saving...' : 'Save Changes',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, letterSpacing: 0.1),
-          ),
-        ),
-      ],
+            // "+ Save Changes" Solid Blue Button
+            ElevatedButton.icon(
+              onPressed: _isSaving ? null : _handleSaveChanges,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: EdgeInsets.symmetric(horizontal: isMobile ? 14 : 20, vertical: isMobile ? 10 : 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check_rounded, size: 18),
+              label: Text(
+                _isSaving ? 'Saving...' : (isMobile ? 'Save' : 'Save Changes'),
+                style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, letterSpacing: 0.1),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -746,7 +826,9 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                           )
                         : (_currentStaff.avatarUrl.isNotEmpty
                             ? DecorationImage(
-                                image: NetworkImage(_currentStaff.avatarUrl),
+                                image: (_currentStaff.avatarUrl.startsWith('http://') || _currentStaff.avatarUrl.startsWith('https://'))
+                                    ? NetworkImage(_currentStaff.avatarUrl) as ImageProvider
+                                    : FileImage(File(_currentStaff.avatarUrl)),
                                 fit: BoxFit.cover,
                               )
                             : null),
@@ -1009,7 +1091,10 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
           icon: Icons.person_outline_rounded,
           title: 'Personal Information',
           trailing: OutlinedButton.icon(
-            onPressed: () {},
+            onPressed: () {
+              _tabController.animateTo(0);
+              _nameController.selection = TextSelection(baseOffset: 0, extentOffset: _nameController.text.length);
+            },
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF334155),
               side: const BorderSide(color: Color(0xFFCBD5E1)),
@@ -1274,7 +1359,11 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                       ),
                       Switch(
                         value: _enableBiometric,
-                        activeColor: const Color(0xFF2563EB),
+                        activeThumbColor: const Color(0xFF2563EB),
+                        activeTrackColor: const Color(0xFF93C5FD),
+                        inactiveThumbColor: const Color(0xFF94A3B8),
+                        inactiveTrackColor: const Color(0xFFE2E8F0),
+                        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                         onChanged: (val) => setState(() => _enableBiometric = val),
                       ),
                     ],
@@ -1303,7 +1392,11 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                       children: [
                         Switch(
                           value: _isActive,
-                          activeColor: const Color(0xFF2563EB),
+                          activeThumbColor: const Color(0xFF2563EB),
+                          activeTrackColor: const Color(0xFF93C5FD),
+                          inactiveThumbColor: const Color(0xFF94A3B8),
+                          inactiveTrackColor: const Color(0xFFE2E8F0),
+                          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                           onChanged: (val) => setState(() => _isActive = val),
                         ),
                         const SizedBox(width: 8),
@@ -1512,7 +1605,6 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
 
         // Permission Categories List
         ..._permissionCategories.entries.map((entry) {
-          final catId = entry.key;
           final catData = entry.value;
           final label = catData['label'] as String;
           final icon = catData['icon'] as IconData;
@@ -1602,7 +1694,11 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                         ),
                         Switch(
                           value: isChecked,
-                          activeColor: const Color(0xFF2563EB),
+                          activeThumbColor: const Color(0xFF2563EB),
+                          activeTrackColor: const Color(0xFF93C5FD),
+                          inactiveThumbColor: const Color(0xFF94A3B8),
+                          inactiveTrackColor: const Color(0xFFE2E8F0),
+                          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                           onChanged: (val) {
                             setState(() {
                               if (val) {
@@ -1763,10 +1859,14 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                 color: Colors.transparent,
                 child: SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Force Password Change on Next Login', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  title: const Text('Force Password Change on Next Login', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
                   subtitle: const Text('Requires user to set a new password when signing in', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
                   value: _forcePasswordChange,
-                  activeColor: const Color(0xFF2563EB),
+                  activeThumbColor: const Color(0xFF2563EB),
+                  activeTrackColor: const Color(0xFF93C5FD),
+                  inactiveThumbColor: const Color(0xFF94A3B8),
+                  inactiveTrackColor: const Color(0xFFE2E8F0),
+                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                   onChanged: (v) => setState(() => _forcePasswordChange = v),
                 ),
               ),
@@ -1774,10 +1874,14 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                 color: Colors.transparent,
                 child: SwitchListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Send Welcome Email with Credentials', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                  title: const Text('Send Welcome Email with Credentials', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
                   subtitle: const Text('Dispatches onboarding instructions and login link', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
                   value: _sendWelcomeEmail,
-                  activeColor: const Color(0xFF2563EB),
+                  activeThumbColor: const Color(0xFF2563EB),
+                  activeTrackColor: const Color(0xFF93C5FD),
+                  inactiveThumbColor: const Color(0xFF94A3B8),
+                  inactiveTrackColor: const Color(0xFFE2E8F0),
+                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                   onChanged: (v) => setState(() => _sendWelcomeEmail = v),
                 ),
               ),
@@ -1819,7 +1923,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                     Container(
                       padding: const EdgeInsets.all(9),
                       decoration: BoxDecoration(
-                        color: (a['color'] as Color).withOpacity(0.12),
+                        color: (a['color'] as Color).withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(a['icon'] as IconData, color: a['color'] as Color, size: 18),
@@ -1880,7 +1984,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                   ),
                 ],
               ),
-              if (trailing != null) trailing,
+              ?trailing,
             ],
           ),
           const SizedBox(height: 16),
@@ -1961,6 +2065,10 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
         DropdownButtonFormField<String>(
           value: cleanValue,
           isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+          style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
           decoration: InputDecoration(
             filled: true,
             fillColor: const Color(0xFFF8FAFC),

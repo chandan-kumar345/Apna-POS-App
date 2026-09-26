@@ -138,6 +138,9 @@ class OrderModel {
   final int printCount;
   final String? qrIntentUrl;
   final String? qrImageUrl;
+  final String? staffId;
+  final String? staffName;
+  final String? staffRole;
 
   OrderModel({
     required this.id,
@@ -165,6 +168,9 @@ class OrderModel {
     this.printCount = 0,
     this.qrIntentUrl,
     this.qrImageUrl,
+    this.staffId,
+    this.staffName,
+    this.staffRole,
   });
 
   Map<String, dynamic> toJson() => {
@@ -193,6 +199,9 @@ class OrderModel {
         'printCount': printCount,
         'qrIntentUrl': qrIntentUrl,
         'qrImageUrl': qrImageUrl,
+        'staffId': staffId,
+        'staffName': staffName,
+        'staffRole': staffRole,
       };
 
   factory OrderModel.fromJson(Map<dynamic, dynamic> json) {
@@ -238,6 +247,9 @@ class OrderModel {
       printCount: (json['printCount'] as num?)?.toInt() ?? 0,
       qrIntentUrl: json['qrIntentUrl']?.toString(),
       qrImageUrl: json['qrImageUrl']?.toString(),
+      staffId: json['staffId']?.toString() ?? json['waiterId']?.toString() ?? json['userId']?.toString() ?? json['cashierId']?.toString(),
+      staffName: json['staffName']?.toString() ?? json['waiterName']?.toString() ?? json['userName']?.toString() ?? json['servedBy']?.toString() ?? json['cashierName']?.toString() ?? json['staff']?.toString(),
+      staffRole: json['staffRole']?.toString() ?? json['role']?.toString(),
     );
   }
 
@@ -247,7 +259,7 @@ class OrderModel {
       final parsed = DateTime.tryParse(createdAt);
       if (parsed != null) return parsed.isUtc ? parsed.toLocal() : parsed;
     }
-    // Fallback: try parsing orderNumber if formatted with date prefix (e.g. YYYYMMDD-...)
+    // Fallback 1: try parsing orderNumber if formatted with date/time prefix (e.g. YYYYMMDD-HHmmss...)
     final cleanNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim();
     if (cleanNum.length >= 8) {
       final dStr = cleanNum.substring(0, 8);
@@ -255,8 +267,28 @@ class OrderModel {
       final m = int.tryParse(dStr.substring(4, 6));
       final d = int.tryParse(dStr.substring(6, 8));
       if (y != null && m != null && d != null) {
-        return DateTime(y, m, d);
+        int hour = 0;
+        int min = 0;
+        int sec = 0;
+        if (cleanNum.length >= 15 && cleanNum[8] == '-') {
+          final tStr = cleanNum.substring(9, 15);
+          final parsedH = int.tryParse(tStr.substring(0, 2));
+          final parsedM = int.tryParse(tStr.substring(2, 4));
+          final parsedS = int.tryParse(tStr.substring(4, 6));
+          if (parsedH != null) hour = parsedH;
+          if (parsedM != null) min = parsedM;
+          if (parsedS != null) sec = parsedS;
+        }
+        return DateTime(y, m, d, hour, min, sec);
       }
+    }
+    // Fallback 2: If createdAt is a time format like "19:42" or "19:42:00"
+    if (createdAt.isNotEmpty && RegExp(r'^\d{1,2}:\d{2}').hasMatch(createdAt.trim())) {
+      final parts = createdAt.trim().split(':');
+      final h = int.tryParse(parts[0]) ?? 0;
+      final m = int.tryParse(parts.length > 1 ? parts[1].substring(0, 2) : '0') ?? 0;
+      final now = DateTime.now();
+      return DateTime(now.year, now.month, now.day, h, m);
     }
     return DateTime.now();
   }
@@ -285,6 +317,9 @@ class OrderModel {
     int? printCount,
     String? qrIntentUrl,
     String? qrImageUrl,
+    String? staffId,
+    String? staffName,
+    String? staffRole,
   }) {
     return OrderModel(
       id: id ?? this.id,
@@ -312,6 +347,9 @@ class OrderModel {
       printCount: printCount ?? this.printCount,
       qrIntentUrl: qrIntentUrl ?? this.qrIntentUrl,
       qrImageUrl: qrImageUrl ?? this.qrImageUrl,
+      staffId: staffId ?? this.staffId,
+      staffName: staffName ?? this.staffName,
+      staffRole: staffRole ?? this.staffRole,
     );
   }
 }

@@ -87,6 +87,28 @@ class DatabaseService extends ChangeNotifier {
   final List<OrderModel> _holdOrders = [];
   List<OrderModel> get holdOrders => List.unmodifiable(_holdOrders);
 
+  /// Resolves the authoritative company / restaurant profile logo path or url
+  String? get companyLogoPath {
+    final savedCompanyLogo = _prefs?.getString('apna_pos_company_logo');
+    if (savedCompanyLogo != null && savedCompanyLogo.isNotEmpty) {
+      return savedCompanyLogo;
+    }
+    final ownerUser = registeredUsers.where((u) => u.isOwner || u.role.toLowerCase() == 'owner').firstOrNull;
+    if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.isNotEmpty) {
+      return ownerUser.profilePhotoPath;
+    }
+    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner') &&
+        currentUser!.profilePhotoPath != null && currentUser!.profilePhotoPath!.isNotEmpty) {
+      return currentUser!.profilePhotoPath;
+    }
+    for (final u in registeredUsers) {
+      if (u.profilePhotoPath != null && u.profilePhotoPath!.isNotEmpty && !u.profilePhotoPath!.contains('staff')) {
+        return u.profilePhotoPath;
+      }
+    }
+    return null;
+  }
+
   // Live in-cart totals per table (before KOT is sent)
   final Map<String, double> _liveCartTotals = {};
   final Map<String, List<CartItemModel>> _liveTableCarts = {};
@@ -541,15 +563,24 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.clear();
     _liveTableCarts.clear();
 
-    // 1. Load Restaurant Profile (User-scoped)
-    final restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant');
+    // 1. Load Restaurant Profile (User-scoped with store & owner fallback)
+    String? restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant') ?? _prefs?.getString('apna_pos_restaurant');
+    if (restaurantJson == null || restaurantJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_restaurant');
+        if (cand != null && cand.isNotEmpty) {
+          restaurantJson = cand;
+          break;
+        }
+      }
+    }
     if (restaurantJson != null && restaurantJson.isNotEmpty) {
       try {
         restaurant = RestaurantModel.fromJson(jsonDecode(restaurantJson));
       } catch (e) {
         restaurant = null;
       }
-    } else {
+    } else if (restaurant == null) {
       restaurant = RestaurantModel(
         id: 'rest_$userId',
         name: currentUser?.companyName ?? currentUser?.name ?? 'Apna POS Store',
@@ -564,102 +595,170 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // 2. Load Menu Items (User-scoped) - Default to empty list [] for user isolation
-    final menuJson = _prefs?.getString('apna_pos_${userId}_menu');
+    // 2. Load Menu Items (User-scoped with store & owner fallback)
+    String? menuJson = _prefs?.getString('apna_pos_${userId}_menu') ?? _prefs?.getString('apna_pos_menu');
+    if (menuJson == null || menuJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_menu');
+        if (cand != null && cand.isNotEmpty) {
+          menuJson = cand;
+          break;
+        }
+      }
+    }
     if (menuJson != null && menuJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(menuJson);
         menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
         _deduplicateMenuItems();
       } catch (e) {
-        menuItems = [];
+        if (menuItems.isEmpty) menuItems = [];
       }
-    } else {
-      menuItems = [];
     }
 
-    // 3. Load Categories (User-scoped)
-    final catJson = _prefs?.getString('apna_pos_${userId}_categories');
+    // 3. Load Categories (User-scoped with store & owner fallback)
+    String? catJson = _prefs?.getString('apna_pos_${userId}_categories') ?? _prefs?.getString('apna_pos_categories');
+    if (catJson == null || catJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_categories');
+        if (cand != null && cand.isNotEmpty) {
+          catJson = cand;
+          break;
+        }
+      }
+    }
     if (catJson != null && catJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(catJson);
         categories = raw.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
       } catch (e) {
-        categories = [];
+        if (categories.isEmpty) categories = [];
       }
-    } else {
-      categories = [];
+    } else if (categories.isEmpty) {
       _syncCategoriesFromMenu();
     }
 
-    // 3b. Load Category Images (User-scoped)
-    final catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images');
+    // 3b. Load Category Images (User-scoped with store & owner fallback)
+    String? catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images') ?? _prefs?.getString('apna_pos_category_images');
+    if (catImagesJson == null || catImagesJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_category_images');
+        if (cand != null && cand.isNotEmpty) {
+          catImagesJson = cand;
+          break;
+        }
+      }
+    }
     if (catImagesJson != null && catImagesJson.isNotEmpty) {
       try {
         final Map rawMap = jsonDecode(catImagesJson);
         categoryImages = rawMap.map((k, v) => MapEntry((k ?? '').toString().trim(), (v ?? '').toString().trim()));
       } catch (e) {
-        categoryImages = {};
+        if (categoryImages.isEmpty) categoryImages = {};
       }
-    } else {
-      categoryImages = {};
     }
 
-    // 4. Load Tables (User-scoped) or Seed Clean Floor
-    final tablesJson = _prefs?.getString('apna_pos_${userId}_tables');
+    // 4. Load Tables (User-scoped with store & owner fallback)
+    String? tablesJson = _prefs?.getString('apna_pos_${userId}_tables') ?? _prefs?.getString('apna_pos_tables');
+    if (tablesJson == null || tablesJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_tables');
+        if (cand != null && cand.isNotEmpty) {
+          tablesJson = cand;
+          break;
+        }
+      }
+    }
     if (tablesJson != null && tablesJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(tablesJson);
         tables = raw.map((e) => TableModel.fromJson(e)).toList();
         _sortTablesSequentially();
       } catch (e) {
-        _seedCleanTables(restaurant?.tableCount ?? 12);
+        if (tables.isEmpty) _seedCleanTables(restaurant?.tableCount ?? 12);
       }
-    } else {
+    } else if (tables.isEmpty) {
       _seedCleanTables(restaurant?.tableCount ?? 12);
     }
 
-    // 5. Load Orders (User-scoped) - Default to empty list [] for user isolation
-    final ordersJson = _prefs?.getString('apna_pos_${userId}_orders');
-    if (ordersJson != null && ordersJson.isNotEmpty) {
+    // 5. Load Orders (User-scoped, store-scoped & cross-account store sync)
+    final List<OrderModel> loadedOrders = [];
+    final Set<String> loadedKeys = {};
+
+    void tryLoadOrdersFromJson(String? jsonStr) {
+      if (jsonStr == null || jsonStr.isEmpty) return;
       try {
-        final List raw = jsonDecode(ordersJson);
-        orders = deduplicateOrdersList(raw.map((e) => OrderModel.fromJson(e)).toList());
-        // If duplicates were purged on load, save clean state back to prefs immediately
-        if (orders.length != raw.length) {
-          _saveOrdersToPrefs();
+        final List raw = jsonDecode(jsonStr);
+        final parsed = raw
+            .whereType<Map>()
+            .map((e) => OrderModel.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+        for (final o in parsed) {
+          final k = o.orderNumber.isNotEmpty ? o.orderNumber : o.id;
+          if (k.isNotEmpty && !loadedKeys.contains(k)) {
+            loadedKeys.add(k);
+            loadedOrders.add(o);
+          }
         }
-      } catch (e) {
-        orders = [];
+      } catch (_) {}
+    }
+
+    tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${userId}_orders'));
+    if (restaurant?.id != null) {
+      tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_orders'));
+    }
+    tryLoadOrdersFromJson(_prefs?.getString('apna_pos_orders'));
+    for (final u in registeredUsers) {
+      if (u.id != userId) {
+        tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${u.id}_orders'));
       }
-    } else {
+    }
+
+    if (loadedOrders.isNotEmpty) {
+      orders = deduplicateOrdersList(loadedOrders);
+      _saveOrdersToPrefs();
+    } else if (orders.isEmpty) {
       orders = [];
     }
 
-    // 6. Load Inventory (User-scoped) - Default to empty list [] for user isolation
-    final inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory');
+    // 6. Load Inventory (User-scoped with store & owner fallback)
+    String? inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory') ?? _prefs?.getString('apna_pos_inventory');
+    if (inventoryJson == null || inventoryJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_inventory');
+        if (cand != null && cand.isNotEmpty) {
+          inventoryJson = cand;
+          break;
+        }
+      }
+    }
     if (inventoryJson != null && inventoryJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(inventoryJson);
         inventoryItems = raw.map((e) => InventoryItemModel.fromJson(e)).toList();
       } catch (e) {
-        inventoryItems = [];
+        if (inventoryItems.isEmpty) inventoryItems = [];
       }
-    } else {
-      inventoryItems = [];
     }
 
-    // 7. Load Customers (User-scoped) - Default to empty list [] for user isolation
-    final customersJson = _prefs?.getString('apna_pos_${userId}_customers');
+    // 7. Load Customers (User-scoped with store & owner fallback)
+    String? customersJson = _prefs?.getString('apna_pos_${userId}_customers') ?? _prefs?.getString('apna_pos_customers');
+    if (customersJson == null || customersJson.isEmpty) {
+      for (final u in registeredUsers) {
+        final cand = _prefs?.getString('apna_pos_${u.id}_customers');
+        if (cand != null && cand.isNotEmpty) {
+          customersJson = cand;
+          break;
+        }
+      }
+    }
     if (customersJson != null && customersJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(customersJson);
         customers = raw.map((e) => CustomerModel.fromJson(e)).toList();
       } catch (e) {
-        customers = [];
+        if (customers.isEmpty) customers = [];
       }
-    } else {
-      customers = [];
     }
 
     // 8. Load persistent live table carts
@@ -1299,17 +1398,23 @@ class DatabaseService extends ChangeNotifier {
           final prof = b?['profile'] as Map<String, dynamic>?;
           final ordSet = b?['orderSettings'] as Map<String, dynamic>?;
 
-          currentUser = UserModel(
-            id: u['id']?.toString() ?? '',
-            name: prof?['name']?.toString() ?? u['name']?.toString() ?? 'User',
-            email: u['email']?.toString() ?? '',
-            phone: u['phone']?.toString(),
-            role: u['role']?.toString() ?? 'Owner',
-            pin: '1234',
-            restaurantId: b?['id']?.toString() ?? u['restaurantId']?.toString() ?? restaurant?.id ?? 'rest_001',
-            companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
-            profilePhotoPath: prof?['profileImage']?.toString() ?? u['profilePhotoPath']?.toString(),
-          );
+          final isStaffSession = currentUser != null &&
+              (!currentUser!.isOwner && !currentUser!.isAdmin) &&
+              (currentUser!.employeeId != null && currentUser!.employeeId!.isNotEmpty);
+
+          if (!isStaffSession) {
+            currentUser = UserModel(
+              id: u['id']?.toString() ?? '',
+              name: prof?['name']?.toString() ?? u['name']?.toString() ?? 'User',
+              email: u['email']?.toString() ?? '',
+              phone: u['phone']?.toString(),
+              role: u['role']?.toString() ?? 'Owner',
+              pin: '1234',
+              restaurantId: b?['id']?.toString() ?? u['restaurantId']?.toString() ?? restaurant?.id ?? 'rest_001',
+              companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
+              profilePhotoPath: prof?['profileImage']?.toString() ?? u['profilePhotoPath']?.toString(),
+            );
+          }
 
           if (b != null) {
             restaurant = RestaurantModel(
@@ -1684,6 +1789,10 @@ class DatabaseService extends ChangeNotifier {
     await _saveRegisteredUsers();
     await _prefs?.setString('apna_pos_user', jsonEncode(user.toJson()));
 
+    if (user.isOwner && user.profilePhotoPath != null && user.profilePhotoPath!.isNotEmpty) {
+      await _prefs?.setString('apna_pos_company_logo', user.profilePhotoPath!);
+    }
+
     if (isUserSwitch) {
       await loadUserDataForActiveUser(user.id);
     }
@@ -1728,6 +1837,9 @@ class DatabaseService extends ChangeNotifier {
 
     // Persist to SharedPreferences session state
     await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    if (profilePhotoPath != null && profilePhotoPath.isNotEmpty && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner')) {
+      await _prefs?.setString('apna_pos_company_logo', profilePhotoPath);
+    }
 
     // Sync with Firestore
     await _firestoreService.saveUser(currentUser!);
@@ -2878,6 +2990,9 @@ class DatabaseService extends ChangeNotifier {
     OrderStatus? status,
     String? customerName,
     String? customerPhone,
+    String? staffId,
+    String? staffName,
+    String? staffRole,
   }) async {
     final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
     final double defaultTaxRate = (restaurant?.billingType == 'Non-GST') ? 0.0 : (restaurant?.taxRate ?? 5.0);
@@ -2955,6 +3070,10 @@ class DatabaseService extends ChangeNotifier {
 
     final String initialStart = tMatch?.occupiedSince ?? DateTime.now().toIso8601String();
 
+    final resolvedStaffId = staffId ?? (currentUser != null ? (currentUser!.employeeId?.isNotEmpty == true ? currentUser!.employeeId! : currentUser!.id) : null);
+    final resolvedStaffName = staffName ?? (currentUser != null ? (currentUser!.name.isNotEmpty ? currentUser!.name : (currentUser!.isOwner ? 'Owner' : 'Staff')) : 'Cashier / Counter');
+    final resolvedStaffRole = staffRole ?? currentUser?.role;
+
     var newOrder = OrderModel(
       id: orderId,
       orderNumber: orderNum,
@@ -2976,6 +3095,9 @@ class DatabaseService extends ChangeNotifier {
       createdAt: initialStart,
       customerName: customerName,
       customerPhone: customerPhone,
+      staffId: resolvedStaffId,
+      staffName: resolvedStaffName,
+      staffRole: resolvedStaffRole,
     );
 
     orders.insert(0, newOrder);
@@ -3090,6 +3212,9 @@ class DatabaseService extends ChangeNotifier {
     String? customerName,
     String? customerPhone,
     String? notes,
+    String? staffId,
+    String? staffName,
+    String? staffRole,
   }) async {
     final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
     final double defaultTaxRate = (restaurant?.billingType == 'Non-GST') ? 0.0 : (restaurant?.taxRate ?? 5.0);
@@ -3147,6 +3272,10 @@ class DatabaseService extends ChangeNotifier {
     final bool isKotRunning = (existingOrder?.status == OrderStatus.preparing) || (tMatch?.status == TableStatus.runningKot);
     final OrderStatus effectiveOrderStatus = isKotRunning ? OrderStatus.preparing : (existingOrder?.status ?? OrderStatus.pending);
 
+    final resolvedStaffId = staffId ?? existingOrder?.staffId ?? (currentUser != null ? (currentUser!.employeeId?.isNotEmpty == true ? currentUser!.employeeId! : currentUser!.id) : null);
+    final resolvedStaffName = staffName ?? existingOrder?.staffName ?? (currentUser != null ? (currentUser!.name.isNotEmpty ? currentUser!.name : (currentUser!.isOwner ? 'Owner' : 'Staff')) : 'Cashier / Counter');
+    final resolvedStaffRole = staffRole ?? existingOrder?.staffRole ?? currentUser?.role;
+
     final payload = {
       'orderId': resolvedOrderId,
       'orderNumber': safeOrderNum,
@@ -3158,6 +3287,9 @@ class DatabaseService extends ChangeNotifier {
       'deliveryAddress': orderType == OrderType.delivery ? (deliveryAddress ?? '') : '',
       'customerName': customerName ?? '',
       'customerPhone': customerPhone ?? '',
+      'staffId': resolvedStaffId,
+      'staffName': resolvedStaffName,
+      'staffRole': resolvedStaffRole,
       'items': items.map((i) => {
         'productId': i.item.id.length == 24 ? i.item.id : null,
         'name': i.item.name,
@@ -3202,6 +3334,9 @@ class DatabaseService extends ChangeNotifier {
       invoiceNumber: 'INV-$safeOrderNum',
       qrIntentUrl: fallbackQr,
       printCount: (existingOrder?.printCount ?? 0) + 1,
+      staffId: resolvedStaffId,
+      staffName: resolvedStaffName,
+      staffRole: resolvedStaffRole,
     );
 
     // If table assigned, keep table in runningKot if KOT is active, else occupied
@@ -3293,6 +3428,9 @@ class DatabaseService extends ChangeNotifier {
     double roundOff = 0.0,
     List<Map<String, dynamic>>? paymentDetails,
     String? ncReason,
+    String? staffId,
+    String? staffName,
+    String? staffRole,
   }) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     OrderModel baseOrder;
@@ -3310,6 +3448,10 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
+    final resolvedStaffId = staffId ?? baseOrder.staffId ?? (currentUser != null ? (currentUser!.employeeId?.isNotEmpty == true ? currentUser!.employeeId! : currentUser!.id) : null);
+    final resolvedStaffName = staffName ?? baseOrder.staffName ?? (currentUser != null ? (currentUser!.name.isNotEmpty ? currentUser!.name : (currentUser!.isOwner ? 'Owner' : 'Staff')) : 'Cashier / Counter');
+    final resolvedStaffRole = staffRole ?? baseOrder.staffRole ?? currentUser?.role;
+
     final completedOrder = baseOrder.copyWith(
       status: OrderStatus.completed,
       paymentStatus: 'paid',
@@ -3318,6 +3460,9 @@ class DatabaseService extends ChangeNotifier {
       paymentMethod: paymentMethod,
       roundOff: roundOff,
       totalAmount: totalAmount,
+      staffId: resolvedStaffId,
+      staffName: resolvedStaffName,
+      staffRole: resolvedStaffRole,
     );
 
     if (index >= 0) {
@@ -3372,6 +3517,10 @@ class DatabaseService extends ChangeNotifier {
           'orderType': completedOrder.orderType.name,
           'customerName': completedOrder.customerName ?? '',
           'customerPhone': completedOrder.customerPhone ?? '',
+          'staffId': resolvedStaffId,
+          'staffName': resolvedStaffName,
+          'staffRole': resolvedStaffRole,
+          'servedBy': resolvedStaffName,
           'subtotal': completedOrder.subtotal,
           'taxAmount': completedOrder.taxAmount,
           'discountAmount': completedOrder.discountAmount,
@@ -3438,11 +3587,18 @@ class DatabaseService extends ChangeNotifier {
   }) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     if (index >= 0) {
+      final resolvedStaffId = orders[index].staffId ?? (currentUser != null ? (currentUser!.employeeId?.isNotEmpty == true ? currentUser!.employeeId! : currentUser!.id) : null);
+      final resolvedStaffName = orders[index].staffName ?? (currentUser != null ? (currentUser!.name.isNotEmpty ? currentUser!.name : (currentUser!.isOwner ? 'Owner' : 'Staff')) : 'Cashier / Counter');
+      final resolvedStaffRole = orders[index].staffRole ?? currentUser?.role;
+
       orders[index] = orders[index].copyWith(
         status: OrderStatus.completed,
         paymentStatus: 'paid',
         isPaid: true,
         paymentMethod: paymentMethod,
+        staffId: resolvedStaffId,
+        staffName: resolvedStaffName,
+        staffRole: resolvedStaffRole,
         roundOff: roundOff ?? orders[index].roundOff,
         totalAmount: totalAmount ?? orders[index].totalAmount,
       );
@@ -3638,7 +3794,17 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> _saveOrdersToPrefs() async {
     orders = deduplicateOrdersList(orders);
-    await _prefs?.setString(_userKey('orders'), jsonEncode(orders.map((e) => e.toJson()).toList()));
+    final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
+    await _prefs?.setString(_userKey('orders'), encoded);
+    await _prefs?.setString('apna_pos_orders', encoded);
+    if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
+      await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
+    }
+    for (final u in registeredUsers) {
+      if (u.id != currentUser?.id) {
+        await _prefs?.setString('apna_pos_${u.id}_orders', encoded);
+      }
+    }
   }
 
   // --- INVENTORY SERVICES ---
@@ -4155,7 +4321,7 @@ class DatabaseService extends ChangeNotifier {
         role: 'Cashier',
         status: 'Active',
         pin: '7777',
-        permissions: const ['pos', 'tables', 'orders'],
+        permissions: const ['pos'],
         createdAt: DateTime.now().subtract(const Duration(days: 70)),
       ),
       StaffModel(
@@ -4273,11 +4439,25 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void updateStaff(StaffModel staff) {
-    final idx = staffList.indexWhere((s) => s.id == staff.id);
+    final idx = staffList.indexWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
     if (idx != -1) {
       staffList[idx] = staff;
     } else {
       staffList.insert(0, staff);
+    }
+    // If active user is this staff member, sync currentUser permissions and profile in real-time
+    if (currentUser != null && (currentUser!.id == staff.id || (staff.employeeId.isNotEmpty && currentUser!.employeeId == staff.employeeId))) {
+      currentUser = currentUser!.copyWith(
+        name: staff.name,
+        email: staff.email,
+        phone: staff.phone,
+        role: staff.role,
+        employeeId: staff.employeeId,
+        profilePhotoPath: staff.avatarUrl,
+        pin: staff.pin,
+        permissions: staff.permissions,
+      );
+      _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     }
     _saveStaffToPrefs();
     notifyListeners();

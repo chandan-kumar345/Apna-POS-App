@@ -33,17 +33,42 @@ class _ReportsScreenState extends State<ReportsScreen> {
   String _selectedOutlet = 'All Outlets';
   String _selectedPaymentMode = 'All Payment Modes';
   String _selectedOrderType = 'All Order Types';
+  String _selectedStaff = 'All Staff';
   final TextEditingController _searchController = TextEditingController();
 
   // Data State
   bool _isLoading = false;
   SalesReportData? _reportData;
   int _requestSeq = 0;
+  final Set<String> _expandedStaffIds = {};
 
   // Active Tab & Pagination
   int _activeTabIndex = 0;
   int _currentPage = 1;
   int _pageSize = 6;
+
+  bool get _isStaffUser => _db.currentUser != null && !_db.currentUser!.isOwner && !_db.currentUser!.isAdmin;
+
+  List<String> get _effectiveTabs {
+    if (_isStaffUser) {
+      return [
+        'My Sales Details',
+        'Top Products',
+        'Category Wise',
+        'Payment Mode',
+        'Order Type',
+      ];
+    }
+    return [
+      'Sales Details',
+      'Top Products',
+      'Category Wise',
+      'Payment Mode',
+      'Order Type',
+      'Outlet Wise',
+      'Staff Wise',
+    ];
+  }
 
   final List<String> _desktopTabs = [
     'Sales Details',
@@ -86,6 +111,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       paymentMethod: _selectedPaymentMode,
       orderType: _selectedOrderType,
       outlet: _selectedOutlet,
+      staff: params.$4,
       search: _searchController.text,
     );
 
@@ -105,7 +131,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
   }
 
-  (String?, String?, String?) _resolveFilterParams() {
+  (String?, String?, String?, String?) _resolveFilterParams() {
     String? period;
     String? startDate;
     String? endDate;
@@ -119,16 +145,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         period = 'today';
         final startToday = DateTime(now.year, now.month, now.day, 0, 0, 0);
         final endToday = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-        startDate = startToday.toUtc().toIso8601String();
-        endDate = endToday.toUtc().toIso8601String();
+        startDate = startToday.toIso8601String();
+        endDate = endToday.toIso8601String();
         break;
       case SalesDateFilter.yesterday:
         period = 'yesterday';
         final y = now.subtract(const Duration(days: 1));
         final startY = DateTime(y.year, y.month, y.day, 0, 0, 0);
         final endY = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
-        startDate = startY.toUtc().toIso8601String();
-        endDate = endY.toUtc().toIso8601String();
+        startDate = startY.toIso8601String();
+        endDate = endY.toIso8601String();
         break;
       case SalesDateFilter.thisWeek:
         period = 'thisWeek';
@@ -136,16 +162,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
         final monday = now.subtract(Duration(days: diffToMonday));
         final startWeek = DateTime(monday.year, monday.month, monday.day, 0, 0, 0);
         final endWeek = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-        startDate = startWeek.toUtc().toIso8601String();
-        endDate = endWeek.toUtc().toIso8601String();
+        startDate = startWeek.toIso8601String();
+        endDate = endWeek.toIso8601String();
         break;
       case SalesDateFilter.thisMonth:
         period = 'thisMonth';
         final startMonth = DateTime(now.year, now.month, 1, 0, 0, 0);
         final lastDay = DateTime(now.year, now.month + 1, 0).day;
         final endMonth = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
-        startDate = startMonth.toUtc().toIso8601String();
-        endDate = endMonth.toUtc().toIso8601String();
+        startDate = startMonth.toIso8601String();
+        endDate = endMonth.toIso8601String();
         break;
       case SalesDateFilter.custom:
         if (_customDateRange != null) {
@@ -166,14 +192,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
             59,
             999,
           );
-          startDate = start.toUtc().toIso8601String();
-          endDate = end.toUtc().toIso8601String();
+          startDate = start.toIso8601String();
+          endDate = end.toIso8601String();
+          period = (start.year == end.year && start.month == end.month && start.day == end.day) ? 'singleDay' : 'custom';
         } else {
           period = 'allTime';
         }
         break;
     }
-    return (period, startDate, endDate);
+
+    final staffParam = _isStaffUser ? null : (_selectedStaff == 'All Staff' ? null : _selectedStaff);
+    return (period, startDate, endDate, staffParam);
   }
 
   Future<void> _loadSalesReport({bool showLoading = true}) async {
@@ -187,14 +216,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
       paymentMethod: _selectedPaymentMode,
       orderType: _selectedOrderType,
       outlet: _selectedOutlet,
+      staff: params.$4,
       search: _searchController.text,
     );
 
     if (mounted) {
       setState(() {
-        if (_reportData == null) {
-          _reportData = localData;
-        }
+        _reportData = localData;
         if (showLoading) _isLoading = true;
       });
     }
@@ -207,6 +235,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
         paymentMethod: _selectedPaymentMode,
         orderType: _selectedOrderType,
         outlet: _selectedOutlet,
+        staff: params.$4,
         search: _searchController.text,
       );
 
@@ -237,6 +266,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       _selectedOutlet = 'All Outlets';
       _selectedPaymentMode = 'All Payment Modes';
       _selectedOrderType = 'All Order Types';
+      _selectedStaff = 'All Staff';
       _searchController.clear();
       _currentPage = 1;
     });
@@ -578,7 +608,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     final currency = _db.restaurant?.currencySymbol ?? '₹';
     final List<List<dynamic>> rows = [
-      ['Bill No', 'Date & Time', 'Order Type', 'Table', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)'],
+      _isStaffUser
+          ? ['Bill No', 'Date & Time', 'Order Type', 'Table', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)']
+          : ['Bill No', 'Date & Time', 'Handled By / Staff', 'Order Type', 'Table', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)'],
     ];
 
     for (final o in ordersToExport) {
@@ -587,16 +619,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ? 'Dine In'
           : (o.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
 
-      rows.add([
-        o.orderNumber,
-        o.createdAt,
-        typeStr,
-        o.tableNumber ?? '-',
-        itemsCount,
-        o.paymentMethod,
-        o.customerName ?? 'Walk-in',
-        o.totalAmount.toStringAsFixed(2),
-      ]);
+      if (_isStaffUser) {
+        rows.add([
+          o.orderNumber,
+          o.createdAt,
+          typeStr,
+          o.tableNumber ?? '-',
+          itemsCount,
+          o.paymentMethod,
+          o.customerName ?? 'Walk-in',
+          o.totalAmount.toStringAsFixed(2),
+        ]);
+      } else {
+        rows.add([
+          o.orderNumber,
+          o.createdAt,
+          o.staffName ?? 'Direct / Owner',
+          typeStr,
+          o.tableNumber ?? '-',
+          itemsCount,
+          o.paymentMethod,
+          o.customerName ?? 'Walk-in',
+          o.totalAmount.toStringAsFixed(2),
+        ]);
+      }
     }
 
     final StringBuffer csvBuffer = StringBuffer();
@@ -651,6 +697,74 @@ class _ReportsScreenState extends State<ReportsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- STAFF NOTICE BANNER (WHEN LOGGED IN AS STAFF) ---
+                  if (_isStaffUser) ...[
+                    Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: const Color(0xFFBFDBFE)),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF2563EB),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.person_rounded, size: 16, color: Colors.white),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Personal Sales Report: ${_db.currentUser?.name ?? "Staff"}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF1E3A8A),
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Role: ${(_db.currentUser?.role ?? "Staff").toUpperCase()} • Displaying only your processed orders',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: Color(0xFF2563EB),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2563EB),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: const Text(
+                              'My Orders Only',
+                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   // --- 1. TOP FILTER BAR ---
                   _buildTopFilterBar(isMobile: isMobile),
                   const SizedBox(height: 16),
@@ -717,7 +831,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 6),
 
-            // Row 2: 3 Filter Dropdowns
+            // Row 2: Filter Dropdowns
             Row(
               children: [
                 Expanded(
@@ -760,6 +874,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     },
                   ),
                 ),
+                if (!_isStaffUser) ...[
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: _buildCurvedDropdown(
+                      value: _selectedStaff,
+                      items: ['All Staff', ..._db.staffList.map((s) => s.name)],
+                      isMobile: true,
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedStaff = val);
+                      },
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 8),
@@ -882,6 +1009,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       if (val != null) setState(() => _selectedOrderType = val);
                     },
                   ),
+
+                  // Staff Dropdown (Owner Exclusive)
+                  if (!_isStaffUser) ...[
+                    const SizedBox(width: 10),
+                    _buildCurvedDropdown(
+                      value: _selectedStaff,
+                      items: ['All Staff', ..._db.staffList.map((s) => s.name)],
+                      isMobile: false,
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedStaff = val);
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -1356,7 +1496,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required String currency,
     required bool isMobile,
   }) {
-    final tabs = isMobile ? _mobileTabs : _desktopTabs;
+    final tabs = _effectiveTabs;
     final effectiveOrders = orders;
     final totalRecords = orders.length;
 
@@ -1540,20 +1680,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required String currency,
     required bool isMobile,
   }) {
-    switch (_activeTabIndex) {
-      case 0:
+    final tabs = _effectiveTabs;
+    final currentTabTitle = _activeTabIndex < tabs.length ? tabs[_activeTabIndex] : tabs.first;
+
+    switch (currentTabTitle) {
+      case 'Sales Details':
+      case 'My Sales Details':
         return _buildSalesDetailsView(orders: orders, currency: currency, isMobile: isMobile);
-      case 1:
+      case 'Top Products':
         return _buildTopProductsView(currency: currency, isMobile: isMobile);
-      case 2:
+      case 'Category Wise':
         return _buildCategoryWiseView(currency: currency, isMobile: isMobile);
-      case 3:
+      case 'Payment Mode':
         return _buildPaymentModeDetailView(currency: currency, isMobile: isMobile);
-      case 4:
+      case 'Order Type':
         return _buildOrderTypeDetailView(currency: currency, isMobile: isMobile);
-      case 5:
+      case 'Outlet Wise':
         return _buildOutletWiseView(currency: currency, isMobile: isMobile);
-      case 6:
+      case 'Staff Wise':
         return _buildStaffWiseView(currency: currency, isMobile: isMobile);
       default:
         return _buildSalesDetailsView(orders: orders, currency: currency, isMobile: isMobile);
@@ -1589,7 +1733,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        const double minTableWidth = 880.0;
+        final double minTableWidth = _isStaffUser ? 880.0 : 980.0;
         final double effectiveWidth = constraints.maxWidth > minTableWidth ? constraints.maxWidth : minTableWidth;
 
         final tableContent = SizedBox(
@@ -1602,18 +1746,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 height: 42,
                 color: const Color(0xFFF8FAFC),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: const Row(
+                child: Row(
                   children: [
-                    SizedBox(width: 35, child: Text('#', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 150, child: Text('Date & Time', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 85, child: Text('Bill No', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 95, child: Text('Order Type', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 60, child: Text('Table', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 50, child: Text('Items', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 110, child: Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 115, child: Text('Customer', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    Expanded(flex: 90, child: Text('Amount (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    SizedBox(width: 45, child: Text('Action', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const SizedBox(width: 35, child: Text('#', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 140, child: Text('Date & Time', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 85, child: Text('Bill No', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    if (!_isStaffUser)
+                      const Expanded(flex: 100, child: Text('Staff', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 95, child: Text('Order Type', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 60, child: Text('Table', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 50, child: Text('Items', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 110, child: Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 115, child: Text('Customer', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const Expanded(flex: 90, child: Text('Amount (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const SizedBox(width: 45, child: Text('Action', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
                   ],
                 ),
               ),
@@ -1643,7 +1789,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             child: Text('$globalIndex', style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
                           ),
                           Expanded(
-                            flex: 150,
+                            flex: 140,
                             child: Text(formattedDate, style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155), fontWeight: FontWeight.w500)),
                           ),
                           Expanded(
@@ -1653,6 +1799,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                             ),
                           ),
+                          if (!_isStaffUser)
+                            Expanded(
+                              flex: 100,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: (order.staffName != null && order.staffName!.isNotEmpty)
+                                          ? const Color(0xFF2563EB)
+                                          : const Color(0xFF94A3B8),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 5),
+                                  Flexible(
+                                    child: Text(
+                                      order.staffName?.isNotEmpty == true ? order.staffName! : 'Direct / Owner',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: order.staffName?.isNotEmpty == true
+                                            ? const Color(0xFF1E40AF)
+                                            : const Color(0xFF64748B),
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           Expanded(
                             flex: 95,
                             child: Align(alignment: Alignment.centerLeft, child: _buildOrderTypeChip(order.orderType)),
@@ -1975,9 +2155,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  // --- TAB 7: STAFF WISE ---
+  // --- TAB 7: STAFF WISE (OWNER EXCLUSIVE) ---
   Widget _buildStaffWiseView({required String currency, required bool isMobile}) {
     final staff = _reportData?.staffWise ?? [];
+
+    if (staff.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 48),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.badge_outlined, size: 40, color: Color(0xFFCBD5E1)),
+              SizedBox(height: 10),
+              Text(
+                'No staff performance records found for this period.',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final totalSales = staff.fold<double>(0.0, (sum, s) => sum + s.totalRevenue);
+
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -1985,21 +2186,243 @@ class _ReportsScreenState extends State<ReportsScreen> {
       separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
       itemBuilder: (ctx, idx) {
         final s = staff[idx];
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-          child: Row(
+        final isExpanded = _expandedStaffIds.contains(s.staffName);
+        final pct = totalSales > 0 ? (s.totalRevenue / totalSales) * 100 : s.percentage;
+
+        // Staff Initial
+        String initials = '';
+        if (s.staffName.isNotEmpty) {
+          final parts = s.staffName.trim().split(RegExp(r'\s+'));
+          initials = parts.length >= 2
+              ? '${parts[0][0]}${parts[1][0]}'.toUpperCase()
+              : s.staffName.substring(0, s.staffName.length >= 2 ? 2 : 1).toUpperCase();
+        }
+
+        return Container(
+          decoration: BoxDecoration(
+            color: isExpanded ? const Color(0xFFF8FAFC) : Colors.transparent,
+          ),
+          child: Column(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(s.staffName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                    const SizedBox(height: 2),
-                    Text('${s.billsCount} bills processed', style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
-                  ],
+              InkWell(
+                onTap: s.orders.isNotEmpty
+                    ? () {
+                        setState(() {
+                          if (isExpanded) {
+                            _expandedStaffIds.remove(s.staffName);
+                          } else {
+                            _expandedStaffIds.add(s.staffName);
+                          }
+                        });
+                      }
+                    : null,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
+                    children: [
+                      // Staff Avatar / Initials
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x142563EB), blurRadius: 6, offset: Offset(0, 2)),
+                          ],
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          initials.isNotEmpty ? initials : 'ST',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+
+                      // Staff Name & Role & Bills
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    s.staffName,
+                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFEFF6FF),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                                  ),
+                                  child: Text(
+                                    s.role.toUpperCase(),
+                                    style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                Text(
+                                  '${s.billsCount} bills settled',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  'Avg: $currency${_formatNumber(s.avgTicket)}',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                ),
+                                const SizedBox(width: 6),
+                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
+                                const SizedBox(width: 6),
+                                Text(
+                                  '${pct.toStringAsFixed(1)}% share',
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Revenue & Drilldown Toggle
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$currency${_formatNumber(s.totalRevenue)}',
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                          ),
+                          if (s.orders.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  isExpanded ? 'Hide bills' : 'View bills (${s.orders.length})',
+                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                                ),
+                                Icon(
+                                  isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                                  size: 15,
+                                  color: const Color(0xFF2563EB),
+                                ),
+                              ],
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              Text('$currency${_formatNumber(s.totalRevenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+
+              // Expandable Order Drilldown
+              if (isExpanded && s.orders.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
+                          ),
+                          child: Row(
+                            children: [
+                              Text(
+                                'Recent Orders Settled by ${s.staffName} (${s.orders.length} total)',
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        ...s.orders.take(15).map((o) {
+                          String dateStr = o.createdAt;
+                          final dt = DateTime.tryParse(o.createdAt);
+                          if (dt != null) {
+                            dateStr = DateFormat('dd MMM, hh:mm a').format(dt.isUtc ? dt.toLocal() : dt);
+                          }
+                          return InkWell(
+                            onTap: () {
+                              showDialog(
+                                context: context,
+                                builder: (_) => ReceiptDialog(order: o, currency: currency),
+                              );
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              decoration: const BoxDecoration(
+                                border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        o.orderNumber.startsWith('#') ? o.orderNumber : '#${o.orderNumber}',
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        dateStr,
+                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      _buildOrderTypeChip(o.orderType),
+                                    ],
+                                  ),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          o.paymentMethod,
+                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        '$currency${_formatNumber(o.totalAmount)}',
+                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         );

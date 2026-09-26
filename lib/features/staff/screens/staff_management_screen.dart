@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
@@ -211,9 +212,11 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text('Delete Staff Member', style: TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-        content: Text('Are you sure you want to remove "${staff.name}" (${staff.employeeId}) from staff management?'),
+        content: Text('Are you sure you want to remove "${staff.name}" (${staff.employeeId}) from staff management?', style: const TextStyle(color: Color(0xFF475569))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -285,48 +288,65 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isMobile = constraints.maxWidth < 700;
-            return RefreshIndicator(
-              onRefresh: _loadStaffData,
-              color: const Color(0xFF2563EB),
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-                padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 14 : 24,
-                  vertical: isMobile ? 14 : 20,
+    return Theme(
+      data: ThemeData.light().copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        canvasColor: Colors.white,
+        cardColor: Colors.white,
+        dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF2563EB),
+          surface: Colors.white,
+          onSurface: Color(0xFF0F172A),
+        ),
+        popupMenuTheme: const PopupMenuThemeData(
+          color: Colors.white,
+          surfaceTintColor: Colors.white,
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: SafeArea(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 700;
+              return RefreshIndicator(
+                onRefresh: _loadStaffData,
+                color: const Color(0xFF2563EB),
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                  padding: EdgeInsets.symmetric(
+                    horizontal: isMobile ? 14 : 24,
+                    vertical: isMobile ? 14 : 20,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // 1. Top Header Row
+                      _buildHeader(isMobile),
+                      const SizedBox(height: 18),
+
+                      // 2. Summary Metric Cards (4 Cards)
+                      _buildSummaryCards(isMobile),
+                      const SizedBox(height: 20),
+
+                      // 3. Search & Filter Bar
+                      _buildSearchAndFilters(isMobile),
+                      const SizedBox(height: 16),
+
+                      // 4. Staff Table / Card List
+                      _buildStaffTable(isMobile),
+                      const SizedBox(height: 16),
+
+                      // 5. Pagination Footer
+                      _buildPaginationFooter(isMobile),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // 1. Top Header Row
-                    _buildHeader(isMobile),
-                    const SizedBox(height: 18),
-
-                    // 2. Summary Metric Cards (4 Cards)
-                    _buildSummaryCards(isMobile),
-                    const SizedBox(height: 20),
-
-                    // 3. Search & Filter Bar
-                    _buildSearchAndFilters(isMobile),
-                    const SizedBox(height: 16),
-
-                    // 4. Staff Table / Card List
-                    _buildStaffTable(isMobile),
-                    const SizedBox(height: 16),
-
-                    // 5. Pagination Footer
-                    _buildPaginationFooter(isMobile),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
-            );
-          },
+              );
+            },
+          ),
         ),
       ),
     );
@@ -615,9 +635,19 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         child: DropdownButton<String>(
           value: _selectedRole,
           isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(10),
           icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-          items: _roleOptions.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          items: _roleOptions
+              .map((r) => DropdownMenuItem(
+                    value: r,
+                    child: Text(
+                      r,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    ),
+                  ))
+              .toList(),
           onChanged: _onRoleFilterChanged,
         ),
       ),
@@ -637,9 +667,19 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         child: DropdownButton<String>(
           value: _selectedStatus,
           isExpanded: true,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(10),
           icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
-          items: _statusOptions.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          items: _statusOptions
+              .map((s) => DropdownMenuItem(
+                    value: s,
+                    child: Text(
+                      s,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    ),
+                  ))
+              .toList(),
           onChanged: _onStatusFilterChanged,
         ),
       ),
@@ -892,8 +932,10 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           SizedBox(
             width: 40,
             child: PopupMenuButton<String>(
+              color: Colors.white,
+              surfaceTintColor: Colors.white,
               icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8), size: 18),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
               elevation: 4,
               onSelected: (action) {
                 if (action == 'edit') {
@@ -911,7 +953,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                     children: [
                       Icon(Icons.edit_outlined, size: 16, color: Color(0xFF2563EB)),
                       SizedBox(width: 8),
-                      Text('Edit Staff Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      Text('Edit Staff Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                     ],
                   ),
                 ),
@@ -927,7 +969,11 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                       SizedBox(width: 8),
                       Text(
                         staff.isActive ? 'Mark as Inactive' : 'Mark as Active',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: staff.isActive ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
+                        ),
                       ),
                     ],
                   ),
@@ -952,13 +998,48 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
 }
 
   Widget _buildAvatar(StaffModel staff) {
+    if (staff.avatarUrl.isNotEmpty) {
+      if (staff.avatarUrl.startsWith('http://') || staff.avatarUrl.startsWith('https://')) {
+        return SizedBox(
+          width: 32,
+          height: 32,
+          child: ClipOval(
+            child: Image.network(
+              staff.avatarUrl,
+              width: 32,
+              height: 32,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff),
+            ),
+          ),
+        );
+      } else if (File(staff.avatarUrl).existsSync()) {
+        return SizedBox(
+          width: 32,
+          height: 32,
+          child: ClipOval(
+            child: Image.file(
+              File(staff.avatarUrl),
+              width: 32,
+              height: 32,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff),
+            ),
+          ),
+        );
+      }
+    }
+    return _buildAvatarFallback(staff);
+  }
+
+  Widget _buildAvatarFallback(StaffModel staff) {
     return Container(
       width: 32,
       height: 32,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
-          colors: [staff.roleTextColor.withOpacity(0.85), staff.roleTextColor],
+          colors: [staff.roleTextColor.withValues(alpha: 0.85), staff.roleTextColor],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),

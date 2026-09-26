@@ -222,6 +222,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   void initState() {
     super.initState();
     _autoGenerateEmployeeId();
+    _applyRolePreset(_selectedRole);
   }
 
   @override
@@ -238,6 +239,114 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   void _autoGenerateEmployeeId() {
     final nextNumber = _db.staffList.length + 1;
     _employeeIdController.text = 'EMP${nextNumber.toString().padLeft(3, '0')}';
+  }
+
+  void _applyRolePreset(String role) {
+    final perms = <String>{};
+    String defaultScr = _selectedDefaultScreen;
+    switch (role.toLowerCase()) {
+      case 'admin':
+        for (final catList in _permissionsByCategory.values) {
+          for (final item in catList) {
+            perms.add(item['id']!);
+          }
+        }
+        defaultScr = 'Dashboard';
+        break;
+      case 'manager':
+        perms.addAll([
+          'pos_access',
+          'pos_apply_discount',
+          'pos_cancel_orders',
+          'pos_view_all_orders',
+          'pos_manage_tables',
+          'pos_takeaway_delivery',
+          'products_view',
+          'products_add_edit',
+          'products_categories',
+          'inventory_view',
+          'inventory_adjust',
+          'inventory_alerts',
+          'customers_view',
+          'customers_add_edit',
+          'customers_crm',
+          'reports_daily_sales',
+          'reports_financial',
+          'reports_export',
+          'reports_staff_performance',
+          'settings_printers',
+          'others_activity_logs',
+          'others_chotu_ai',
+        ]);
+        defaultScr = 'Dashboard';
+        break;
+      case 'cashier':
+        perms.addAll([
+          'pos_access',
+          'pos_apply_discount',
+          'pos_takeaway_delivery',
+          'customers_view',
+          'customers_add_edit',
+        ]);
+        defaultScr = 'POS Billing';
+        break;
+      case 'waiter':
+        perms.addAll([
+          'pos_manage_tables',
+          'pos_view_all_orders',
+          'pos_takeaway_delivery',
+        ]);
+        defaultScr = 'Tables / Floor';
+        break;
+      case 'chef':
+      case 'kitchen':
+        perms.addAll([
+          'pos_view_all_orders',
+          'pos_kds',
+        ]);
+        defaultScr = 'Orders List';
+        break;
+      case 'inventory':
+        perms.addAll([
+          'inventory_view',
+          'inventory_adjust',
+          'inventory_alerts',
+          'inventory_purchases',
+          'products_view',
+          'products_categories',
+        ]);
+        defaultScr = 'Dashboard';
+        break;
+      case 'sales':
+        perms.addAll([
+          'pos_access',
+          'pos_apply_discount',
+          'customers_view',
+          'customers_add_edit',
+          'customers_crm',
+        ]);
+        defaultScr = 'POS Billing';
+        break;
+      case 'support':
+        perms.addAll([
+          'customers_view',
+          'customers_crm',
+          'pos_view_all_orders',
+        ]);
+        defaultScr = 'Orders List';
+        break;
+      default:
+        perms.addAll([
+          'pos_access',
+          'pos_apply_discount',
+        ]);
+        defaultScr = 'POS Billing';
+    }
+    setState(() {
+      _selectedPermissions.clear();
+      _selectedPermissions.addAll(perms);
+      _selectedDefaultScreen = defaultScr;
+    });
   }
 
   Future<void> _pickAvatarImage() async {
@@ -289,13 +398,23 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     try {
       final phone = _phoneController.text.trim();
       final fullPhone = phone.isNotEmpty ? '$_selectedCountryCode $phone' : '';
+      final employeeId = _employeeIdController.text.trim().isNotEmpty
+          ? _employeeIdController.text.trim()
+          : 'EMP${(_db.staffList.length + 1).toString().padLeft(3, '0')}';
+
+      // Pin derivation: if password is 4-6 digits, use it as PIN, else use last 4 phone digits or '1234'
+      String pin = '1234';
+      if (password.length >= 4 && password.length <= 6 && RegExp(r'^\d+$').hasMatch(password)) {
+        pin = password;
+      } else if (phone.replaceAll(RegExp(r'\D'), '').length >= 4) {
+        final digits = phone.replaceAll(RegExp(r'\D'), '');
+        pin = digits.substring(digits.length - 4);
+      }
 
       final newStaff = StaffModel(
         id: 'st_${DateTime.now().millisecondsSinceEpoch}',
         name: _nameController.text.trim(),
-        employeeId: _employeeIdController.text.trim().isNotEmpty
-            ? _employeeIdController.text.trim()
-            : 'EMP${(_db.staffList.length + 1).toString().padLeft(3, '0')}',
+        employeeId: employeeId,
         email: _emailController.text.trim().toLowerCase(),
         phone: fullPhone,
         role: _selectedRole,
@@ -309,6 +428,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         enableBiometric: _enableBiometric,
         sendWelcomeEmail: _sendWelcomeEmail,
         status: _isActive ? 'Active' : 'Inactive',
+        avatarUrl: _avatarImageFile?.path ?? '',
+        pin: pin,
         password: password,
         forcePasswordChange: _forcePasswordChange,
         permissions: _selectedPermissions.toList(),
@@ -363,87 +484,130 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1320),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Top Header Bar
-                    _buildTopHeader(),
-                    const SizedBox(height: 20),
+    return Theme(
+      data: ThemeData.light().copyWith(
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+        canvasColor: Colors.white,
+        cardColor: Colors.white,
+        dialogTheme: const DialogThemeData(backgroundColor: Colors.white),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xFF2563EB),
+          surface: Colors.white,
+          onSurface: Color(0xFF0F172A),
+        ),
+        checkboxTheme: CheckboxThemeData(
+          fillColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF2563EB);
+            }
+            return Colors.transparent;
+          }),
+          checkColor: WidgetStateProperty.all(Colors.white),
+          side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        ),
+        switchTheme: SwitchThemeData(
+          thumbColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF2563EB);
+            }
+            return const Color(0xFF94A3B8);
+          }),
+          trackColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const Color(0xFF93C5FD);
+            }
+            return const Color(0xFFE2E8F0);
+          }),
+          trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+        ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: const Color(0xFF0F172A),
+          displayColor: const Color(0xFF0F172A),
+        ),
+      ),
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF8FAFC),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1320),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Top Header Bar
+                      _buildTopHeader(),
+                      const SizedBox(height: 20),
 
-                    // Windows 2-Column Responsive Layout
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final isTwoColumn = constraints.maxWidth >= 960;
-                        if (isTwoColumn) {
-                          return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                      // Windows 2-Column Responsive Layout
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isTwoColumn = constraints.maxWidth >= 960;
+                          if (isTwoColumn) {
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Left Column (50%)
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    children: [
+                                      _buildBasicInfoCard(),
+                                      const SizedBox(height: 16),
+                                      _buildWorkDetailsCard(),
+                                      const SizedBox(height: 16),
+                                      _buildLoginSecurityCard(),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 16),
+                                // Right Column (50%)
+                                Expanded(
+                                  flex: 5,
+                                  child: Column(
+                                    children: [
+                                      _buildPermissionsCard(),
+                                      const SizedBox(height: 16),
+                                      _buildPreferencesCard(),
+                                      const SizedBox(height: 16),
+                                      _buildAccountStatusCard(),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+
+                          // Stacked layout for smaller window sizes
+                          return Column(
                             children: [
-                              // Left Column (50%)
-                              Expanded(
-                                flex: 5,
-                                child: Column(
-                                  children: [
-                                    _buildBasicInfoCard(),
-                                    const SizedBox(height: 16),
-                                    _buildWorkDetailsCard(),
-                                    const SizedBox(height: 16),
-                                    _buildLoginSecurityCard(),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 16),
-                              // Right Column (50%)
-                              Expanded(
-                                flex: 5,
-                                child: Column(
-                                  children: [
-                                    _buildPermissionsCard(),
-                                    const SizedBox(height: 16),
-                                    _buildPreferencesCard(),
-                                    const SizedBox(height: 16),
-                                    _buildAccountStatusCard(),
-                                  ],
-                                ),
-                              ),
+                              _buildBasicInfoCard(),
+                              const SizedBox(height: 16),
+                              _buildWorkDetailsCard(),
+                              const SizedBox(height: 16),
+                              _buildLoginSecurityCard(),
+                              const SizedBox(height: 16),
+                              _buildPermissionsCard(),
+                              const SizedBox(height: 16),
+                              _buildPreferencesCard(),
+                              const SizedBox(height: 16),
+                              _buildAccountStatusCard(),
                             ],
                           );
-                        }
+                        },
+                      ),
+                      const SizedBox(height: 20),
 
-                        // Stacked layout for smaller window sizes
-                        return Column(
-                          children: [
-                            _buildBasicInfoCard(),
-                            const SizedBox(height: 16),
-                            _buildWorkDetailsCard(),
-                            const SizedBox(height: 16),
-                            _buildLoginSecurityCard(),
-                            const SizedBox(height: 16),
-                            _buildPermissionsCard(),
-                            const SizedBox(height: 16),
-                            _buildPreferencesCard(),
-                            const SizedBox(height: 16),
-                            _buildAccountStatusCard(),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Bottom Action Bar
-                    _buildBottomActionBar(),
-                    const SizedBox(height: 24),
-                  ],
+                      // Bottom Action Bar
+                      _buildBottomActionBar(),
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -530,6 +694,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     const SizedBox(height: 6),
                     TextFormField(
                       controller: _nameController,
+                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(
                         hint: 'Enter full name',
                         icon: Icons.person_outline_rounded,
@@ -555,6 +720,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                 children: [
                                   TextFormField(
                                     controller: _employeeIdController,
+                                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                                     decoration: _inputDecoration(
                                       hint: 'EMP00X',
                                       icon: Icons.badge_outlined,
@@ -599,6 +765,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               DropdownButtonFormField<String>(
                                 isExpanded: true,
                                 initialValue: _selectedRole,
+                                dropdownColor: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                                style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                                 decoration: _inputDecoration(
                                   hint: 'Select role',
                                   icon: Icons.work_outline_rounded,
@@ -606,11 +776,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                 items: _roleOptions
                                     .map((r) => DropdownMenuItem(
                                           value: r,
-                                          child: Text(r, style: const TextStyle(fontSize: 13)),
+                                          child: Text(r, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
                                         ))
                                     .toList(),
                                 onChanged: (val) {
-                                  if (val != null) setState(() => _selectedRole = val);
+                                  if (val != null) {
+                                    setState(() => _selectedRole = val);
+                                    _applyRolePreset(val);
+                                  }
                                 },
                               ),
                             ],
@@ -638,6 +811,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     TextFormField(
                       controller: _emailController,
                       keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(
                         hint: 'name@company.com',
                         icon: Icons.mail_outline_rounded,
@@ -668,11 +842,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       children: [
                         // Country Code Dropdown
                         Container(
-                          width: 84,
+                          width: 88,
                           margin: const EdgeInsets.only(right: 6),
                           child: DropdownButtonFormField<String>(
                             isExpanded: true,
                             initialValue: _selectedCountryCode,
+                            dropdownColor: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                             decoration: _inputDecoration(hint: '+91', icon: Icons.phone_outlined)
                                 .copyWith(
                               prefixIcon: null,
@@ -681,7 +859,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             items: _countryCodes
                                 .map((c) => DropdownMenuItem(
                                       value: c,
-                                      child: Text(c, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600)),
+                                      child: Text(c, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                                     ))
                                 .toList(),
                             onChanged: (val) {
@@ -695,6 +873,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                           child: TextFormField(
                             controller: _phoneController,
                             keyboardType: TextInputType.phone,
+                            style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                             decoration: _inputDecoration(
                               hint: '98765 43210',
                               icon: Icons.phone_android_rounded,
@@ -789,9 +968,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedDepartment,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Select department', icon: Icons.domain_rounded),
                       items: _departmentOptions
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13))))
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedDepartment = val);
@@ -812,9 +995,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedReportingTo,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Select manager', icon: Icons.supervisor_account_outlined),
                       items: _reportingToOptions
-                          .map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 13))))
+                          .map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedReportingTo = val);
@@ -839,9 +1026,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedLocation,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Select location', icon: Icons.location_on_outlined),
                       items: _locationOptions
-                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13))))
+                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedLocation = val);
@@ -862,9 +1053,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedShift,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Select shift', icon: Icons.schedule_outlined),
                       items: _shiftOptions
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12.5))))
+                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedShift = val);
@@ -900,6 +1095,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     TextFormField(
                       controller: _passwordController,
                       obscureText: _obscurePassword,
+                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(
                         hint: '••••••••',
                         icon: Icons.lock_outline_rounded,
@@ -934,6 +1130,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     TextFormField(
                       controller: _confirmPasswordController,
                       obscureText: _obscureConfirmPassword,
+                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(
                         hint: '••••••••',
                         icon: Icons.lock_outline_rounded,
@@ -975,6 +1172,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                   child: Checkbox(
                     value: _forcePasswordChange,
                     activeColor: const Color(0xFF2563EB),
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                     onChanged: (val) => setState(() => _forcePasswordChange = val ?? false),
                   ),
@@ -1092,6 +1291,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             child: Checkbox(
                               value: isChecked,
                               activeColor: const Color(0xFF2563EB),
+                              checkColor: Colors.white,
+                              side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                               onChanged: (val) {
                                 setState(() {
@@ -1157,9 +1358,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedLanguage,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Language', icon: Icons.language_rounded),
                       items: _languageOptions
-                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13))))
+                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedLanguage = val);
@@ -1180,9 +1385,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedTheme,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Theme', icon: Icons.wb_sunny_outlined),
                       items: _themeOptions
-                          .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 13))))
+                          .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedTheme = val);
@@ -1203,9 +1412,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     DropdownButtonFormField<String>(
                       isExpanded: true,
                       initialValue: _selectedDefaultScreen,
+                      dropdownColor: Colors.white,
+                      borderRadius: BorderRadius.circular(10),
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                       decoration: _inputDecoration(hint: 'Default screen', icon: Icons.dashboard_outlined),
                       items: _defaultScreenOptions
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 13))))
+                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                           .toList(),
                       onChanged: (val) {
                         if (val != null) setState(() => _selectedDefaultScreen = val);
@@ -1255,6 +1468,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                 Switch(
                   value: _enableBiometric,
                   activeThumbColor: const Color(0xFF2563EB),
+                  activeTrackColor: const Color(0xFF93C5FD),
+                  inactiveThumbColor: const Color(0xFF94A3B8),
+                  inactiveTrackColor: const Color(0xFFE2E8F0),
+                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                   onChanged: (val) => setState(() => _enableBiometric = val),
                 ),
               ],
@@ -1286,6 +1503,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     Switch(
                       value: _isActive,
                       activeThumbColor: const Color(0xFF2563EB),
+                      activeTrackColor: const Color(0xFF93C5FD),
+                      inactiveThumbColor: const Color(0xFF94A3B8),
+                      inactiveTrackColor: const Color(0xFFE2E8F0),
+                      trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
                       onChanged: (val) => setState(() => _isActive = val),
                     ),
                     const SizedBox(width: 8),
@@ -1343,7 +1564,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                           style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
                         ),
                         SizedBox(height: 1),
-                        const Row(
+                        Row(
                           children: [
                             Icon(Icons.circle, size: 6, color: Color(0xFF10B981)),
                             SizedBox(width: 4),
@@ -1386,6 +1607,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                 child: Checkbox(
                   value: _sendWelcomeEmail,
                   activeColor: const Color(0xFF2563EB),
+                  checkColor: Colors.white,
+                  side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                   onChanged: (val) => setState(() => _sendWelcomeEmail = val ?? false),
                 ),

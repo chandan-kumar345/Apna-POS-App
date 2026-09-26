@@ -1,7 +1,20 @@
+const mongoose = require('mongoose');
 const Staff = require('../models/Staff');
 const User = require('../models/User');
 
 class StaffService {
+  _buildStaffQuery(businessId, id) {
+    if (mongoose.Types.ObjectId.isValid(id)) {
+      return { _id: id, businessId };
+    }
+    return {
+      businessId,
+      $or: [
+        { employeeId: id },
+        { email: id.toLowerCase() },
+      ],
+    };
+  }
   async getStaff(businessId, query = {}) {
     const {
       search,
@@ -79,7 +92,8 @@ class StaffService {
   }
 
   async getStaffById(businessId, id) {
-    const staff = await Staff.findOne({ _id: id, businessId });
+    const query = this._buildStaffQuery(businessId, id);
+    const staff = await Staff.findOne(query);
     if (!staff) {
       throw new Error('Staff member not found');
     }
@@ -138,13 +152,14 @@ class StaffService {
   }
 
   async updateStaff(businessId, id, staffData) {
-    const existingStaff = await Staff.findOne({ _id: id, businessId });
+    const query = this._buildStaffQuery(businessId, id);
+    let existingStaff = await Staff.findOne(query);
     if (!existingStaff) {
-      throw new Error('Staff member not found');
+      return this.createStaff(businessId, { ...staffData, employeeId: staffData.employeeId || id });
     }
 
     const staff = await Staff.findOneAndUpdate(
-      { _id: id, businessId },
+      { _id: existingStaff._id, businessId },
       { $set: staffData },
       { new: true, runValidators: true }
     );
@@ -195,7 +210,8 @@ class StaffService {
   }
 
   async toggleStaffStatus(businessId, id) {
-    const staff = await Staff.findOne({ _id: id, businessId });
+    const query = this._buildStaffQuery(businessId, id);
+    const staff = await Staff.findOne(query);
     if (!staff) {
       throw new Error('Staff member not found');
     }
@@ -206,7 +222,8 @@ class StaffService {
   }
 
   async deleteStaff(businessId, id) {
-    const staff = await Staff.findOneAndDelete({ _id: id, businessId });
+    const query = this._buildStaffQuery(businessId, id);
+    const staff = await Staff.findOneAndDelete(query);
     if (!staff) {
       throw new Error('Staff member not found');
     }

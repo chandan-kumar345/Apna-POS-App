@@ -103,6 +103,14 @@ class OrderService {
         existingOrder.isPaid = true;
         existingOrder.paymentMethod = pm;
         existingOrder.completedAt = new Date();
+        const incomingStaffId = (rawData.staffId || rawData.waiterId || rawData.cashierId || rawData.CreatedByUserId || rawData.createdByUserId || '').toString().trim();
+        const incomingStaffName = (rawData.staffName || rawData.servedBy || rawData.waiterName || rawData.cashierName || '').toString().trim();
+        const incomingStaffRole = (rawData.staffRole || rawData.role || '').toString().trim();
+        const incomingServedBy = (rawData.servedBy || incomingStaffName || '').toString().trim();
+        if (incomingStaffId) existingOrder.staffId = incomingStaffId;
+        if (incomingStaffName) existingOrder.staffName = incomingStaffName;
+        if (incomingStaffRole) existingOrder.staffRole = incomingStaffRole;
+        if (incomingServedBy) existingOrder.servedBy = incomingServedBy;
         if (rawData.totalAmount !== undefined && Number(rawData.totalAmount) > 0) {
           existingOrder.totalAmount = Number(rawData.totalAmount);
         }
@@ -225,6 +233,14 @@ class OrderService {
     const venderCardId = (rawData.VenderCardId || rawData.venderCardId || '').toString().trim();
     const createdByUserId = (rawData.CreatedByUserId || rawData.createdByUserId || '').toString().trim();
     const createdByCardId = (rawData.CreatedByCardId || rawData.createdByCardId || '').toString().trim();
+    const staffId = (rawData.staffId || rawData.waiterId || rawData.cashierId || createdByUserId || venderUserId || '').toString().trim();
+    const staffName = (rawData.staffName || rawData.servedBy || rawData.waiterName || rawData.cashierName || rawData.userName || '').toString().trim();
+    const staffRole = (rawData.staffRole || rawData.role || '').toString().trim();
+    const servedBy = (rawData.servedBy || staffName || '').toString().trim();
+    const waiterId = (rawData.waiterId || staffId || '').toString().trim();
+    const waiterName = (rawData.waiterName || staffName || '').toString().trim();
+    const cashierId = (rawData.cashierId || staffId || '').toString().trim();
+    const cashierName = (rawData.cashierName || staffName || '').toString().trim();
     const cartId = (rawData.cartId || '').toString().trim();
     const isKOT = Boolean(rawData.isKOT);
     const paymentDetails = Array.isArray(rawData.paymentDetails) ? rawData.paymentDetails : [];
@@ -392,6 +408,14 @@ class OrderService {
       if (rawData.paymentMethod) existingConflict.paymentMethod = rawData.paymentMethod;
       if (rawData.customerName) existingConflict.customerName = rawData.customerName;
       if (rawData.customerPhone) existingConflict.customerPhone = rawData.customerPhone;
+      if (staffId) existingConflict.staffId = staffId;
+      if (staffName) existingConflict.staffName = staffName;
+      if (staffRole) existingConflict.staffRole = staffRole;
+      if (servedBy) existingConflict.servedBy = servedBy;
+      if (waiterId) existingConflict.waiterId = waiterId;
+      if (waiterName) existingConflict.waiterName = waiterName;
+      if (cashierId) existingConflict.cashierId = cashierId;
+      if (cashierName) existingConflict.cashierName = cashierName;
       await existingConflict.save();
 
       return {
@@ -416,6 +440,14 @@ class OrderService {
       customerId,
       customerName: rawData.customerName || '',
       customerPhone: rawData.customerPhone || '',
+      staffId,
+      staffName,
+      staffRole,
+      servedBy,
+      waiterId,
+      waiterName,
+      cashierId,
+      cashierName,
       status,
       items: items.map((i) => ({
         productId: i.productId && i.productId.length === 24 ? i.productId : undefined,
@@ -1071,6 +1103,10 @@ class OrderService {
     const customerName = (rawData.customerName || '').trim();
     const customerPhone = (rawData.customerPhone || '').trim();
     const notes = (rawData.notes || rawData.remarks || '').trim();
+    const staffId = (rawData.staffId || rawData.waiterId || rawData.cashierId || rawData.CreatedByUserId || rawData.createdByUserId || '').toString().trim();
+    const staffName = (rawData.staffName || rawData.servedBy || rawData.waiterName || rawData.cashierName || rawData.userName || '').toString().trim();
+    const staffRole = (rawData.staffRole || rawData.role || '').toString().trim();
+    const servedBy = (rawData.servedBy || staffName || '').toString().trim();
 
     const formattedItems = items.map((i) => ({
       productId: i.productId && i.productId.length === 24 ? i.productId : undefined,
@@ -1104,6 +1140,10 @@ class OrderService {
       if (customerName) order.customerName = customerName;
       if (customerPhone) order.customerPhone = customerPhone;
       if (notes) order.notes = notes;
+      if (staffId) order.staffId = staffId;
+      if (staffName) order.staffName = staffName;
+      if (staffRole) order.staffRole = staffRole;
+      if (servedBy) order.servedBy = servedBy;
       order.qrIntentUrl = qrIntentUrl;
       order.printCount = (order.printCount || 0) + 1;
       await order.save();
@@ -1132,6 +1172,10 @@ class OrderService {
         if (customerName) order.customerName = customerName;
         if (customerPhone) order.customerPhone = customerPhone;
         if (notes) order.notes = notes;
+        if (staffId) order.staffId = staffId;
+        if (staffName) order.staffName = staffName;
+        if (staffRole) order.staffRole = staffRole;
+        if (servedBy) order.servedBy = servedBy;
         order.qrIntentUrl = qrIntentUrl;
         order.printCount = (order.printCount || 0) + 1;
         await order.save();
@@ -1146,6 +1190,10 @@ class OrderService {
           deliveryAddress,
           customerName,
           customerPhone,
+          staffId,
+          staffName,
+          staffRole,
+          servedBy,
           status: rawData.status || 'pending',
           paymentStatus: 'pending',
           paymentMethod: 'unpaid',
@@ -1352,6 +1400,14 @@ class OrderService {
     order.status = 'completed';
     order.completedAt = new Date();
     order.invoiceGenerated = true;
+    const staffId = (paymentData.staffId || paymentData.waiterId || paymentData.cashierId || paymentData.CreatedByUserId || paymentData.createdByUserId || order.staffId || '').toString().trim();
+    const staffName = (paymentData.staffName || paymentData.servedBy || paymentData.waiterName || paymentData.cashierName || order.staffName || '').toString().trim();
+    const staffRole = (paymentData.staffRole || paymentData.role || order.staffRole || '').toString().trim();
+    const servedBy = (paymentData.servedBy || staffName || order.servedBy || '').toString().trim();
+    if (staffId) order.staffId = staffId;
+    if (staffName) order.staffName = staffName;
+    if (staffRole) order.staffRole = staffRole;
+    if (servedBy) order.servedBy = servedBy;
     if (paymentData.roundOff !== undefined) {
       order.roundOff = Number(paymentData.roundOff) || 0;
     }

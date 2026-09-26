@@ -314,6 +314,47 @@ const orderSchema = new mongoose.Schema(
     qrExpiresAt: {
       type: Date,
     },
+    staffId: {
+      type: String,
+      default: '',
+      trim: true,
+      index: true,
+    },
+    staffName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    staffRole: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    servedBy: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    waiterId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    waiterName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    cashierId: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    cashierName: {
+      type: String,
+      default: '',
+      trim: true,
+    },
   },
   {
     timestamps: true,

@@ -23,7 +23,6 @@ class SalesTrendChart extends StatefulWidget {
 
 class _SalesTrendChartState extends State<SalesTrendChart> {
   int? _hoveredIndex;
-  String _selectedFrequency = 'Daily';
 
   @override
   Widget build(BuildContext context) {
@@ -40,10 +39,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
       if (p.orderCount > maxOrders) maxOrders = p.orderCount;
     }
 
-    if (maxSales <= 0) maxSales = 25000;
-    if (maxOrders <= 0) maxOrders = 100;
-
-    // Round up maxSales to nearest clean 5000 or 10000
+    // Dynamic clean ceilings
     final double salesCeiling = _calculateCeiling(maxSales);
     final int ordersCeiling = _calculateOrdersCeiling(maxOrders);
 
@@ -64,7 +60,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Row with Title, Legends, and Frequency Selector
+          // Header Row with Title, Legends
           _buildHeader(),
           const SizedBox(height: 16),
 
@@ -77,15 +73,20 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                   onPanDown: (details) => _handleTouch(details.localPosition, constraints.maxWidth, points.length),
                   onPanUpdate: (details) => _handleTouch(details.localPosition, constraints.maxWidth, points.length),
                   onPanEnd: (_) => setState(() => _hoveredIndex = null),
-                  child: CustomPaint(
-                    size: Size(constraints.maxWidth, constraints.maxHeight),
-                    painter: _DualAxisChartPainter(
-                      points: points,
-                      maxSales: salesCeiling,
-                      maxOrders: ordersCeiling,
-                      currency: widget.currency,
-                      isMobile: widget.isMobile,
-                      hoveredIndex: _hoveredIndex,
+                  onTapUp: (_) => setState(() => _hoveredIndex = null),
+                  child: MouseRegion(
+                    onHover: (event) => _handleTouch(event.localPosition, constraints.maxWidth, points.length),
+                    onExit: (_) => setState(() => _hoveredIndex = null),
+                    child: CustomPaint(
+                      size: Size(constraints.maxWidth, constraints.maxHeight),
+                      painter: _DualAxisChartPainter(
+                        points: points,
+                        maxSales: salesCeiling,
+                        maxOrders: ordersCeiling,
+                        currency: widget.currency,
+                        isMobile: widget.isMobile,
+                        hoveredIndex: _hoveredIndex,
+                      ),
                     ),
                   ),
                 );
@@ -95,30 +96,39 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
 
           // Hover Tooltip Info Banner
           if (_hoveredIndex != null && _hoveredIndex! < points.length) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 2),
+                  ),
+                ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  const Icon(Icons.insights_rounded, size: 14, color: Color(0xFF38BDF8)),
+                  const SizedBox(width: 6),
                   Text(
                     '${points[_hoveredIndex!].dateLabel}: ',
-                    style: const TextStyle(color: Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'Sales: ${widget.currency}${points[_hoveredIndex!].salesAmount.toStringAsFixed(0)}',
-                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11, fontWeight: FontWeight.w800),
+                    'Sales: ${widget.currency}${_formatTooltipAmount(points[_hoveredIndex!].salesAmount)}',
+                    style: const TextStyle(color: Color(0xFF38BDF8), fontSize: 11.5, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(width: 8),
-                  const Text('•', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                  const Text('•', style: TextStyle(color: Colors.white38, fontSize: 11.5)),
                   const SizedBox(width: 8),
                   Text(
                     'Orders: ${points[_hoveredIndex!].orderCount}',
-                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 11, fontWeight: FontWeight.w800),
+                    style: const TextStyle(color: Color(0xFF4ADE80), fontSize: 11.5, fontWeight: FontWeight.w800),
                   ),
                 ],
               ),
@@ -127,6 +137,14 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
         ],
       ),
     );
+  }
+
+  String _formatTooltipAmount(double amount) {
+    if (amount >= 1000) {
+      final str = amount.toStringAsFixed(0);
+      return str.replaceAllMapped(RegExp(r'(\d+?)(?=(\d\d)+(\d)(?!\d))(\.\d+)?'), (Match m) => '${m[1]},');
+    }
+    return amount.toStringAsFixed(amount.truncateToDouble() == amount ? 0 : 2);
   }
 
   Widget _buildHeader() {
@@ -138,8 +156,8 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: widget.isMobile ? 40 : 46,
-              height: widget.isMobile ? 40 : 46,
+              width: widget.isMobile ? 38 : 44,
+              height: widget.isMobile ? 38 : 44,
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
                 color: const Color(0xFF0F172A).withValues(alpha: 0.08),
@@ -148,8 +166,8 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
               alignment: Alignment.center,
               child: Image.asset(
                 'assets/images/sales report icon/sales trend.png',
-                width: widget.isMobile ? 28 : 34,
-                height: widget.isMobile ? 28 : 34,
+                width: widget.isMobile ? 26 : 32,
+                height: widget.isMobile ? 26 : 32,
                 fit: BoxFit.contain,
                 errorBuilder: (_, __, ___) => Icon(
                   Icons.analytics_rounded,
@@ -197,7 +215,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                 ),
               ],
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 14),
 
             // Legend: Orders
             Row(
@@ -246,6 +264,9 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
   }
 
   double _calculateCeiling(double val) {
+    if (val <= 0) return 500;
+    if (val <= 100) return 100;
+    if (val <= 250) return 250;
     if (val <= 500) return 500;
     if (val <= 1000) return 1000;
     if (val <= 2500) return 2500;
@@ -260,6 +281,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
   }
 
   int _calculateOrdersCeiling(int val) {
+    if (val <= 0) return 5;
     if (val <= 5) return 5;
     if (val <= 10) return 10;
     if (val <= 20) return 20;
@@ -315,7 +337,7 @@ class _DualAxisChartPainter extends CustomPainter {
       ..color = const Color(0xFFF1F5F9)
       ..strokeWidth = 1.0;
 
-    final textStyle = const TextStyle(
+    const textStyle = TextStyle(
       fontSize: 9.5,
       fontWeight: FontWeight.w600,
       color: Color(0xFF94A3B8),
@@ -365,28 +387,58 @@ class _DualAxisChartPainter extends CustomPainter {
         ? (points.length / 6).ceil()
         : (points.length > 12 ? (points.length / 7).ceil() : 1);
 
-    // 1. Draw Sales Bars (Blue with rounded top)
+    // Draw vertical indicator line for hovered item
+    if (hoveredIndex != null && hoveredIndex! >= 0 && hoveredIndex! < points.length) {
+      final hX = leftMargin + (hoveredIndex! * stepX) + (stepX / 2);
+      final highlightPaint = Paint()
+        ..color = const Color(0xFF38BDF8).withValues(alpha: 0.25)
+        ..strokeWidth = barWidth + 8
+        ..strokeCap = StrokeCap.round;
+      canvas.drawLine(
+        Offset(hX, topMargin),
+        Offset(hX, topMargin + chartHeight),
+        highlightPaint,
+      );
+    }
+
+    // 1. Draw Sales Bars (Blue with gradient and rounded top)
     for (int i = 0; i < points.length; i++) {
       final p = points[i];
       final centerX = leftMargin + (i * stepX) + (stepX / 2);
-      final barHeight = maxSales > 0 ? (p.salesAmount / maxSales) * chartHeight : 0.0;
+      final rawHeight = maxSales > 0 ? (p.salesAmount / maxSales) * chartHeight : 0.0;
+      final barHeight = p.salesAmount > 0 ? math.max(4.0, rawHeight) : 0.0;
       final topY = topMargin + chartHeight - barHeight;
 
       final isHovered = hoveredIndex == i;
-      final barPaint = Paint()
-        ..color = isHovered ? const Color(0xFF2563EB) : const Color(0xFF5B9EF8).withValues(alpha: 0.88);
-
-      final rrect = RRect.fromRectAndCorners(
-        Rect.fromLTRB(centerX - barWidth / 2, topY, centerX + barWidth / 2, topMargin + chartHeight),
-        topLeft: const Radius.circular(5),
-        topRight: const Radius.circular(5),
+      final barRect = Rect.fromLTRB(
+        centerX - barWidth / 2,
+        topY,
+        centerX + barWidth / 2,
+        topMargin + chartHeight,
       );
-      canvas.drawRRect(rrect, barPaint);
+
+      if (barHeight > 0) {
+        final barPaint = Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isHovered
+                ? const [Color(0xFF2563EB), Color(0xFF1D4ED8)]
+                : [const Color(0xFF60A5FA), const Color(0xFF2563EB).withValues(alpha: 0.88)],
+          ).createShader(barRect);
+
+        final cornerRadius = Radius.circular(math.min(5.0, barHeight / 2));
+        final rrect = RRect.fromRectAndCorners(
+          barRect,
+          topLeft: cornerRadius,
+          topRight: cornerRadius,
+        );
+        canvas.drawRRect(rrect, barPaint);
+      }
 
       // Bottom X-Axis Date Label
       String dateLabel = p.dateLabel;
       if (isMobile && dateLabel.contains(' ') && !dateLabel.endsWith('AM') && !dateLabel.endsWith('PM')) {
-        // e.g. "11 Sep" -> "11" for clean mobile fit
         dateLabel = dateLabel.split(' ').first;
       }
 
@@ -443,8 +495,15 @@ class _DualAxisChartPainter extends CustomPainter {
         final pt = orderPoints[i];
         final isHovered = hoveredIndex == i;
 
-        final outerPaint = Paint()..color = const Color(0xFF10B981);
+        final outerPaint = Paint()..color = isHovered ? const Color(0xFF059669) : const Color(0xFF10B981);
         final innerPaint = Paint()..color = Colors.white;
+
+        if (isHovered) {
+          final glowPaint = Paint()
+            ..color = const Color(0xFF10B981).withValues(alpha: 0.3)
+            ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
+          canvas.drawCircle(pt, 8.0, glowPaint);
+        }
 
         canvas.drawCircle(pt, isHovered ? 5.5 : 4.0, outerPaint);
         canvas.drawCircle(pt, isHovered ? 2.5 : 2.0, innerPaint);

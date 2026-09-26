@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:apna_pos/core/models/user_model.dart';
+import 'package:apna_pos/core/models/staff_model.dart';
 import 'package:apna_pos/core/database/database_service.dart';
 
 void main() {
@@ -141,9 +142,129 @@ void main() {
       expect(db.currentUser?.employeeId, 'EMP007');
       expect(db.currentUser?.isChef, isTrue);
       expect(db.currentUser?.hasPermission('orders'), isTrue);
-      expect(db.currentUser?.hasPermission('pos'), isTrue); // orders maps to pos category
+      expect(db.currentUser?.hasPermission('menu'), isTrue);
+      expect(db.currentUser?.hasPermission('pos'), isFalse); // Strict isolation: orders alone does not grant pos
       expect(db.currentUser?.hasPermission('staff'), isFalse);
       expect(db.currentUser?.hasPermission('settings'), isFalse);
+    });
+
+    test('Strict permission isolation: POS only staff has no access to tables, orders, inventory', () {
+      final posOnlyUser = UserModel(
+        id: 'usr_pos_only',
+        name: 'Sneha Cashier',
+        email: 'sneha@apnapos.com',
+        role: 'Cashier',
+        employeeId: 'EMP007',
+        pin: '7777',
+        restaurantId: 'rest_001',
+        permissions: const ['pos'],
+      );
+
+      expect(posOnlyUser.hasPermission('pos'), isTrue);
+      expect(posOnlyUser.hasPermission('tables'), isFalse);
+      expect(posOnlyUser.hasPermission('orders'), isFalse);
+      expect(posOnlyUser.hasPermission('dashboard'), isFalse);
+      expect(posOnlyUser.hasPermission('inventory'), isFalse);
+      expect(posOnlyUser.hasPermission('reports'), isFalse);
+      expect(posOnlyUser.hasPermission('crm'), isFalse);
+      expect(posOnlyUser.hasPermission('loyalty'), isFalse);
+      expect(posOnlyUser.hasPermission('campaign'), isFalse);
+      expect(posOnlyUser.hasPermission('staff'), isFalse);
+      expect(posOnlyUser.hasPermission('settings'), isFalse);
+    });
+
+    test('Owner creates new staff with avatar photo and permissions, and staff login reflects all details', () async {
+      final db = DatabaseService();
+      
+      // 1. Owner creates a new staff member (e.g. Rohit Kumar - POS and Takeaway Cashier)
+      final createdStaff = StaffModel(
+        id: 'st_rohit_009',
+        name: 'Rohit Kumar',
+        employeeId: 'EMP009',
+        email: 'rohit@apnapos.com',
+        phone: '+91 9876543210',
+        role: 'Cashier',
+        status: 'Active',
+        pin: '9999',
+        avatarUrl: '/path/to/rohit_photo.png',
+        department: 'Billing / Counter',
+        defaultScreen: 'POS Billing',
+        permissions: const ['pos_access', 'pos_apply_discount', 'pos_takeaway_delivery', 'customers_view'],
+        createdAt: DateTime.now(),
+      );
+
+      db.addStaff(createdStaff);
+      expect(db.staffList.any((s) => s.employeeId == 'EMP009'), isTrue);
+
+      // 2. Staff logs in using Employee ID 'EMP009' and PIN '9999'
+      final matched = db.staffList.firstWhere((s) => s.employeeId == 'EMP009');
+      final loggedInUser = UserModel(
+        id: matched.id,
+        name: matched.name,
+        email: matched.email,
+        role: matched.role,
+        pin: matched.pin,
+        restaurantId: 'rest_001',
+        phone: matched.phone,
+        employeeId: matched.employeeId,
+        profilePhotoPath: matched.avatarUrl,
+        permissions: matched.permissions,
+        jobTitle: matched.role,
+        onboardingCompleted: true,
+        onboardingStep: 4,
+      );
+
+      await db.saveActiveUser(loggedInUser);
+
+      // Verify all staff details are accurately present in the logged-in session
+      expect(db.currentUser?.name, 'Rohit Kumar');
+      expect(db.currentUser?.employeeId, 'EMP009');
+      expect(db.currentUser?.role, 'Cashier');
+      expect(db.currentUser?.profilePhotoPath, '/path/to/rohit_photo.png');
+      expect(db.currentUser?.phone, '+91 9876543210');
+      expect(db.currentUser?.email, 'rohit@apnapos.com');
+
+      // Verify dynamic permission enforcement for this newly created staff
+      expect(db.currentUser?.hasPermission('pos'), isTrue);
+      expect(db.currentUser?.hasPermission('crm'), isTrue); // customers_view maps to crm
+      expect(db.currentUser?.hasPermission('tables'), isFalse);
+      expect(db.currentUser?.hasPermission('orders'), isFalse);
+      expect(db.currentUser?.hasPermission('inventory'), isFalse);
+      expect(db.currentUser?.hasPermission('reports'), isFalse);
+      expect(db.currentUser?.hasPermission('staff'), isFalse);
+      expect(db.currentUser?.hasPermission('settings'), isFalse);
+    });
+
+    test('Staff update in DatabaseService dynamically synchronizes avatar and permissions in real-time', () async {
+      final db = DatabaseService();
+      final staffUser = UserModel(
+        id: 'staff_sync_01',
+        name: 'Sunita Waiter',
+        email: 'sunita@apnapos.com',
+        role: 'Waiter',
+        employeeId: 'EMP004',
+        pin: '4444',
+        restaurantId: 'rest_001',
+        profilePhotoPath: '/old/path.png',
+        permissions: const ['pos_view_all_orders'],
+      );
+
+      await db.saveActiveUser(staffUser);
+      expect(db.currentUser?.hasPermission('orders'), isTrue);
+      expect(db.currentUser?.hasPermission('pos'), isFalse);
+      expect(db.currentUser?.profilePhotoPath, '/old/path.png');
+
+      // Store owner updates Sunita's avatar photo and adds table management permission
+      final updatedStaff = db.staffList.firstWhere((s) => s.employeeId == 'EMP004').copyWith(
+        avatarUrl: '/new/sunita_headshot.jpg',
+        permissions: const ['pos_view_all_orders', 'pos_manage_tables'],
+      );
+      db.updateStaff(updatedStaff);
+
+      expect(db.currentUser?.profilePhotoPath, '/new/sunita_headshot.jpg');
+      expect(db.currentUser?.hasPermission('orders'), isTrue);
+      expect(db.currentUser?.hasPermission('tables'), isTrue);
+      expect(db.currentUser?.hasPermission('pos'), isFalse);
     });
   });
 }

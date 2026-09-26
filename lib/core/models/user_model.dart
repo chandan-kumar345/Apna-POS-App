@@ -54,25 +54,79 @@ class UserModel {
       return true;
     }
 
-    // Category / alias matching
-    for (final p in permissions) {
-      final pLower = p.toLowerCase().trim();
-      if (pLower == req) return true;
-      if (req.startsWith(pLower) || pLower.startsWith(req)) return true;
-      if (req == 'pos' && (pLower.startsWith('pos_') || pLower == 'orders' || pLower == 'tables')) return true;
-      if (req == 'tables' && (pLower == 'pos_manage_tables' || pLower == 'pos' || pLower == 'pos_access')) return true;
-      if (req == 'orders' && (pLower == 'pos_view_all_orders' || pLower == 'pos' || pLower == 'pos_access')) return true;
-      if (req == 'menu' && (pLower.startsWith('products_') || pLower == 'products')) return true;
-      if (req == 'inventory' && pLower.startsWith('inventory_')) return true;
-      if (req == 'reports' && pLower.startsWith('reports_')) return true;
-      if (req == 'crm' && (pLower.startsWith('customers_') || pLower == 'customers')) return true;
-      if (req == 'loyalty' && (pLower == 'customers_crm' || pLower == 'customers')) return true;
-      if (req == 'campaign' && (pLower == 'customers_crm' || pLower == 'customers')) return true;
-      if (req == 'staff' && (pLower == 'settings_staff' || pLower == 'settings')) return true;
-      if (req == 'settings' && pLower.startsWith('settings_')) return true;
+    // Precise mapping for modules & granular permission strings
+    switch (req) {
+      case 'dashboard':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'dashboard' || pL == 'reports' || pL.startsWith('reports_');
+        });
+      case 'pos':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'pos' ||
+              pL == 'pos_access' ||
+              pL == 'billing' ||
+              pL == 'pos_apply_discount' ||
+              pL == 'pos_cancel_orders' ||
+              pL == 'pos_takeaway_delivery';
+        });
+      case 'tables':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'tables' || pL == 'pos_manage_tables';
+        });
+      case 'orders':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'orders' || pL == 'pos_view_all_orders' || pL == 'pos_kds';
+        });
+      case 'menu':
+      case 'products':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'menu' || pL == 'products' || pL.startsWith('products_');
+        });
+      case 'inventory':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'inventory' || pL.startsWith('inventory_');
+        });
+      case 'reports':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'reports' || pL.startsWith('reports_');
+        });
+      case 'crm':
+      case 'customers':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'crm' || pL == 'customers' || pL.startsWith('customers_');
+        });
+      case 'loyalty':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'loyalty' || pL == 'customers_crm' || pL == 'crm' || pL == 'customers';
+        });
+      case 'campaign':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'campaign' || pL == 'customers_crm' || pL == 'crm';
+        });
+      case 'staff':
+      case 'settings_staff':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'staff' || pL == 'settings_staff';
+        });
+      case 'settings':
+        return permissions.any((p) {
+          final pL = p.toLowerCase().trim();
+          return pL == 'settings' || pL.startsWith('settings_');
+        });
+      default:
+        return permissions.any((p) => p.toLowerCase().trim() == req);
     }
-
-    return false;
   }
 
   UserModel copyWith({
@@ -146,8 +200,20 @@ class UserModel {
       final roleStr = (json['role'] ?? 'Owner').toString().toLowerCase();
       if (roleStr == 'owner' || roleStr == 'admin') {
         parsedPermissions = ['*'];
+      } else if (roleStr == 'manager') {
+        parsedPermissions = ['pos', 'tables', 'orders', 'menu', 'inventory', 'reports', 'crm', 'loyalty'];
+      } else if (roleStr == 'sales') {
+        parsedPermissions = ['pos', 'orders', 'crm'];
+      } else if (roleStr == 'inventory') {
+        parsedPermissions = ['inventory', 'menu'];
+      } else if (roleStr == 'waiter') {
+        parsedPermissions = ['tables', 'orders'];
+      } else if (roleStr == 'chef' || roleStr == 'kitchen') {
+        parsedPermissions = ['orders'];
+      } else if (roleStr == 'support') {
+        parsedPermissions = ['orders', 'crm'];
       } else {
-        parsedPermissions = ['pos', 'tables', 'orders'];
+        parsedPermissions = ['pos'];
       }
     }
 
@@ -165,7 +231,11 @@ class UserModel {
       companyName: json['companyName']?.toString(),
       website: json['website']?.toString(),
       referralCode: json['referralCode']?.toString(),
-      profilePhotoPath: json['profilePhotoPath']?.toString(),
+      profilePhotoPath: json['profilePhotoPath']?.toString() ??
+          json['avatarUrl']?.toString() ??
+          json['photoUrl']?.toString() ??
+          json['avatar']?.toString() ??
+          json['profileImage']?.toString(),
       communicationPreferences: json['communicationPreferences'] != null
           ? Map<String, bool>.from(json['communicationPreferences'])
           : null,
