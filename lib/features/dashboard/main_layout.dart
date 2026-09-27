@@ -27,6 +27,7 @@ import 'dashboard_screen.dart';
 import '../subscription/screens/subscription_screen.dart';
 import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
+import '../staff/screens/staff_profile_screen.dart';
 
 
 /// Declarative Navigation Item Definition for dynamic sidebar rendering
@@ -99,6 +100,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         return user.hasPermission('staff') || user.hasPermission('settings_staff');
       case 11: // Business Setting
         return user.hasPermission('settings');
+      case 12: // Staff Profile
+        return true; // Everyone / Staff can access their own profile
       default:
         return true;
     }
@@ -106,6 +109,16 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
   List<NavItemDef> _getAvailableNavItems() {
     final allItems = [
+      NavItemDef(
+        index: 12,
+        title: 'Staff Profile',
+        icon: Icons.badge_rounded,
+        imageAsset: 'assets/images/Side bar icons/staff.png',
+        iconColor: const Color(0xFF2563EB),
+        iconBgColor: const Color(0xFFEFF6FF),
+        getBadge: (db) => null,
+        canAccess: (user) => true,
+      ),
       NavItemDef(
         index: 0,
         title: 'Dashboard',
@@ -273,10 +286,12 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           targetIdx = 8;
         } else if (defaultScreen.contains('Campaign')) {
           targetIdx = 9;
-        } else if (defaultScreen.contains('Staff')) {
+        } else if (defaultScreen.contains('Staff') && !defaultScreen.contains('Profile')) {
           targetIdx = 10;
         } else if (defaultScreen.contains('Setting')) {
           targetIdx = 11;
+        } else if (defaultScreen.contains('Profile')) {
+          targetIdx = 12;
         }
 
         if (targetIdx != null && _canAccessTab(targetIdx)) {
@@ -296,7 +311,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     if (visibleNavItems.isNotEmpty) {
       _selectedIndex = visibleNavItems.first.index;
     } else {
-      for (int i = 0; i <= 11; i++) {
+      for (int i = 0; i <= 12; i++) {
         if (_canAccessTab(i)) {
           _selectedIndex = i;
           break;
@@ -541,20 +556,20 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     }
 
     if (photoPath != null && photoPath.isNotEmpty) {
-      if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
+      if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
         return ClipOval(
-          child: Image.file(
-            File(photoPath),
+          child: Image.network(
+            photoPath,
             width: size,
             height: size,
             fit: BoxFit.cover,
             errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
           ),
         );
-      } else if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+      } else if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
         return ClipOval(
-          child: Image.network(
-            photoPath,
+          child: Image.file(
+            File(photoPath),
             width: size,
             height: size,
             fit: BoxFit.cover,
@@ -691,16 +706,20 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               children: [
                 Center(
                   child: Tooltip(
-                    message: '${user?.name.isNotEmpty == true ? user!.name : (rest?.name.isNotEmpty == true ? rest!.name : "Kundan Lal")} (${(user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : "owner"})',
-                    child: Container(
-                      width: 38,
-                      height: 38,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDBEAFE),
-                        shape: BoxShape.circle,
-                      ),
-                      child: ClipOval(
-                        child: _buildProfileAvatarImage(38),
+                    message: '${user?.name.isNotEmpty == true ? user!.name : (rest?.name.isNotEmpty == true ? rest!.name : "Kundan Lal")} (${(user?.role.isNotEmpty == true) ? user!.role.toLowerCase() : "owner"}) - View Profile',
+                    child: InkWell(
+                      onTap: () => _selectTab(12),
+                      borderRadius: BorderRadius.circular(20),
+                      child: Container(
+                        width: 38,
+                        height: 38,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFDBEAFE),
+                          shape: BoxShape.circle,
+                        ),
+                        child: ClipOval(
+                          child: _buildProfileAvatarImage(38),
+                        ),
                       ),
                     ),
                   ),
@@ -745,101 +764,117 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
                 children: [
-                  Container(
-                    width: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
-                    height: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFDBEAFE),
-                      shape: BoxShape.circle,
-                    ),
-                    child: ClipOval(
-                      child: _buildProfileAvatarImage(isSmallScreen ? 40 : 42),
-                    ),
-                  ),
-                  if (isSmallScreen || textOpacity > 0.0) ...[
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Opacity(
-                        opacity: textOpacity,
-                        child: Transform.translate(
-                          offset: Offset(-8 * (1.0 - textOpacity), 0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                (user?.name.isNotEmpty == true)
-                                    ? user!.name
-                                    : (rest?.name.isNotEmpty == true
-                                        ? rest!.name
-                                        : 'Kundan Lal'),
-                                style: TextStyle(
-                                  color: const Color(0xFF0F172A),
-                                  fontSize: isSmallScreen ? 14 : 14.5,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 0.1,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
+                  Expanded(
+                    child: InkWell(
+                      onTap: () {
+                        _selectTab(12);
+                        if (isSmallScreen) _closeSidebar();
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
+                              height: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFDBEAFE),
+                                shape: BoxShape.circle,
                               ),
-                              const SizedBox(height: 1),
-                              Text(
-                                (user?.role.isNotEmpty == true)
-                                    ? (user!.isOwner || user.isAdmin
-                                        ? user.role.toLowerCase()
-                                        : '${user.role}${user.employeeId != null && user.employeeId!.isNotEmpty ? ' • ${user.employeeId}' : ''}')
-                                    : 'owner',
-                                style: TextStyle(
-                                  color: const Color(0xFF64748B),
-                                  fontSize: isSmallScreen ? 11.5 : 12,
-                                  fontWeight: FontWeight.w500,
+                              child: ClipOval(
+                                child: _buildProfileAvatarImage(isSmallScreen ? 40 : 42),
+                              ),
+                            ),
+                            if (isSmallScreen || textOpacity > 0.0) ...[
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Opacity(
+                                  opacity: textOpacity,
+                                  child: Transform.translate(
+                                    offset: Offset(-8 * (1.0 - textOpacity), 0),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          (user?.name.isNotEmpty == true)
+                                              ? user!.name
+                                              : (rest?.name.isNotEmpty == true
+                                                  ? rest!.name
+                                                  : 'Kundan Lal'),
+                                          style: TextStyle(
+                                            color: const Color(0xFF0F172A),
+                                            fontSize: isSmallScreen ? 14 : 14.5,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.1,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 1),
+                                        Text(
+                                          (user?.role.isNotEmpty == true)
+                                              ? (user!.isOwner || user.isAdmin
+                                                  ? user.role.toLowerCase()
+                                                  : '${user.role}${user.employeeId != null && user.employeeId!.isNotEmpty ? ' • ${user.employeeId}' : ''}')
+                                              : 'owner',
+                                          style: TextStyle(
+                                            color: const Color(0xFF64748B),
+                                            fontSize: isSmallScreen ? 11.5 : 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
-                          ),
+                          ],
                         ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Opacity(
-                      opacity: textOpacity,
-                      child: Transform.translate(
-                        offset: Offset(-8 * (1.0 - textOpacity), 0),
-                        child: Tooltip(
-                          message: 'Logout',
-                          child: InkWell(
-                            onTap: () async {
-                              await AuthService().logout();
-                              if (mounted) {
-                                Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                                  (route) => false,
-                                );
-                              }
-                            },
-                            borderRadius: BorderRadius.circular(10),
-                            child: Container(
-                              width: isSmallScreen ? 36 : 40,
-                              height: isSmallScreen ? 36 : 40,
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFFE4E6),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              alignment: Alignment.center,
-                              child: Icon(
-                                Icons.logout_rounded,
-                                color: const Color(0xFFEF4444),
-                                size: isSmallScreen ? 18 : 20,
-                              ),
+                  ),
+                  const SizedBox(width: 6),
+                  Opacity(
+                    opacity: textOpacity,
+                    child: Transform.translate(
+                      offset: Offset(-8 * (1.0 - textOpacity), 0),
+                      child: Tooltip(
+                        message: 'Logout',
+                        child: InkWell(
+                          onTap: () async {
+                            await AuthService().logout();
+                            if (mounted) {
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                (route) => false,
+                              );
+                            }
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Container(
+                            width: isSmallScreen ? 36 : 40,
+                            height: isSmallScreen ? 36 : 40,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFE4E6),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(
+                              Icons.logout_rounded,
+                              color: const Color(0xFFEF4444),
+                              size: isSmallScreen ? 18 : 20,
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ],
+                  ),
                 ],
               ),
             ),
@@ -1099,9 +1134,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                       },
                                     ),
 
-                                  Expanded(
+                                   Expanded(
                                     child: SmoothAnimatedIndexedStack(
-                                      index: _selectedIndex.clamp(0, 11),
+                                      index: _selectedIndex.clamp(0, 12),
                                       tabBuilders: [
                                         (ctx) => _canAccessTab(0)
                                             ? GlassDashboardScreen(
@@ -1188,6 +1223,12 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                         (ctx) => _canAccessTab(11)
                                             ? const BusinessSettingsHubScreen()
                                             : _buildAccessDeniedScreen('Business Setting'),
+                                        (ctx) => _canAccessTab(12)
+                                            ? StaffProfileScreen(
+                                                onOpenDrawer: _toggleSidebar,
+                                                onNavigateToDashboard: _navigateToRootTab,
+                                              )
+                                            : _buildAccessDeniedScreen('Staff Profile'),
                                       ],
                                     ),
                                   ),

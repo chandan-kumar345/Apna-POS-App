@@ -166,6 +166,52 @@ class SalesService {
     const { start, end, resolvedPeriod } = this._resolveDateRange(query);
     const matchStage = this._getCompletedOrderMatch(bId, start, end);
 
+    if (query.paymentMethod && query.paymentMethod !== 'All' && query.paymentMethod !== 'All Payments' && query.paymentMethod !== 'All Payment Modes') {
+      const pmRegex = new RegExp(query.paymentMethod.trim(), 'i');
+      matchStage.paymentMethod = pmRegex;
+    }
+
+    if (query.orderType && query.orderType !== 'All' && query.orderType !== 'All Orders' && query.orderType !== 'All Order Types') {
+      const otLower = query.orderType.toLowerCase();
+      if (otLower.includes('dine')) matchStage.orderType = new RegExp('dineIn|dine_in|dine', 'i');
+      else if (otLower.includes('takeaway')) matchStage.orderType = new RegExp('takeaway|take_away', 'i');
+      else if (otLower.includes('delivery')) matchStage.orderType = new RegExp('delivery', 'i');
+    }
+
+    if (query.staff && query.staff !== 'All' && query.staff !== 'All Staff') {
+      const sTarget = query.staff.trim();
+      const escaped = sTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sRegex = new RegExp(escaped, 'i');
+      matchStage.$and = matchStage.$and || [];
+      matchStage.$and.push({
+        $or: [
+          { staffName: sRegex },
+          { staffId: sTarget },
+          { staffId: sRegex },
+          { servedBy: sRegex },
+          { waiterName: sRegex },
+          { cashierName: sRegex },
+          { userName: sRegex },
+          { customerName: new RegExp(`Staff:\\s*${escaped}`, 'i') },
+        ],
+      });
+    }
+
+    if (query.search && query.search.trim()) {
+      const escaped = query.search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const sRegex = new RegExp(escaped, 'i');
+      matchStage.$and = matchStage.$and || [];
+      matchStage.$and.push({
+        $or: [
+          { orderNumber: sRegex },
+          { customerName: sRegex },
+          { customerPhone: sRegex },
+          { tableNumber: sRegex },
+          { staffName: sRegex },
+        ],
+      });
+    }
+
     const dedupeStages = [
       { $sort: { createdAt: -1 } },
       {

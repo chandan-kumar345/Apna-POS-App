@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
 import '../../../core/services/staff_service.dart';
+import '../../../core/services/upload_service.dart';
 
 class StaffSettingsScreen extends StatefulWidget {
   final StaffModel staff;
@@ -58,8 +59,8 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
   File? _avatarImageFile;
   final ImagePicker _picker = ImagePicker();
 
-  // Dropdown Options
-  final List<String> _roleOptions = [
+  // Dynamic Lists of Options
+  List<String> _roleOptions = [
     'Admin',
     'Manager',
     'Cashier',
@@ -68,11 +69,9 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     'Support',
     'Chef',
     'Waiter',
-    'Other',
   ];
 
   final List<String> _departmentOptions = [
-    'Operations',
     'Billing / Counter',
     'Kitchen',
     'Dining & Service',
@@ -83,24 +82,19 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     'Other',
   ];
 
-  final List<String> _reportingToOptions = [
+  List<String> _reportingToOptions = [
     'Store Owner / Admin',
-    'General Manager',
-    'Store Supervisor',
-    'Shift Lead',
     'None',
   ];
 
-  final List<String> _locationOptions = [
-    'Main Outlet',
-    'Main Store',
+  List<String> _locationOptions = [
+    'Main Branch',
     'Counter 1',
     'Kitchen',
     'Outlet 1',
     'Takeaway Counter',
     'Floor 1',
     'Floor 2',
-    'Other',
   ];
 
   final List<String> _shiftOptions = [
@@ -124,7 +118,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
   final List<String> _themeOptions = [
     'Light',
     'Dark',
-    'System',
+    'System Default',
   ];
 
   final List<String> _defaultScreenOptions = [
@@ -133,85 +127,163 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     'Tables / Floor',
     'Orders List',
     'KDS Kitchen',
-    'Reports',
+    'Sales Report',
+    'CRM Customers',
+    'Inventory',
   ];
 
-  // Dynamic Granular Permission Categories
-  final Map<String, Map<String, dynamic>> _permissionCategories = {
-    'pos_orders': {
-      'label': 'POS & Orders',
-      'icon': Icons.shopping_cart_outlined,
+  // 12 Navigation Sidebar Categories for Permissions
+  final List<Map<String, dynamic>> _permissionCategories = [
+    {
+      'id': 'dashboard',
+      'label': 'Dashboard',
+      'icon': Icons.home_rounded,
       'items': [
-        {'id': 'pos_access', 'title': 'Access POS', 'subtitle': 'Allow billing and order management'},
-        {'id': 'pos_apply_discount', 'title': 'Apply Discount', 'subtitle': 'Allow to apply bill discounts'},
-        {'id': 'pos_cancel_orders', 'title': 'Cancel Orders', 'subtitle': 'Allow to cancel orders and refund items'},
-        {'id': 'pos_view_all_orders', 'title': 'View All Orders', 'subtitle': 'View orders from all cashiers & staff'},
-        {'id': 'pos_manage_tables', 'title': 'Manage Tables', 'subtitle': 'Create, merge and manage floor tables'},
-        {'id': 'pos_kds', 'title': 'Kitchen Display (KDS)', 'subtitle': 'Access kitchen order display system'},
-        {'id': 'pos_takeaway_delivery', 'title': 'Takeaway & Delivery', 'subtitle': 'Handle online and delivery orders'},
+        {'id': 'dashboard_view', 'title': 'View Dashboard & Summary', 'subtitle': 'View sales metrics, total revenues & statistics'},
+        {'id': 'dashboard_realtime', 'title': 'Real-time Sales Tracking', 'subtitle': 'Track live orders counter and revenue stream'},
+        {'id': 'dashboard_quick_actions', 'title': 'Access Quick Actions', 'subtitle': 'Use dashboard shortcut buttons and fast actions'},
+        {'id': 'dashboard_recent_activity', 'title': 'Live Activity Stream', 'subtitle': 'View recent customer orders and floor updates'},
       ],
     },
-    'products': {
-      'label': 'Products & Menu',
-      'icon': Icons.inventory_2_outlined,
+    {
+      'id': 'pos',
+      'label': 'POS Billing',
+      'icon': Icons.point_of_sale_rounded,
       'items': [
-        {'id': 'products_view', 'title': 'View Products', 'subtitle': 'View items, prices and modifiers'},
-        {'id': 'products_add_edit', 'title': 'Add / Edit Products', 'subtitle': 'Create and update menu catalog'},
-        {'id': 'products_delete', 'title': 'Delete Products', 'subtitle': 'Remove menu items from store'},
-        {'id': 'products_categories', 'title': 'Manage Categories', 'subtitle': 'Organize product categories & images'},
+        {'id': 'pos_access', 'title': 'Access POS Billing', 'subtitle': 'Allow opening billing register and cart checkout'},
+        {'id': 'pos_create_order', 'title': 'Create & Place Orders', 'subtitle': 'Punch dine-in, takeaway, and delivery bills'},
+        {'id': 'pos_apply_discount', 'title': 'Apply Bill Discounts', 'subtitle': 'Allow item and bill-level discount coupons'},
+        {'id': 'pos_apply_tax', 'title': 'Modify Tax & Charges', 'subtitle': 'Adjust GST rates, service charges & fees'},
+        {'id': 'pos_cancel_orders', 'title': 'Cancel / Void Orders', 'subtitle': 'Allow cancelling orders and voiding billed items'},
+        {'id': 'pos_refund', 'title': 'Issue Refunds & Returns', 'subtitle': 'Process customer payment refunds and returns'},
+        {'id': 'pos_split_bill', 'title': 'Split Bills & Merge', 'subtitle': 'Split checks between customers and merge tables'},
+        {'id': 'pos_custom_items', 'title': 'Custom Price Items', 'subtitle': 'Add open-priced custom products on-the-fly'},
+        {'id': 'pos_print_receipt', 'title': 'Print & Re-print Bills', 'subtitle': 'Print thermal receipts and invoice duplicates'},
+        {'id': 'pos_takeaway_delivery', 'title': 'Takeaway & Delivery', 'subtitle': 'Handle online orders, takeaways & delivery'},
       ],
     },
-    'inventory': {
+    {
+      'id': 'tables',
+      'label': 'Tables & Floor',
+      'icon': Icons.table_restaurant_rounded,
+      'items': [
+        {'id': 'tables_view', 'title': 'View Dining Tables', 'subtitle': 'View live floor tables status and occupancy'},
+        {'id': 'tables_manage', 'title': 'Manage Tables & Floor', 'subtitle': 'Create, edit, rename and arrange dining tables'},
+        {'id': 'tables_transfer', 'title': 'Transfer & Merge Tables', 'subtitle': 'Shift running orders between tables and merge'},
+        {'id': 'tables_reservation', 'title': 'Manage Reservations', 'subtitle': 'Reserve and schedule tables for upcoming guests'},
+      ],
+    },
+    {
+      'id': 'orders',
+      'label': 'My Orders & KDS',
+      'icon': Icons.receipt_long_rounded,
+      'items': [
+        {'id': 'orders_view', 'title': 'View Orders Directory', 'subtitle': 'Browse all live, pending and completed orders'},
+        {'id': 'orders_edit', 'title': 'Edit Running Orders', 'subtitle': 'Add more items and update kitchen instructions'},
+        {'id': 'orders_status_update', 'title': 'Update Order Status', 'subtitle': 'Mark orders as Preparing, Ready, Served, Done'},
+        {'id': 'orders_kds', 'title': 'Kitchen Display (KDS)', 'subtitle': 'Access digital kitchen order display system'},
+        {'id': 'orders_kot', 'title': 'Print & Re-print KOT', 'subtitle': 'Send and re-print Kitchen Order Tickets'},
+      ],
+    },
+    {
+      'id': 'menu',
+      'label': 'Menu & Catalog',
+      'icon': Icons.dinner_dining_rounded,
+      'items': [
+        {'id': 'menu_view', 'title': 'View Menu Catalog', 'subtitle': 'Browse food catalog, prices and categories'},
+        {'id': 'menu_add', 'title': 'Add New Dishes', 'subtitle': 'Create new menu items with images and prices'},
+        {'id': 'menu_edit', 'title': 'Edit Menu & Pricing', 'subtitle': 'Update prices, descriptions and modifiers'},
+        {'id': 'menu_delete', 'title': 'Delete / Archive Items', 'subtitle': 'Remove dishes from catalog or archive'},
+        {'id': 'menu_categories', 'title': 'Manage Categories', 'subtitle': 'Create, reorder and organize categories'},
+        {'id': 'menu_availability', 'title': 'Item Availability (86)', 'subtitle': 'Toggle items in-stock or out of stock instantly'},
+      ],
+    },
+    {
+      'id': 'inventory',
       'label': 'Inventory',
-      'icon': Icons.archive_outlined,
+      'icon': Icons.inventory_2_rounded,
       'items': [
-        {'id': 'inventory_view', 'title': 'View Stock', 'subtitle': 'Monitor current inventory levels'},
-        {'id': 'inventory_adjust', 'title': 'Stock In / Stock Out', 'subtitle': 'Log inventory adjustments and wastage'},
-        {'id': 'inventory_alerts', 'title': 'Low Stock Alerts', 'subtitle': 'Receive low inventory notifications'},
-        {'id': 'inventory_purchases', 'title': 'Purchase Orders', 'subtitle': 'Manage supplier bills and POs'},
+        {'id': 'inventory_view', 'title': 'View Raw Stock Levels', 'subtitle': 'Monitor ingredients quantity and stock values'},
+        {'id': 'inventory_adjust', 'title': 'Stock In / Stock Out', 'subtitle': 'Log manual stock additions and inward batches'},
+        {'id': 'inventory_wastage', 'title': 'Log Stock Wastage', 'subtitle': 'Record damaged, expired or wasted inventory'},
+        {'id': 'inventory_alerts', 'title': 'Low Stock Alerts', 'subtitle': 'Receive low inventory and threshold warnings'},
+        {'id': 'inventory_purchases', 'title': 'Purchase Orders & Vendors', 'subtitle': 'Manage supplier invoices and purchase orders'},
       ],
     },
-    'customers': {
-      'label': 'Customers & CRM',
-      'icon': Icons.people_outline_rounded,
+    {
+      'id': 'reports',
+      'label': 'Sales Report',
+      'icon': Icons.bar_chart_rounded,
       'items': [
-        {'id': 'customers_view', 'title': 'View Customer List', 'subtitle': 'Access directory of customer accounts'},
-        {'id': 'customers_add_edit', 'title': 'Add / Edit Customers', 'subtitle': 'Register customer profiles & loyalty'},
-        {'id': 'customers_crm', 'title': 'CRM Campaigns', 'subtitle': 'Send promotions via SMS/WhatsApp'},
-        {'id': 'customers_khata', 'title': 'Customer Credit / Khata', 'subtitle': 'Manage customer credit ledger'},
+        {'id': 'reports_view_own', 'title': 'View Own Sales Summary', 'subtitle': 'Track own shift cash collections and bills'},
+        {'id': 'reports_daily_sales', 'title': 'Daily Sales Report', 'subtitle': 'View total store day-end sales summary'},
+        {'id': 'reports_financial', 'title': 'Financials & Tax Breakdown', 'subtitle': 'Access profit/loss, GST tax reports and margins'},
+        {'id': 'reports_item_sales', 'title': 'Item-wise Sales Analytics', 'subtitle': 'Analyze bestsellers and category sales performance'},
+        {'id': 'reports_export', 'title': 'Export Data (Excel & PDF)', 'subtitle': 'Download sales reports in Excel and PDF formats'},
+        {'id': 'reports_staff_performance', 'title': 'Staff Sales Performance', 'subtitle': 'Track sales generated per cashier / staff member'},
       ],
     },
-    'reports': {
-      'label': 'Reports & Analytics',
-      'icon': Icons.insert_chart_outlined_rounded,
+    {
+      'id': 'crm',
+      'label': 'CRM Customers',
+      'icon': Icons.people_alt_rounded,
       'items': [
-        {'id': 'reports_daily_sales', 'title': 'Daily Sales Report', 'subtitle': 'View day-end sales summary'},
-        {'id': 'reports_financial', 'title': 'Financial Reports', 'subtitle': 'Access profit/loss and tax breakdowns'},
-        {'id': 'reports_export', 'title': 'Export Data', 'subtitle': 'Download reports in Excel and PDF'},
-        {'id': 'reports_staff_performance', 'title': 'Staff Performance', 'subtitle': 'Track individual cashier sales'},
+        {'id': 'crm_view', 'title': 'View Customer Directory', 'subtitle': 'Access customer accounts and order histories'},
+        {'id': 'crm_add_edit', 'title': 'Add & Edit Customers', 'subtitle': 'Register customer details, phones and addresses'},
+        {'id': 'crm_delete', 'title': 'Delete Customer Records', 'subtitle': 'Remove duplicate or obsolete customer records'},
+        {'id': 'crm_khata', 'title': 'Customer Khata / Credit Ledger', 'subtitle': 'Manage customer credit balances and payments'},
+        {'id': 'crm_tags', 'title': 'Customer Tags & Segments', 'subtitle': 'Tag VIP and regular customers for promotions'},
       ],
     },
-    'settings': {
-      'label': 'Settings & Business',
-      'icon': Icons.settings_outlined,
+    {
+      'id': 'loyalty',
+      'label': 'Loyalty Program',
+      'icon': Icons.card_giftcard_rounded,
       'items': [
-        {'id': 'settings_store_profile', 'title': 'Business Profile', 'subtitle': 'Modify store information and branding'},
-        {'id': 'settings_printers', 'title': 'Printers & Hardware', 'subtitle': 'Configure thermal printers and KOT'},
-        {'id': 'settings_taxes', 'title': 'Tax & Charges', 'subtitle': 'Set GST and service charge rates'},
-        {'id': 'settings_payments', 'title': 'Payment Gateways', 'subtitle': 'Configure UPI / QR and POS terminal'},
-        {'id': 'settings_staff', 'title': 'Staff Management', 'subtitle': 'Add, edit and manage staff permissions'},
+        {'id': 'loyalty_view', 'title': 'View Loyalty Members', 'subtitle': 'Check customer loyalty points and tier status'},
+        {'id': 'loyalty_reward', 'title': 'Issue Points & Stamps', 'subtitle': 'Award loyalty points on purchases and stamp cards'},
+        {'id': 'loyalty_redeem', 'title': 'Redeem Loyalty Points', 'subtitle': 'Apply loyalty points for bill discounts'},
+        {'id': 'loyalty_manage_tiers', 'title': 'Configure Loyalty Rules', 'subtitle': 'Set point conversion rates and tier thresholds'},
       ],
     },
-    'others': {
-      'label': 'System & Others',
-      'icon': Icons.more_horiz_rounded,
+    {
+      'id': 'campaign',
+      'label': 'Campaigns',
+      'icon': Icons.campaign_rounded,
       'items': [
-        {'id': 'others_activity_logs', 'title': 'Activity Logs', 'subtitle': 'View security and action audit trail'},
-        {'id': 'others_chotu_ai', 'title': 'Chotu AI Assistant', 'subtitle': 'Use Chotu voice and smart assistant'},
-        {'id': 'others_offline_mode', 'title': 'Offline Mode', 'subtitle': 'Sync offline orders with cloud'},
+        {'id': 'campaign_view', 'title': 'View Marketing Campaigns', 'subtitle': 'Track promotional campaign performance & ROI'},
+        {'id': 'campaign_create', 'title': 'Create SMS / WhatsApp Blasts', 'subtitle': 'Draft and launch marketing messages'},
+        {'id': 'campaign_templates', 'title': 'Manage Message Templates', 'subtitle': 'Customize festival offers and discount coupons'},
+        {'id': 'campaign_broadcast', 'title': 'Instant Flash Broadcast', 'subtitle': 'Send real-time alerts to customer segments'},
       ],
     },
-  };
+    {
+      'id': 'staff',
+      'label': 'Staff Setting',
+      'icon': Icons.badge_rounded,
+      'items': [
+        {'id': 'staff_view', 'title': 'View Staff Directory', 'subtitle': 'Browse team members, roles, and active status'},
+        {'id': 'staff_add', 'title': 'Create New Staff', 'subtitle': 'Add employee accounts with login credentials'},
+        {'id': 'staff_edit', 'title': 'Edit Staff & Permissions', 'subtitle': 'Update employee roles, PINs, and access rights'},
+        {'id': 'staff_delete', 'title': 'Deactivate / Remove Staff', 'subtitle': 'Disable or delete staff accounts'},
+        {'id': 'staff_shifts', 'title': 'Manage Shifts & Duty', 'subtitle': 'Assign work schedules and shift timings'},
+      ],
+    },
+    {
+      'id': 'settings',
+      'label': 'Business Setting',
+      'icon': Icons.settings_rounded,
+      'items': [
+        {'id': 'settings_profile', 'title': 'Store & Business Profile', 'subtitle': 'Edit store name, logo, contact, and address'},
+        {'id': 'settings_branches', 'title': 'Business Branches', 'subtitle': 'Manage multi-branch outlets and counters'},
+        {'id': 'settings_printers', 'title': 'Printers & Hardware', 'subtitle': 'Configure Bluetooth, USB, Thermal, and KOT printers'},
+        {'id': 'settings_taxes', 'title': 'Taxes & Service Charges', 'subtitle': 'Configure GST, VAT, service charges and packaging'},
+        {'id': 'settings_payments', 'title': 'Payment Gateways & UPI QR', 'subtitle': 'Configure Razorpay, UPI QR, and payment terminals'},
+        {'id': 'settings_receipt_template', 'title': 'Receipt Customization', 'subtitle': 'Customize bill headers, footers, and logo'},
+        {'id': 'settings_chotu_ai', 'title': 'Chotu AI Voice Assistant', 'subtitle': 'Configure smart voice order taking and prompts'},
+      ],
+    },
+  ];
 
   @override
   void initState() {
@@ -228,50 +300,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     _notesController = TextEditingController(text: _currentStaff.notes);
     _pinController = TextEditingController(text: _currentStaff.pin);
 
-    // Dynamically match & preserve current staff dropdown options
-    if (_currentStaff.role.isNotEmpty && !_roleOptions.any((r) => r.toLowerCase() == _currentStaff.role.toLowerCase())) {
-      _roleOptions.insert(_roleOptions.length - 1, _currentStaff.role);
-    }
-    _selectedRole = _roleOptions.firstWhere(
-      (r) => r.toLowerCase() == _currentStaff.role.toLowerCase(),
-      orElse: () => _roleOptions.firstWhere((r) => r.toLowerCase() == 'cashier', orElse: () => _roleOptions.first),
-    );
-
-    if (_currentStaff.department.isNotEmpty && !_departmentOptions.any((d) => d.toLowerCase() == _currentStaff.department.toLowerCase())) {
-      _departmentOptions.insert(_departmentOptions.length - 1, _currentStaff.department);
-    }
-    _selectedDepartment = _departmentOptions.firstWhere(
-      (d) => d.toLowerCase() == _currentStaff.department.toLowerCase(),
-      orElse: () => _departmentOptions.first,
-    );
-
-    if (_currentStaff.workLocation.isNotEmpty && !_locationOptions.any((l) => l.toLowerCase() == _currentStaff.workLocation.toLowerCase())) {
-      _locationOptions.insert(_locationOptions.length - 1, _currentStaff.workLocation);
-    }
-    _selectedLocation = _locationOptions.firstWhere(
-      (l) => l.toLowerCase() == _currentStaff.workLocation.toLowerCase(),
-      orElse: () => _locationOptions.first,
-    );
-
-    final ownerName = _db.currentUser?.isOwner == true ? _db.currentUser?.name : (_db.registeredUsers.where((u) => u.isOwner).firstOrNull?.name ?? 'Store Owner / Admin');
-    if (ownerName != null && ownerName.isNotEmpty && !_reportingToOptions.contains(ownerName)) {
-      _reportingToOptions.insert(0, ownerName);
-    }
-    if (_currentStaff.reportingTo.isNotEmpty && !_reportingToOptions.any((r) => r.toLowerCase() == _currentStaff.reportingTo.toLowerCase())) {
-      _reportingToOptions.insert(1, _currentStaff.reportingTo);
-    }
-    _selectedReportingTo = _reportingToOptions.firstWhere(
-      (r) => r.toLowerCase() == _currentStaff.reportingTo.toLowerCase(),
-      orElse: () => _reportingToOptions.first,
-    );
-
-    if (_currentStaff.shift.isNotEmpty && !_shiftOptions.any((s) => s.toLowerCase() == _currentStaff.shift.toLowerCase())) {
-      _shiftOptions.add(_currentStaff.shift);
-    }
-    _selectedShift = _shiftOptions.firstWhere(
-      (s) => s.toLowerCase() == _currentStaff.shift.toLowerCase(),
-      orElse: () => _shiftOptions.first,
-    );
+    _initDynamicOptions();
 
     _selectedLanguage = _languageOptions.firstWhere(
       (l) => l.toLowerCase() == _currentStaff.language.toLowerCase(),
@@ -300,6 +329,211 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     }
   }
 
+  void _initDynamicOptions() {
+    // 1. Dynamic Roles
+    _roleOptions = List<String>.from(_db.allStaffRoles);
+    if (_currentStaff.role.isNotEmpty && !_roleOptions.contains(_currentStaff.role)) {
+      _roleOptions.add(_currentStaff.role);
+    }
+    _selectedRole = _roleOptions.firstWhere(
+      (r) => r.toLowerCase() == _currentStaff.role.toLowerCase(),
+      orElse: () => _roleOptions.firstWhere((r) => r.toLowerCase() == 'cashier', orElse: () => _roleOptions.first),
+    );
+
+    // 2. Dynamic Department
+    _selectedDepartment = _departmentOptions.firstWhere(
+      (d) => d.toLowerCase() == _currentStaff.department.toLowerCase(),
+      orElse: () => _departmentOptions.first,
+    );
+
+    // 3. Dynamic Business Branches
+    _locationOptions = List<String>.from(_db.allBusinessBranches);
+    if (_currentStaff.workLocation.isNotEmpty && !_locationOptions.contains(_currentStaff.workLocation)) {
+      _locationOptions.add(_currentStaff.workLocation);
+    }
+    _selectedLocation = _locationOptions.firstWhere(
+      (l) => l.toLowerCase() == _currentStaff.workLocation.toLowerCase(),
+      orElse: () => _locationOptions.first,
+    );
+
+    // 4. Dynamic Reporting To (Store Owner + Other Staff Members)
+    final ownerName = _db.restaurant?.name.trim().isNotEmpty == true
+        ? _db.restaurant!.name.trim()
+        : (_db.currentUser?.name.trim().isNotEmpty == true ? _db.currentUser!.name.trim() : 'Store Owner');
+    final ownerOption = 'Store Owner / Admin ($ownerName)';
+
+    final List<String> reportingList = [ownerOption];
+    for (final s in _db.staffList) {
+      if (s.id != _currentStaff.id) {
+        final staffOption = '${s.name} (${s.role} • ${s.employeeId.isNotEmpty ? s.employeeId : 'Staff'})';
+        if (!reportingList.contains(staffOption)) {
+          reportingList.add(staffOption);
+        }
+      }
+    }
+    if (!reportingList.contains('None')) {
+      reportingList.add('None');
+    }
+    _reportingToOptions = reportingList;
+
+    _selectedReportingTo = _reportingToOptions.firstWhere(
+      (r) => r.toLowerCase().contains(_currentStaff.reportingTo.toLowerCase()) ||
+          _currentStaff.reportingTo.toLowerCase().contains(r.toLowerCase()),
+      orElse: () => _reportingToOptions.first,
+    );
+
+    // 5. Shift
+    _selectedShift = _shiftOptions.firstWhere(
+      (s) => s.toLowerCase() == _currentStaff.shift.toLowerCase(),
+      orElse: () => _shiftOptions.first,
+    );
+  }
+
+  void _showAddRoleDialog() {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.add_moderator_rounded, color: Color(0xFF2563EB), size: 22),
+            SizedBox(width: 8),
+            Text('Add Custom Role', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the title for the new staff role (e.g. Floor Supervisor, Bartender, Delivery Lead).',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: textController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: 'e.g. Floor Supervisor',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              final newRole = textController.text.trim();
+              if (newRole.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _db.addCustomRole(newRole);
+                if (mounted) {
+                  setState(() {
+                    _roleOptions = List<String>.from(_db.allStaffRoles);
+                    _selectedRole = newRole;
+                    _applyRolePreset(newRole);
+                  });
+                }
+              }
+            },
+            child: const Text('Add Role', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddBranchDialog() {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.add_business_rounded, color: Color(0xFF2563EB), size: 22),
+            SizedBox(width: 8),
+            Text('Add Business Branch', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A))),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the name or identifier of the new business branch / outlet location.',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: textController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: 'e.g. Downtown Outlet, Highway Branch',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5)),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              final newBranch = textController.text.trim();
+              if (newBranch.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _db.addBusinessBranch(newBranch);
+                if (mounted) {
+                  setState(() {
+                    _locationOptions = List<String>.from(_db.allBusinessBranches);
+                    _selectedLocation = newBranch;
+                  });
+                }
+              }
+            },
+            child: const Text('Add Branch', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _tabController.dispose();
@@ -317,7 +551,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     final perms = <String>{};
     switch (role.toLowerCase()) {
       case 'admin':
-        for (final cat in _permissionCategories.values) {
+        for (final cat in _permissionCategories) {
           final items = cat['items'] as List<Map<String, String>>;
           for (final item in items) {
             perms.add(item['id']!);
@@ -326,64 +560,156 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
         break;
       case 'manager':
         perms.addAll([
+          'dashboard_view',
+          'dashboard_realtime',
+          'dashboard_quick_actions',
+          'dashboard_recent_activity',
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
+          'pos_apply_tax',
           'pos_cancel_orders',
-          'pos_view_all_orders',
-          'pos_manage_tables',
+          'pos_refund',
+          'pos_split_bill',
+          'pos_custom_items',
+          'pos_print_receipt',
           'pos_takeaway_delivery',
-          'products_view',
-          'products_add_edit',
-          'products_categories',
+          'tables_view',
+          'tables_manage',
+          'tables_transfer',
+          'tables_reservation',
+          'orders_view',
+          'orders_edit',
+          'orders_status_update',
+          'orders_kds',
+          'orders_kot',
+          'menu_view',
+          'menu_add',
+          'menu_edit',
+          'menu_categories',
+          'menu_availability',
           'inventory_view',
           'inventory_adjust',
+          'inventory_wastage',
           'inventory_alerts',
-          'customers_view',
-          'customers_add_edit',
-          'customers_crm',
+          'inventory_purchases',
+          'reports_view_own',
           'reports_daily_sales',
           'reports_financial',
+          'reports_item_sales',
           'reports_export',
           'reports_staff_performance',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'crm_tags',
+          'loyalty_view',
+          'loyalty_reward',
+          'loyalty_redeem',
+          'campaign_view',
+          'campaign_create',
+          'staff_view',
+          'staff_shifts',
           'settings_printers',
-          'others_activity_logs',
-          'others_chotu_ai',
         ]);
         break;
       case 'cashier':
         perms.addAll([
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
-          'pos_view_all_orders',
-          'pos_manage_tables',
+          'pos_split_bill',
+          'pos_custom_items',
+          'pos_print_receipt',
           'pos_takeaway_delivery',
-          'products_view',
-          'inventory_view',
-          'customers_view',
-          'customers_add_edit',
-          'reports_daily_sales',
-          'others_chotu_ai',
+          'tables_view',
+          'orders_view',
+          'orders_status_update',
+          'menu_view',
+          'menu_availability',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'reports_view_own',
+          'loyalty_view',
+          'loyalty_redeem',
         ]);
         break;
       case 'waiter':
         perms.addAll([
-          'pos_access',
-          'pos_manage_tables',
+          'pos_create_order',
           'pos_takeaway_delivery',
-          'products_view',
-          'others_chotu_ai',
+          'tables_view',
+          'tables_transfer',
+          'orders_view',
+          'orders_edit',
+          'orders_status_update',
+          'orders_kot',
+          'menu_view',
+          'menu_availability',
         ]);
         break;
       case 'chef':
+      case 'kitchen':
         perms.addAll([
-          'pos_kds',
-          'products_view',
+          'orders_view',
+          'orders_status_update',
+          'orders_kds',
+          'orders_kot',
+          'menu_view',
+          'menu_availability',
           'inventory_view',
           'inventory_alerts',
         ]);
         break;
+      case 'inventory':
+        perms.addAll([
+          'dashboard_view',
+          'inventory_view',
+          'inventory_adjust',
+          'inventory_wastage',
+          'inventory_alerts',
+          'inventory_purchases',
+          'menu_view',
+          'menu_categories',
+          'menu_availability',
+        ]);
+        break;
+      case 'sales':
+        perms.addAll([
+          'pos_access',
+          'pos_create_order',
+          'pos_apply_discount',
+          'pos_print_receipt',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'crm_tags',
+          'loyalty_view',
+          'loyalty_reward',
+          'campaign_view',
+          'campaign_create',
+          'reports_view_own',
+          'reports_daily_sales',
+        ]);
+        break;
+      case 'support':
+        perms.addAll([
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'orders_view',
+          'reports_view_own',
+        ]);
+        break;
       default:
-        perms.addAll(['pos_access', 'products_view']);
+        perms.addAll([
+          'pos_access',
+          'pos_create_order',
+          'pos_apply_discount',
+          'pos_print_receipt',
+          'menu_view',
+        ]);
         break;
     }
 
@@ -426,6 +752,23 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     setState(() => _isSaving = true);
 
     try {
+      // Cloudflare R2 Upload if new image was picked
+      String remoteAvatarUrl = _currentStaff.avatarUrl;
+      if (_avatarImageFile != null) {
+        try {
+          final uploaded = await UploadService().uploadImage(_avatarImageFile!, folder: 'profiles');
+          if (uploaded != null && uploaded.isNotEmpty) {
+            remoteAvatarUrl = uploaded;
+            debugPrint('[StaffSettingsScreen] Staff avatar uploaded to Cloudflare R2: $remoteAvatarUrl');
+          }
+        } catch (uploadErr) {
+          debugPrint('[StaffSettingsScreen] Cloudflare R2 upload error: $uploadErr');
+        }
+        if (remoteAvatarUrl.isEmpty || remoteAvatarUrl == _currentStaff.avatarUrl) {
+          remoteAvatarUrl = _avatarImageFile!.path;
+        }
+      }
+
       final updated = _currentStaff.copyWith(
         name: _nameController.text.trim(),
         employeeId: _employeeIdController.text.trim(),
@@ -441,7 +784,7 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
         defaultScreen: _selectedDefaultScreen,
         enableBiometric: _enableBiometric,
         status: _isActive ? 'Active' : 'Inactive',
-        avatarUrl: _avatarImageFile != null ? _avatarImageFile!.path : _currentStaff.avatarUrl,
+        avatarUrl: remoteAvatarUrl,
         pin: _pinController.text.trim().isNotEmpty ? _pinController.text.trim() : _currentStaff.pin,
         salary: double.tryParse(_salaryController.text.trim()) ?? _currentStaff.salary,
         notes: _notesController.text.trim(),
@@ -1265,6 +1608,8 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                   label: 'Role *',
                   value: _selectedRole,
                   items: _roleOptions,
+                  onAddPressed: _showAddRoleDialog,
+                  addLabel: 'Add Role',
                   onChanged: (val) {
                     if (val != null) {
                       setState(() => _selectedRole = val);
@@ -1285,9 +1630,11 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                 const SizedBox(height: 10),
                 _buildDropdownField(
                   isMobile: isMobile,
-                  label: 'Work Location',
+                  label: 'Business Branch *',
                   value: _selectedLocation,
                   items: _locationOptions,
+                  onAddPressed: _showAddBranchDialog,
+                  addLabel: 'Add Branch',
                   onChanged: (val) {
                     if (val != null) setState(() => _selectedLocation = val);
                   },
@@ -1311,6 +1658,8 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                         label: 'Role *',
                         value: _selectedRole,
                         items: _roleOptions,
+                        onAddPressed: _showAddRoleDialog,
+                        addLabel: 'Add Role',
                         onChanged: (val) {
                           if (val != null) {
                             setState(() => _selectedRole = val);
@@ -1339,9 +1688,11 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                     Expanded(
                       child: _buildDropdownField(
                         isMobile: isMobile,
-                        label: 'Work Location',
+                        label: 'Business Branch *',
                         value: _selectedLocation,
                         items: _locationOptions,
+                        onAddPressed: _showAddBranchDialog,
+                        addLabel: 'Add Branch',
                         onChanged: (val) {
                           if (val != null) setState(() => _selectedLocation = val);
                         },
@@ -1999,13 +2350,13 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
         SizedBox(height: isMobile ? 12 : 16),
 
         // Permission Categories List
-        ..._permissionCategories.entries.map((entry) {
-          final catData = entry.value;
+        ..._permissionCategories.map((catData) {
           final label = catData['label'] as String;
           final icon = catData['icon'] as IconData;
           final items = catData['items'] as List<Map<String, String>>;
 
-          final allCategorySelected = items.every((i) => _selectedPermissions.contains(i['id']));
+          final selectedCount = items.where((i) => _selectedPermissions.contains(i['id'])).length;
+          final allCategorySelected = selectedCount == items.length && items.isNotEmpty;
 
           return Container(
             margin: EdgeInsets.only(bottom: isMobile ? 10 : 16),
@@ -2039,6 +2390,23 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                             fontSize: isMobile ? 13 : 15.5,
                             fontWeight: FontWeight.w800,
                             color: const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: selectedCount > 0 ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: selectedCount > 0 ? const Color(0xFFBFDBFE) : const Color(0xFFCBD5E1)),
+                          ),
+                          child: Text(
+                            '$selectedCount / ${items.length}',
+                            style: TextStyle(
+                              fontSize: isMobile ? 10 : 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: selectedCount > 0 ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                            ),
                           ),
                         ),
                       ],
@@ -2586,20 +2954,55 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     required String value,
     required List<String> items,
     IconData? prefixIcon,
+    VoidCallback? onAddPressed,
+    String? addLabel,
     required void Function(String?) onChanged,
   }) {
-    final cleanValue = items.contains(value) ? value : items.first;
+    final cleanValue = items.contains(value) ? value : (items.isNotEmpty ? items.first : value);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: isMobile ? 11 : 12.5,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF334155),
-          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: isMobile ? 11 : 12.5,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF334155),
+              ),
+            ),
+            if (onAddPressed != null)
+              InkWell(
+                onTap: onAddPressed,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: isMobile ? 12 : 14, color: const Color(0xFF2563EB)),
+                      const SizedBox(width: 2),
+                      Text(
+                        addLabel ?? 'Add',
+                        style: TextStyle(
+                          fontSize: isMobile ? 10.5 : 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF2563EB),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
         ),
         const SizedBox(height: 4),
         DropdownButtonFormField<String>(

@@ -1,10 +1,10 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/database/database_service.dart';
-import '../../core/models/menu_item_model.dart';
 import '../../core/models/order_model.dart';
 import '../../core/services/report_service.dart';
 import '../pos/receipt_dialog.dart';
@@ -41,6 +41,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   SalesReportData? _reportData;
   int _requestSeq = 0;
   final Set<String> _expandedStaffIds = {};
+  Timer? _dbDebounceTimer;
 
   // Active Tab & Pagination
   int _activeTabIndex = 0;
@@ -48,6 +49,28 @@ class _ReportsScreenState extends State<ReportsScreen> {
   int _pageSize = 6;
 
   bool get _isStaffUser => _db.currentUser != null && !_db.currentUser!.isOwner && !_db.currentUser!.isAdmin;
+
+  List<String> get _staffDropdownItems {
+    final Set<String> staffSet = {'All Staff'};
+    for (final s in _db.staffList) {
+      if (s.name.trim().isNotEmpty) {
+        staffSet.add(s.name.trim());
+      }
+    }
+    if (_reportData?.staffWise != null) {
+      for (final s in _reportData!.staffWise) {
+        if (s.staffName.trim().isNotEmpty) {
+          staffSet.add(s.staffName.trim());
+        }
+      }
+    }
+    for (final o in _db.orders) {
+      if (o.staffName != null && o.staffName!.trim().isNotEmpty) {
+        staffSet.add(o.staffName!.trim());
+      }
+    }
+    return staffSet.toList();
+  }
 
   List<String> get _effectiveTabs {
     if (_isStaffUser) {
@@ -120,15 +143,20 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   @override
   void dispose() {
+    _dbDebounceTimer?.cancel();
     _db.removeListener(_onDbChange);
     _searchController.dispose();
     super.dispose();
   }
 
   void _onDbChange() {
-    if (mounted) {
-      _loadSalesReport(showLoading: false);
-    }
+    if (!mounted) return;
+    _dbDebounceTimer?.cancel();
+    _dbDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+      if (mounted) {
+        _loadSalesReport(showLoading: false);
+      }
+    });
   }
 
   (String?, String?, String?, String?) _resolveFilterParams() {
@@ -848,7 +876,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     items: ['All Outlets', _db.restaurant?.name ?? 'Main Outlet'],
                     isMobile: true,
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedOutlet = val);
+                      if (val != null) {
+                        setState(() {
+                          _selectedOutlet = val;
+                          _currentPage = 1;
+                        });
+                        _loadSalesReport(showLoading: false);
+                      }
                     },
                   ),
                 ),
@@ -862,7 +896,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       if (val != null) {
                         setState(() {
                           _selectedPaymentMode = val == 'All Payments' ? 'All Payment Modes' : val;
+                          _currentPage = 1;
                         });
+                        _loadSalesReport(showLoading: false);
                       }
                     },
                   ),
@@ -883,7 +919,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       if (val != null) {
                         setState(() {
                           _selectedOrderType = val == 'All Orders' ? 'All Order Types' : val;
+                          _currentPage = 1;
                         });
+                        _loadSalesReport(showLoading: false);
                       }
                     },
                   ),
@@ -893,10 +931,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   Expanded(
                     child: _buildCurvedDropdown(
                       value: _selectedStaff,
-                      items: ['All Staff', ..._db.staffList.map((s) => s.name)],
+                      items: _staffDropdownItems,
                       isMobile: true,
                       onChanged: (val) {
-                        if (val != null) setState(() => _selectedStaff = val);
+                        if (val != null) {
+                          setState(() {
+                            _selectedStaff = val;
+                            _currentPage = 1;
+                          });
+                          _loadSalesReport(showLoading: false);
+                        }
                       },
                     ),
                   ),
@@ -913,7 +957,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: ElevatedButton(
                     onPressed: () {
                       setState(() => _currentPage = 1);
-                      _loadSalesReport();
+                      _loadSalesReport(showLoading: false);
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2563EB),
@@ -952,7 +996,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   child: IconButton(
                     icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 18),
                     tooltip: 'Refresh Data',
-                    onPressed: () => _loadSalesReport(),
+                    onPressed: () => _loadSalesReport(showLoading: false),
                     padding: EdgeInsets.zero,
                   ),
                 ),
@@ -998,7 +1042,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     items: ['All Outlets', _db.restaurant?.name ?? 'Main Outlet'],
                     isMobile: false,
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedOutlet = val);
+                      if (val != null) {
+                        setState(() {
+                          _selectedOutlet = val;
+                          _currentPage = 1;
+                        });
+                        _loadSalesReport(showLoading: false);
+                      }
                     },
                   ),
                   const SizedBox(width: 10),
@@ -1009,7 +1059,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     items: const ['All Payment Modes', 'Cash', 'UPI', 'Card', 'Wallet'],
                     isMobile: false,
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedPaymentMode = val);
+                      if (val != null) {
+                        setState(() {
+                          _selectedPaymentMode = val;
+                          _currentPage = 1;
+                        });
+                        _loadSalesReport(showLoading: false);
+                      }
                     },
                   ),
                   const SizedBox(width: 10),
@@ -1020,7 +1076,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     items: const ['All Order Types', 'Dine In', 'Takeaway', 'Delivery'],
                     isMobile: false,
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedOrderType = val);
+                      if (val != null) {
+                        setState(() {
+                          _selectedOrderType = val;
+                          _currentPage = 1;
+                        });
+                        _loadSalesReport(showLoading: false);
+                      }
                     },
                   ),
 
@@ -1029,10 +1091,16 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     const SizedBox(width: 10),
                     _buildCurvedDropdown(
                       value: _selectedStaff,
-                      items: ['All Staff', ..._db.staffList.map((s) => s.name)],
+                      items: _staffDropdownItems,
                       isMobile: false,
                       onChanged: (val) {
-                        if (val != null) setState(() => _selectedStaff = val);
+                        if (val != null) {
+                          setState(() {
+                            _selectedStaff = val;
+                            _currentPage = 1;
+                          });
+                          _loadSalesReport(showLoading: false);
+                        }
                       },
                     ),
                   ],
@@ -1050,7 +1118,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ElevatedButton(
                 onPressed: () {
                   setState(() => _currentPage = 1);
-                  _loadSalesReport();
+                  _loadSalesReport(showLoading: false);
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
@@ -1936,7 +2004,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return str.replaceAllMapped(RegExp(r'(\d+?)(?=(\d\d)+(\d)(?!\d))(\.\d+)?'), (Match m) => '${m[1]},');
   }
 
-  Widget _buildOrderTypeChip(OrderType type) {
+  Widget _buildOrderTypeChip(OrderType type, {bool isCompact = false}) {
     Color bg;
     Color text;
     String label;
@@ -1960,14 +2028,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
+      padding: EdgeInsets.symmetric(
+        horizontal: isCompact ? 5 : 9,
+        vertical: isCompact ? 1.5 : 3.5,
+      ),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: BorderRadius.circular(isCompact ? 4 : 6),
       ),
       child: Text(
         label,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: text),
+        style: TextStyle(
+          fontSize: isCompact ? 9 : 11,
+          fontWeight: FontWeight.w700,
+          color: text,
+        ),
       ),
     );
   }
@@ -2232,50 +2307,49 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       }
                     : null,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Staff Avatar / Initials
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
-                          borderRadius: BorderRadius.circular(10),
+                          borderRadius: BorderRadius.circular(8),
                           boxShadow: const [
-                            BoxShadow(color: Color(0x142563EB), blurRadius: 6, offset: Offset(0, 2)),
+                            BoxShadow(color: Color(0x142563EB), blurRadius: 4, offset: Offset(0, 1)),
                           ],
                         ),
                         alignment: Alignment.center,
                         child: Text(
                           initials.isNotEmpty ? initials : 'ST',
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
 
                       // Staff Name & Role & Bills
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
-                                Flexible(
-                                  child: Text(
-                                    s.staffName,
-                                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                                Text(
+                                  s.staffName,
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                 ),
-                                const SizedBox(width: 6),
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFEFF6FF),
                                     borderRadius: BorderRadius.circular(4),
@@ -2283,31 +2357,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   ),
                                   child: Text(
                                     s.role.toUpperCase(),
-                                    style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                                    style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
                                   ),
                                 ),
                               ],
                             ),
                             const SizedBox(height: 3),
-                            Row(
+                            Wrap(
+                              spacing: 4,
+                              runSpacing: 2,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
                                 Text(
                                   '${s.billsCount} bills settled',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
                                 ),
-                                const SizedBox(width: 6),
-                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
-                                const SizedBox(width: 6),
+                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 9.5)),
                                 Text(
                                   'Avg: $currency${_formatNumber(s.avgTicket)}',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
                                 ),
-                                const SizedBox(width: 6),
-                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 11)),
-                                const SizedBox(width: 6),
+                                const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 9.5)),
                                 Text(
                                   '${pct.toStringAsFixed(1)}% share',
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
                                 ),
                               ],
                             ),
@@ -2315,29 +2388,33 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         ),
                       ),
 
+                      const SizedBox(width: 8),
+
                       // Revenue & Drilldown Toggle
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             '$currency${_formatNumber(s.totalRevenue)}',
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                           ),
-                          if (s.orders.isNotEmpty)
+                          if (s.orders.isNotEmpty) ...[
+                            const SizedBox(height: 2),
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
                                   isExpanded ? 'Hide bills' : 'View bills (${s.orders.length})',
-                                  style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
                                 ),
                                 Icon(
                                   isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                                  size: 15,
+                                  size: 14,
                                   color: const Color(0xFF2563EB),
                                 ),
                               ],
                             ),
+                          ],
                         ],
                       ),
                     ],
@@ -2348,29 +2425,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
               // Expandable Order Drilldown
               if (isExpanded && s.orders.isNotEmpty)
                 Container(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: const Color(0xFFE2E8F0)),
                     ),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                           decoration: const BoxDecoration(
                             color: Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(7)),
                           ),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Recent Orders Settled by ${s.staffName} (${s.orders.length} total)',
-                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
-                              ),
-                            ],
+                          child: Text(
+                            'Recent Orders Settled by ${s.staffName} (${s.orders.length} total)',
+                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         ...s.orders.take(15).map((o) {
@@ -2387,47 +2462,59 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               );
                             },
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                               decoration: const BoxDecoration(
                                 border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
                               ),
                               child: Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: CrossAxisAlignment.center,
                                 children: [
-                                  Row(
-                                    children: [
-                                      Text(
-                                        o.orderNumber.startsWith('#') ? o.orderNumber : '#${o.orderNumber}',
-                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        dateStr,
-                                        style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      _buildOrderTypeChip(o.orderType),
-                                    ],
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Wrap(
+                                          spacing: 6,
+                                          runSpacing: 2,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          children: [
+                                            Text(
+                                              o.orderNumber.startsWith('#') ? o.orderNumber : '#${o.orderNumber}',
+                                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                            ),
+                                            Text(
+                                              dateStr,
+                                              style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 3),
+                                        Wrap(
+                                          spacing: 5,
+                                          runSpacing: 2,
+                                          crossAxisAlignment: WrapCrossAlignment.center,
+                                          children: [
+                                            _buildOrderTypeChip(o.orderType, isCompact: true),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                              decoration: BoxDecoration(
+                                                color: const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                o.paymentMethod,
+                                                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                  Row(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFF1F5F9),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          o.paymentMethod,
-                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        '$currency${_formatNumber(o.totalAmount)}',
-                                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                      ),
-                                    ],
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '$currency${_formatNumber(o.totalAmount)}',
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                                   ),
                                 ],
                               ),

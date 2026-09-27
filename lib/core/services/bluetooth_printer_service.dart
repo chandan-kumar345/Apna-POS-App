@@ -16,6 +16,7 @@ import 'package:intl/intl.dart';
 import '../models/order_model.dart';
 import '../models/restaurant_model.dart';
 import '../models/user_model.dart';
+import '../models/staff_model.dart';
 import '../network/api_endpoints.dart';
 import '../database/database_service.dart';
 import 'windows_printer_service.dart';
@@ -1112,5 +1113,226 @@ class BluetoothPrinterService {
       if (kDebugMode) print('Error sending KOT to thermal printer: $e');
       return false;
     }
+  }
+
+  /// Formats and binarizes/grayscales captured ID card image for thermal raster printing
+  img.Image _formatIdCardRaster(img.Image src, {int targetWidth = 384}) {
+    final double aspectRatio = src.height / src.width;
+    final int targetHeight = (targetWidth * aspectRatio).round();
+
+    final resized = img.copyResize(
+      src,
+      width: targetWidth,
+      height: targetHeight,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    final canvas = img.Image(width: targetWidth, height: targetHeight);
+    img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
+    img.compositeImage(canvas, resized);
+
+    return img.grayscale(canvas);
+  }
+
+  /// Print Staff ID Card for 58mm/80mm Thermal Printer (Windows Native & Mobile Bluetooth)
+  /// Supports printing exact visual raster snapshot from preview if [cardRasterBytes] is provided.
+  Future<bool> printStaffIdCard({
+    required StaffModel staff,
+    RestaurantModel? restaurant,
+    UserModel? user,
+    Uint8List? cardRasterBytes,
+    WindowsPrinterInfo? windowsPrinter,
+  }) async {
+    // --- Windows Native / Bluetooth Flow ---
+    if (!kIsWeb && Platform.isWindows) {
+      final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
+      if (target == null) {
+        if (kDebugMode) print('[printStaffIdCard] No Windows or Bluetooth printer available.');
+        return false;
+      }
+
+      try {
+        final profile = await getCapabilityProfile();
+        final generator = Generator(PaperSize.mm58, profile);
+        final bytes = await _buildStaffIdCardBytes(
+          generator: generator,
+          staff: staff,
+          restaurant: restaurant,
+          user: user,
+          cardRasterBytes: cardRasterBytes,
+        );
+
+        return await WindowsPrinterService().printRawBytes(target, bytes, docName: 'Staff ID ${staff.name}');
+      } catch (e) {
+        if (kDebugMode) print('Error printing staff id card on Windows: $e');
+        return false;
+      }
+    }
+
+    // --- Android / iOS Mobile Bluetooth Flow ---
+    bool connected = await isConnected();
+    if (!connected) {
+      connected = await autoConnectSavedPrinter();
+      if (!connected) return false;
+    }
+
+    try {
+      final profile = await getCapabilityProfile();
+      final generator = Generator(PaperSize.mm58, profile);
+      final bytes = await _buildStaffIdCardBytes(
+        generator: generator,
+        staff: staff,
+        restaurant: restaurant,
+        user: user,
+        cardRasterBytes: cardRasterBytes,
+      );
+
+      return await PrintBluetoothThermal.writeBytes(bytes);
+    } catch (e) {
+      if (kDebugMode) print('Error sending staff id card to bluetooth printer: $e');
+      return false;
+    }
+  }
+
+  /// Builds ESC/POS binary byte stream for Staff ID Card
+  Future<List<int>> _buildStaffIdCardBytes({
+    required Generator generator,
+    required StaffModel staff,
+    RestaurantModel? restaurant,
+    UserModel? user,
+    Uint8List? cardRasterBytes,
+  }) async {
+    List<int> bytes = [];
+
+    // 1. If exact card preview raster snapshot is provided, print it directly!
+    if (cardRasterBytes != null && cardRasterBytes.isNotEmpty) {
+      try {
+        final decoded = img.decodeImage(cardRasterBytes);
+        if (decoded != null) {
+          final processed = _formatIdCardRaster(decoded, targetWidth: 384);
+          bytes += generator.imageRaster(processed, align: PosAlign.center);
+          bytes += generator.feed(3);
+          return bytes;
+        }
+      } catch (e) {
+        if (kDebugMode) print('Error printing card raster snapshot: $e');
+      }
+    }
+
+    // 2. Fallback ESC/POS layout if raster snapshot wasn't available
+    final restName = _toAscii(restaurant?.name.isNotEmpty == true ? restaurant!.name : 'Apna POS');
+    final restTagline = _toAscii(restaurant?.tagline.isNotEmpty == true ? restaurant!.tagline : 'TEAM - SERVE - GROW');
+
+    final department = staff.department.isNotEmpty
+        ? staff.department
+        : (staff.role.toLowerCase().contains('cash')
+            ? 'Front Office'
+            : (staff.role.toLowerCase().contains('chef') || staff.role.toLowerCase().contains('kitchen')
+                ? 'Kitchen Section'
+                : (staff.role.toLowerCase().contains('waiter') || staff.role.toLowerCase().contains('cap')
+                    ? 'Dining Service'
+                    : (staff.role.toLowerCase().contains('admin') || staff.role.toLowerCase().contains('owner') ? 'Management' : 'Operations'))));
+
+    final empId = staff.employeeId.isNotEmpty
+        ? staff.employeeId
+        : (staff.id.length >= 4 ? 'EMP${staff.id.substring(0, 4).toUpperCase()}' : 'EMP001');
+
+    final phone = staff.phone.isNotEmpty ? staff.phone : '';
+    final email = staff.email.isNotEmpty ? staff.email : '';
+    final joinDateStr = staff.joiningDate != null
+        ? DateFormat('dd MMM yyyy').format(staff.joiningDate!)
+        : DateFormat('dd MMM yyyy').format(staff.createdAt);
+
+    // 1. Top Logo Raster
+    try {
+      final logoImage = await _loadCompanyLogo(user: user, restaurant: restaurant);
+      if (logoImage != null) {
+        bytes += generator.imageRaster(logoImage, align: PosAlign.center);
+        bytes += generator.feed(1);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error printing logo in staff id card: $e');
+    }
+
+    // 2. Restaurant Header
+    bytes += generator.text(
+      restName.toUpperCase(),
+      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
+    );
+    bytes += generator.text(
+      'STAFF ID CARD',
+      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1),
+    );
+    bytes += generator.hr(ch: '=');
+
+    // 3. Staff Name & Role
+    bytes += generator.text(
+      _toAscii(staff.name.toUpperCase()),
+      styles: const PosStyles(align: PosAlign.center, bold: true, height: PosTextSize.size1, width: PosTextSize.size1),
+    );
+    bytes += generator.text(
+      _toAscii('*** ${staff.role.toUpperCase()} ***'),
+      styles: const PosStyles(align: PosAlign.center, bold: true),
+    );
+    bytes += generator.hr(ch: '-');
+
+    // 4. Key Details
+    bytes += generator.row([
+      PosColumn(text: 'Emp ID:', width: 4, styles: const PosStyles(bold: true)),
+      PosColumn(text: _toAscii(empId), width: 8, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Department:', width: 4, styles: const PosStyles(bold: true)),
+      PosColumn(text: _toAscii(department), width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+    bytes += generator.row([
+      PosColumn(text: 'Status:', width: 4, styles: const PosStyles(bold: true)),
+      PosColumn(text: _toAscii(staff.status), width: 8, styles: const PosStyles(align: PosAlign.right, bold: true)),
+    ]);
+    if (phone.isNotEmpty) {
+      bytes += generator.row([
+        PosColumn(text: 'Phone:', width: 4, styles: const PosStyles(bold: true)),
+        PosColumn(text: _toAscii(phone), width: 8, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    if (email.isNotEmpty) {
+      bytes += generator.row([
+        PosColumn(text: 'Email:', width: 4, styles: const PosStyles(bold: true)),
+        PosColumn(text: _toAscii(email), width: 8, styles: const PosStyles(align: PosAlign.right)),
+      ]);
+    }
+    bytes += generator.row([
+      PosColumn(text: 'Joined:', width: 4, styles: const PosStyles(bold: true)),
+      PosColumn(text: _toAscii(joinDateStr), width: 8, styles: const PosStyles(align: PosAlign.right)),
+    ]);
+
+    bytes += generator.hr(ch: '-');
+
+    // 5. Verification QR Code
+    final qrPayload = 'STAFF-ID:$empId|NAME:${staff.name}|ROLE:${staff.role}|DEPT:$department|ORG:$restName';
+    try {
+      final qrRaster = await _generateQrRaster(qrPayload, size: 200);
+      if (qrRaster != null) {
+        bytes += generator.imageRaster(qrRaster, align: PosAlign.center);
+      } else {
+        bytes += generator.qrcode(qrPayload, size: QRSize.size6);
+      }
+    } catch (_) {
+      bytes += generator.qrcode(qrPayload, size: QRSize.size6);
+    }
+
+    bytes += generator.feed(1);
+    bytes += generator.text(
+      restTagline,
+      styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1),
+    );
+    bytes += generator.text(
+      'Powered by Apna POS',
+      styles: const PosStyles(align: PosAlign.center, height: PosTextSize.size1),
+    );
+
+    // 6. Feed & Tear Margin
+    bytes += generator.feed(3);
+    return bytes;
   }
 }

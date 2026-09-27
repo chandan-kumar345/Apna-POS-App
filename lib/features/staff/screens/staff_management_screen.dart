@@ -6,6 +6,7 @@ import '../../../core/models/staff_model.dart';
 import '../../../core/services/staff_service.dart';
 import 'create_staff_screen.dart';
 import 'staff_settings_screen.dart';
+import '../widgets/staff_id_card_dialog.dart';
 
 class StaffManagementScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -39,17 +40,10 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   List<StaffModel> _staffList = [];
   StaffStatsModel _stats = const StaffStatsModel();
 
-  final List<String> _roleOptions = [
-    'All Roles',
-    'Admin',
-    'Manager',
-    'Cashier',
-    'Sales',
-    'Inventory',
-    'Support',
-    'Chef',
-    'Waiter',
-  ];
+  List<String> get _roleOptions {
+    final list = ['All Roles', ..._db.allStaffRoles];
+    return list.toSet().toList();
+  }
 
   final List<String> _statusOptions = [
     'All Status',
@@ -62,17 +56,20 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   @override
   void initState() {
     super.initState();
-    if (_db.staffList.isNotEmpty) {
-      _applyLocalFilter();
-      _isLoading = false;
-    } else {
-      _isLoading = true;
-    }
+    _db.addListener(_onDbChanged);
+    _applyLocalFilter();
+    _isLoading = _db.staffList.isEmpty;
     _loadStaffData();
+  }
+
+  void _onDbChanged() {
+    if (!mounted) return;
+    _applyLocalFilter();
   }
 
   @override
   void dispose() {
+    _db.removeListener(_onDbChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     super.dispose();
@@ -1013,6 +1010,8 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                 onSelected: (action) {
                   if (action == 'edit') {
                     _showStaffFormDialog(existingStaff: staff);
+                  } else if (action == 'view_id') {
+                    StaffIdCardDialog.show(context, staff);
                   } else if (action == 'toggle') {
                     _toggleStatus(staff);
                   } else if (action == 'delete') {
@@ -1027,6 +1026,16 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                         Icon(Icons.edit_outlined, size: 15, color: Color(0xFF2563EB)),
                         SizedBox(width: 8),
                         Text('Edit Staff Details', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                      ],
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'view_id',
+                    child: Row(
+                      children: [
+                        Icon(Icons.badge_outlined, size: 15, color: Color(0xFF7C3AED)),
+                        SizedBox(width: 8),
+                        Text('View ID Card', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                       ],
                     ),
                   ),

@@ -117,23 +117,34 @@ class StaffService {
     if (email) {
       const existingUser = await User.findOne({ email });
       if (existingUser) {
-        throw new Error('An account with this email address already exists.');
+        user = existingUser;
+        if (rawPassword && rawPassword !== '••••••••') {
+          user.passwordHash = await User.hashPassword(rawPassword);
+          user.role = (staffData.role || 'cashier').toLowerCase();
+          await user.save();
+        }
+      } else {
+        const passwordHash = await User.hashPassword(rawPassword);
+        user = await User.create({
+          email,
+          phone: phone || undefined,
+          passwordHash,
+          role: (staffData.role || 'cashier').toLowerCase(),
+          businessId,
+          onboardingCompleted: true,
+          onboardingStep: 4,
+        });
       }
-
-      const passwordHash = await User.hashPassword(rawPassword);
-      user = await User.create({
-        email,
-        phone: phone || undefined,
-        passwordHash,
-        role: (staffData.role || 'cashier').toLowerCase(),
-        businessId,
-        onboardingCompleted: true,
-        onboardingStep: 4,
-      });
     }
 
+    const cleanStaffData = { ...staffData };
+    if (cleanStaffData.id && cleanStaffData.id.startsWith('st_')) {
+      delete cleanStaffData.id;
+    }
+    delete cleanStaffData._id;
+
     const staff = new Staff({
-      ...staffData,
+      ...cleanStaffData,
       businessId,
       userId: user ? user._id : undefined,
       employeeId,

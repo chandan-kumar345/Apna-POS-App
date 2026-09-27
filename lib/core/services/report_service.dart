@@ -405,8 +405,9 @@ class ReportService {
           final serverReport = SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
           final pLower = (period ?? 'allTime').toLowerCase().trim();
           final bool isSingleDayPeriod = pLower == 'today' || pLower == 'yesterday' || pLower == 'singleday';
+          final bool hasStaffFilter = (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') || isStaffSession;
 
-          if (isStaffSession || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1) {
+          if (hasStaffFilter || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1) {
             final local = _buildLocalSalesReport(
               period: period,
               startDate: startDate ?? fromDate,
@@ -418,23 +419,7 @@ class ReportService {
               search: search,
               ordersOverride: serverReport.orders.isNotEmpty ? serverReport.orders : null,
             );
-            if (isStaffSession) {
-              return local;
-            }
-            return SalesReportData(
-              summary: serverReport.summary.totalRevenue > 0 ? serverReport.summary : local.summary,
-              paymentModes: serverReport.paymentModes.isNotEmpty ? serverReport.paymentModes : local.paymentModes,
-              salesByOrderType: serverReport.salesByOrderType.isNotEmpty ? serverReport.salesByOrderType : local.salesByOrderType,
-              topProducts: serverReport.topProducts.isNotEmpty ? serverReport.topProducts : local.topProducts,
-              salesTrend: (isSingleDayPeriod || serverReport.salesTrend.length <= 1) ? local.salesTrend : (serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend),
-              categoryWise: serverReport.categoryWise.isNotEmpty ? serverReport.categoryWise : local.categoryWise,
-              staffWise: serverReport.staffWise.isNotEmpty ? serverReport.staffWise : local.staffWise,
-              outletWise: serverReport.outletWise.isNotEmpty ? serverReport.outletWise : local.outletWise,
-              orders: serverReport.orders.isNotEmpty ? serverReport.orders : local.orders,
-              startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : local.startDate,
-              endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : local.endDate,
-              period: serverReport.period.isNotEmpty ? serverReport.period : local.period,
-            );
+            return local;
           }
           return serverReport;
         }
@@ -511,6 +496,58 @@ class ReportService {
     );
   }
 
+  String _resolveStaffName(OrderModel o) {
+    if (o.staffName != null && o.staffName!.trim().isNotEmpty) {
+      return o.staffName!.trim();
+    }
+    if (o.staffId != null && o.staffId!.isNotEmpty) {
+      final s = _db.staffList.where((s) => s.id.toLowerCase() == o.staffId!.toLowerCase() || (s.employeeId.isNotEmpty && s.employeeId.toLowerCase() == o.staffId!.toLowerCase())).firstOrNull;
+      if (s != null && s.name.trim().isNotEmpty) {
+        return s.name.trim();
+      }
+      return 'Staff (${o.staffId})';
+    }
+    if (o.customerName != null && o.customerName!.startsWith('Staff:')) {
+      final clean = o.customerName!.replaceFirst('Staff:', '').trim();
+      if (clean.isNotEmpty) return clean;
+    }
+    return _db.currentUser?.name.isNotEmpty == true ? _db.currentUser!.name.trim() : 'Owner / Admin';
+  }
+
+  bool _orderMatchesStaff(OrderModel o, String staff) {
+    final target = staff.trim().toLowerCase();
+    if (target.isEmpty || target == 'all' || target == 'all staff') return true;
+
+    final oStaffId = (o.staffId ?? '').trim().toLowerCase();
+    if (oStaffId.isNotEmpty && oStaffId == target) return true;
+
+    final oStaffName = (o.staffName ?? '').trim().toLowerCase();
+    if (oStaffName.isNotEmpty && (oStaffName == target || oStaffName.contains(target) || target.contains(oStaffName))) {
+      return true;
+    }
+
+    final oCustName = (o.customerName ?? '').trim().toLowerCase();
+    if (oCustName.contains(target)) return true;
+
+    final resolved = _resolveStaffName(o).toLowerCase();
+    if (resolved == target || resolved.contains(target) || target.contains(resolved)) {
+      return true;
+    }
+
+    for (final s in _db.staffList) {
+      final sName = s.name.trim().toLowerCase();
+      final sId = s.id.trim().toLowerCase();
+      final sEmp = s.employeeId.trim().toLowerCase();
+      if (sName == target || sId == target || (sEmp.isNotEmpty && sEmp == target)) {
+        if (oStaffId.isNotEmpty && (oStaffId == sId || oStaffId == sEmp)) return true;
+        if (oStaffName.isNotEmpty && oStaffName == sName) return true;
+        if (resolved == sName) return true;
+      }
+    }
+
+    return false;
+  }
+
   /// Local calculation fallback for SalesReportData
   SalesReportData _buildLocalSalesReport({
     String? period,
@@ -578,55 +615,9 @@ class ReportService {
     final currentUser = _db.currentUser;
     final bool isStaffSession = currentUser != null && !currentUser.isOwner && !currentUser.isAdmin;
     if (isStaffSession) {
-      final staffId = currentUser.id.trim().toLowerCase();
-      final staffEmpId = (currentUser.employeeId ?? '').trim().toLowerCase();
-      final staffName = currentUser.name.trim().toLowerCase();
-      final staffEmail = currentUser.email.trim().toLowerCase();
-
-      bool matchesCurrentStaff(OrderModel o) {
-        final oStaffId = (o.staffId ?? '').trim().toLowerCase();
-        final oStaffName = (o.staffName ?? '').trim().toLowerCase();
-        final oCustName = (o.customerName ?? '').trim().toLowerCase();
-
-        // 1. Direct ID matching
-        if (oStaffId.isNotEmpty) {
-          if (oStaffId == staffId) return true;
-          if (staffEmpId.isNotEmpty && (oStaffId == staffEmpId || oStaffId.contains(staffEmpId) || staffEmpId.contains(oStaffId))) return true;
-          if (staffEmail.isNotEmpty && oStaffId == staffEmail) return true;
-        }
-
-        // 2. Name matching
-        if (oStaffName.isNotEmpty) {
-          if (oStaffName == staffName) return true;
-          if (staffName.isNotEmpty && (oStaffName.contains(staffName) || staffName.contains(oStaffName))) return true;
-        }
-
-        // 3. Customer name prefix (e.g. "Staff: Amit Sharma")
-        if (oCustName.isNotEmpty) {
-          if (oCustName.contains(staffName) || (staffEmpId.isNotEmpty && oCustName.contains(staffEmpId))) return true;
-        }
-
-        // 4. Check staffList cross-reference
-        for (final s in _db.staffList) {
-          final sIdMatch = (s.id.toLowerCase() == staffId || (staffEmpId.isNotEmpty && s.employeeId.toLowerCase() == staffEmpId) || s.name.toLowerCase() == staffName);
-          if (sIdMatch) {
-            if (oStaffId.isNotEmpty && (s.id.toLowerCase() == oStaffId || s.employeeId.toLowerCase() == oStaffId)) return true;
-            if (oStaffName.isNotEmpty && s.name.toLowerCase() == oStaffName) return true;
-          }
-        }
-
-        return false;
-      }
-
-      settled = settled.where(matchesCurrentStaff).toList();
+      settled = settled.where((o) => _orderMatchesStaff(o, currentUser.name.isNotEmpty ? currentUser.name : currentUser.id)).toList();
     } else if (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') {
-      final targetStaff = staff.trim().toLowerCase();
-      settled = settled.where((o) {
-        if (o.staffId != null && o.staffId!.toLowerCase() == targetStaff) return true;
-        if (o.staffName != null && o.staffName!.trim().toLowerCase() == targetStaff) return true;
-        if (o.staffName != null && o.staffName!.trim().toLowerCase().contains(targetStaff)) return true;
-        return false;
-      }).toList();
+      settled = settled.where((o) => _orderMatchesStaff(o, staff)).toList();
     }
 
     // Apply Payment Method Filter
@@ -688,8 +679,19 @@ class ReportService {
     final Map<String, CategorySaleStat> catMap = {};
     final Map<String, StaffSaleStat> staffMap = {};
 
-    // Seed all active staff from _db.staffList if owner/admin is viewing
-    if (_db.currentUser?.isOwner == true || _db.currentUser?.isAdmin == true) {
+    // Seed staff in staffMap
+    if (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') {
+      staffMap[staff] = StaffSaleStat(
+        staffId: '',
+        staffName: staff,
+        role: 'Staff',
+        billsCount: 0,
+        totalRevenue: 0.0,
+        percentage: 0.0,
+        avgTicket: 0.0,
+        orders: [],
+      );
+    } else if (_db.currentUser?.isOwner == true || _db.currentUser?.isAdmin == true) {
       for (final s in _db.staffList) {
         final sName = s.name.trim();
         if (sName.isNotEmpty) {
@@ -758,13 +760,7 @@ class ReportService {
       otMap[ot] = (otMap[ot] ?? 0.0) + o.totalAmount;
       otCount[ot] = (otCount[ot] ?? 0) + 1;
 
-      final resolvedStaffName = (o.staffName != null && o.staffName!.trim().isNotEmpty)
-          ? o.staffName!.trim()
-          : (o.staffId != null && o.staffId!.isNotEmpty
-              ? (_db.staffList.where((s) => s.id.toLowerCase() == o.staffId!.toLowerCase() || (s.employeeId.isNotEmpty && s.employeeId.toLowerCase() == o.staffId!.toLowerCase())).firstOrNull?.name ?? 'Staff (${o.staffId})')
-              : ((o.customerName != null && o.customerName!.startsWith('Staff:'))
-                  ? o.customerName!.replaceFirst('Staff:', '').trim()
-                  : (_db.currentUser?.isOwner == true ? 'Owner / Admin' : (_db.currentUser?.name ?? 'Owner / Admin'))));
+      final resolvedStaffName = _resolveStaffName(o);
 
       final resolvedStaffId = (o.staffId != null && o.staffId!.isNotEmpty)
           ? o.staffId!

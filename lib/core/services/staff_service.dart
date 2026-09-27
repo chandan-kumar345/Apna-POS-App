@@ -65,8 +65,6 @@ class StaffService {
 
       if (response != null) {
         List<dynamic> rawList = [];
-        Map<String, dynamic> pagination = {};
-        StaffStatsModel? statsFromResponse;
 
         if (response is Map<String, dynamic>) {
           if (response['data'] is Map<String, dynamic>) {
@@ -75,12 +73,6 @@ class StaffService {
               rawList = data['staff'] as List<dynamic>;
             } else if (data['data'] is List) {
               rawList = data['data'] as List<dynamic>;
-            }
-            if (data['pagination'] is Map<String, dynamic>) {
-              pagination = data['pagination'] as Map<String, dynamic>;
-            }
-            if (data['stats'] is Map<String, dynamic>) {
-              statsFromResponse = StaffStatsModel.fromJson(data['stats'] as Map<String, dynamic>);
             }
           } else if (response['data'] is List) {
             rawList = response['data'] as List<dynamic>;
@@ -96,32 +88,57 @@ class StaffService {
             .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
             .toList();
 
-        final totalCount = (pagination['total'] as num?)?.toInt() ??
-            int.tryParse(pagination['total']?.toString() ?? '') ??
-            staffMembers.length;
-        final totalPages = (pagination['totalPages'] as num?)?.toInt() ??
-            int.tryParse(pagination['totalPages']?.toString() ?? '') ??
-            ((totalCount / limit).ceil() > 0 ? (totalCount / limit).ceil() : 1);
-
         // Sync local cache with remote results
-        _db.syncStaffList(staffMembers);
+        if (staffMembers.isNotEmpty) {
+          _db.syncStaffList(staffMembers);
+        }
 
-        // Fetch dynamic stats or compute from response/cache
-        final stats = statsFromResponse ?? await fetchStats() ?? _computeStats(_db.staffList);
-
-        return StaffFetchResult(
-          staff: staffMembers,
-          totalCount: totalCount,
-          page: page,
-          totalPages: totalPages,
-          stats: stats,
-        );
+        // Trigger background sync for any unsynced local staff
+        syncUnsyncedStaff();
       }
     } catch (e) {
-      debugPrint('[StaffService] fetchStaff error: $e. Falling back to local cache.');
+      debugPrint('[StaffService] fetchStaff error: $e. Using local database.');
     }
 
     return _getLocalStaff(page: page, limit: limit, role: role, status: status, search: search);
+  }
+
+  /// Background sync to push locally-created staff to the backend
+  Future<void> syncUnsyncedStaff() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      for (final s in List<StaffModel>.from(_db.staffList)) {
+        if (s.id.startsWith('st_')) {
+          try {
+            final payload = s.toJson();
+            final response = await _apiClient.post(
+              ApiEndpoints.staff,
+              data: payload,
+            );
+            if (response != null) {
+              Map<String, dynamic>? data;
+              if (response is Map<String, dynamic>) {
+                if (response['data'] is Map<String, dynamic>) {
+                  data = response['data'] as Map<String, dynamic>;
+                } else if (response['staff'] is Map<String, dynamic>) {
+                  data = response['staff'] as Map<String, dynamic>;
+                } else if (response['id'] != null || response['_id'] != null) {
+                  data = response;
+                }
+              }
+              if (data != null) {
+                final created = StaffModel.fromJson(data);
+                _db.addStaff(created);
+              }
+            }
+          } catch (err) {
+            debugPrint('[StaffService] Background sync staff item error: $err');
+          }
+        }
+      }
+    } catch (_) {}
   }
 
   /// Fetch overall staff statistics dynamically from API
@@ -149,71 +166,78 @@ class StaffService {
     return _computeStats(_db.staffList);
   }
 
-  /// Create a new staff member dynamically via API
+  /// Create a new staff member dynamically via API and save to local DB
   Future<StaffModel?> createStaff(StaffModel staff) async {
-    try {
-      final payload = staff.toJson();
-      final response = await _apiClient.post(
-        ApiEndpoints.staff,
-        data: payload,
-      );
+    // 1. Immediately store in local database so it is guaranteed to persist and show in UI
+    _db.addStaff(staff);
 
-      if (response != null) {
-        Map<String, dynamic>? data;
-        if (response is Map<String, dynamic>) {
-          if (response['data'] is Map<String, dynamic>) {
-            data = response['data'] as Map<String, dynamic>;
-          } else if (response['staff'] is Map<String, dynamic>) {
-            data = response['staff'] as Map<String, dynamic>;
-          } else if (response['id'] != null || response['_id'] != null) {
-            data = response;
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final payload = staff.toJson();
+        final response = await _apiClient.post(
+          ApiEndpoints.staff,
+          data: payload,
+        );
+
+        if (response != null) {
+          Map<String, dynamic>? data;
+          if (response is Map<String, dynamic>) {
+            if (response['data'] is Map<String, dynamic>) {
+              data = response['data'] as Map<String, dynamic>;
+            } else if (response['staff'] is Map<String, dynamic>) {
+              data = response['staff'] as Map<String, dynamic>;
+            } else if (response['id'] != null || response['_id'] != null) {
+              data = response;
+            }
           }
-        }
-        if (data != null) {
-          final created = StaffModel.fromJson(data);
-          _db.addStaff(created);
-          return created;
+          if (data != null) {
+            final created = StaffModel.fromJson(data);
+            _db.addStaff(created);
+            return created;
+          }
         }
       }
     } catch (e) {
-      debugPrint('[StaffService] createStaff API error: $e. Saving locally.');
+      debugPrint('[StaffService] createStaff API error: $e. Saved locally.');
     }
 
-    // Local fallback
-    _db.addStaff(staff);
     return staff;
   }
 
   /// Update an existing staff member dynamically via API
   Future<StaffModel?> updateStaff(StaffModel staff) async {
-    try {
-      final payload = staff.toJson();
-      final response = await _apiClient.put(
-        ApiEndpoints.staffById(staff.id),
-        data: payload,
-      );
+    _db.updateStaff(staff);
 
-      if (response != null) {
-        Map<String, dynamic>? data;
-        if (response is Map<String, dynamic>) {
-          if (response['data'] is Map<String, dynamic>) {
-            data = response['data'] as Map<String, dynamic>;
-          } else if (response['id'] != null || response['_id'] != null) {
-            data = response;
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        final payload = staff.toJson();
+        final response = await _apiClient.put(
+          ApiEndpoints.staffById(staff.id),
+          data: payload,
+        );
+
+        if (response != null) {
+          Map<String, dynamic>? data;
+          if (response is Map<String, dynamic>) {
+            if (response['data'] is Map<String, dynamic>) {
+              data = response['data'] as Map<String, dynamic>;
+            } else if (response['id'] != null || response['_id'] != null) {
+              data = response;
+            }
           }
-        }
-        if (data != null) {
-          final updated = StaffModel.fromJson(data);
-          _db.updateStaff(updated);
-          return updated;
+          if (data != null) {
+            final updated = StaffModel.fromJson(data);
+            _db.updateStaff(updated);
+            return updated;
+          }
         }
       }
     } catch (e) {
-      debugPrint('[StaffService] updateStaff API error: $e. Updating locally.');
+      debugPrint('[StaffService] updateStaff API error: $e. Updated locally.');
     }
 
-    // Local fallback
-    _db.updateStaff(staff);
     return staff;
   }
 

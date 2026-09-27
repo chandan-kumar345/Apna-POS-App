@@ -59,33 +59,41 @@ class UserModel {
       case 'dashboard':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'dashboard' || pL == 'reports' || pL.startsWith('reports_');
+          return pL == 'dashboard' ||
+              pL.startsWith('dashboard_') ||
+              pL == 'reports' ||
+              pL.startsWith('reports_');
         });
       case 'pos':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
           return pL == 'pos' ||
-              pL == 'pos_access' ||
               pL == 'billing' ||
-              pL == 'pos_apply_discount' ||
-              pL == 'pos_cancel_orders' ||
-              pL == 'pos_takeaway_delivery';
+              pL.startsWith('pos_');
         });
       case 'tables':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'tables' || pL == 'pos_manage_tables';
+          return pL == 'tables' ||
+              pL.startsWith('tables_') ||
+              pL == 'pos_manage_tables';
         });
       case 'orders':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'orders' || pL == 'pos_view_all_orders' || pL == 'pos_kds';
+          return pL == 'orders' ||
+              pL.startsWith('orders_') ||
+              pL == 'pos_view_all_orders' ||
+              pL == 'pos_kds';
         });
       case 'menu':
       case 'products':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'menu' || pL == 'products' || pL.startsWith('products_');
+          return pL == 'menu' ||
+              pL.startsWith('menu_') ||
+              pL == 'products' ||
+              pL.startsWith('products_');
         });
       case 'inventory':
         return permissions.any((p) {
@@ -101,23 +109,35 @@ class UserModel {
       case 'customers':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'crm' || pL == 'customers' || pL.startsWith('customers_');
+          return pL == 'crm' ||
+              pL.startsWith('crm_') ||
+              pL == 'customers' ||
+              pL.startsWith('customers_');
         });
       case 'loyalty':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'loyalty' || pL == 'customers_crm' || pL == 'crm' || pL == 'customers';
+          return pL == 'loyalty' ||
+              pL.startsWith('loyalty_') ||
+              pL == 'customers_crm' ||
+              pL == 'crm' ||
+              pL == 'customers';
         });
       case 'campaign':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'campaign' || pL == 'customers_crm' || pL == 'crm';
+          return pL == 'campaign' ||
+              pL.startsWith('campaign_') ||
+              pL == 'customers_crm' ||
+              pL == 'crm';
         });
       case 'staff':
       case 'settings_staff':
         return permissions.any((p) {
           final pL = p.toLowerCase().trim();
-          return pL == 'staff' || pL == 'settings_staff';
+          return pL == 'staff' ||
+              pL.startsWith('staff_') ||
+              pL == 'settings_staff';
         });
       case 'settings':
         return permissions.any((p) {

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
 import '../../../core/services/staff_service.dart';
+import '../../../core/services/upload_service.dart';
 
 class CreateStaffScreen extends StatefulWidget {
   final VoidCallback? onStaffCreated;
@@ -35,7 +36,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   String _selectedCountryCode = '+91';
   String _selectedDepartment = 'Billing / Counter';
   String _selectedReportingTo = 'Store Owner / Admin';
-  String _selectedLocation = 'Main Store';
+  String _selectedLocation = 'Main Branch';
   String _selectedShift = 'Morning Shift (8 AM - 4 PM)';
 
   // Security State
@@ -44,24 +45,27 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   bool _forcePasswordChange = false;
 
   // Permissions State
-  String _selectedPermissionCategory = 'pos_orders';
+  String _selectedPermissionCategory = 'pos';
   final Set<String> _selectedPermissions = {
     'pos_access',
+    'pos_create_order',
     'pos_apply_discount',
-    'pos_view_all_orders',
-    'pos_manage_tables',
+    'pos_print_receipt',
     'pos_takeaway_delivery',
-    'products_view',
-    'inventory_view',
-    'customers_view',
-    'customers_add_edit',
-    'reports_daily_sales',
+    'tables_view',
+    'orders_view',
+    'orders_status_update',
+    'menu_view',
+    'menu_availability',
+    'crm_view',
+    'crm_add_edit',
+    'reports_view_own',
   };
 
   // Preferences State
   String _selectedLanguage = 'English';
   String _selectedTheme = 'Light';
-  String _selectedDefaultScreen = 'Dashboard';
+  String _selectedDefaultScreen = 'POS Billing';
   bool _enableBiometric = false;
 
   // Account Status & Options
@@ -73,7 +77,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   final ImagePicker _picker = ImagePicker();
 
   // Lists of Options
-  final List<String> _roleOptions = [
+  List<String> _roleOptions = [
     'Admin',
     'Manager',
     'Cashier',
@@ -82,7 +86,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     'Support',
     'Chef',
     'Waiter',
-    'Other',
   ];
 
   final List<String> _departmentOptions = [
@@ -96,23 +99,19 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     'Other',
   ];
 
-  final List<String> _reportingToOptions = [
+  List<String> _reportingToOptions = [
     'Store Owner / Admin',
-    'General Manager',
-    'Store Supervisor',
-    'Shift Lead',
     'None',
   ];
 
-  final List<String> _locationOptions = [
-    'Main Store',
+  List<String> _locationOptions = [
+    'Main Branch',
     'Counter 1',
     'Kitchen',
     'Outlet 1',
     'Takeaway Counter',
     'Floor 1',
     'Floor 2',
-    'Other',
   ];
 
   final List<String> _shiftOptions = [
@@ -145,6 +144,9 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     'Tables / Floor',
     'Orders List',
     'KDS Kitchen',
+    'Sales Report',
+    'CRM Customers',
+    'Inventory',
   ];
 
   final List<String> _countryCodes = [
@@ -159,70 +161,154 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     '+977',
   ];
 
-  // Category definitions for permissions
+  // 12 Navigation Sidebar Categories for Permissions
   final List<Map<String, dynamic>> _permissionCategories = [
-    {'id': 'pos_orders', 'label': 'POS & Orders', 'icon': Icons.shopping_cart_outlined},
-    {'id': 'products', 'label': 'Products', 'icon': Icons.inventory_2_outlined},
-    {'id': 'inventory', 'label': 'Inventory', 'icon': Icons.archive_outlined},
-    {'id': 'customers', 'label': 'Customers', 'icon': Icons.people_outline_rounded},
-    {'id': 'reports', 'label': 'Reports', 'icon': Icons.insert_chart_outlined_rounded},
-    {'id': 'settings', 'label': 'Settings', 'icon': Icons.settings_outlined},
-    {'id': 'others', 'label': 'Others', 'icon': Icons.more_horiz_rounded},
+    {'id': 'dashboard', 'label': 'Dashboard', 'icon': Icons.home_rounded},
+    {'id': 'pos', 'label': 'POS Billing', 'icon': Icons.point_of_sale_rounded},
+    {'id': 'tables', 'label': 'Tables & Floor', 'icon': Icons.table_restaurant_rounded},
+    {'id': 'orders', 'label': 'My Orders & KDS', 'icon': Icons.receipt_long_rounded},
+    {'id': 'menu', 'label': 'Menu & Catalog', 'icon': Icons.dinner_dining_rounded},
+    {'id': 'inventory', 'label': 'Inventory', 'icon': Icons.inventory_2_rounded},
+    {'id': 'reports', 'label': 'Sales Report', 'icon': Icons.bar_chart_rounded},
+    {'id': 'crm', 'label': 'CRM Customers', 'icon': Icons.people_alt_rounded},
+    {'id': 'loyalty', 'label': 'Loyalty Program', 'icon': Icons.card_giftcard_rounded},
+    {'id': 'campaign', 'label': 'Campaigns', 'icon': Icons.campaign_rounded},
+    {'id': 'staff', 'label': 'Staff Setting', 'icon': Icons.badge_rounded},
+    {'id': 'settings', 'label': 'Business Setting', 'icon': Icons.settings_rounded},
   ];
 
-  // Map of permissions by category
+  // Map of permissions by category with detailed sub-options
   final Map<String, List<Map<String, String>>> _permissionsByCategory = {
-    'pos_orders': [
-      {'id': 'pos_access', 'title': 'Access POS', 'subtitle': 'Allow billing and order management'},
-      {'id': 'pos_apply_discount', 'title': 'Apply Discount', 'subtitle': 'Allow to apply bill discounts'},
-      {'id': 'pos_cancel_orders', 'title': 'Cancel Orders', 'subtitle': 'Allow to cancel orders'},
-      {'id': 'pos_view_all_orders', 'title': 'View All Orders', 'subtitle': 'View orders from all staff'},
-      {'id': 'pos_manage_tables', 'title': 'Manage Tables', 'subtitle': 'Create, edit and manage tables'},
-      {'id': 'pos_kds', 'title': 'Kitchen Display (KDS)', 'subtitle': 'Access kitchen display system'},
-      {'id': 'pos_takeaway_delivery', 'title': 'Take Away & Delivery Orders', 'subtitle': 'Handle online and takeaway orders'},
+    'dashboard': [
+      {'id': 'dashboard_view', 'title': 'View Dashboard & Summary', 'subtitle': 'View sales metrics, total revenues & statistics'},
+      {'id': 'dashboard_realtime', 'title': 'Real-time Sales Tracking', 'subtitle': 'Track live orders counter and revenue stream'},
+      {'id': 'dashboard_quick_actions', 'title': 'Access Quick Actions', 'subtitle': 'Use dashboard shortcut buttons and fast actions'},
+      {'id': 'dashboard_recent_activity', 'title': 'Live Activity Stream', 'subtitle': 'View recent customer orders and floor updates'},
     ],
-    'products': [
-      {'id': 'products_view', 'title': 'View Products', 'subtitle': 'View items, prices and modifiers'},
-      {'id': 'products_add_edit', 'title': 'Add / Edit Products', 'subtitle': 'Create and update menu catalog'},
-      {'id': 'products_delete', 'title': 'Delete Products', 'subtitle': 'Remove menu items from store'},
-      {'id': 'products_categories', 'title': 'Manage Categories', 'subtitle': 'Organize product categories'},
+    'pos': [
+      {'id': 'pos_access', 'title': 'Access POS Billing', 'subtitle': 'Allow opening billing register and cart checkout'},
+      {'id': 'pos_create_order', 'title': 'Create & Place Orders', 'subtitle': 'Punch dine-in, takeaway, and delivery bills'},
+      {'id': 'pos_apply_discount', 'title': 'Apply Bill Discounts', 'subtitle': 'Allow item and bill-level discount coupons'},
+      {'id': 'pos_apply_tax', 'title': 'Modify Tax & Charges', 'subtitle': 'Adjust GST rates, service charges & fees'},
+      {'id': 'pos_cancel_orders', 'title': 'Cancel / Void Orders', 'subtitle': 'Allow cancelling orders and voiding billed items'},
+      {'id': 'pos_refund', 'title': 'Issue Refunds & Returns', 'subtitle': 'Process customer payment refunds and returns'},
+      {'id': 'pos_split_bill', 'title': 'Split Bills & Merge', 'subtitle': 'Split checks between customers and merge tables'},
+      {'id': 'pos_custom_items', 'title': 'Custom Price Items', 'subtitle': 'Add open-priced custom products on-the-fly'},
+      {'id': 'pos_print_receipt', 'title': 'Print & Re-print Bills', 'subtitle': 'Print thermal receipts and invoice duplicates'},
+      {'id': 'pos_takeaway_delivery', 'title': 'Takeaway & Delivery', 'subtitle': 'Handle online orders, takeaways & delivery'},
+    ],
+    'tables': [
+      {'id': 'tables_view', 'title': 'View Dining Tables', 'subtitle': 'View live floor tables status and occupancy'},
+      {'id': 'tables_manage', 'title': 'Manage Tables & Floor', 'subtitle': 'Create, edit, rename and arrange dining tables'},
+      {'id': 'tables_transfer', 'title': 'Transfer & Merge Tables', 'subtitle': 'Shift running orders between tables and merge'},
+      {'id': 'tables_reservation', 'title': 'Manage Reservations', 'subtitle': 'Reserve and schedule tables for upcoming guests'},
+    ],
+    'orders': [
+      {'id': 'orders_view', 'title': 'View Orders Directory', 'subtitle': 'Browse all live, pending and completed orders'},
+      {'id': 'orders_edit', 'title': 'Edit Running Orders', 'subtitle': 'Add more items and update kitchen instructions'},
+      {'id': 'orders_status_update', 'title': 'Update Order Status', 'subtitle': 'Mark orders as Preparing, Ready, Served, Done'},
+      {'id': 'orders_kds', 'title': 'Kitchen Display (KDS)', 'subtitle': 'Access digital kitchen order display system'},
+      {'id': 'orders_kot', 'title': 'Print & Re-print KOT', 'subtitle': 'Send and re-print Kitchen Order Tickets'},
+    ],
+    'menu': [
+      {'id': 'menu_view', 'title': 'View Menu Catalog', 'subtitle': 'Browse food catalog, prices and categories'},
+      {'id': 'menu_add', 'title': 'Add New Dishes', 'subtitle': 'Create new menu items with images and prices'},
+      {'id': 'menu_edit', 'title': 'Edit Menu & Pricing', 'subtitle': 'Update prices, descriptions and modifiers'},
+      {'id': 'menu_delete', 'title': 'Delete / Archive Items', 'subtitle': 'Remove dishes from catalog or archive'},
+      {'id': 'menu_categories', 'title': 'Manage Categories', 'subtitle': 'Create, reorder and organize categories'},
+      {'id': 'menu_availability', 'title': 'Item Availability (86)', 'subtitle': 'Toggle items in-stock or out of stock instantly'},
     ],
     'inventory': [
-      {'id': 'inventory_view', 'title': 'View Stock', 'subtitle': 'Monitor current inventory levels'},
-      {'id': 'inventory_adjust', 'title': 'Stock In / Stock Out', 'subtitle': 'Log inventory adjustments and wastage'},
-      {'id': 'inventory_alerts', 'title': 'Low Stock Alerts', 'subtitle': 'Receive low inventory notifications'},
-      {'id': 'inventory_purchases', 'title': 'Purchase Orders', 'subtitle': 'Manage supplier bills and POs'},
-    ],
-    'customers': [
-      {'id': 'customers_view', 'title': 'View Customer List', 'subtitle': 'Access directory of customer accounts'},
-      {'id': 'customers_add_edit', 'title': 'Add / Edit Customers', 'subtitle': 'Register customer profiles & loyalty'},
-      {'id': 'customers_crm', 'title': 'CRM Campaigns', 'subtitle': 'Send promotions via SMS/WhatsApp'},
-      {'id': 'customers_khata', 'title': 'Customer Credit / Khata', 'subtitle': 'Manage customer credit ledger'},
+      {'id': 'inventory_view', 'title': 'View Raw Stock Levels', 'subtitle': 'Monitor ingredients quantity and stock values'},
+      {'id': 'inventory_adjust', 'title': 'Stock In / Stock Out', 'subtitle': 'Log manual stock additions and inward batches'},
+      {'id': 'inventory_wastage', 'title': 'Log Stock Wastage', 'subtitle': 'Record damaged, expired or wasted inventory'},
+      {'id': 'inventory_alerts', 'title': 'Low Stock Alerts', 'subtitle': 'Receive low inventory and threshold warnings'},
+      {'id': 'inventory_purchases', 'title': 'Purchase Orders & Vendors', 'subtitle': 'Manage supplier invoices and purchase orders'},
     ],
     'reports': [
-      {'id': 'reports_daily_sales', 'title': 'Daily Sales Report', 'subtitle': 'View day-end sales summary'},
-      {'id': 'reports_financial', 'title': 'Financial Reports', 'subtitle': 'Access profit/loss and tax breakdowns'},
-      {'id': 'reports_export', 'title': 'Export Data', 'subtitle': 'Download reports in Excel and PDF'},
-      {'id': 'reports_staff_performance', 'title': 'Staff Performance', 'subtitle': 'Track individual cashier sales'},
+      {'id': 'reports_view_own', 'title': 'View Own Sales Summary', 'subtitle': 'Track own shift cash collections and bills'},
+      {'id': 'reports_daily_sales', 'title': 'Daily Sales Report', 'subtitle': 'View total store day-end sales summary'},
+      {'id': 'reports_financial', 'title': 'Financials & Tax Breakdown', 'subtitle': 'Access profit/loss, GST tax reports and margins'},
+      {'id': 'reports_item_sales', 'title': 'Item-wise Sales Analytics', 'subtitle': 'Analyze bestsellers and category sales performance'},
+      {'id': 'reports_export', 'title': 'Export Data (Excel & PDF)', 'subtitle': 'Download sales reports in Excel and PDF formats'},
+      {'id': 'reports_staff_performance', 'title': 'Staff Sales Performance', 'subtitle': 'Track sales generated per cashier / staff member'},
+    ],
+    'crm': [
+      {'id': 'crm_view', 'title': 'View Customer Directory', 'subtitle': 'Access customer accounts and order histories'},
+      {'id': 'crm_add_edit', 'title': 'Add & Edit Customers', 'subtitle': 'Register customer details, phones and addresses'},
+      {'id': 'crm_delete', 'title': 'Delete Customer Records', 'subtitle': 'Remove duplicate or obsolete customer records'},
+      {'id': 'crm_khata', 'title': 'Customer Khata / Credit Ledger', 'subtitle': 'Manage customer credit balances and payments'},
+      {'id': 'crm_tags', 'title': 'Customer Tags & Segments', 'subtitle': 'Tag VIP and regular customers for promotions'},
+    ],
+    'loyalty': [
+      {'id': 'loyalty_view', 'title': 'View Loyalty Members', 'subtitle': 'Check customer loyalty points and tier status'},
+      {'id': 'loyalty_reward', 'title': 'Issue Points & Stamps', 'subtitle': 'Award loyalty points on purchases and stamp cards'},
+      {'id': 'loyalty_redeem', 'title': 'Redeem Loyalty Points', 'subtitle': 'Apply loyalty points for bill discounts'},
+      {'id': 'loyalty_manage_tiers', 'title': 'Configure Loyalty Rules', 'subtitle': 'Set point conversion rates and tier thresholds'},
+    ],
+    'campaign': [
+      {'id': 'campaign_view', 'title': 'View Marketing Campaigns', 'subtitle': 'Track promotional campaign performance & ROI'},
+      {'id': 'campaign_create', 'title': 'Create SMS / WhatsApp Blasts', 'subtitle': 'Draft and launch marketing messages'},
+      {'id': 'campaign_templates', 'title': 'Manage Message Templates', 'subtitle': 'Customize festival offers and discount coupons'},
+      {'id': 'campaign_broadcast', 'title': 'Instant Flash Broadcast', 'subtitle': 'Send real-time alerts to customer segments'},
+    ],
+    'staff': [
+      {'id': 'staff_view', 'title': 'View Staff Directory', 'subtitle': 'Browse team members, roles, and active status'},
+      {'id': 'staff_add', 'title': 'Create New Staff', 'subtitle': 'Add employee accounts with login credentials'},
+      {'id': 'staff_edit', 'title': 'Edit Staff & Permissions', 'subtitle': 'Update employee roles, PINs, and access rights'},
+      {'id': 'staff_delete', 'title': 'Deactivate / Remove Staff', 'subtitle': 'Disable or delete staff accounts'},
+      {'id': 'staff_shifts', 'title': 'Manage Shifts & Duty', 'subtitle': 'Assign work schedules and shift timings'},
     ],
     'settings': [
-      {'id': 'settings_store_profile', 'title': 'Business Profile', 'subtitle': 'Modify store information and branding'},
-      {'id': 'settings_printers', 'title': 'Printers & Hardware', 'subtitle': 'Configure thermal printers and KOT'},
-      {'id': 'settings_taxes', 'title': 'Tax & Charges', 'subtitle': 'Set GST and service charge rates'},
-      {'id': 'settings_payments', 'title': 'Payment Gateways', 'subtitle': 'Configure UPI / QR and POS terminal'},
-    ],
-    'others': [
-      {'id': 'others_activity_logs', 'title': 'Activity Logs', 'subtitle': 'View security and action audit trail'},
-      {'id': 'others_chotu_ai', 'title': 'Chotu AI Assistant', 'subtitle': 'Use Chotu voice and smart assistant'},
-      {'id': 'others_offline_mode', 'title': 'Offline Mode', 'subtitle': 'Sync offline orders with cloud'},
+      {'id': 'settings_profile', 'title': 'Store & Business Profile', 'subtitle': 'Edit store name, logo, contact, and address'},
+      {'id': 'settings_branches', 'title': 'Business Branches', 'subtitle': 'Manage multi-branch outlets and counters'},
+      {'id': 'settings_printers', 'title': 'Printers & Hardware', 'subtitle': 'Configure Bluetooth, USB, Thermal, and KOT printers'},
+      {'id': 'settings_taxes', 'title': 'Taxes & Service Charges', 'subtitle': 'Configure GST, VAT, service charges and packaging'},
+      {'id': 'settings_payments', 'title': 'Payment Gateways & UPI QR', 'subtitle': 'Configure Razorpay, UPI QR, and payment terminals'},
+      {'id': 'settings_receipt_template', 'title': 'Receipt Customization', 'subtitle': 'Customize bill headers, footers, and logo'},
+      {'id': 'settings_chotu_ai', 'title': 'Chotu AI Voice Assistant', 'subtitle': 'Configure smart voice order taking and prompts'},
     ],
   };
 
   @override
   void initState() {
     super.initState();
+    _initDynamicOptions();
     _autoGenerateEmployeeId();
     _applyRolePreset(_selectedRole);
+  }
+
+  void _initDynamicOptions() {
+    // 1. Dynamic Roles
+    _roleOptions = _db.allStaffRoles;
+    if (!_roleOptions.contains(_selectedRole)) {
+      _selectedRole = _roleOptions.isNotEmpty ? _roleOptions.first : 'Cashier';
+    }
+
+    // 2. Dynamic Reporting To (Store Owner + Previous Staff)
+    final ownerName = _db.restaurant?.name.trim().isNotEmpty == true
+        ? _db.restaurant!.name.trim()
+        : (_db.currentUser?.name.trim().isNotEmpty == true ? _db.currentUser!.name.trim() : 'Store Owner');
+    final ownerOption = 'Store Owner / Admin ($ownerName)';
+
+    final List<String> reportingList = [ownerOption];
+    for (final s in _db.staffList) {
+      final staffOption = '${s.name} (${s.role} • ${s.employeeId.isNotEmpty ? s.employeeId : 'Staff'})';
+      if (!reportingList.contains(staffOption)) {
+        reportingList.add(staffOption);
+      }
+    }
+    if (!reportingList.contains('None')) {
+      reportingList.add('None');
+    }
+    _reportingToOptions = reportingList;
+    _selectedReportingTo = reportingList.first;
+
+    // 3. Dynamic Business Branches
+    _locationOptions = _db.allBusinessBranches;
+    if (_locationOptions.isNotEmpty && !_locationOptions.contains(_selectedLocation)) {
+      _selectedLocation = _locationOptions.first;
+    }
   }
 
   @override
@@ -241,6 +327,175 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     _employeeIdController.text = 'EMP${nextNumber.toString().padLeft(3, '0')}';
   }
 
+  void _showAddRoleDialog() {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.add_moderator_rounded, color: Color(0xFF2563EB), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Add Custom Role',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the title for the new staff role (e.g. Floor Supervisor, Bartender, Delivery Coordinator).',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: textController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: 'e.g. Floor Supervisor',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              final newRole = textController.text.trim();
+              if (newRole.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _db.addCustomRole(newRole);
+                if (mounted) {
+                  setState(() {
+                    _roleOptions = _db.allStaffRoles;
+                    _selectedRole = newRole;
+                    _applyRolePreset(newRole);
+                  });
+                }
+              }
+            },
+            child: const Text('Add Role', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddBranchDialog() {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Row(
+          children: [
+            Icon(Icons.add_business_rounded, color: Color(0xFF2563EB), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Add Business Branch',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: Color(0xFF0F172A)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Enter the name or identifier of the new business branch / outlet location.',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.4),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: textController,
+              autofocus: true,
+              style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: InputDecoration(
+                hintText: 'e.g. Downtown Outlet, Highway Branch',
+                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                filled: true,
+                fillColor: const Color(0xFFF8FAFC),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2563EB),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () async {
+              final newBranch = textController.text.trim();
+              if (newBranch.isNotEmpty) {
+                Navigator.pop(ctx);
+                await _db.addBusinessBranch(newBranch);
+                if (mounted) {
+                  setState(() {
+                    _locationOptions = _db.allBusinessBranches;
+                    _selectedLocation = newBranch;
+                  });
+                }
+              }
+            },
+            child: const Text('Add Branch', style: TextStyle(fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _applyRolePreset(String role) {
     final perms = <String>{};
     String defaultScr = _selectedDefaultScreen;
@@ -255,90 +510,162 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         break;
       case 'manager':
         perms.addAll([
+          'dashboard_view',
+          'dashboard_realtime',
+          'dashboard_quick_actions',
+          'dashboard_recent_activity',
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
+          'pos_apply_tax',
           'pos_cancel_orders',
-          'pos_view_all_orders',
-          'pos_manage_tables',
+          'pos_refund',
+          'pos_split_bill',
+          'pos_custom_items',
+          'pos_print_receipt',
           'pos_takeaway_delivery',
-          'products_view',
-          'products_add_edit',
-          'products_categories',
+          'tables_view',
+          'tables_manage',
+          'tables_transfer',
+          'tables_reservation',
+          'orders_view',
+          'orders_edit',
+          'orders_status_update',
+          'orders_kds',
+          'orders_kot',
+          'menu_view',
+          'menu_add',
+          'menu_edit',
+          'menu_categories',
+          'menu_availability',
           'inventory_view',
           'inventory_adjust',
+          'inventory_wastage',
           'inventory_alerts',
-          'customers_view',
-          'customers_add_edit',
-          'customers_crm',
+          'inventory_purchases',
+          'reports_view_own',
           'reports_daily_sales',
           'reports_financial',
+          'reports_item_sales',
           'reports_export',
           'reports_staff_performance',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'crm_tags',
+          'loyalty_view',
+          'loyalty_reward',
+          'loyalty_redeem',
+          'campaign_view',
+          'campaign_create',
+          'staff_view',
+          'staff_shifts',
           'settings_printers',
-          'others_activity_logs',
-          'others_chotu_ai',
         ]);
         defaultScr = 'Dashboard';
         break;
       case 'cashier':
         perms.addAll([
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
+          'pos_split_bill',
+          'pos_custom_items',
+          'pos_print_receipt',
           'pos_takeaway_delivery',
-          'customers_view',
-          'customers_add_edit',
+          'tables_view',
+          'orders_view',
+          'orders_status_update',
+          'menu_view',
+          'menu_availability',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'reports_view_own',
+          'loyalty_view',
+          'loyalty_redeem',
         ]);
         defaultScr = 'POS Billing';
         break;
       case 'waiter':
         perms.addAll([
-          'pos_manage_tables',
-          'pos_view_all_orders',
+          'pos_create_order',
           'pos_takeaway_delivery',
+          'tables_view',
+          'tables_transfer',
+          'orders_view',
+          'orders_edit',
+          'orders_status_update',
+          'orders_kot',
+          'menu_view',
+          'menu_availability',
         ]);
         defaultScr = 'Tables / Floor';
         break;
       case 'chef':
       case 'kitchen':
         perms.addAll([
-          'pos_view_all_orders',
-          'pos_kds',
+          'orders_view',
+          'orders_status_update',
+          'orders_kds',
+          'orders_kot',
+          'menu_view',
+          'menu_availability',
+          'inventory_view',
+          'inventory_alerts',
         ]);
         defaultScr = 'Orders List';
         break;
       case 'inventory':
         perms.addAll([
+          'dashboard_view',
           'inventory_view',
           'inventory_adjust',
+          'inventory_wastage',
           'inventory_alerts',
           'inventory_purchases',
-          'products_view',
-          'products_categories',
+          'menu_view',
+          'menu_categories',
+          'menu_availability',
         ]);
         defaultScr = 'Dashboard';
         break;
       case 'sales':
         perms.addAll([
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
-          'customers_view',
-          'customers_add_edit',
-          'customers_crm',
+          'pos_print_receipt',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'crm_tags',
+          'loyalty_view',
+          'loyalty_reward',
+          'campaign_view',
+          'campaign_create',
+          'reports_view_own',
+          'reports_daily_sales',
         ]);
         defaultScr = 'POS Billing';
         break;
       case 'support':
         perms.addAll([
-          'customers_view',
-          'customers_crm',
-          'pos_view_all_orders',
+          'crm_view',
+          'crm_add_edit',
+          'crm_khata',
+          'orders_view',
+          'reports_view_own',
         ]);
         defaultScr = 'Orders List';
         break;
       default:
         perms.addAll([
           'pos_access',
+          'pos_create_order',
           'pos_apply_discount',
+          'pos_print_receipt',
+          'menu_view',
         ]);
         defaultScr = 'POS Billing';
     }
@@ -411,6 +738,23 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         pin = digits.substring(digits.length - 4);
       }
 
+      // Cloudflare R2 Upload for Staff Profile Picture
+      String remoteAvatarUrl = '';
+      if (_avatarImageFile != null) {
+        try {
+          final uploaded = await UploadService().uploadImage(_avatarImageFile!, folder: 'profiles');
+          if (uploaded != null && uploaded.isNotEmpty) {
+            remoteAvatarUrl = uploaded;
+            debugPrint('[CreateStaffScreen] Staff avatar uploaded to Cloudflare R2: $remoteAvatarUrl');
+          }
+        } catch (uploadErr) {
+          debugPrint('[CreateStaffScreen] Cloudflare R2 upload error: $uploadErr');
+        }
+        if (remoteAvatarUrl.isEmpty) {
+          remoteAvatarUrl = _avatarImageFile!.path;
+        }
+      }
+
       final newStaff = StaffModel(
         id: 'st_${DateTime.now().millisecondsSinceEpoch}',
         name: _nameController.text.trim(),
@@ -428,7 +772,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         enableBiometric: _enableBiometric,
         sendWelcomeEmail: _sendWelcomeEmail,
         status: _isActive ? 'Active' : 'Inactive',
-        avatarUrl: _avatarImageFile?.path ?? '',
+        avatarUrl: remoteAvatarUrl,
         pin: pin,
         password: password,
         forcePasswordChange: _forcePasswordChange,
@@ -751,7 +1095,35 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            _buildFieldLabel('Role *', isMobile),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildFieldLabel('Role *', isMobile),
+                InkWell(
+                  onTap: _showAddRoleDialog,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, size: 12, color: Color(0xFF2563EB)),
+                        SizedBox(width: 2),
+                        Text(
+                          'Add Role',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             DropdownButtonFormField<String>(
               isExpanded: true,
@@ -923,7 +1295,35 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildFieldLabel('Role *', isMobile),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _buildFieldLabel('Role *', isMobile),
+                                    InkWell(
+                                      onTap: _showAddRoleDialog,
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEFF6FF),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: const Color(0xFFBFDBFE)),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.add_rounded, size: 13, color: Color(0xFF2563EB)),
+                                            SizedBox(width: 2),
+                                            Text(
+                                              'Add Role',
+                                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                                 const SizedBox(height: 6),
                                 DropdownButtonFormField<String>(
                                   isExpanded: true,
@@ -1011,7 +1411,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                               icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
                               style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                               decoration: _inputDecoration(isMobile: isMobile, hint: '+91', icon: Icons.phone_outlined)
-                                  .copyWith(
+                                   .copyWith(
                                 prefixIcon: null,
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
                               ),
@@ -1154,7 +1554,35 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               },
             ),
             const SizedBox(height: 10),
-            _buildFieldLabel('Work Location', isMobile),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildFieldLabel('Business Branch *', isMobile),
+                InkWell(
+                  onTap: _showAddBranchDialog,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFBFDBFE)),
+                    ),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.add_rounded, size: 12, color: Color(0xFF2563EB)),
+                        SizedBox(width: 2),
+                        Text(
+                          'Add Branch',
+                          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 4),
             DropdownButtonFormField<String>(
               isExpanded: true,
@@ -1163,7 +1591,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               borderRadius: BorderRadius.circular(10),
               icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
               style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select location', icon: Icons.location_on_outlined),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select branch', icon: Icons.location_on_outlined),
               items: _locationOptions
                   .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                   .toList(),
@@ -1250,7 +1678,35 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildFieldLabel('Work Location', isMobile),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          _buildFieldLabel('Business Branch *', isMobile),
+                          InkWell(
+                            onTap: _showAddBranchDialog,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFFBFDBFE)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.add_rounded, size: 13, color: Color(0xFF2563EB)),
+                                  SizedBox(width: 2),
+                                  Text(
+                                    'Add Branch',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
                         isExpanded: true,
@@ -1259,7 +1715,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                         borderRadius: BorderRadius.circular(10),
                         icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
                         style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select location', icon: Icons.location_on_outlined),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select branch', icon: Icons.location_on_outlined),
                         items: _locationOptions
                             .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
                             .toList(),
@@ -1484,13 +1940,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   // ==================== PERMISSIONS CARD ====================
   Widget _buildPermissionsCard(bool isMobile) {
     final activePermissions = _permissionsByCategory[_selectedPermissionCategory] ?? [];
+    final int selectedCountInActive = activePermissions.where((p) => _selectedPermissions.contains(p['id'])).length;
+    final bool allActiveSelected = activePermissions.isNotEmpty && selectedCountInActive == activePermissions.length;
 
     if (isMobile) {
       return _buildCardWrapper(
         isMobile: isMobile,
         icon: Icons.shield_outlined,
-        title: 'Permissions',
-        subtitle: 'Set what this staff member can access',
+        title: 'Permissions Matrix',
+        subtitle: 'Granular access for all 12 modules (${_selectedPermissions.length} granted)',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1500,7 +1958,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               physics: const BouncingScrollPhysics(),
               child: Row(
                 children: _permissionCategories.map((cat) {
-                  final isSelected = cat['id'] == _selectedPermissionCategory;
+                  final catId = cat['id'] as String;
+                  final isSelected = catId == _selectedPermissionCategory;
+                  final catPerms = _permissionsByCategory[catId] ?? [];
+                  final count = catPerms.where((p) => _selectedPermissions.contains(p['id'])).length;
+
                   return Padding(
                     padding: const EdgeInsets.only(right: 6),
                     child: ActionChip(
@@ -1510,24 +1972,74 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                         size: 14,
                         color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
                       ),
-                      label: Text(
-                        cat['label'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                          color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF334155),
-                        ),
+                      label: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            cat['label'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                              color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF334155),
+                            ),
+                          ),
+                          if (count > 0) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$count',
+                                style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       backgroundColor: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
                       side: BorderSide(color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0)),
                       padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                      onPressed: () => setState(() => _selectedPermissionCategory = cat['id'] as String),
+                      onPressed: () => setState(() => _selectedPermissionCategory = catId),
                     ),
                   );
                 }).toList(),
               ),
             ),
             const SizedBox(height: 8),
+
+            // Select All / Deselect All Bar
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Selected $selectedCountInActive of ${activePermissions.length}',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                ),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (allActiveSelected) {
+                        for (final p in activePermissions) {
+                          _selectedPermissions.remove(p['id']);
+                        }
+                      } else {
+                        for (final p in activePermissions) {
+                          _selectedPermissions.add(p['id']!);
+                        }
+                      }
+                    });
+                  },
+                  child: Text(
+                    allActiveSelected ? 'Deselect Category' : 'Select All in Category',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
 
             // Checkbox Items Container
             Container(
@@ -1618,10 +2130,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     return _buildCardWrapper(
       isMobile: isMobile,
       icon: Icons.shield_outlined,
-      title: 'Permissions',
-      subtitle: 'Set what this staff member can access',
+      title: 'Permissions Matrix',
+      subtitle: 'Dynamic permissions aligned with all 12 navigation modules (${_selectedPermissions.length} total granted)',
       child: Container(
-        height: 275,
+        height: 340,
         decoration: BoxDecoration(
           color: const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(12),
@@ -1631,7 +2143,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
           children: [
             // Left Categories Sidebar (Tabs)
             Container(
-              width: 155,
+              width: 175,
               decoration: const BoxDecoration(
                 border: Border(right: BorderSide(color: Color(0xFFE2E8F0))),
               ),
@@ -1640,11 +2152,15 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                 itemCount: _permissionCategories.length,
                 itemBuilder: (context, index) {
                   final cat = _permissionCategories[index];
-                  final isSelected = cat['id'] == _selectedPermissionCategory;
+                  final catId = cat['id'] as String;
+                  final isSelected = catId == _selectedPermissionCategory;
+                  final catPerms = _permissionsByCategory[catId] ?? [];
+                  final count = catPerms.where((p) => _selectedPermissions.contains(p['id'])).length;
+
                   return InkWell(
-                    onTap: () => setState(() => _selectedPermissionCategory = cat['id'] as String),
+                    onTap: () => setState(() => _selectedPermissionCategory = catId),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       margin: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
                         color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
@@ -1662,13 +2178,25 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             child: Text(
                               cat['label'] as String,
                               style: TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                                fontSize: 12,
+                                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
                                 color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF334155),
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
+                          if (count > 0)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$count',
+                                style: const TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold),
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -1679,77 +2207,124 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
             // Right Checkboxes List
             Expanded(
-              child: ListView.separated(
-                padding: const EdgeInsets.all(12),
-                itemCount: activePermissions.length,
-                separatorBuilder: (context, index) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final perm = activePermissions[index];
-                  final permId = perm['id']!;
-                  final isChecked = _selectedPermissions.contains(permId);
-
-                  return InkWell(
-                    onTap: () {
-                      setState(() {
-                        if (isChecked) {
-                          _selectedPermissions.remove(permId);
-                        } else {
-                          _selectedPermissions.add(permId);
-                        }
-                      });
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: Checkbox(
-                              value: isChecked,
-                              activeColor: const Color(0xFF2563EB),
-                              checkColor: Colors.white,
-                              side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                              onChanged: (val) {
-                                setState(() {
-                                  if (val == true) {
-                                    _selectedPermissions.add(permId);
-                                  } else {
-                                    _selectedPermissions.remove(permId);
-                                  }
-                                });
-                              },
-                            ),
+              child: Column(
+                children: [
+                  // Header inside Right Panel with Select All / Deselect All
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: const BoxDecoration(
+                      border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Category Access: $selectedCountInActive / ${activePermissions.length} enabled',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                        ),
+                        TextButton(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            visualDensity: VisualDensity.compact,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
+                          onPressed: () {
+                            setState(() {
+                              if (allActiveSelected) {
+                                for (final p in activePermissions) {
+                                  _selectedPermissions.remove(p['id']);
+                                }
+                              } else {
+                                for (final p in activePermissions) {
+                                  _selectedPermissions.add(p['id']!);
+                                }
+                              }
+                            });
+                          },
+                          child: Text(
+                            allActiveSelected ? 'Deselect All' : 'Select All',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Permission Checkboxes List
+                  Expanded(
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(12),
+                      itemCount: activePermissions.length,
+                      separatorBuilder: (context, index) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final perm = activePermissions[index];
+                        final permId = perm['id']!;
+                        final isChecked = _selectedPermissions.contains(permId);
+
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              if (isChecked) {
+                                _selectedPermissions.remove(permId);
+                              } else {
+                                _selectedPermissions.add(permId);
+                              }
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
+                            child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  perm['title']!,
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: isChecked ? FontWeight.w700 : FontWeight.w600,
-                                    color: isChecked ? const Color(0xFF0F172A) : const Color(0xFF334155),
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: Checkbox(
+                                    value: isChecked,
+                                    activeColor: const Color(0xFF2563EB),
+                                    checkColor: Colors.white,
+                                    side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        if (val == true) {
+                                          _selectedPermissions.add(permId);
+                                        } else {
+                                          _selectedPermissions.remove(permId);
+                                        }
+                                      });
+                                    },
                                   ),
                                 ),
-                                const SizedBox(height: 1),
-                                Text(
-                                  perm['subtitle']!,
-                                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        perm['title']!,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isChecked ? FontWeight.w700 : FontWeight.w600,
+                                          color: isChecked ? const Color(0xFF0F172A) : const Color(0xFF334155),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        perm['subtitle']!,
+                                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
           ],

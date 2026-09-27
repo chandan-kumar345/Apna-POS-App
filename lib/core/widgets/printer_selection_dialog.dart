@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../services/bluetooth_printer_service.dart';
 import '../services/windows_printer_service.dart';
 import '../models/order_model.dart';
+import '../models/staff_model.dart';
 import '../database/database_service.dart';
 
 class PrinterSelectionDialog extends StatefulWidget {
@@ -13,6 +14,7 @@ class PrinterSelectionDialog extends StatefulWidget {
   final bool isKot;
   final List<CartItemModel>? customItemsToPrint;
   final String currency;
+  final StaffModel? staffToPrint;
 
   const PrinterSelectionDialog({
     super.key,
@@ -20,6 +22,7 @@ class PrinterSelectionDialog extends StatefulWidget {
     this.isKot = false,
     this.customItemsToPrint,
     this.currency = '₹',
+    this.staffToPrint,
   });
 
   static Future<void> show(
@@ -28,6 +31,7 @@ class PrinterSelectionDialog extends StatefulWidget {
     bool isKot = false,
     List<CartItemModel>? customItemsToPrint,
     String currency = '₹',
+    StaffModel? staffToPrint,
   }) {
     return showDialog(
       context: context,
@@ -36,6 +40,7 @@ class PrinterSelectionDialog extends StatefulWidget {
         isKot: isKot,
         customItemsToPrint: customItemsToPrint,
         currency: currency,
+        staffToPrint: staffToPrint,
       ),
     );
   }
@@ -171,7 +176,13 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       });
 
       // Handle Printing / Auto-Connect on Mobile
-      if (widget.orderToPrint != null) {
+      if (widget.staffToPrint != null) {
+        if (connected) {
+          _printStaffIdCard();
+        } else if (btOn && saved['address'] != null && saved['address']!.isNotEmpty) {
+          _autoConnectAndPrint();
+        }
+      } else if (widget.orderToPrint != null) {
         if (connected) {
           if (widget.isKot) {
             _printKot();
@@ -196,13 +207,13 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       _statusMessage = '🟢 Connected to: ${printer.name}';
     });
 
-    if (widget.orderToPrint != null) {
+    if (widget.orderToPrint != null || widget.staffToPrint != null) {
       await _printToWindowsPrinter(printer);
     }
   }
 
   Future<void> _printToWindowsPrinter(WindowsPrinterInfo printer) async {
-    if (widget.orderToPrint == null) return;
+    if (widget.orderToPrint == null && widget.staffToPrint == null) return;
 
     setState(() {
       _statusMessage = 'Printing to ${printer.name}...';
@@ -213,7 +224,14 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     final user = dbInstance.currentUser;
 
     bool success = false;
-    if (widget.isKot) {
+    if (widget.staffToPrint != null) {
+      success = await _printerService.printStaffIdCard(
+        staff: widget.staffToPrint!,
+        restaurant: restaurant,
+        user: user,
+        windowsPrinter: printer,
+      );
+    } else if (widget.isKot) {
       success = await _printerService.printKOT(
         order: widget.orderToPrint!,
         restaurant: restaurant,
@@ -236,7 +254,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     if (success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('${widget.isKot ? 'KOT' : 'Bill'} printed successfully on ${printer.name}!'),
+          content: Text('${widget.staffToPrint != null ? "Staff ID Card for ${widget.staffToPrint!.name}" : (widget.isKot ? 'KOT' : 'Bill')} printed successfully on ${printer.name}!'),
           backgroundColor: const Color(0xFF051C48),
           duration: const Duration(seconds: 3),
         ),
@@ -283,11 +301,15 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       }
     });
 
-    if (success && widget.orderToPrint != null) {
-      if (widget.isKot) {
-        await _printKot();
-      } else {
-        await _printBill();
+    if (success) {
+      if (widget.staffToPrint != null) {
+        await _printStaffIdCard();
+      } else if (widget.orderToPrint != null) {
+        if (widget.isKot) {
+          await _printKot();
+        } else {
+          await _printBill();
+        }
       }
     }
   }
@@ -312,11 +334,15 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
       }
     });
 
-    if (success && widget.orderToPrint != null) {
-      if (widget.isKot) {
-        await _printKot();
-      } else {
-        await _printBill();
+    if (success) {
+      if (widget.staffToPrint != null) {
+        await _printStaffIdCard();
+      } else if (widget.orderToPrint != null) {
+        if (widget.isKot) {
+          await _printKot();
+        } else {
+          await _printBill();
+        }
       }
     }
   }
@@ -408,6 +434,41 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
     } else {
       setState(() {
         _statusMessage = 'Failed to send print job. Re-connect printer and try again.';
+      });
+    }
+  }
+
+  Future<void> _printStaffIdCard() async {
+    if (widget.staffToPrint == null) return;
+
+    setState(() {
+      _statusMessage = 'Printing Staff ID Card for ${widget.staffToPrint!.name}...';
+    });
+
+    final dbInstance = DatabaseService();
+    final restaurant = dbInstance.restaurant;
+    final user = dbInstance.currentUser;
+    final success = await _printerService.printStaffIdCard(
+      staff: widget.staffToPrint!,
+      restaurant: restaurant,
+      user: user,
+      windowsPrinter: _selectedWindowsPrinter,
+    );
+
+    if (!mounted) return;
+
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('ID Card for ${widget.staffToPrint!.name} printed successfully!'),
+          backgroundColor: const Color(0xFF16A34A),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      Navigator.pop(context, true);
+    } else {
+      setState(() {
+        _statusMessage = 'Failed to send Staff ID Card print job. Ensure printer is connected & ON.';
       });
     }
   }
@@ -973,11 +1034,23 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
               const SizedBox(height: 14),
 
               // Fixed Bottom Action Buttons
-              if (widget.orderToPrint != null && _isConnected)
+              if ((widget.orderToPrint != null || widget.staffToPrint != null) && _isConnected)
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    if (widget.isKot)
+                    if (widget.staffToPrint != null)
+                      ElevatedButton.icon(
+                        onPressed: _printStaffIdCard,
+                        icon: const Icon(Icons.badge_rounded, size: 18, color: Colors.white),
+                        label: const Text('Print Staff ID', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF2563EB),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 0,
+                        ),
+                      )
+                    else if (widget.isKot)
                       ElevatedButton.icon(
                         onPressed: _printKot,
                         icon: const Icon(Icons.soup_kitchen_rounded, size: 18, color: Colors.white),

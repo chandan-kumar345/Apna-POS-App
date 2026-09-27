@@ -4235,30 +4235,165 @@ class DatabaseService extends ChangeNotifier {
     return [...historyMatches, ...menuMatches].take(8).toList();
   }
 
+  // ==================== STAFF ROLES & BUSINESS BRANCHES ====================
+  List<String> _customStaffRoles = [];
+  List<String> get customStaffRoles => List.unmodifiable(_customStaffRoles);
+
+  List<String> get allStaffRoles {
+    const defaultRoles = [
+      'Admin',
+      'Manager',
+      'Cashier',
+      'Sales',
+      'Inventory',
+      'Support',
+      'Chef',
+      'Waiter',
+    ];
+    final Set<String> combined = {...defaultRoles, ..._customStaffRoles};
+    for (final s in staffList) {
+      if (s.role.trim().isNotEmpty) {
+        combined.add(s.role.trim());
+      }
+    }
+    return combined.toList();
+  }
+
+  Future<void> addCustomRole(String roleName) async {
+    final clean = roleName.trim();
+    if (clean.isEmpty) return;
+    if (!_customStaffRoles.any((r) => r.toLowerCase() == clean.toLowerCase())) {
+      _customStaffRoles.add(clean);
+      await _saveStaffRolesToPrefs();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveStaffRolesToPrefs() async {
+    try {
+      await _prefs?.setStringList(_userKey('custom_staff_roles'), _customStaffRoles);
+      await _prefs?.setStringList('apna_pos_custom_staff_roles', _customStaffRoles);
+    } catch (_) {}
+  }
+
+  void _loadStaffRolesFromPrefs() {
+    try {
+      final list = _prefs?.getStringList(_userKey('custom_staff_roles')) ??
+          _prefs?.getStringList('apna_pos_custom_staff_roles');
+      if (list != null && list.isNotEmpty) {
+        _customStaffRoles = List.from(list);
+      }
+    } catch (_) {}
+  }
+
+  List<String> _customBusinessBranches = [];
+  List<String> get customBusinessBranches => List.unmodifiable(_customBusinessBranches);
+
+  List<String> get allBusinessBranches {
+    final mainName = restaurant?.name.trim().isNotEmpty == true
+        ? '${restaurant!.name.trim()} (Main Branch)'
+        : 'Main Branch';
+    final defaultBranches = [
+      mainName,
+      'Main Branch',
+      'Counter 1',
+      'Kitchen',
+      'Outlet 1',
+      'Takeaway Counter',
+      'Floor 1',
+      'Floor 2',
+    ];
+    final Set<String> combined = {...defaultBranches, ..._customBusinessBranches};
+    for (final s in staffList) {
+      if (s.workLocation.trim().isNotEmpty) {
+        combined.add(s.workLocation.trim());
+      }
+    }
+    return combined.toList();
+  }
+
+  Future<void> addBusinessBranch(String branchName) async {
+    final clean = branchName.trim();
+    if (clean.isEmpty) return;
+    if (!_customBusinessBranches.any((b) => b.toLowerCase() == clean.toLowerCase())) {
+      _customBusinessBranches.add(clean);
+      await _saveBusinessBranchesToPrefs();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _saveBusinessBranchesToPrefs() async {
+    try {
+      await _prefs?.setStringList(_userKey('custom_business_branches'), _customBusinessBranches);
+      await _prefs?.setStringList('apna_pos_custom_business_branches', _customBusinessBranches);
+    } catch (_) {}
+  }
+
+  void _loadBusinessBranchesFromPrefs() {
+    try {
+      final list = _prefs?.getStringList(_userKey('custom_business_branches')) ??
+          _prefs?.getStringList('apna_pos_custom_business_branches');
+      if (list != null && list.isNotEmpty) {
+        _customBusinessBranches = List.from(list);
+      }
+    } catch (_) {}
+  }
+
+  // ==================== STAFF MANAGEMENT ====================
   // ==================== STAFF MANAGEMENT ====================
   Future<void> _saveStaffToPrefs() async {
     try {
       final jsonStr = jsonEncode(staffList.map((s) => s.toJson()).toList());
       await _prefs?.setString(_userKey('staff_list'), jsonStr);
-      final isGuest = currentUser == null || currentUser?.id.isEmpty == true || currentUser?.id == 'guest';
-      if (isGuest) {
-        await _prefs?.setString('apna_pos_staff_list', jsonStr);
+      await _prefs?.setString('apna_pos_staff_list', jsonStr);
+      if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
+        await _prefs?.setString('apna_pos_${restaurant!.id}_staff_list', jsonStr);
       }
     } catch (_) {}
   }
 
   void _loadStaffFromPrefs() {
     try {
-      final jsonStr = _prefs?.getString(_userKey('staff_list')) ??
-          _prefs?.getString('apna_pos_staff_list');
-      if (jsonStr != null && jsonStr.isNotEmpty) {
-        final List raw = jsonDecode(jsonStr);
-        final loaded = raw
-            .whereType<Map>()
-            .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
-            .where((s) => !s.id.startsWith('st_0') || !s.email.endsWith('@apnapos.com'))
-            .toList();
-        staffList = loaded;
+      _loadStaffRolesFromPrefs();
+      _loadBusinessBranchesFromPrefs();
+
+      final List<StaffModel> loadedStaff = [];
+      final Set<String> loadedKeys = {};
+
+      void tryLoadStaffFromJson(String? jsonStr) {
+        if (jsonStr == null || jsonStr.isEmpty) return;
+        try {
+          final List raw = jsonDecode(jsonStr);
+          final parsed = raw
+              .whereType<Map>()
+              .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
+              .toList();
+          for (final s in parsed) {
+            final key = s.id.isNotEmpty ? s.id : s.employeeId;
+            if (key.isNotEmpty && !loadedKeys.contains(key)) {
+              loadedKeys.add(key);
+              if (s.employeeId.isNotEmpty) {
+                loadedKeys.add('emp_${s.employeeId}');
+              }
+              loadedStaff.add(s);
+            }
+          }
+        } catch (_) {}
+      }
+
+      tryLoadStaffFromJson(_prefs?.getString(_userKey('staff_list')));
+      tryLoadStaffFromJson(_prefs?.getString('apna_pos_staff_list'));
+      if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
+        tryLoadStaffFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_staff_list'));
+      }
+      for (final u in registeredUsers) {
+        if (u.id.isNotEmpty) {
+          tryLoadStaffFromJson(_prefs?.getString('apna_pos_${u.id}_staff_list'));
+        }
+      }
+
+      if (loadedStaff.isNotEmpty) {
+        staffList = loadedStaff;
         return;
       }
     } catch (_) {}
@@ -4270,11 +4405,29 @@ class DatabaseService extends ChangeNotifier {
     final Map<String, StaffModel> map = {};
     for (final s in staffList) {
       map[s.id] = s;
+      if (s.employeeId.isNotEmpty) {
+        map['emp_${s.employeeId}'] = s;
+      }
     }
     for (final s in remoteStaff) {
+      if (s.employeeId.isNotEmpty && map.containsKey('emp_${s.employeeId}')) {
+        final old = map['emp_${s.employeeId}']!;
+        map.remove(old.id);
+      }
       map[s.id] = s;
+      if (s.employeeId.isNotEmpty) {
+        map['emp_${s.employeeId}'] = s;
+      }
     }
-    staffList = map.values.toList();
+    final Set<String> seenIds = {};
+    final List<StaffModel> unique = [];
+    for (final s in map.values) {
+      if (!seenIds.contains(s.id)) {
+        seenIds.add(s.id);
+        unique.add(s);
+      }
+    }
+    staffList = unique;
     _saveStaffToPrefs();
     notifyListeners();
   }
@@ -4282,6 +4435,12 @@ class DatabaseService extends ChangeNotifier {
   void addStaff(StaffModel staff) {
     staffList.removeWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
     staffList.insert(0, staff);
+    if (staff.role.trim().isNotEmpty) {
+      addCustomRole(staff.role.trim());
+    }
+    if (staff.workLocation.trim().isNotEmpty) {
+      addBusinessBranch(staff.workLocation.trim());
+    }
     _saveStaffToPrefs();
     notifyListeners();
   }
@@ -4292,6 +4451,12 @@ class DatabaseService extends ChangeNotifier {
       staffList[idx] = staff;
     } else {
       staffList.insert(0, staff);
+    }
+    if (staff.role.trim().isNotEmpty) {
+      addCustomRole(staff.role.trim());
+    }
+    if (staff.workLocation.trim().isNotEmpty) {
+      addBusinessBranch(staff.workLocation.trim());
     }
     // If active user is this staff member, sync currentUser permissions and profile in real-time
     if (currentUser != null && (currentUser!.id == staff.id || (staff.employeeId.isNotEmpty && currentUser!.employeeId == staff.employeeId))) {
