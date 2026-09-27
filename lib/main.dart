@@ -22,38 +22,28 @@ void main() async {
       debugPrint('WindowsVideoPlayer.registerWith error: $e');
     }
   }
-  try {
-    await Firebase.initializeApp(
+
+  // Parallel asynchronous service startup
+  await Future.wait([
+    Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (e) {
-    debugPrint('Firebase.initializeApp warning/info: $e');
-  }
-
-  try {
-    await ApiEndpoints.initialize();
-  } catch (e) {
-    debugPrint('ApiEndpoints init error: $e');
-  }
-
-  try {
-    final db = DatabaseService();
-    await db.init();
-  } catch (e) {
-    debugPrint('DatabaseService init error: $e');
-  }
-
-  try {
-    await SoundService().init();
-  } catch (e) {
-    debugPrint('SoundService init error: $e');
-  }
-
-  try {
-    await LocalNotificationService().init();
-  } catch (e) {
-    debugPrint('LocalNotificationService init error: $e');
-  }
+    ).catchError((e) {
+      debugPrint('Firebase.initializeApp warning/info: $e');
+      return Firebase.app();
+    }),
+    ApiEndpoints.initialize().catchError((e) {
+      debugPrint('ApiEndpoints init error: $e');
+    }),
+    DatabaseService().init().catchError((e) {
+      debugPrint('DatabaseService init error: $e');
+    }),
+    SoundService().init().catchError((e) {
+      debugPrint('SoundService init error: $e');
+    }),
+    LocalNotificationService().init().catchError((e) {
+      debugPrint('LocalNotificationService init error: $e');
+    }),
+  ]);
 
   runApp(
     const ProviderScope(

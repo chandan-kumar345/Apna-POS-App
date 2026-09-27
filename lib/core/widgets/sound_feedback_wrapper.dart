@@ -56,9 +56,11 @@ class _SoundFeedbackWrapperState extends State<SoundFeedbackWrapper> {
       },
       child: Listener(
         onPointerDown: (PointerDownEvent event) {
+          if (!SoundService.soundEnabled) return;
           _pointerDownPositions[event.pointer] = event.position;
         },
         onPointerMove: (PointerMoveEvent event) {
+          if (!SoundService.soundEnabled) return;
           final downPos = _pointerDownPositions[event.pointer];
           if (downPos != null) {
             final distance = (event.position - downPos).distance;
@@ -68,6 +70,11 @@ class _SoundFeedbackWrapperState extends State<SoundFeedbackWrapper> {
           }
         },
         onPointerUp: (PointerUpEvent event) {
+          if (!SoundService.soundEnabled) {
+            _pointerDownPositions.remove(event.pointer);
+            _scrollingPointers.remove(event.pointer);
+            return;
+          }
           final downPos = _pointerDownPositions.remove(event.pointer);
           final wasScrolling = _scrollingPointers.remove(event.pointer);
 

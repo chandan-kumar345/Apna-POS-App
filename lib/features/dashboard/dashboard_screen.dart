@@ -81,8 +81,22 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
   }
 
   void _onDbChange() {
-    if (mounted) {
+    if (!mounted) return;
+    if (widget.isActive) {
       _loadDashboardData();
+    } else {
+      final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
+      if (localData != null && mounted) {
+        setState(() {
+          _summaryData = localData.summary;
+          _orderTypesData = localData.orderTypes;
+          _productSales = localData.productSales;
+          _customerData = localData.customers;
+          _paymentMethodsData = localData.payments;
+          _taxData = localData.taxes;
+          _orderStatsData = localData.orderStats;
+        });
+      }
     }
   }
 

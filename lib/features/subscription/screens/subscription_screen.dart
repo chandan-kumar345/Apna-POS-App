@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/services/subscription_service.dart';
-import '../../../core/theme/glass_theme.dart';
 import '../../inventory/inventory_screen.dart';
 import '../../loyalty/screens/loyalty_landing_screen.dart';
 import '../../campaign/screens/campaign_screen.dart';
@@ -27,7 +26,8 @@ class SubscriptionScreen extends StatefulWidget {
   State<SubscriptionScreen> createState() => _SubscriptionScreenState();
 }
 
-class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTickerProviderStateMixin {
+class _SubscriptionScreenState extends State<SubscriptionScreen>
+    with SingleTickerProviderStateMixin {
   final SubscriptionService _subscriptionService = SubscriptionService();
   final DatabaseService _db = DatabaseService();
 
@@ -72,66 +72,172 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     }
   }
 
-  String get _featureTitle {
+  String get _featureSubtitleHighlight {
     final s = widget.sourceFeature.toLowerCase();
-    if (s.contains('loyalty')) return 'Apna POS Loyalty Plus';
-    if (s.contains('campaign')) return 'Apna POS Campaign Pro';
-    if (s.contains('inventory')) return 'Apna POS Inventory Suite';
-    return 'Apna POS Pro';
+    if (s.contains('loyalty')) return 'Loyalty Plus';
+    if (s.contains('campaign')) return 'Campaign Pro';
+    if (s.contains('inventory')) return 'Inventory Suite';
+    return 'Pro Suite';
   }
 
-  String get _heroHeading {
+  String get _heroDescription {
     final s = widget.sourceFeature.toLowerCase();
-    if (s.contains('loyalty')) return 'Unlock Smart Loyalty Engine';
-    if (s.contains('campaign')) return 'Unlock WhatsApp Campaigns';
-    if (s.contains('inventory')) return 'Unlock Smart Stock & Recipes';
-    return 'Unlock Premium Suite';
+    if (s.contains('loyalty')) {
+      return 'Build stronger customer relationships with smart loyalty tools.';
+    }
+    if (s.contains('campaign')) {
+      return 'Drive revenue and repeat visits with automated WhatsApp marketing.';
+    }
+    if (s.contains('inventory')) {
+      return 'Real-time stock control, recipe costing and smart supplier tracking.';
+    }
+    return 'All-in-one POS, loyalty, marketing campaigns & smart inventory.';
   }
 
-  List<String> get _featureBullets {
+  List<Map<String, dynamic>> get _featuresList {
     final s = widget.sourceFeature.toLowerCase();
     if (s.contains('loyalty')) {
       return [
-        'Automated Cashback, Points & Visit Rewards',
-        'Customer Tier Badges & Birthday Offers',
-        'Instant OTP Loyalty Redemption at POS',
-        'Detailed Customer Retention & Visit Analytics',
+        {
+          'title': 'Automated Rewards',
+          'subtitle': 'Cashback, Points & Visit Rewards',
+          'icon': Icons.card_giftcard_rounded,
+          'bgColor': const Color(0xFFDCFCE7),
+          'iconColor': const Color(0xFF16A34A),
+        },
+        {
+          'title': 'Customer Tier Badges',
+          'subtitle': 'Engage with tier-based offers',
+          'icon': Icons.verified_user_rounded,
+          'bgColor': const Color(0xFFDBEAFE),
+          'iconColor': const Color(0xFF2563EB),
+        },
+        {
+          'title': 'Instant OTP Redemption',
+          'subtitle': 'Redeem loyalty at POS',
+          'icon': Icons.bolt_rounded,
+          'bgColor': const Color(0xFFFEF3C7),
+          'iconColor': const Color(0xFFD97706),
+        },
+        {
+          'title': 'Customer Insights',
+          'subtitle': 'Detailed retention & visit analytics',
+          'icon': Icons.bar_chart_rounded,
+          'bgColor': const Color(0xFFF3E8FF),
+          'iconColor': const Color(0xFF9333EA),
+        },
       ];
     }
     if (s.contains('campaign')) {
       return [
-        'Targeted WhatsApp & SMS Broadcasts',
-        'Automated Inactive Customer Re-engagement',
-        'Custom Promo Coupons & Festival Offers',
-        'Live Campaign Conversion & ROI Tracking',
+        {
+          'title': 'Automated Broadcasts',
+          'subtitle': 'Targeted WhatsApp & SMS campaigns',
+          'icon': Icons.send_rounded,
+          'bgColor': const Color(0xFFDCFCE7),
+          'iconColor': const Color(0xFF16A34A),
+        },
+        {
+          'title': 'Inactive Recovery',
+          'subtitle': 'Re-engage lost diners automatically',
+          'icon': Icons.replay_rounded,
+          'bgColor': const Color(0xFFDBEAFE),
+          'iconColor': const Color(0xFF2563EB),
+        },
+        {
+          'title': 'Festival & Promo Coupons',
+          'subtitle': 'Create custom promotional discounts',
+          'icon': Icons.local_offer_rounded,
+          'bgColor': const Color(0xFFFEF3C7),
+          'iconColor': const Color(0xFFD97706),
+        },
+        {
+          'title': 'Real-time ROI Analytics',
+          'subtitle': 'Track conversions & campaign revenue',
+          'icon': Icons.insights_rounded,
+          'bgColor': const Color(0xFFF3E8FF),
+          'iconColor': const Color(0xFF9333EA),
+        },
       ];
     }
     if (s.contains('inventory')) {
       return [
-        'Real-time Ingredient & Stock Tracking',
-        'Automated Recipe Consumption on KOT',
-        'Low Stock Warning Notifications',
-        'Supplier Purchase Orders & Cost Analysis',
+        {
+          'title': 'Live Stock Tracking',
+          'subtitle': 'Ingredient-level consumption on POS & KOT',
+          'icon': Icons.inventory_2_rounded,
+          'bgColor': const Color(0xFFDCFCE7),
+          'iconColor': const Color(0xFF16A34A),
+        },
+        {
+          'title': 'Recipe Management',
+          'subtitle': 'Automatic item deduct with sub-recipes',
+          'icon': Icons.restaurant_menu_rounded,
+          'bgColor': const Color(0xFFDBEAFE),
+          'iconColor': const Color(0xFF2563EB),
+        },
+        {
+          'title': 'Low Stock Alerts',
+          'subtitle': 'Instant notification when ingredients run low',
+          'icon': Icons.warning_amber_rounded,
+          'bgColor': const Color(0xFFFEF3C7),
+          'iconColor': const Color(0xFFD97706),
+        },
+        {
+          'title': 'Purchase & Vendor Ledger',
+          'subtitle': 'Manage supplier bills, POs & Khata',
+          'icon': Icons.receipt_long_rounded,
+          'bgColor': const Color(0xFFF3E8FF),
+          'iconColor': const Color(0xFF9333EA),
+        },
       ];
     }
+
     return [
-      'Multi-device POS & Live Kitchen KDS Sync',
-      'Smart Loyalty & Cashback Rewards Engine',
-      'Automated WhatsApp & SMS Campaigns',
-      'Inventory, Recipe Costing & Stock Alerts',
+      {
+        'title': 'Automated Rewards',
+        'subtitle': 'Cashback, Points & Visit Rewards',
+        'icon': Icons.card_giftcard_rounded,
+        'bgColor': const Color(0xFFDCFCE7),
+        'iconColor': const Color(0xFF16A34A),
+      },
+      {
+        'title': 'Customer Tier Badges',
+        'subtitle': 'Engage with tier-based offers',
+        'icon': Icons.verified_user_rounded,
+        'bgColor': const Color(0xFFDBEAFE),
+        'iconColor': const Color(0xFF2563EB),
+      },
+      {
+        'title': 'Instant OTP Redemption',
+        'subtitle': 'Redeem loyalty at POS',
+        'icon': Icons.bolt_rounded,
+        'bgColor': const Color(0xFFFEF3C7),
+        'iconColor': const Color(0xFFD97706),
+      },
+      {
+        'title': 'Customer Insights',
+        'subtitle': 'Detailed retention & visit analytics',
+        'icon': Icons.bar_chart_rounded,
+        'bgColor': const Color(0xFFF3E8FF),
+        'iconColor': const Color(0xFF9333EA),
+      },
     ];
   }
 
-  double get _yearlyPrice => _data.plans.isNotEmpty && _data.plans.first.priceAnnual > 0
-      ? _data.plans.first.priceAnnual
-      : 7999.0;
+  double get _yearlyPrice =>
+      _data.plans.isNotEmpty && _data.plans.first.priceAnnual > 0
+          ? _data.plans.first.priceAnnual
+          : 7999.0;
 
-  double get _monthlyPrice => _data.plans.isNotEmpty && _data.plans.first.priceMonthly > 0
-      ? _data.plans.first.priceMonthly
-      : 999.0;
+  double get _monthlyPrice =>
+      _data.plans.isNotEmpty && _data.plans.first.priceMonthly > 0
+          ? _data.plans.first.priceMonthly
+          : 999.0;
 
   void _handlePrimaryCta() {
-    final selectedPlanName = _selectedTierIndex == 0 ? 'Yearly Pro Plan' : 'Monthly Pro Plan';
+    final selectedPlanName =
+        _selectedTierIndex == 0 ? 'Yearly Plan (₹${_yearlyPrice.toStringAsFixed(0)})' : 'Monthly Plan (₹${_monthlyPrice.toStringAsFixed(0)})';
     final selectedPrice = _selectedTierIndex == 0 ? _yearlyPrice : _monthlyPrice;
 
     _openLeadBottomSheet(
@@ -154,7 +260,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
         : ((user?.companyName != null && user!.companyName!.isNotEmpty)
             ? user.companyName!
             : 'Apna Restaurant');
-    final initialContact = (user?.name.isNotEmpty == true) ? user!.name : initialRestName;
+    final initialContact =
+        (user?.name.isNotEmpty == true) ? user!.name : initialRestName;
     final initialPhone = user?.phone ?? '';
     final initialEmail = user?.email ?? '';
 
@@ -166,7 +273,8 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
 
     bool isSubmitting = false;
     String? phoneError;
-    final bool isDemo = featureSource == 'demo_request' || planName.toLowerCase().contains('demo');
+    final bool isDemo =
+        featureSource == 'demo_request' || planName.toLowerCase().contains('demo');
 
     showModalBottomSheet(
       context: context,
@@ -184,283 +292,319 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                   bottom: MediaQuery.of(ctx).viewInsets.bottom,
                 ),
                 child: Container(
-                  constraints: BoxConstraints(maxWidth: math.min(screenWidth, 500.0)),
+                  constraints:
+                      BoxConstraints(maxWidth: math.min(screenWidth, 460.0)),
                   padding: const EdgeInsets.only(
-                    left: 20,
-                    right: 20,
+                    left: 18,
+                    right: 18,
                     top: 14,
                     bottom: 18,
                   ),
                   decoration: const BoxDecoration(
-                    color: Color(0xFF071126),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
                     boxShadow: [
-                      BoxShadow(color: Colors.black87, blurRadius: 36, offset: Offset(0, -8)),
+                      BoxShadow(
+                        color: Color(0x18000000),
+                        blurRadius: 28,
+                        offset: Offset(0, -6),
+                      ),
                     ],
                   ),
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
                     child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Center(
-                        child: Container(
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF334155),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Header
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(9),
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Center(
+                          child: Container(
+                            width: 34,
+                            height: 4,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0A1435),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: isDemo
-                                    ? const Color(0xFF00C2FF).withValues(alpha: 0.5)
-                                    : const Color(0xFFF59E0B).withValues(alpha: 0.5),
-                              ),
+                              color: const Color(0xFFCBD5E1),
+                              borderRadius: BorderRadius.circular(10),
                             ),
-                            child: Icon(
-                              isDemo ? Icons.play_circle_fill_rounded : Icons.workspace_premium_rounded,
-                              color: isDemo ? const Color(0xFF00C2FF) : const Color(0xFFF59E0B),
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  isDemo ? 'Request a Product Demo' : 'Request Pro Access',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  isDemo ? '1-on-1 Guided Walkthrough' : 'Plan: $planName',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF38BDF8),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    const SizedBox(height: 14),
-
-                    // Value Banner
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF14532D).withValues(alpha: 0.45),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.5)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.verified_rounded, color: Color(0xFF4ADE80), size: 18),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              isDemo
-                                  ? 'Lead automatically dispatched to sooftcode@gmail.com for priority demo scheduling.'
-                                  : 'Direct notification sent to sooftcode@gmail.com for immediate activation.',
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                color: Color(0xFF86EFAC),
-                                fontWeight: FontWeight.w600,
-                                height: 1.25,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Business Name
-                    _buildDarkTextField(
-                      controller: restCtrl,
-                      label: 'Business / Restaurant Name',
-                      icon: Icons.storefront_rounded,
-                      hint: 'e.g. Apna Restaurant & Cafe',
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Contact Person
-                    _buildDarkTextField(
-                      controller: contactCtrl,
-                      label: 'Your Name (Contact Person)',
-                      icon: Icons.person_rounded,
-                      hint: 'e.g. Chandan Kumar',
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Phone Number
-                    _buildDarkTextField(
-                      controller: phoneCtrl,
-                      label: 'Mobile / WhatsApp Number *',
-                      icon: Icons.phone_android_rounded,
-                      hint: 'e.g. 9876543210',
-                      keyboardType: TextInputType.phone,
-                      errorText: phoneError,
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Email
-                    _buildDarkTextField(
-                      controller: emailCtrl,
-                      label: 'Email ID (Optional)',
-                      icon: Icons.email_rounded,
-                      hint: 'e.g. contact@myrestaurant.com',
-                      keyboardType: TextInputType.emailAddress,
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Notes
-                    _buildDarkTextField(
-                      controller: notesCtrl,
-                      label: isDemo ? 'Preferred Time / Questions' : 'Specific Requirements / Notes',
-                      icon: Icons.notes_rounded,
-                      hint: isDemo
-                          ? 'e.g. Best time to call or features you want to explore'
-                          : 'e.g. Need WhatsApp campaign and inventory setup',
-                      maxLines: 2,
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Submit CTA Button
-                    Container(
-                      width: double.infinity,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        gradient: GlassTheme.primaryButtonGradient,
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFF0052FF).withValues(alpha: 0.45),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: isSubmitting
-                              ? null
-                              : () async {
-                                  if (phoneCtrl.text.trim().isEmpty) {
-                                    setModalState(() {
-                                      phoneError = 'Please enter a valid mobile number';
-                                    });
-                                    return;
-                                  }
-
-                                  setModalState(() {
-                                    phoneError = null;
-                                    isSubmitting = true;
-                                  });
-
-                                  final effectiveSource = featureSource ?? widget.sourceFeature;
-                                  final billingCycle = isDemo
-                                      ? 'demo'
-                                      : (_selectedTierIndex == 0 ? 'annual' : 'monthly');
-
-                                  await _subscriptionService.submitInterestLead(
-                                    restaurantName: restCtrl.text.trim(),
-                                    contactPerson: contactCtrl.text.trim(),
-                                    phone: phoneCtrl.text.trim(),
-                                    email: emailCtrl.text.trim(),
-                                    selectedPlan: planName,
-                                    billingCycle: billingCycle,
-                                    sourceFeature: effectiveSource,
-                                    notes: notesCtrl.text.trim(),
-                                    price: price,
-                                  );
-
-                                  if (modalCtx.mounted) {
-                                    Navigator.pop(modalCtx);
-                                    _showSuccessDialog(
-                                      planName: planName,
-                                      phone: phoneCtrl.text.trim(),
-                                      contactName: contactCtrl.text.trim(),
-                                      sourceFeature: effectiveSource,
-                                      isDemo: isDemo,
-                                    );
-                                  }
-                                },
-                          borderRadius: BorderRadius.circular(16),
-                          child: Center(
-                            child: isSubmitting
-                                ? const Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
-                                      ),
-                                      SizedBox(width: 12),
-                                      Text(
-                                        'Submitting to sooftcode@gmail.com...',
-                                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-                                      ),
-                                    ],
-                                  )
-                                : Row(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        isDemo ? Icons.calendar_month_rounded : Icons.check_circle_rounded,
-                                        size: 18,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Text(
-                                        isDemo ? 'Submit Demo Request' : 'Submit Access Request',
-                                        style: const TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                          letterSpacing: 0.2,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
                           ),
                         ),
-                      ),
+                        const SizedBox(height: 12),
+
+                        // Header
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF6FF),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: isDemo
+                                      ? const Color(0xFF93C5FD)
+                                      : const Color(0xFFBFDBFE),
+                                ),
+                              ),
+                              child: Icon(
+                                isDemo
+                                    ? Icons.play_circle_fill_rounded
+                                    : Icons.workspace_premium_rounded,
+                                color: const Color(0xFF2563EB),
+                                size: 18,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    isDemo
+                                        ? 'Request a Product Demo'
+                                        : 'Request Pro Access',
+                                    style: const TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  Text(
+                                    isDemo
+                                        ? '1-on-1 Guided Walkthrough'
+                                        : 'Plan: $planName',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2563EB),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Value Banner
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFBBF7D0)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.verified_rounded,
+                                  color: Color(0xFF16A34A), size: 14),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  isDemo
+                                      ? 'Lead dispatched to sooftcode@gmail.com for priority scheduling.'
+                                      : 'Notification sent to sooftcode@gmail.com for immediate activation.',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    color: Color(0xFF15803D),
+                                    fontWeight: FontWeight.w600,
+                                    height: 1.2,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Business Name
+                        _buildLightTextField(
+                          controller: restCtrl,
+                          label: 'Business / Restaurant Name',
+                          icon: Icons.storefront_rounded,
+                          hint: 'e.g. Apna Restaurant & Cafe',
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Contact Person
+                        _buildLightTextField(
+                          controller: contactCtrl,
+                          label: 'Your Name (Contact Person)',
+                          icon: Icons.person_rounded,
+                          hint: 'e.g. Chandan Kumar',
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Phone Number
+                        _buildLightTextField(
+                          controller: phoneCtrl,
+                          label: 'Mobile / WhatsApp Number *',
+                          icon: Icons.phone_android_rounded,
+                          hint: 'e.g. 9876543210',
+                          keyboardType: TextInputType.phone,
+                          errorText: phoneError,
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Email
+                        _buildLightTextField(
+                          controller: emailCtrl,
+                          label: 'Email ID (Optional)',
+                          icon: Icons.email_rounded,
+                          hint: 'e.g. contact@myrestaurant.com',
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Notes
+                        _buildLightTextField(
+                          controller: notesCtrl,
+                          label: isDemo
+                              ? 'Preferred Time / Questions'
+                              : 'Specific Requirements / Notes',
+                          icon: Icons.notes_rounded,
+                          hint: isDemo
+                              ? 'e.g. Best time to call'
+                              : 'e.g. Need WhatsApp campaign setup',
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Submit CTA Button
+                        Container(
+                          width: double.infinity,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            color: const Color(0xFF2563EB),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x302563EB),
+                                blurRadius: 10,
+                                offset: Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: isSubmitting
+                                  ? null
+                                  : () async {
+                                      if (phoneCtrl.text.trim().isEmpty) {
+                                        setModalState(() {
+                                          phoneError =
+                                              'Please enter a valid mobile number';
+                                        });
+                                        return;
+                                      }
+
+                                      setModalState(() {
+                                        phoneError = null;
+                                        isSubmitting = true;
+                                      });
+
+                                      final effectiveSource =
+                                          featureSource ?? widget.sourceFeature;
+                                      final billingCycle = isDemo
+                                          ? 'demo'
+                                          : (_selectedTierIndex == 0
+                                              ? 'annual'
+                                              : 'monthly');
+
+                                      await _subscriptionService.submitInterestLead(
+                                        restaurantName: restCtrl.text.trim(),
+                                        contactPerson: contactCtrl.text.trim(),
+                                        phone: phoneCtrl.text.trim(),
+                                        email: emailCtrl.text.trim(),
+                                        selectedPlan: planName,
+                                        billingCycle: billingCycle,
+                                        sourceFeature: effectiveSource,
+                                        notes: notesCtrl.text.trim(),
+                                        price: price,
+                                      );
+
+                                      if (modalCtx.mounted) {
+                                        Navigator.pop(modalCtx);
+                                        _showSuccessDialog(
+                                          planName: planName,
+                                          phone: phoneCtrl.text.trim(),
+                                          contactName: contactCtrl.text.trim(),
+                                          sourceFeature: effectiveSource,
+                                          isDemo: isDemo,
+                                        );
+                                      }
+                                    },
+                              borderRadius: BorderRadius.circular(10),
+                              child: Center(
+                                child: isSubmitting
+                                    ? const Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(
+                                                color: Colors.white,
+                                                strokeWidth: 2),
+                                          ),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Submitting...',
+                                            style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white),
+                                          ),
+                                        ],
+                                      )
+                                    : Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                            isDemo
+                                                ? Icons.calendar_month_rounded
+                                                : Icons.check_circle_rounded,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Text(
+                                            isDemo
+                                                ? 'Submit Demo Request'
+                                                : 'Submit Access Request',
+                                            style: const TextStyle(
+                                              fontSize: 12.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                              letterSpacing: 0.1,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
-        },
-      );
-    },
-  );
-}
+      },
+    ).whenComplete(() {
+      restCtrl.dispose();
+      contactCtrl.dispose();
+      phoneCtrl.dispose();
+      emailCtrl.dispose();
+      notesCtrl.dispose();
+    });
+  }
 
   void _showSuccessDialog({
     required String planName,
@@ -476,22 +620,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
         final screenWidth = MediaQuery.of(ctx).size.width;
         return Dialog(
           backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          insetPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
           child: Center(
             child: Container(
               constraints: BoxConstraints(
-                maxWidth: math.min(screenWidth * 0.90, 390.0),
+                maxWidth: math.min(screenWidth * 0.90, 360.0),
               ),
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
               decoration: BoxDecoration(
-                color: const Color(0xFF071126),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: const Color(0x33FFFFFF), width: 1.2),
-                boxShadow: [
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.65),
-                    blurRadius: 32,
-                    offset: const Offset(0, 10),
+                    color: Color(0x18000000),
+                    blurRadius: 28,
+                    offset: Offset(0, 6),
                   ),
                 ],
               ),
@@ -500,33 +644,30 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      width: 50,
-                      height: 50,
-                      decoration: BoxDecoration(
-                        color: isDemo ? const Color(0xFF0A1E4A) : const Color(0xFF0F3924),
+                      width: 38,
+                      height: 38,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDCFCE7),
                         shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isDemo ? const Color(0xFF00C2FF) : const Color(0xFF22C55E),
-                          width: 1.5,
-                        ),
                       ),
-                      child: Icon(
-                        isDemo ? Icons.event_available_rounded : Icons.verified_rounded,
-                        color: isDemo ? const Color(0xFF00C2FF) : const Color(0xFF4ADE80),
-                        size: 26,
+                      child: const Icon(
+                        Icons.verified_rounded,
+                        color: Color(0xFF16A34A),
+                        size: 20,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Text(
-                      isDemo ? 'Demo Request Submitted' : 'Pro Access Requested',
+                      isDemo
+                          ? 'Demo Request Submitted'
+                          : 'Pro Access Requested',
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: 0.2,
+                        color: Color(0xFF0F172A),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     Text(
                       isDemo
                           ? (contactName.isNotEmpty
@@ -537,47 +678,49 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                               : 'Your request for $planName has been sent to sooftcode@gmail.com.'),
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        fontSize: 11.5,
-                        color: Color(0xFF94A3B8),
-                        height: 1.35,
+                        fontSize: 10.5,
+                        color: Color(0xFF64748B),
+                        height: 1.3,
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0A1435),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF1E293B)),
+                        color: const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.phone_in_talk_rounded, color: Color(0xFF38BDF8), size: 16),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.phone_in_talk_rounded,
+                              color: Color(0xFF2563EB), size: 13),
+                          const SizedBox(width: 5),
                           Expanded(
                             child: Text(
                               phone.isNotEmpty
                                   ? 'Our team will contact you at $phone shortly.'
                                   : 'Our team will contact you shortly.',
                               style: const TextStyle(
-                                fontSize: 11,
+                                fontSize: 10,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFFE2E8F0),
+                                color: Color(0xFF334155),
                               ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
 
                     // Open Feature Main Screen Action
                     Container(
                       width: double.infinity,
-                      height: 42,
+                      height: 38,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        gradient: GlassTheme.primaryButtonGradient,
+                        borderRadius: BorderRadius.circular(8),
+                        color: const Color(0xFF2563EB),
                       ),
                       child: Material(
                         color: Colors.transparent,
@@ -586,7 +729,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                             Navigator.pop(ctx);
                             _navigateToTargetScreen(sourceFeature);
                           },
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(8),
                           child: Center(
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -595,29 +738,31 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                                   _getProceedButtonLabel(sourceFeature),
                                   style: const TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 12.5,
+                                    fontSize: 11.5,
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                const Icon(Icons.arrow_forward_rounded, size: 14, color: Colors.white),
+                                const SizedBox(width: 4),
+                                const Icon(Icons.arrow_forward_rounded,
+                                    size: 12, color: Colors.white),
                               ],
                             ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     TextButton(
                       onPressed: () => Navigator.pop(ctx),
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
                         minimumSize: Size.zero,
                         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       ),
                       child: const Text(
                         'Back to Subscription',
-                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                       ),
                     ),
                   ],
@@ -668,7 +813,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     }
   }
 
-  static Widget _buildDarkTextField({
+  static Widget _buildLightTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
@@ -682,35 +827,39 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFCBD5E1)),
+          style: const TextStyle(
+              fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 3),
         TextField(
           controller: controller,
           keyboardType: keyboardType,
           maxLines: maxLines,
           scrollPadding: const EdgeInsets.only(bottom: 90),
-          style: const TextStyle(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+              fontSize: 11.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-            prefixIcon: Icon(icon, size: 18, color: const Color(0xFF00C2FF)),
+            hintStyle: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+            prefixIcon: Icon(icon, size: 15, color: const Color(0xFF2563EB)),
             errorText: errorText,
             filled: true,
-            fillColor: const Color(0xFF040814),
+            fillColor: const Color(0xFFF8FAFC),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFF1E293B)),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFF1E293B)),
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFF0052FF), width: 1.5),
+              borderRadius: BorderRadius.circular(8),
+              borderSide:
+                  const BorderSide(color: Color(0xFF2563EB), width: 1.5),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
           ),
         ),
       ],
@@ -721,261 +870,329 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
   Widget build(BuildContext context) {
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: GlassTheme.bgDark1,
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: const BoxDecoration(
-          gradient: RadialGradient(
-            center: Alignment(0.0, -0.35),
-            radius: 1.3,
-            colors: [
-              Color(0x440052FF), // POS Electric Blue glow
-              Color(0xFF071126),
-              Color(0xFF03060F),
-            ],
-            stops: [0.0, 0.55, 1.0],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              // Top Bar with Minimal Back Button & Title
-              _buildTopBar(),
-              if (_isLoading)
-                const LinearProgressIndicator(
-                  minHeight: 2,
-                  backgroundColor: Colors.transparent,
-                  color: Color(0xFF00C2FF),
-                ),
+      backgroundColor: const Color(0xFFF8FAFC),
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. Top Circular Back Button Row
+                  _buildCircledBackButton(),
+                  const SizedBox(height: 8),
 
-              // Scrollable Paywall Content
-              Expanded(
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 460),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          // 1. Center Hero Image Graphic (Enlarged and completely transparent)
-                          _buildFloatingHero(),
-                          const SizedBox(height: 12),
-
-                          // 2. Glowing Golden Box with Features Checklist (Refined typography)
-                          _buildGlowingFeatureBox(),
-                          const SizedBox(height: 14),
-
-                          // 3. 2-Tier Pricing Selector (Yearly 20% OFF, Monthly - Perfectly Aligned)
-                          _buildPricingTiers(),
-                          const SizedBox(height: 14),
-
-                          // 4. Primary Glowing CTA Button
-                          _buildPrimaryCtaButton(),
-                          const SizedBox(height: 10),
-
-                          // 5. Secondary Action Pill Button: "I am Interested for Demo"
-                          _buildSecondaryActionButton(),
-                          const SizedBox(height: 14),
-
-                          // 6. Footer Links
-                          _buildFooterLinks(),
-                          const SizedBox(height: 12),
-                        ],
+                  if (_isLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 6),
+                      child: LinearProgressIndicator(
+                        minHeight: 2,
+                        backgroundColor: Colors.transparent,
+                        color: Color(0xFF2563EB),
                       ),
+                    ),
+
+                  // 2. Main Content Area filling remaining space
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        // Hero Header Section with 3D Illustration
+                        _buildHeroSection(),
+
+                        // Features White Card Box
+                        _buildFeaturesCard(),
+
+                        // 2-Tier Pricing Cards (Yearly 20% OFF & Monthly)
+                        _buildPricingTiers(),
+
+                        // Action Buttons
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Primary Blue CTA: "Upgrade to Pro Suite →"
+                            _buildPrimaryCtaButton(),
+                            const SizedBox(height: 8),
+
+                            // Secondary Outlined CTA: "▶ I am Interested for Demo"
+                            _buildSecondaryActionButton(),
+                          ],
+                        ),
+
+                        // Footer Links & Promo Code
+                        _buildFooterLinks(),
+                      ],
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Top Bar with Left Back Button and Centered Feature Title
-  Widget _buildTopBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: () {
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else if (Navigator.canPop(context)) {
-                  Navigator.pop(context);
-                }
-              },
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+  /// Top Circular Back Button (Matching reference screenshot)
+  Widget _buildCircledBackButton() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            if (widget.onBack != null) {
+              widget.onBack!();
+            } else if (Navigator.canPop(context)) {
+              Navigator.pop(context);
+            }
+          },
+          borderRadius: BorderRadius.circular(22),
+          child: Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0A000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 2),
                 ),
-                child: const Icon(
-                  Icons.arrow_back_ios_new_rounded,
-                  color: Colors.white,
-                  size: 15,
-                ),
-              ),
+              ],
             ),
-          ),
-          Expanded(
-            child: Text(
-              _featureTitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 15.5,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 0.2,
-              ),
+            child: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Color(0xFF0F172A),
+              size: 15,
             ),
-          ),
-          const SizedBox(width: 36), // Balances left back button so title remains centered
-        ],
-      ),
-    );
-  }
-
-  /// Center Floating Hero Showcase: Increased size with clean transparent background
-  Widget _buildFloatingHero() {
-    return AnimatedBuilder(
-      animation: _pulseAnimation,
-      builder: (context, child) {
-        return Transform.scale(
-          scale: 1.0 + (_pulseAnimation.value * 0.025),
-          child: SizedBox(
-            height: 146,
-            child: Center(
-              child: Image.asset(
-                'assets/images/subscription_hero_cards.png',
-                height: 140,
-                fit: BoxFit.contain,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFFEF3C7), Color(0xFFFDE68A)],
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                      ),
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: const Text('👑', style: TextStyle(fontSize: 54)),
-                  );
-                },
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  /// Glowing Container with Gold Side-Border Effects & Refined Text Size
-  Widget _buildGlowingFeatureBox() {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFF59E0B).withValues(alpha: 0.16),
-            blurRadius: 24,
-            spreadRadius: 1,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: CustomPaint(
-        painter: _GlowingGradientBorderPainter(
-          borderRadius: 20,
-          borderWidth: 1.5,
-          gradient: const LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFFDE68A), // Vibrant Gold top
-              Color(0xFFFBBF24), // Gold top-sides
-              Color(0xFFF59E0B), // Warm Amber sides
-              Color(0x33F59E0B), // Fading bottom sides
-              Color(0x10F59E0B), // Subtle bottom
-            ],
-            stops: [0.0, 0.25, 0.55, 0.85, 1.0],
           ),
         ),
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFF091124).withValues(alpha: 0.88),
-            borderRadius: BorderRadius.circular(20),
-          ),
+      ),
+    );
+  }
+
+  /// 1. Hero Header Section with 3D Graphics
+  Widget _buildHeroSection() {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Left text: Apna POS + [Feature Title] in Blue + Subtitle
+        Expanded(
+          flex: 6,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Center(
-                child: Text(
-                  _heroHeading,
-                  style: const TextStyle(
-                    color: Color(0xFFFDE68A),
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.2,
-                  ),
-                  textAlign: TextAlign.center,
+              const Text(
+                'Apna POS',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.5,
+                  height: 1.1,
                 ),
               ),
-              const SizedBox(height: 12),
+              Text(
+                _featureSubtitleHighlight,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF2563EB),
+                  letterSpacing: -0.5,
+                  height: 1.15,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _heroDescription,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                  height: 1.3,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
 
-              ..._featureBullets.map(
-                (bullet) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
+        // Right 3D Visual Cards Showcase
+        Expanded(
+          flex: 5,
+          child: AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) {
+              return Transform.scale(
+                scale: 1.0 + (_pulseAnimation.value * 0.02),
+                child: SizedBox(
+                  height: 98,
+                  child: Image.asset(
+                    'assets/images/subscription_hero_crown.png',
+                    height: 98,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _buildFallbackHeroIllustration();
+                    },
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildFallbackHeroIllustration() {
+    return SizedBox(
+      height: 90,
+      child: Stack(
+        alignment: Alignment.centerRight,
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 2,
+            top: 10,
+            child: Container(
+              width: 50,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFBAE6FD),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Center(
+                child: Icon(Icons.star_rounded, color: Color(0xFFFDE047), size: 24),
+              ),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 10,
+            child: Container(
+              width: 50,
+              height: 64,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDDD6FE),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Center(
+                child: Icon(Icons.card_giftcard_rounded, color: Colors.white, size: 22),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 22,
+            top: 2,
+            child: Container(
+              width: 72,
+              height: 76,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFFFFBEB), Color(0xFFFEF3C7)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Center(
+                child: Text('👑', style: TextStyle(fontSize: 36)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 2. Features White Card Box
+  Widget _buildFeaturesCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFF1F5F9)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x06000000),
+            blurRadius: 12,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: _featuresList.map((feature) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4.5),
+            child: Row(
+              children: [
+                // Colorful Icon Container
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: feature['bgColor'] as Color,
+                    borderRadius: BorderRadius.circular(9),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      feature['icon'] as IconData,
+                      color: feature['iconColor'] as Color,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+
+                // Title & Subtitle
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.check_rounded, color: Colors.white, size: 17),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Text(
-                          bullet,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11.5,
-                            fontWeight: FontWeight.w600,
-                            height: 1.25,
-                          ),
+                      Text(
+                        feature['title'] as String,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(height: 1),
+                      Text(
+                        feature['subtitle'] as String,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF64748B),
                         ),
                       ),
                     ],
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
 
-  /// 2 Pricing Tier Cards (Yearly Plan & Monthly Plan - Perfectly Aligned)
+  /// 3. Pricing Tier Cards (Yearly Plan & Monthly Plan)
   Widget _buildPricingTiers() {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 1. Yearly (Recommended with 20% OFF badge)
+        // 1. Yearly Plan
         Expanded(
           child: _buildTierCard(
             index: 0,
@@ -983,10 +1200,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
             price: '₹${_yearlyPrice.toStringAsFixed(0)}',
             subtitle: 'Billed Annually',
             badgeText: '20% OFF',
-            isRecommended: true,
+            isYearly: true,
+            bullets: [
+              'Full access to all features',
+              'Best value',
+              'Priority support',
+            ],
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 10),
 
         // 2. Monthly Plan
         Expanded(
@@ -995,6 +1217,12 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
             title: 'Monthly Plan',
             price: '₹${_monthlyPrice.toStringAsFixed(0)}',
             subtitle: 'Billed Monthly',
+            isYearly: false,
+            bullets: [
+              'All core features',
+              'Flexible subscription',
+              'Cancel anytime',
+            ],
           ),
         ),
       ],
@@ -1007,76 +1235,135 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     required String price,
     required String subtitle,
     String? badgeText,
-    bool isRecommended = false,
+    required bool isYearly,
+    required List<String> bullets,
   }) {
     final isSelected = _selectedTierIndex == index;
 
     return Stack(
       clipBehavior: Clip.none,
-      alignment: Alignment.topCenter,
       children: [
         GestureDetector(
           onTap: () => setState(() => _selectedTierIndex = index),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            width: double.infinity,
-            height: 104, // Perfectly matched uniform height
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? const Color(0xFF0A1435)
-                  : const Color(0xFF071126).withValues(alpha: 0.65),
-              borderRadius: BorderRadius.circular(18),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: isSelected
-                    ? (isRecommended ? const Color(0xFF10B981) : const Color(0xFF00C2FF))
-                    : const Color(0xFF1E293B),
-                width: isSelected ? 1.8 : 1.0,
+                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
+                width: isSelected ? 2.0 : 1.0,
               ),
               boxShadow: isSelected
-                  ? [
+                  ? const [
                       BoxShadow(
-                        color: (isRecommended ? const Color(0xFF10B981) : const Color(0xFF00C2FF))
-                            .withValues(alpha: 0.25),
-                        blurRadius: 12,
-                        spreadRadius: 1,
+                        color: Color(0x142563EB),
+                        blurRadius: 10,
+                        offset: Offset(0, 3),
                       ),
                     ]
-                  : null,
+                  : const [
+                      BoxShadow(
+                        color: Color(0x04000000),
+                        blurRadius: 6,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
             ),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
+                // Radio icon + Title row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    Icon(
+                      isSelected
+                          ? Icons.radio_button_checked_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      color: isSelected
+                          ? const Color(0xFF2563EB)
+                          : const Color(0xFFCBD5E1),
+                      size: 18,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
+
+                // Price
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
                     price,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : const Color(0xFFE2E8F0),
-                      fontSize: 16.5,
+                      color: isYearly ? const Color(0xFF2563EB) : const Color(0xFF0F172A),
+                      fontSize: 22,
                       fontWeight: FontWeight.w900,
-                      letterSpacing: 0.2,
+                      letterSpacing: -0.5,
                     ),
                   ),
                 ),
-                const SizedBox(height: 3),
+
+                // Subtitle
                 Text(
                   subtitle,
-                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFF64748B),
                     fontSize: 10,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Bullet checklist
+                ...bullets.map(
+                  (b) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          width: 13,
+                          height: 13,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isSelected
+                                ? const Color(0xFF2563EB)
+                                : const Color(0xFFE2E8F0),
+                          ),
+                          child: Icon(
+                            Icons.check_rounded,
+                            color: isSelected ? Colors.white : const Color(0xFF64748B),
+                            size: 9,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            b,
+                            style: TextStyle(
+                              color: isSelected
+                                  ? const Color(0xFF334155)
+                                  : const Color(0xFF64748B),
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w500,
+                              height: 1.15,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -1084,23 +1371,22 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
           ),
         ),
 
-        // Top Badge (e.g. 20% OFF)
+        // Top-left Pill Badge (20% OFF)
         if (badgeText != null)
           Positioned(
-            top: -8,
+            top: -7,
+            left: 12,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981),
-                borderRadius: BorderRadius.circular(10),
-                boxShadow: const [
-                  BoxShadow(color: Colors.black54, blurRadius: 4, offset: Offset(0, 2)),
-                ],
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
               ),
               child: Text(
                 badgeText,
                 style: const TextStyle(
-                  color: Color(0xFF064E3B),
+                  color: Color(0xFF2563EB),
                   fontSize: 9,
                   fontWeight: FontWeight.w900,
                   letterSpacing: 0.2,
@@ -1112,19 +1398,19 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     );
   }
 
-  /// Primary Glowing CTA Button ("Upgrade to Pro Suite")
+  /// 4. Primary Blue CTA: "Upgrade to Pro Suite →"
   Widget _buildPrimaryCtaButton() {
     return Container(
       width: double.infinity,
-      height: 48,
+      height: 46,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        gradient: GlassTheme.primaryButtonGradient,
-        boxShadow: [
+        borderRadius: BorderRadius.circular(23),
+        color: const Color(0xFF2563EB),
+        boxShadow: const [
           BoxShadow(
-            color: const Color(0xFF0052FF).withValues(alpha: 0.45),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
+            color: Color(0x302563EB),
+            blurRadius: 12,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -1132,7 +1418,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
         color: Colors.transparent,
         child: InkWell(
           onTap: _handlePrimaryCta,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(23),
           child: const Center(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -1141,13 +1427,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
                   'Upgrade to Pro Suite',
                   style: TextStyle(
                     color: Colors.white,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 0.2,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.1,
                   ),
                 ),
                 SizedBox(width: 6),
-                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 16),
+                Icon(Icons.arrow_forward_rounded, color: Colors.white, size: 15),
               ],
             ),
           ),
@@ -1156,15 +1442,15 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     );
   }
 
-  /// Secondary Pill Button: "I am Interested for Demo"
+  /// 5. Secondary Action Pill: "▶ I am Interested for Demo"
   Widget _buildSecondaryActionButton() {
     return Container(
       width: double.infinity,
       height: 44,
       decoration: BoxDecoration(
-        color: const Color(0xFF0A1435).withValues(alpha: 0.85),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+        border: Border.all(color: const Color(0xFFDBEAFE), width: 1.3),
       ),
       child: Material(
         color: Colors.transparent,
@@ -1179,12 +1465,16 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.play_circle_outline_rounded, color: Color(0xFF38BDF8), size: 16),
-                SizedBox(width: 6),
+                Icon(
+                  Icons.play_circle_outline_rounded,
+                  color: Color(0xFF2563EB),
+                  size: 17,
+                ),
+                SizedBox(width: 7),
                 Text(
                   'I am Interested for Demo',
                   style: TextStyle(
-                    color: Color(0xFFE2E8F0),
+                    color: Color(0xFF0F172A),
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
                   ),
@@ -1197,26 +1487,38 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
     );
   }
 
-  /// Footer Links
+  /// 6. Footer Links
   Widget _buildFooterLinks() {
     return Column(
       children: [
-        GestureDetector(
-          onTap: () => _openLeadBottomSheet(
-            planName: 'Promo Code Inquiry',
-            price: 0,
-            featureSource: 'promo_code',
-          ),
-          child: const Text(
-            'Promo Code',
-            style: TextStyle(
-              color: Color(0xFF94A3B8),
-              fontSize: 11.5,
-              fontWeight: FontWeight.w600,
+        // Divider with "Have a Promo Code?"
+        Row(
+          children: [
+            const Expanded(child: Divider(color: Color(0xFFE2E8F0), height: 1)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+              child: GestureDetector(
+                onTap: () => _openLeadBottomSheet(
+                  planName: 'Promo Code Inquiry',
+                  price: 0,
+                  featureSource: 'promo_code',
+                ),
+                child: const Text(
+                  'Have a Promo Code?',
+                  style: TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
             ),
-          ),
+            const Expanded(child: Divider(color: Color(0xFFE2E8F0), height: 1)),
+          ],
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
+
+        // Restore Purchases, Terms, Privacy Policy
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1224,34 +1526,37 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
-                    content: Text('Checking store purchases... No prior purchase found.'),
+                    content: Text(
+                        'Checking store purchases... No prior purchase found.'),
                     duration: Duration(seconds: 2),
                   ),
                 );
               },
               child: const Text(
-                'Restore purchases',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                'Restore Purchases',
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
               ),
             ),
-            const Text('  •  ', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+            const Text('   •   ',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5)),
             GestureDetector(
               onTap: () {},
               child: const Text(
                 'Terms of Services',
                 style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF64748B),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
-            const Text('  •  ', style: TextStyle(color: Color(0xFF64748B), fontSize: 11)),
+            const Text('   •   ',
+                style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5)),
             GestureDetector(
               onTap: () {},
               child: const Text(
                 'Privacy Policy',
-                style: TextStyle(color: Color(0xFF64748B), fontSize: 11),
+                style: TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
               ),
             ),
           ],
@@ -1259,38 +1564,4 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> with SingleTick
       ],
     );
   }
-}
-
-/// CustomPainter for luminous golden gradient top & side border effect
-class _GlowingGradientBorderPainter extends CustomPainter {
-  final double borderRadius;
-  final double borderWidth;
-  final Gradient gradient;
-
-  _GlowingGradientBorderPainter({
-    required this.borderRadius,
-    required this.borderWidth,
-    required this.gradient,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(
-      borderWidth / 2,
-      borderWidth / 2,
-      size.width - borderWidth,
-      size.height - borderWidth,
-    );
-    final rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
-    final paint = Paint()
-      ..shader = gradient.createShader(rect)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = borderWidth;
-    canvas.drawRRect(rrect, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant _GlowingGradientBorderPainter oldDelegate) =>
-      oldDelegate.borderRadius != borderRadius ||
-      oldDelegate.borderWidth != borderWidth;
 }

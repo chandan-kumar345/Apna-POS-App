@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -29,6 +30,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   late Animation<double> _fadeAnim;
   late Animation<double> _scaleOutAnim;
   bool _navigated = false;
+
+  Timer? _fallbackTimer;
 
   @override
   void initState() {
@@ -74,7 +77,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _animController.forward();
 
     // Guaranteed fallback timer (proceeds after 2.5s even if animation drops frames)
-    Future.delayed(const Duration(milliseconds: 2500), () {
+    _fallbackTimer = Timer(const Duration(milliseconds: 2500), () {
       if (mounted && !_navigated) {
         _proceedNextScreen();
       }
@@ -84,29 +87,30 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   Future<void> _proceedNextScreen() async {
     if (_navigated || !mounted) return;
     _navigated = true;
+    _fallbackTimer?.cancel();
 
     final bool isDesktopPlatform = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
     final Widget defaultUnauthScreen = isDesktopPlatform ? const LoginScreen() : const GetStartedScreen();
     Widget targetScreen = defaultUnauthScreen;
 
     try {
-      // 1. Fast background check of ApiEndpoints & Connectivity without blocking indefinitely
-      try {
-        await ApiEndpoints.initialize().timeout(const Duration(milliseconds: 1200));
-      } catch (_) {}
-
       final db = DatabaseService();
-      final hasInternet = await NetworkService().hasInternet().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => true,
-      );
+      // Fast parallel check of Network & Auth
+      final results = await Future.wait([
+        NetworkService().hasInternet().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => true,
+        ),
+        AuthService().isAuthenticated().timeout(
+          const Duration(seconds: 2),
+          onTimeout: () => false,
+        ),
+      ]);
+
+      final bool hasInternet = results[0];
+      final bool isAuth = results[1];
 
       if (!mounted) return;
-
-      final isAuth = await AuthService().isAuthenticated().timeout(
-        const Duration(seconds: 2),
-        onTimeout: () => false,
-      );
 
       if (isAuth || db.currentUser != null) {
         if (hasInternet && isAuth) {
@@ -203,6 +207,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
+    _fallbackTimer?.cancel();
     _animController.dispose();
     super.dispose();
   }

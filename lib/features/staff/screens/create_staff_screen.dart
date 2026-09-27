@@ -402,7 +402,7 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
           ? _employeeIdController.text.trim()
           : 'EMP${(_db.staffList.length + 1).toString().padLeft(3, '0')}';
 
-      // Pin derivation: if password is 4-6 digits, use it as PIN, else use last 4 phone digits or '1234'
+      // Pin derivation
       String pin = '1234';
       if (password.length >= 4 && password.length <= 6 && RegExp(r'^\d+$').hasMatch(password)) {
         pin = password;
@@ -484,6 +484,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 650;
+
     return Theme(
       data: ThemeData.light().copyWith(
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
@@ -531,7 +533,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
         body: SafeArea(
           child: SingleChildScrollView(
             physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 24,
+              vertical: isMobile ? 12 : 20,
+            ),
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1320),
@@ -541,10 +546,10 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Top Header Bar
-                      _buildTopHeader(),
-                      const SizedBox(height: 20),
+                      _buildTopHeader(isMobile),
+                      SizedBox(height: isMobile ? 12 : 20),
 
-                      // Windows 2-Column Responsive Layout
+                      // Responsive 2-Column or Stacked Layout
                       LayoutBuilder(
                         builder: (context, constraints) {
                           final isTwoColumn = constraints.maxWidth >= 960;
@@ -557,11 +562,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                   flex: 5,
                                   child: Column(
                                     children: [
-                                      _buildBasicInfoCard(),
+                                      _buildBasicInfoCard(isMobile),
                                       const SizedBox(height: 16),
-                                      _buildWorkDetailsCard(),
+                                      _buildWorkDetailsCard(isMobile),
                                       const SizedBox(height: 16),
-                                      _buildLoginSecurityCard(),
+                                      _buildLoginSecurityCard(isMobile),
                                     ],
                                   ),
                                 ),
@@ -571,11 +576,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                   flex: 5,
                                   child: Column(
                                     children: [
-                                      _buildPermissionsCard(),
+                                      _buildPermissionsCard(isMobile),
                                       const SizedBox(height: 16),
-                                      _buildPreferencesCard(),
+                                      _buildPreferencesCard(isMobile),
                                       const SizedBox(height: 16),
-                                      _buildAccountStatusCard(),
+                                      _buildAccountStatusCard(isMobile),
                                     ],
                                   ),
                                 ),
@@ -583,29 +588,29 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                             );
                           }
 
-                          // Stacked layout for smaller window sizes
+                          // Stacked layout for smaller window & mobile sizes
                           return Column(
                             children: [
-                              _buildBasicInfoCard(),
-                              const SizedBox(height: 16),
-                              _buildWorkDetailsCard(),
-                              const SizedBox(height: 16),
-                              _buildLoginSecurityCard(),
-                              const SizedBox(height: 16),
-                              _buildPermissionsCard(),
-                              const SizedBox(height: 16),
-                              _buildPreferencesCard(),
-                              const SizedBox(height: 16),
-                              _buildAccountStatusCard(),
+                              _buildBasicInfoCard(isMobile),
+                              SizedBox(height: isMobile ? 10 : 16),
+                              _buildWorkDetailsCard(isMobile),
+                              SizedBox(height: isMobile ? 10 : 16),
+                              _buildLoginSecurityCard(isMobile),
+                              SizedBox(height: isMobile ? 10 : 16),
+                              _buildPermissionsCard(isMobile),
+                              SizedBox(height: isMobile ? 10 : 16),
+                              _buildPreferencesCard(isMobile),
+                              SizedBox(height: isMobile ? 10 : 16),
+                              _buildAccountStatusCard(isMobile),
                             ],
                           );
                         },
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: isMobile ? 14 : 20),
 
                       // Bottom Action Bar
-                      _buildBottomActionBar(),
-                      const SizedBox(height: 24),
+                      _buildBottomActionBar(isMobile),
+                      SizedBox(height: isMobile ? 16 : 24),
                     ],
                   ),
                 ),
@@ -618,35 +623,40 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   }
 
   // --- Top Header Bar ---
-  Widget _buildTopHeader() {
+  Widget _buildTopHeader(bool isMobile) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Title & Subtitle (No back button, no cross button)
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Create New Staff',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
-                letterSpacing: -0.4,
+        // Title & Subtitle
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Create New Staff',
+                style: TextStyle(
+                  fontSize: isMobile ? 16.5 : 24,
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF0F172A),
+                  letterSpacing: -0.3,
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'Add a new team member to your business',
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFF64748B),
+              const SizedBox(height: 2),
+              Text(
+                'Add a new team member to your business',
+                style: TextStyle(
+                  fontSize: isMobile ? 10.5 : 13.5,
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF64748B),
+                ),
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
 
         // "View Staff List" Header Button
         OutlinedButton.icon(
@@ -655,244 +665,394 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             backgroundColor: const Color(0xFFEFF6FF),
             foregroundColor: const Color(0xFF2563EB),
             side: const BorderSide(color: Color(0xFFBFDBFE)),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 16,
+              vertical: isMobile ? 7 : 12,
+            ),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
-          icon: const Icon(Icons.people_alt_outlined, size: 18),
-          label: const Text(
+          icon: Icon(Icons.people_alt_outlined, size: isMobile ? 15 : 18),
+          label: Text(
             'View Staff List',
-            style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+            style: TextStyle(
+              fontSize: isMobile ? 11 : 13.5,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
       ],
     );
   }
 
-  // ==================== LEFT COLUMN CARDS ====================
-
-  // --- 1. Basic Information Card ---
-  Widget _buildBasicInfoCard() {
+  // ==================== BASIC INFO CARD ====================
+  Widget _buildBasicInfoCard(bool isMobile) {
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.person_outline_rounded,
       title: 'Basic Information',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Avatar Uploader
-              _buildAvatarSection(),
-              const SizedBox(width: 20),
-
-              // Full Name, Employee ID & Role
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Full Name *'),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _nameController,
-                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(
-                        hint: 'Enter full name',
-                        icon: Icons.person_outline_rounded,
-                      ),
-                      validator: (val) =>
-                          (val == null || val.trim().isEmpty) ? 'Full name is required' : null,
+          if (isMobile) ...[
+            // Avatar Center/Top on Mobile
+            Center(
+              child: _buildAvatarSection(isMobile),
+            ),
+            const SizedBox(height: 12),
+            _buildFieldLabel('Full Name *', isMobile),
+            const SizedBox(height: 4),
+            TextFormField(
+              controller: _nameController,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(
+                isMobile: isMobile,
+                hint: 'Enter full name',
+                icon: Icons.person_outline_rounded,
+              ),
+              validator: (val) =>
+                  (val == null || val.trim().isEmpty) ? 'Full name is required' : null,
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Employee ID *', isMobile),
+            const SizedBox(height: 4),
+            Stack(
+              alignment: Alignment.centerRight,
+              children: [
+                TextFormField(
+                  controller: _employeeIdController,
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                  decoration: _inputDecoration(
+                    isMobile: isMobile,
+                    hint: 'EMP00X',
+                    icon: Icons.badge_outlined,
+                  ).copyWith(
+                    contentPadding: const EdgeInsets.only(
+                      left: 10,
+                      right: 80,
+                      top: 8,
+                      bottom: 8,
                     ),
-                    const SizedBox(height: 12),
-
-                    // Employee ID & Role Row
-                    Row(
-                      children: [
-                        // Employee ID
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildFieldLabel('Employee ID *'),
-                              const SizedBox(height: 6),
-                              Stack(
-                                alignment: Alignment.centerRight,
-                                children: [
-                                  TextFormField(
-                                    controller: _employeeIdController,
-                                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                                    decoration: _inputDecoration(
-                                      hint: 'EMP00X',
-                                      icon: Icons.badge_outlined,
-                                    ).copyWith(
-                                      contentPadding: const EdgeInsets.only(
-                                        left: 12,
-                                        right: 90,
-                                        top: 11,
-                                        bottom: 11,
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    right: 8,
-                                    child: GestureDetector(
-                                      onTap: _autoGenerateEmployeeId,
-                                      child: const Text(
-                                        'Auto-generate',
-                                        style: TextStyle(
-                                          fontSize: 11.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF2563EB),
+                  ),
+                ),
+                Positioned(
+                  right: 8,
+                  child: GestureDetector(
+                    onTap: _autoGenerateEmployeeId,
+                    child: const Text(
+                      'Auto-generate',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2563EB),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Role *', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedRole,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(
+                isMobile: isMobile,
+                hint: 'Select role',
+                icon: Icons.work_outline_rounded,
+              ),
+              items: _roleOptions
+                  .map((r) => DropdownMenuItem(
+                        value: r,
+                        child: Text(r, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+                      ))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _selectedRole = val);
+                  _applyRolePreset(val);
+                }
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Email Address *', isMobile),
+            const SizedBox(height: 4),
+            TextFormField(
+              controller: _emailController,
+              keyboardType: TextInputType.emailAddress,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(
+                isMobile: isMobile,
+                hint: 'name@company.com',
+                icon: Icons.mail_outline_rounded,
+              ),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) {
+                  return 'Email is required for staff login';
+                }
+                if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val.trim())) {
+                  return 'Enter a valid email address';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Mobile Number', isMobile),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Container(
+                  width: 76,
+                  margin: const EdgeInsets.only(right: 6),
+                  child: DropdownButtonFormField<String>(
+                    isExpanded: true,
+                    value: _selectedCountryCode,
+                    dropdownColor: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 14),
+                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                    decoration: _inputDecoration(isMobile: isMobile, hint: '+91', icon: Icons.phone_outlined)
+                        .copyWith(
+                      prefixIcon: null,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                    ),
+                    items: _countryCodes
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                            ))
+                        .toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedCountryCode = val);
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: TextFormField(
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                    decoration: _inputDecoration(
+                      isMobile: isMobile,
+                      hint: '98765 43210',
+                      icon: Icons.phone_android_rounded,
+                    ).copyWith(prefixIcon: null),
+                  ),
+                ),
+              ],
+            ),
+          ] else ...[
+            // Desktop 2-column Basic Info
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildAvatarSection(isMobile),
+                const SizedBox(width: 20),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Full Name *', isMobile),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _nameController,
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(
+                          isMobile: isMobile,
+                          hint: 'Enter full name',
+                          icon: Icons.person_outline_rounded,
+                        ),
+                        validator: (val) =>
+                            (val == null || val.trim().isEmpty) ? 'Full name is required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Employee ID *', isMobile),
+                                const SizedBox(height: 6),
+                                Stack(
+                                  alignment: Alignment.centerRight,
+                                  children: [
+                                    TextFormField(
+                                      controller: _employeeIdController,
+                                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                                      decoration: _inputDecoration(
+                                        isMobile: isMobile,
+                                        hint: 'EMP00X',
+                                        icon: Icons.badge_outlined,
+                                      ).copyWith(
+                                        contentPadding: const EdgeInsets.only(
+                                          left: 12,
+                                          right: 90,
+                                          top: 11,
+                                          bottom: 11,
                                         ),
                                       ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-
-                        // Role
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _buildFieldLabel('Role *'),
-                              const SizedBox(height: 6),
-                              DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                initialValue: _selectedRole,
-                                dropdownColor: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                                style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                                decoration: _inputDecoration(
-                                  hint: 'Select role',
-                                  icon: Icons.work_outline_rounded,
+                                    Positioned(
+                                      right: 8,
+                                      child: GestureDetector(
+                                        onTap: _autoGenerateEmployeeId,
+                                        child: const Text(
+                                          'Auto-generate',
+                                          style: TextStyle(
+                                            fontSize: 11.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF2563EB),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                                items: _roleOptions
-                                    .map((r) => DropdownMenuItem(
-                                          value: r,
-                                          child: Text(r, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
-                                        ))
-                                    .toList(),
-                                onChanged: (val) {
-                                  if (val != null) {
-                                    setState(() => _selectedRole = val);
-                                    _applyRolePreset(val);
-                                  }
-                                },
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-
-          // Email Address & Mobile Number Row
-          Row(
-            children: [
-              // Email Address
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Email Address *'),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(
-                        hint: 'name@company.com',
-                        icon: Icons.mail_outline_rounded,
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) {
-                          return 'Email is required for staff login';
-                        }
-                        if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val.trim())) {
-                          return 'Enter a valid email address';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-
-              // Mobile Number
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Mobile Number'),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        // Country Code Dropdown
-                        Container(
-                          width: 88,
-                          margin: const EdgeInsets.only(right: 6),
-                          child: DropdownButtonFormField<String>(
-                            isExpanded: true,
-                            initialValue: _selectedCountryCode,
-                            dropdownColor: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                            decoration: _inputDecoration(hint: '+91', icon: Icons.phone_outlined)
-                                .copyWith(
-                              prefixIcon: null,
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+                              ],
                             ),
-                            items: _countryCodes
-                                .map((c) => DropdownMenuItem(
-                                      value: c,
-                                      child: Text(c, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
-                                    ))
-                                .toList(),
-                            onChanged: (val) {
-                              if (val != null) setState(() => _selectedCountryCode = val);
-                            },
                           ),
-                        ),
-
-                        // Phone Number input
-                        Expanded(
-                          child: TextFormField(
-                            controller: _phoneController,
-                            keyboardType: TextInputType.phone,
-                            style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                            decoration: _inputDecoration(
-                              hint: '98765 43210',
-                              icon: Icons.phone_android_rounded,
-                            ).copyWith(prefixIcon: null),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 5,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildFieldLabel('Role *', isMobile),
+                                const SizedBox(height: 6),
+                                DropdownButtonFormField<String>(
+                                  isExpanded: true,
+                                  value: _selectedRole,
+                                  dropdownColor: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                                  style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                                  decoration: _inputDecoration(
+                                    isMobile: isMobile,
+                                    hint: 'Select role',
+                                    icon: Icons.work_outline_rounded,
+                                  ),
+                                  items: _roleOptions
+                                      .map((r) => DropdownMenuItem(
+                                            value: r,
+                                            child: Text(r, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500)),
+                                          ))
+                                      .toList(),
+                                  onChanged: (val) {
+                                    if (val != null) {
+                                      setState(() => _selectedRole = val);
+                                      _applyRolePreset(val);
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Email Address *', isMobile),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(
+                          isMobile: isMobile,
+                          hint: 'name@company.com',
+                          icon: Icons.mail_outline_rounded,
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) {
+                            return 'Email is required for staff login';
+                          }
+                          if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(val.trim())) {
+                            return 'Enter a valid email address';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Mobile Number', isMobile),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Container(
+                            width: 88,
+                            margin: const EdgeInsets.only(right: 6),
+                            child: DropdownButtonFormField<String>(
+                              isExpanded: true,
+                              value: _selectedCountryCode,
+                              dropdownColor: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                              decoration: _inputDecoration(isMobile: isMobile, hint: '+91', icon: Icons.phone_outlined)
+                                  .copyWith(
+                                prefixIcon: null,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+                              ),
+                              items: _countryCodes
+                                  .map((c) => DropdownMenuItem(
+                                        value: c,
+                                        child: Text(c, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                                      ))
+                                  .toList(),
+                              onChanged: (val) {
+                                if (val != null) setState(() => _selectedCountryCode = val);
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _phoneController,
+                              keyboardType: TextInputType.phone,
+                              style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                              decoration: _inputDecoration(
+                                isMobile: isMobile,
+                                hint: '98765 43210',
+                                icon: Icons.phone_android_rounded,
+                              ).copyWith(prefixIcon: null),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildAvatarSection() {
+  Widget _buildAvatarSection(bool isMobile) {
+    final size = isMobile ? 56.0 : 82.0;
     return Column(
       children: [
         GestureDetector(
@@ -900,8 +1060,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
           child: Stack(
             children: [
               Container(
-                width: 82,
-                height: 82,
+                width: size,
+                height: size,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: const Color(0xFFF1F5F9),
@@ -914,14 +1074,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       : null,
                 ),
                 child: _avatarImageFile == null
-                    ? const Icon(Icons.person_rounded, size: 44, color: Color(0xFF94A3B8))
+                    ? Icon(Icons.person_rounded, size: isMobile ? 30 : 44, color: const Color(0xFF94A3B8))
                     : null,
               ),
               Positioned(
                 bottom: 0,
                 right: 0,
                 child: Container(
-                  padding: const EdgeInsets.all(5),
+                  padding: EdgeInsets.all(isMobile ? 3.5 : 5),
                   decoration: BoxDecoration(
                     color: const Color(0xFF2563EB),
                     shape: BoxShape.circle,
@@ -930,234 +1090,360 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       BoxShadow(color: Color(0x20000000), blurRadius: 4, offset: Offset(0, 2)),
                     ],
                   ),
-                  child: const Icon(Icons.camera_alt_rounded, size: 13, color: Colors.white),
+                  child: Icon(Icons.camera_alt_rounded, size: isMobile ? 10 : 13, color: Colors.white),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 6),
-        const Text(
+        const SizedBox(height: 4),
+        Text(
           'Upload Photo',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+          style: TextStyle(fontSize: isMobile ? 10.5 : 12, fontWeight: FontWeight.w700, color: const Color(0xFF334155)),
         ),
-        const Text(
+        Text(
           'JPG, PNG (Max 2MB)',
-          style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
+          style: TextStyle(fontSize: isMobile ? 9 : 10.5, color: const Color(0xFF94A3B8)),
         ),
       ],
     );
   }
 
-  // --- 2. Work Details Card ---
-  Widget _buildWorkDetailsCard() {
+  // ==================== WORK DETAILS CARD ====================
+  Widget _buildWorkDetailsCard(bool isMobile) {
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.business_center_outlined,
       title: 'Work Details',
       child: Column(
         children: [
-          Row(
-            children: [
-              // Department
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Department'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedDepartment,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Select department', icon: Icons.domain_rounded),
-                      items: _departmentOptions
-                          .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedDepartment = val);
-                      },
-                    ),
-                  ],
+          if (isMobile) ...[
+            _buildFieldLabel('Department', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedDepartment,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select department', icon: Icons.domain_rounded),
+              items: _departmentOptions
+                  .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedDepartment = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Reporting To', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedReportingTo,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select manager', icon: Icons.supervisor_account_outlined),
+              items: _reportingToOptions
+                  .map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedReportingTo = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Work Location', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedLocation,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select location', icon: Icons.location_on_outlined),
+              items: _locationOptions
+                  .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedLocation = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Shift / Working Hours', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedShift,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Select shift', icon: Icons.schedule_outlined),
+              items: _shiftOptions
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedShift = val);
+              },
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Department', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedDepartment,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select department', icon: Icons.domain_rounded),
+                        items: _departmentOptions
+                            .map((d) => DropdownMenuItem(value: d, child: Text(d, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedDepartment = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-
-              // Reporting To
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Reporting To'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedReportingTo,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Select manager', icon: Icons.supervisor_account_outlined),
-                      items: _reportingToOptions
-                          .map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedReportingTo = val);
-                      },
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Reporting To', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedReportingTo,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select manager', icon: Icons.supervisor_account_outlined),
+                        items: _reportingToOptions
+                            .map((m) => DropdownMenuItem(value: m, child: Text(m, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedReportingTo = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          Row(
-            children: [
-              // Work Location
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Work Location'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedLocation,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Select location', icon: Icons.location_on_outlined),
-                      items: _locationOptions
-                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedLocation = val);
-                      },
-                    ),
-                  ],
+              ],
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Work Location', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedLocation,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select location', icon: Icons.location_on_outlined),
+                        items: _locationOptions
+                            .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedLocation = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 12),
-
-              // Shift / Working Hours
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Shift / Working Hours'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedShift,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Select shift', icon: Icons.schedule_outlined),
-                      items: _shiftOptions
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedShift = val);
-                      },
-                    ),
-                  ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Shift / Working Hours', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedShift,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Select shift', icon: Icons.schedule_outlined),
+                        items: _shiftOptions
+                            .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedShift = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
   }
 
-  // --- 3. Login & Security Card (Password only, No PIN) ---
-  Widget _buildLoginSecurityCard() {
+  // ==================== LOGIN & SECURITY CARD ====================
+  Widget _buildLoginSecurityCard(bool isMobile) {
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.lock_outline_rounded,
       title: 'Login & Security',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // Set Password
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Set Password *'),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _passwordController,
-                      obscureText: _obscurePassword,
-                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(
-                        hint: '••••••••',
-                        icon: Icons.lock_outline_rounded,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            color: const Color(0xFF94A3B8),
-                            size: 19,
-                          ),
-                          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Password is required';
-                        if (val.trim().length < 6) return 'At least 6 characters required';
-                        return null;
-                      },
-                    ),
-                  ],
+          if (isMobile) ...[
+            _buildFieldLabel('Set Password *', isMobile),
+            const SizedBox(height: 4),
+            TextFormField(
+              controller: _passwordController,
+              obscureText: _obscurePassword,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(
+                isMobile: isMobile,
+                hint: '••••••••',
+                icon: Icons.lock_outline_rounded,
+              ).copyWith(
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    color: const Color(0xFF94A3B8),
+                    size: 16,
+                  ),
+                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),
-              const SizedBox(width: 12),
-
-              // Confirm Password
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Confirm Password *'),
-                    const SizedBox(height: 6),
-                    TextFormField(
-                      controller: _confirmPasswordController,
-                      obscureText: _obscureConfirmPassword,
-                      style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(
-                        hint: '••••••••',
-                        icon: Icons.lock_outline_rounded,
-                      ).copyWith(
-                        suffixIcon: IconButton(
-                          icon: Icon(
-                            _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-                            color: const Color(0xFF94A3B8),
-                            size: 19,
-                          ),
-                          onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
-                        ),
-                      ),
-                      validator: (val) {
-                        if (val == null || val.trim().isEmpty) return 'Please confirm password';
-                        if (val.trim() != _passwordController.text.trim()) {
-                          return 'Passwords do not match';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) return 'Password is required';
+                if (val.trim().length < 6) return 'At least 6 characters required';
+                return null;
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Confirm Password *', isMobile),
+            const SizedBox(height: 4),
+            TextFormField(
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirmPassword,
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(
+                isMobile: isMobile,
+                hint: '••••••••',
+                icon: Icons.lock_outline_rounded,
+              ).copyWith(
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    color: const Color(0xFF94A3B8),
+                    size: 16,
+                  ),
+                  onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              validator: (val) {
+                if (val == null || val.trim().isEmpty) return 'Please confirm password';
+                if (val.trim() != _passwordController.text.trim()) {
+                  return 'Passwords do not match';
+                }
+                return null;
+              },
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Set Password *', isMobile),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _passwordController,
+                        obscureText: _obscurePassword,
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(
+                          isMobile: isMobile,
+                          hint: '••••••••',
+                          icon: Icons.lock_outline_rounded,
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: const Color(0xFF94A3B8),
+                              size: 19,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return 'Password is required';
+                          if (val.trim().length < 6) return 'At least 6 characters required';
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Confirm Password *', isMobile),
+                      const SizedBox(height: 6),
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: _obscureConfirmPassword,
+                        style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(
+                          isMobile: isMobile,
+                          hint: '••••••••',
+                          icon: Icons.lock_outline_rounded,
+                        ).copyWith(
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                              color: const Color(0xFF94A3B8),
+                              size: 19,
+                            ),
+                            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                          ),
+                        ),
+                        validator: (val) {
+                          if (val == null || val.trim().isEmpty) return 'Please confirm password';
+                          if (val.trim() != _passwordController.text.trim()) {
+                            return 'Passwords do not match';
+                          }
+                          return null;
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+          SizedBox(height: isMobile ? 8 : 12),
 
           // Force Password Change Checkbox
           InkWell(
@@ -1167,8 +1453,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 SizedBox(
-                  width: 22,
-                  height: 22,
+                  width: isMobile ? 18 : 22,
+                  height: isMobile ? 18 : 22,
                   child: Checkbox(
                     value: _forcePasswordChange,
                     activeColor: const Color(0xFF2563EB),
@@ -1179,9 +1465,13 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'Force password change on first login',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                  style: TextStyle(
+                    fontSize: isMobile ? 11.5 : 13,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF334155),
+                  ),
                 ),
               ],
             ),
@@ -1191,13 +1481,142 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     );
   }
 
-  // ==================== RIGHT COLUMN CARDS ====================
-
-  // --- 4. Permissions Card ---
-  Widget _buildPermissionsCard() {
+  // ==================== PERMISSIONS CARD ====================
+  Widget _buildPermissionsCard(bool isMobile) {
     final activePermissions = _permissionsByCategory[_selectedPermissionCategory] ?? [];
 
+    if (isMobile) {
+      return _buildCardWrapper(
+        isMobile: isMobile,
+        icon: Icons.shield_outlined,
+        title: 'Permissions',
+        subtitle: 'Set what this staff member can access',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Horizontal scrollable categories chip bar on Mobile
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: _permissionCategories.map((cat) {
+                  final isSelected = cat['id'] == _selectedPermissionCategory;
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ActionChip(
+                      visualDensity: VisualDensity.compact,
+                      avatar: Icon(
+                        cat['icon'] as IconData,
+                        size: 14,
+                        color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF64748B),
+                      ),
+                      label: Text(
+                        cat['label'] as String,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF334155),
+                        ),
+                      ),
+                      backgroundColor: isSelected ? const Color(0xFFEFF6FF) : const Color(0xFFF8FAFC),
+                      side: BorderSide(color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0)),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      onPressed: () => setState(() => _selectedPermissionCategory = cat['id'] as String),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Checkbox Items Container
+            Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(8),
+                itemCount: activePermissions.length,
+                separatorBuilder: (context, index) => const Divider(color: Color(0xFFE2E8F0), height: 10),
+                itemBuilder: (context, index) {
+                  final perm = activePermissions[index];
+                  final permId = perm['id']!;
+                  final isChecked = _selectedPermissions.contains(permId);
+
+                  return InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (isChecked) {
+                          _selectedPermissions.remove(permId);
+                        } else {
+                          _selectedPermissions.add(permId);
+                        }
+                      });
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2, horizontal: 2),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: Checkbox(
+                              value: isChecked,
+                              activeColor: const Color(0xFF2563EB),
+                              checkColor: Colors.white,
+                              side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                              onChanged: (val) {
+                                setState(() {
+                                  if (val == true) {
+                                    _selectedPermissions.add(permId);
+                                  } else {
+                                    _selectedPermissions.remove(permId);
+                                  }
+                                });
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  perm['title']!,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: isChecked ? FontWeight.w700 : FontWeight.w600,
+                                    color: isChecked ? const Color(0xFF0F172A) : const Color(0xFF334155),
+                                  ),
+                                ),
+                                Text(
+                                  perm['subtitle']!,
+                                  style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.shield_outlined,
       title: 'Permissions',
       subtitle: 'Set what this staff member can access',
@@ -1339,101 +1758,156 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     );
   }
 
-  // --- 5. Preferences Card ---
-  Widget _buildPreferencesCard() {
+  // ==================== PREFERENCES CARD ====================
+  Widget _buildPreferencesCard(bool isMobile) {
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.tune_rounded,
       title: 'Preferences',
       child: Column(
         children: [
-          Row(
-            children: [
-              // Language
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Language'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedLanguage,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Language', icon: Icons.language_rounded),
-                      items: _languageOptions
-                          .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedLanguage = val);
-                      },
-                    ),
-                  ],
+          if (isMobile) ...[
+            _buildFieldLabel('Language', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedLanguage,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Language', icon: Icons.language_rounded),
+              items: _languageOptions
+                  .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedLanguage = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Theme', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedTheme,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Theme', icon: Icons.wb_sunny_outlined),
+              items: _themeOptions
+                  .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedTheme = val);
+              },
+            ),
+            const SizedBox(height: 10),
+            _buildFieldLabel('Default Screen', isMobile),
+            const SizedBox(height: 4),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedDefaultScreen,
+              dropdownColor: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 16),
+              style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+              decoration: _inputDecoration(isMobile: isMobile, hint: 'Default screen', icon: Icons.dashboard_outlined),
+              items: _defaultScreenOptions
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                  .toList(),
+              onChanged: (val) {
+                if (val != null) setState(() => _selectedDefaultScreen = val);
+              },
+            ),
+          ] else ...[
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Language', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedLanguage,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Language', icon: Icons.language_rounded),
+                        items: _languageOptions
+                            .map((l) => DropdownMenuItem(value: l, child: Text(l, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedLanguage = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-
-              // Theme
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Theme'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedTheme,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Theme', icon: Icons.wb_sunny_outlined),
-                      items: _themeOptions
-                          .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedTheme = val);
-                      },
-                    ),
-                  ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Theme', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedTheme,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Theme', icon: Icons.wb_sunny_outlined),
+                        items: _themeOptions
+                            .map((t) => DropdownMenuItem(value: t, child: Text(t, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedTheme = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-
-              // Default Screen
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Default Screen'),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      isExpanded: true,
-                      initialValue: _selectedDefaultScreen,
-                      dropdownColor: Colors.white,
-                      borderRadius: BorderRadius.circular(10),
-                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
-                      decoration: _inputDecoration(hint: 'Default screen', icon: Icons.dashboard_outlined),
-                      items: _defaultScreenOptions
-                          .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
-                          .toList(),
-                      onChanged: (val) {
-                        if (val != null) setState(() => _selectedDefaultScreen = val);
-                      },
-                    ),
-                  ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildFieldLabel('Default Screen', isMobile),
+                      const SizedBox(height: 6),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _selectedDefaultScreen,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                        icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                        decoration: _inputDecoration(isMobile: isMobile, hint: 'Default screen', icon: Icons.dashboard_outlined),
+                        items: _defaultScreenOptions
+                            .map((s) => DropdownMenuItem(value: s, child: Text(s, style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500))))
+                            .toList(),
+                        onChanged: (val) {
+                          if (val != null) setState(() => _selectedDefaultScreen = val);
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+              ],
+            ),
+          ],
+          SizedBox(height: isMobile ? 8 : 12),
 
           // Enable Biometric Login Row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 8 : 12,
+              vertical: isMobile ? 6 : 8,
+            ),
             decoration: BoxDecoration(
               color: const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(10),
@@ -1442,37 +1916,44 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: EdgeInsets.all(isMobile ? 5 : 6),
                   decoration: BoxDecoration(
                     color: const Color(0xFFEFF6FF),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.fingerprint_rounded, color: Color(0xFF2563EB), size: 20),
+                  child: Icon(Icons.fingerprint_rounded, color: const Color(0xFF2563EB), size: isMobile ? 16 : 20),
                 ),
-                const SizedBox(width: 10),
-                const Expanded(
+                const SizedBox(width: 8),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
                         'Enable Biometric Login',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                        style: TextStyle(
+                          fontSize: isMobile ? 11.5 : 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF0F172A),
+                        ),
                       ),
                       Text(
                         'Use fingerprint for faster login',
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: isMobile ? 9.5 : 11.5, color: const Color(0xFF64748B)),
                       ),
                     ],
                   ),
                 ),
-                Switch(
-                  value: _enableBiometric,
-                  activeThumbColor: const Color(0xFF2563EB),
-                  activeTrackColor: const Color(0xFF93C5FD),
-                  inactiveThumbColor: const Color(0xFF94A3B8),
-                  inactiveTrackColor: const Color(0xFFE2E8F0),
-                  trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
-                  onChanged: (val) => setState(() => _enableBiometric = val),
+                Transform.scale(
+                  scale: isMobile ? 0.8 : 1.0,
+                  child: Switch(
+                    value: _enableBiometric,
+                    activeThumbColor: const Color(0xFF2563EB),
+                    activeTrackColor: const Color(0xFF93C5FD),
+                    inactiveThumbColor: const Color(0xFF94A3B8),
+                    inactiveTrackColor: const Color(0xFFE2E8F0),
+                    trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                    onChanged: (val) => setState(() => _enableBiometric = val),
+                  ),
                 ),
               ],
             ),
@@ -1482,15 +1963,107 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     );
   }
 
-  // --- 6. Account Status Card ---
-  Widget _buildAccountStatusCard() {
+  // ==================== ACCOUNT STATUS CARD ====================
+  Widget _buildAccountStatusCard(bool isMobile) {
+    if (isMobile) {
+      return _buildCardWrapper(
+        isMobile: isMobile,
+        icon: Icons.power_settings_new_rounded,
+        title: 'Account Status',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Status', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Transform.scale(
+                  scale: 0.85,
+                  child: Switch(
+                    value: _isActive,
+                    activeThumbColor: const Color(0xFF2563EB),
+                    activeTrackColor: const Color(0xFF93C5FD),
+                    inactiveThumbColor: const Color(0xFF94A3B8),
+                    inactiveTrackColor: const Color(0xFFE2E8F0),
+                    trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+                    onChanged: (val) => setState(() => _isActive = val),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isActive ? 'Active' : 'Inactive',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: _isActive ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                        ),
+                      ),
+                      Text(
+                        _isActive ? 'Staff member can access the system' : 'Access disabled',
+                        style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const Divider(color: Color(0xFFF1F5F9), height: 14),
+            const Text('Last Login', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))),
+            const SizedBox(height: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.calendar_today_outlined, size: 16, color: Color(0xFF64748B)),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Not logged in yet',
+                          style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                        ),
+                        Row(
+                          children: [
+                            Icon(Icons.circle, size: 5, color: Color(0xFF10B981)),
+                            SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'From Windows - Store Device',
+                                style: TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return _buildCardWrapper(
+      isMobile: isMobile,
       icon: Icons.power_settings_new_rounded,
       title: 'Account Status',
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left: Active Status Switch
           Expanded(
             flex: 6,
             child: Column(
@@ -1535,8 +2108,6 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             ),
           ),
           const SizedBox(width: 12),
-
-          // Right: Last Login Info Box
           Expanded(
             flex: 5,
             child: Container(
@@ -1546,11 +2117,11 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
               ),
-              child: Row(
+              child: const Row(
                 children: [
-                  const Icon(Icons.calendar_today_outlined, size: 20, color: Color(0xFF64748B)),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                  Icon(Icons.calendar_today_outlined, size: 20, color: Color(0xFF64748B)),
+                  SizedBox(width: 10),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1589,8 +2160,88 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
     );
   }
 
-  // --- Bottom Action Bar ---
-  Widget _buildBottomActionBar() {
+  // ==================== BOTTOM ACTION BAR ====================
+  Widget _buildBottomActionBar(bool isMobile) {
+    if (isMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _sendWelcomeEmail = !_sendWelcomeEmail),
+            borderRadius: BorderRadius.circular(6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: Checkbox(
+                    value: _sendWelcomeEmail,
+                    activeColor: const Color(0xFF2563EB),
+                    checkColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFF94A3B8), width: 1.5),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    onChanged: (val) => setState(() => _sendWelcomeEmail = val ?? false),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Send welcome email with login details',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF475569),
+                    side: const BorderSide(color: Color(0xFFCBD5E1)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  onPressed: _isSubmitting ? null : () => Navigator.of(context).pop(),
+                  child: const Text('Cancel', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12.5)),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2563EB),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  onPressed: _isSubmitting ? null : _handleCreateStaff,
+                  icon: _isSubmitting
+                      ? const SizedBox.shrink()
+                      : const Icon(Icons.person_add_rounded, size: 16),
+                  label: _isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          'Create Staff',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5),
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      );
+    }
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -1667,16 +2318,17 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
 
   // --- Card Styling Wrapper ---
   Widget _buildCardWrapper({
+    required bool isMobile,
     required IconData icon,
     required String title,
     String? subtitle,
     required Widget child,
   }) {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(isMobile ? 12 : 18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(isMobile ? 14 : 16),
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: const [
           BoxShadow(color: Color(0x04000000), blurRadius: 8, offset: Offset(0, 2)),
@@ -1688,31 +2340,31 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(7),
+                padding: EdgeInsets.all(isMobile ? 5 : 7),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: const Color(0xFF2563EB), size: 18),
+                child: Icon(icon, color: const Color(0xFF2563EB), size: isMobile ? 15 : 18),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        fontSize: 15.5,
+                      style: TextStyle(
+                        fontSize: isMobile ? 13.5 : 15.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0F172A),
+                        color: const Color(0xFF0F172A),
                       ),
                     ),
                     if (subtitle != null) ...[
                       const SizedBox(height: 1),
                       Text(
                         subtitle,
-                        style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                        style: TextStyle(fontSize: isMobile ? 10 : 11.5, color: const Color(0xFF64748B)),
                       ),
                     ],
                   ],
@@ -1720,19 +2372,19 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: isMobile ? 10 : 14),
           child,
         ],
       ),
     );
   }
 
-  Widget _buildFieldLabel(String label) {
+  Widget _buildFieldLabel(String label, bool isMobile) {
     final isRequired = label.contains('*');
     return Text(
       label,
       style: TextStyle(
-        fontSize: 12.5,
+        fontSize: isMobile ? 11 : 12.5,
         fontWeight: FontWeight.w700,
         color: isRequired ? const Color(0xFF1E293B) : const Color(0xFF475569),
       ),
@@ -1740,16 +2392,20 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
   }
 
   InputDecoration _inputDecoration({
+    required bool isMobile,
     required String hint,
     required IconData icon,
   }) {
     return InputDecoration(
       hintText: hint,
-      hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
-      prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: 18),
+      hintStyle: TextStyle(color: const Color(0xFF94A3B8), fontSize: isMobile ? 11.5 : 12.5),
+      prefixIcon: Icon(icon, color: const Color(0xFF64748B), size: isMobile ? 15 : 18),
       filled: true,
       fillColor: const Color(0xFFF8FAFC),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: isMobile ? 10 : 12,
+        vertical: isMobile ? 8 : 10,
+      ),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: Color(0xFFCBD5E1)),

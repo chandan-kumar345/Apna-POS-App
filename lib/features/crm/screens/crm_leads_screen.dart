@@ -602,84 +602,89 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     if (pickedDate == null || !mounted) return;
 
     final noteCtrl = TextEditingController(text: lead.followupNotes);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Schedule Follow-up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textDark)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Date: ${DateFormat('dd MMM yyyy').format(pickedDate)}',
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: primaryNavy),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              maxLines: 2,
-              style: const TextStyle(fontSize: 12.5, color: textDark),
-              decoration: InputDecoration(
-                labelText: 'Follow-up Reason / Notes',
-                labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
-                hintText: 'e.g. Call to confirm catering order',
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                isDense: true,
-                filled: true,
-                fillColor: boxBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Schedule Follow-up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textDark)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Date: ${DateFormat('dd MMM yyyy').format(pickedDate)}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: primaryNavy),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteCtrl,
+                maxLines: 2,
+                style: const TextStyle(fontSize: 12.5, color: textDark),
+                decoration: InputDecoration(
+                  labelText: 'Follow-up Reason / Notes',
+                  labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
+                  hintText: 'e.g. Call to confirm catering order',
+                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  isDense: true,
+                  filled: true,
+                  fillColor: boxBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: boxBorder),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryNavy,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
             ),
           ],
         ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: boxBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryNavy,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && mounted) {
-      final updated = lead.copyWith(
-        followupDate: pickedDate,
-        followupNotes: noteCtrl.text.trim(),
-        followupStatus: 'pending',
       );
 
-      setState(() {
-        final idx = _allLeads.indexWhere((l) => l.id == lead.id);
-        if (idx != -1) _allLeads[idx] = updated;
-        if (_selectedLead?.id == lead.id) _selectedLead = updated;
-      });
-
-      _showSnackBar('Follow-up scheduled for ${DateFormat('dd MMM yyyy').format(pickedDate)}');
-      try {
-        await _crmService.setFollowup(
-          lead.id,
+      if (confirmed == true && mounted) {
+        final followupNotes = noteCtrl.text.trim();
+        final updated = lead.copyWith(
           followupDate: pickedDate,
-          followupNotes: noteCtrl.text.trim(),
+          followupNotes: followupNotes,
           followupStatus: 'pending',
         );
-      } catch (_) {}
+
+        setState(() {
+          final idx = _allLeads.indexWhere((l) => l.id == lead.id);
+          if (idx != -1) _allLeads[idx] = updated;
+          if (_selectedLead?.id == lead.id) _selectedLead = updated;
+        });
+
+        _showSnackBar('Follow-up scheduled for ${DateFormat('dd MMM yyyy').format(pickedDate)}');
+        try {
+          await _crmService.setFollowup(
+            lead.id,
+            followupDate: pickedDate,
+            followupNotes: followupNotes,
+            followupStatus: 'pending',
+          );
+        } catch (_) {}
+      }
+    } finally {
+      noteCtrl.dispose();
     }
   }
 
@@ -797,88 +802,91 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   /// Show quick popup modal to Add or Edit Delivery Address
   Future<void> _showAddressDialog(CrmLeadModel lead) async {
     final addrCtrl = TextEditingController(text: lead.address);
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(
-          lead.address.isNotEmpty ? 'Edit Delivery Address' : 'Add Delivery Address',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textDark),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Customer: ${lead.name} (${lead.phone})',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: addrCtrl,
-              maxLines: 3,
-              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
-              decoration: InputDecoration(
-                labelText: 'Delivery Address / Area / Landmark',
-                labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
-                hintText: 'e.g. Flat 302, Green Valley Apts, Sector 62, Noida',
-                hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                filled: true,
-                fillColor: boxBg,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Text(
+            lead.address.isNotEmpty ? 'Edit Delivery Address' : 'Add Delivery Address',
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textDark),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Customer: ${lead.name} (${lead.phone})',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: addrCtrl,
+                maxLines: 3,
+                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                decoration: InputDecoration(
+                  labelText: 'Delivery Address / Area / Landmark',
+                  labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
+                  hintText: 'e.g. Flat 302, Green Valley Apts, Sector 62, Noida',
+                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                  filled: true,
+                  fillColor: boxBg,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: boxBorder),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryNavy,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save Address'),
             ),
           ],
         ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: boxBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryNavy,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Save Address'),
-          ),
-        ],
-      ),
-    );
+      );
 
-    if (saved == true && mounted) {
-      final newAddr = addrCtrl.text.trim();
-      final updated = lead.copyWith(address: newAddr);
+      if (saved == true && mounted) {
+        final newAddr = addrCtrl.text.trim();
+        final updated = lead.copyWith(address: newAddr);
 
-      setState(() {
-        final idx = _allLeads.indexWhere((l) => l.id == lead.id);
-        if (idx != -1) _allLeads[idx] = updated;
-        if (_selectedLead?.id == lead.id) _selectedLead = updated;
-        final fIdx = _filteredLeads.indexWhere((l) => l.id == lead.id);
-        if (fIdx != -1) _filteredLeads[fIdx] = updated;
-      });
+        setState(() {
+          final idx = _allLeads.indexWhere((l) => l.id == lead.id);
+          if (idx != -1) _allLeads[idx] = updated;
+          if (_selectedLead?.id == lead.id) _selectedLead = updated;
+          final fIdx = _filteredLeads.indexWhere((l) => l.id == lead.id);
+          if (fIdx != -1) _filteredLeads[fIdx] = updated;
+        });
 
-      _showSnackBar(newAddr.isNotEmpty ? 'Delivery address updated' : 'Address cleared');
+        _showSnackBar(newAddr.isNotEmpty ? 'Delivery address updated' : 'Address cleared');
 
-      try {
-        await _customerService.saveCustomer(
-          name: updated.name,
-          phone: updated.phone,
-          email: updated.email,
-          address: newAddr,
-        );
-        await _crmService.updateLead(updated.id, {'address': newAddr});
-      } catch (_) {}
+        try {
+          await _customerService.saveCustomer(
+            name: updated.name,
+            phone: updated.phone,
+            email: updated.email,
+            address: newAddr,
+          );
+          await _crmService.updateLead(updated.id, {'address': newAddr});
+        } catch (_) {}
+      }
+    } finally {
+      addrCtrl.dispose();
     }
   }
 
@@ -3946,49 +3954,37 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // Order Number
-                      Text(
-                        '#$orderNum',
-                        style: TextStyle(
-                          fontSize: isMobile ? 12 : 13,
-                          fontWeight: FontWeight.w800,
-                          color: textDark,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // POS source badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE0F2FE),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          'POS',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF0284C7),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      // Status Badge
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: isCancelled ? const Color(0xFFFEE2E2) : const Color(0xFFDCFCE7),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                      Expanded(
                         child: Text(
-                          statusStr.toUpperCase(),
+                          '#$orderNum',
                           style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w700,
-                            color: isCancelled ? const Color(0xFFDC2626) : const Color(0xFF16A34A),
+                            fontSize: isMobile ? 12 : 13,
+                            fontWeight: FontWeight.w800,
+                            color: textDark,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      const Spacer(),
+                      if (isCancelled) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            'CANCELLED',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFDC2626),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 8),
                       // Total Amount
                       Text(
                         '₹$amt',
@@ -4586,7 +4582,16 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
       ),
-    );
+    ).whenComplete(() {
+      nameCtrl.dispose();
+      phoneCtrl.dispose();
+      emailCtrl.dispose();
+      addressCtrl.dispose();
+      sourceCtrl.dispose();
+      stageCtrl.dispose();
+      typeCtrl.dispose();
+      notesCtrl.dispose();
+    });
   }
 
   Widget _buildModalTextField({
@@ -4722,7 +4727,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ],
       ),
-    );
+    ).whenComplete(() => textCtrl.dispose());
   }
 
   void _confirmDeleteLead(CrmLeadModel lead) {

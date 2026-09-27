@@ -1124,12 +1124,12 @@ class _PaymentModalState extends State<PaymentModal> {
                             ElevatedButton(
                               onPressed: _isSubmitting ? null : () => _validateAndSubmitPayment(context, payableAmount, roundOff),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _isSubmitting ? const Color(0xFF94A3B8) : const Color(0xFF1D4ED8),
+                                backgroundColor: _isSubmitting ? const Color(0xFF94A3B8) : const Color(0xFF051C48),
                                 foregroundColor: Colors.white,
                                 elevation: 0,
                                 padding: const EdgeInsets.symmetric(vertical: 13),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
-                                shadowColor: const Color(0xFF1D4ED8).withValues(alpha: 0.3),
+                                shadowColor: const Color(0xFF051C48).withValues(alpha: 0.3),
                               ),
                               child: Row(
                                 mainAxisAlignment: MainAxisAlignment.center,

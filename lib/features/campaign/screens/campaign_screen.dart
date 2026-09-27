@@ -282,7 +282,13 @@ class _CampaignScreenState extends State<CampaignScreen> {
         },
       );
     },
-  );
+  ).whenComplete(() {
+    restCtrl.dispose();
+    contactCtrl.dispose();
+    phoneCtrl.dispose();
+    emailCtrl.dispose();
+    notesCtrl.dispose();
+  });
 }
 
   void _showCampaignSuccessDialog({

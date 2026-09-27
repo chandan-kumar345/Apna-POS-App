@@ -22,7 +22,6 @@ class TableManagementScreen extends StatefulWidget {
 class _TableManagementScreenState extends State<TableManagementScreen> with AutomaticKeepAliveClientMixin {
   final db = DatabaseService();
   String _selectedFloor = 'All Floors';
-  Timer? _tickerTimer;
 
   @override
   bool get wantKeepAlive => true;
@@ -34,21 +33,10 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     if (db.tables.isEmpty) {
       db.syncWithBackend();
     }
-    // Real-time ticking timer for running table durations
-    _tickerTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        final hasRunningTables = db.tables.any(
-            (t) => t.status == TableStatus.occupied || t.status == TableStatus.runningKot);
-        if (hasRunningTables) {
-          setState(() {});
-        }
-      }
-    });
   }
 
   @override
   void dispose() {
-    _tickerTimer?.cancel();
     super.dispose();
   }
 
@@ -619,12 +607,6 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                             final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
                             final hasProductsInCart = validStatus != TableStatus.free && activeAmount > 0;
 
-                            final duration = validStatus == TableStatus.free
-                                ? null
-                                : table.getRunningDuration(activeOrderCreatedAt: activeOrder?.createdAt);
-                            final isRunningTable = duration != null;
-                            final isExtended = duration != null && duration.inMinutes >= 45;
-
                             return InkWell(
                               onTap: () => _openPosForTable(table.name),
                               borderRadius: BorderRadius.circular(12),
@@ -705,40 +687,10 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        if (isRunningTable) ...[
-                                          const SizedBox(width: 3),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
-                                            decoration: BoxDecoration(
-                                              color: isExtended ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7),
-                                              borderRadius: BorderRadius.circular(4),
-                                              border: Border.all(
-                                                color: isExtended ? const Color(0xFFEF4444).withOpacity(0.5) : const Color(0xFFF59E0B).withOpacity(0.5),
-                                                width: 0.8,
-                                              ),
-                                            ),
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                Icon(
-                                                  Icons.timer_outlined,
-                                                  size: 9.0,
-                                                  color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
-                                                ),
-                                                const SizedBox(width: 2),
-                                                Text(
-                                                  formatRunningDuration(duration),
-                                                  style: TextStyle(
-                                                    fontSize: 8.5,
-                                                    fontWeight: FontWeight.w800,
-                                                    color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
-                                                    letterSpacing: 0.1,
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
+                                        LiveTableDurationBadge(
+                                          table: table,
+                                          activeOrderCreatedAt: activeOrder?.createdAt,
+                                        ),
                                       ],
                                     ),
                                     const SizedBox(height: 1),
@@ -891,6 +843,102 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           const SizedBox(height: 1),
           Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 9)),
         ],
+      ),
+    );
+  }
+}
+
+/// An isolated self-ticking running duration badge that updates every 1s locally
+/// without triggering full-screen or table grid rebuilds
+class LiveTableDurationBadge extends StatefulWidget {
+  final TableModel table;
+  final String? activeOrderCreatedAt;
+
+  const LiveTableDurationBadge({
+    super.key,
+    required this.table,
+    this.activeOrderCreatedAt,
+  });
+
+  @override
+  State<LiveTableDurationBadge> createState() => _LiveTableDurationBadgeState();
+}
+
+class _LiveTableDurationBadgeState extends State<LiveTableDurationBadge> {
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimerIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant LiveTableDurationBadge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.table.status != oldWidget.table.status ||
+        widget.table.occupiedSince != oldWidget.table.occupiedSince ||
+        widget.activeOrderCreatedAt != oldWidget.activeOrderCreatedAt) {
+      _startTimerIfNeeded();
+    }
+  }
+
+  void _startTimerIfNeeded() {
+    _timer?.cancel();
+    if (widget.table.status != TableStatus.free) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.table.status == TableStatus.free) return const SizedBox.shrink();
+
+    final duration = widget.table.getRunningDuration(activeOrderCreatedAt: widget.activeOrderCreatedAt);
+    if (duration == null) return const SizedBox.shrink();
+
+    final isExtended = duration.inMinutes >= 45;
+
+    return Padding(
+      padding: const EdgeInsets.only(left: 3),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
+        decoration: BoxDecoration(
+          color: isExtended ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(
+            color: isExtended ? const Color(0xFFEF4444).withValues(alpha: 0.5) : const Color(0xFFF59E0B).withValues(alpha: 0.5),
+            width: 0.8,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.timer_outlined,
+              size: 9.0,
+              color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+            ),
+            const SizedBox(width: 2),
+            Text(
+              formatRunningDuration(duration),
+              style: TextStyle(
+                fontSize: 8.5,
+                fontWeight: FontWeight.w800,
+                color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+                letterSpacing: 0.1,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

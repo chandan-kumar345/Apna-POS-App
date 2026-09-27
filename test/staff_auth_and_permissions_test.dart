@@ -250,6 +250,16 @@ void main() {
       );
 
       await db.saveActiveUser(staffUser);
+      db.addStaff(StaffModel(
+        id: 'staff_sync_01',
+        name: 'Sunita Waiter',
+        employeeId: 'EMP004',
+        email: 'sunita@apnapos.com',
+        role: 'Waiter',
+        status: 'Active',
+        permissions: const ['pos_view_all_orders'],
+        createdAt: DateTime.now(),
+      ));
       expect(db.currentUser?.hasPermission('orders'), isTrue);
       expect(db.currentUser?.hasPermission('pos'), isFalse);
       expect(db.currentUser?.profilePhotoPath, '/old/path.png');

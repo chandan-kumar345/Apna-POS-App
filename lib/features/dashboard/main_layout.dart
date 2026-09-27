@@ -385,11 +385,11 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     _lastNotifiedUser = db.currentUser;
     _lastPermittedIndices = _getAvailableNavItems().map((i) => i.index).toList();
 
-    // Smooth sidebar frame transition with enhanced physics
+    // Smooth sidebar frame transition with direct touch tracking & smooth curves
     _sidebarController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 300),
-      reverseDuration: const Duration(milliseconds: 240),
+      duration: const Duration(milliseconds: 260),
+      reverseDuration: const Duration(milliseconds: 220),
     );
 
     _sidebarAnimation = CurvedAnimation(
@@ -401,11 +401,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     _sidebarSlideAnimation = Tween<Offset>(
       begin: const Offset(-1.0, 0.0),
       end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _sidebarController,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
-    ));
+    ).animate(_sidebarController);
 
     _sidebarFadeAnimation = CurvedAnimation(
       parent: _sidebarController,
@@ -434,32 +430,24 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   }
 
   void _toggleSidebar() {
-    setState(() {
-      _isSidebarOpen = !_isSidebarOpen;
-      if (_isSidebarOpen) {
-        _isPosFullScreen = false;
-        _sidebarController.forward();
-      } else {
-        _sidebarController.reverse();
-      }
-    });
+    if (_isSidebarOpen) {
+      _closeSidebar();
+    } else {
+      _openSidebar();
+    }
   }
 
   void _openSidebar() {
-    if (!_isSidebarOpen) {
-      setState(() {
-        _isSidebarOpen = true;
-        _isPosFullScreen = false;
-      });
-      _sidebarController.forward();
-    }
+    setState(() {
+      _isSidebarOpen = true;
+      _isPosFullScreen = false;
+    });
+    _sidebarController.animateTo(1.0, duration: const Duration(milliseconds: 260), curve: Curves.easeOutCubic);
   }
 
   void _closeSidebar() {
-    if (_isSidebarOpen) {
-      setState(() => _isSidebarOpen = false);
-      _sidebarController.reverse();
-    }
+    setState(() => _isSidebarOpen = false);
+    _sidebarController.animateTo(0.0, duration: const Duration(milliseconds: 220), curve: Curves.easeInCubic);
   }
 
 
@@ -641,21 +629,25 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     return Container(
       margin: isSmallScreen
-          ? const EdgeInsets.all(10)
+          ? const EdgeInsets.fromLTRB(6, 6, 0, 6)
           : const EdgeInsets.fromLTRB(8, 8, 0, 8),
-      padding: EdgeInsets.symmetric(
-        vertical: 10,
-        horizontal: isSmallScreen ? 10 : (4.0 + 4.0 * expansionFactor),
+      padding: EdgeInsets.only(
+        top: isSmallScreen ? 8 : 10,
+        left: isSmallScreen ? 8 : (4.0 + 4.0 * expansionFactor),
+        right: isSmallScreen ? 8 : (4.0 + 4.0 * expansionFactor),
+        bottom: isSmallScreen ? 10 : 10,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: isSmallScreen
+            ? BorderRadius.circular(24)
+            : BorderRadius.circular(20),
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: [
           BoxShadow(
             color: isSmallScreen ? Colors.black.withOpacity(0.18) : const Color(0x0A000000),
             blurRadius: isSmallScreen ? 24 : 16,
-            offset: isSmallScreen ? const Offset(6, 4) : const Offset(0, 4),
+            offset: isSmallScreen ? const Offset(4, 4) : const Offset(0, 4),
           ),
         ],
       ),
@@ -689,7 +681,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           ),
 
           const Divider(color: Color(0xFFE2E8F0), height: 1, thickness: 1),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
 
           // User Profile & Logout Bottom Row with Smooth Fade & Slide Transition
           if (!isSmallScreen && isCollapsed && expansionFactor < 0.25)
@@ -750,22 +742,22 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             )
           else
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
               child: Row(
                 children: [
                   Container(
-                    width: isSmallScreen ? 44 : (38.0 + 8.0 * expansionFactor),
-                    height: isSmallScreen ? 44 : (38.0 + 8.0 * expansionFactor),
+                    width: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
+                    height: isSmallScreen ? 40 : (38.0 + 8.0 * expansionFactor),
                     decoration: const BoxDecoration(
                       color: Color(0xFFDBEAFE),
                       shape: BoxShape.circle,
                     ),
                     child: ClipOval(
-                      child: _buildProfileAvatarImage(isSmallScreen ? 44 : 42),
+                      child: _buildProfileAvatarImage(isSmallScreen ? 40 : 42),
                     ),
                   ),
                   if (isSmallScreen || textOpacity > 0.0) ...[
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Expanded(
                       child: Opacity(
                         opacity: textOpacity,
@@ -781,9 +773,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                     : (rest?.name.isNotEmpty == true
                                         ? rest!.name
                                         : 'Kundan Lal'),
-                                style: const TextStyle(
-                                  color: Color(0xFF0F172A),
-                                  fontSize: 14.5,
+                                style: TextStyle(
+                                  color: const Color(0xFF0F172A),
+                                  fontSize: isSmallScreen ? 14 : 14.5,
                                   fontWeight: FontWeight.w800,
                                   letterSpacing: 0.1,
                                 ),
@@ -797,9 +789,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                         ? user.role.toLowerCase()
                                         : '${user.role}${user.employeeId != null && user.employeeId!.isNotEmpty ? ' • ${user.employeeId}' : ''}')
                                     : 'owner',
-                                style: const TextStyle(
-                                  color: Color(0xFF64748B),
-                                  fontSize: 12,
+                                style: TextStyle(
+                                  color: const Color(0xFF64748B),
+                                  fontSize: isSmallScreen ? 11.5 : 12,
                                   fontWeight: FontWeight.w500,
                                 ),
                                 maxLines: 1,
@@ -828,19 +820,19 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                 );
                               }
                             },
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(10),
                             child: Container(
-                              width: 40,
-                              height: 40,
+                              width: isSmallScreen ? 36 : 40,
+                              height: isSmallScreen ? 36 : 40,
                               decoration: BoxDecoration(
                                 color: const Color(0xFFFFE4E6),
-                                borderRadius: BorderRadius.circular(12),
+                                borderRadius: BorderRadius.circular(10),
                               ),
                               alignment: Alignment.center,
-                              child: const Icon(
+                              child: Icon(
                                 Icons.logout_rounded,
-                                color: Color(0xFFEF4444),
-                                size: 20,
+                                color: const Color(0xFFEF4444),
+                                size: isSmallScreen ? 18 : 20,
                               ),
                             ),
                           ),
@@ -975,18 +967,26 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       child: Scaffold(
         backgroundColor: const Color(0xFF051C48), // Match exact deep navy blue from user image
         resizeToAvoidBottomInset: false,
-        body: SafeArea(
-          bottom: false,
-          child: LayoutBuilder(
-          builder: (context, constraints) {
-            final isSmallScreen = constraints.maxWidth < 900;
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFF051C48), // Deep Navy Blue
+                Color(0xFF0A2B66), // Rich Deep Royal Blue
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+          ),
+          child: SafeArea(
+            bottom: true,
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+              final isSmallScreen = constraints.maxWidth < 900;
 
-            return Stack(
-              children: [
-                // Workspace Body & Top Deep Navy Header Bar
-                Column(
-                  children: [
-                    // TOP HEADER BAR (EXACT DEEP NAVY BLUE FROM IMAGE + LOGO & SEMI-CURVED NAME BADGE TOGETHER)
+              return Column(
+                children: [
+                  // TOP HEADER BAR (EXACT DEEP NAVY BLUE FROM IMAGE + LOGO & SEMI-CURVED NAME BADGE TOGETHER)
                     AnimatedCrossFade(
                       firstChild: Container(
                         width: double.infinity,
@@ -1053,215 +1053,229 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                       sizeCurve: Curves.easeInOutCubic,
                     ),
 
-                    // ACTIVE SCREEN WORKSPACE (CURVED WHITE BACKGROUND DOWNSIDE)
+                    // ACTIVE SCREEN WORKSPACE & MOBILE SIDEBAR OVERLAY (STACKED BELOW HEADER)
                     Expanded(
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeInOutCubic,
-                        width: double.infinity,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF8FAFC),
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8) ? 0 : 28),
-                          ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(((_selectedIndex == 1 && _isPosFullScreen) || _selectedIndex == 8) ? 0 : 28),
-                          ),
-                          child: Row(
-                            children: [
-                              // DESKTOP ANIMATED SLIDING & SCALING SIDEBAR (Collapsed Icon Rail by default, Extended on Hamburger Click)
-                              if (!isSmallScreen)
-                                AnimatedBuilder(
-                                  animation: _sidebarAnimation,
-                                  builder: (context, child) {
-                                    if (_selectedIndex == 1 && _isPosFullScreen) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    final double currentWidth = 74.0 + (260.0 - 74.0) * _sidebarAnimation.value;
-                                    final bool isCollapsed = _sidebarAnimation.value < 0.5;
+                      child: Stack(
+                        children: [
+                          // ACTIVE SCREEN WORKSPACE (CURVED WHITE BACKGROUND DOWNSIDE UNDER HEADER)
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 250),
+                            curve: Curves.easeInOutCubic,
+                            width: double.infinity,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.vertical(
+                                top: Radius.circular(28),
+                              ),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(28),
+                              ),
+                              child: Row(
+                                children: [
+                                  // DESKTOP ANIMATED SLIDING & SCALING SIDEBAR (Collapsed Icon Rail by default, Extended on Hamburger Click)
+                                  if (!isSmallScreen)
+                                    AnimatedBuilder(
+                                      animation: _sidebarAnimation,
+                                      builder: (context, child) {
+                                        if (_selectedIndex == 1 && _isPosFullScreen) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final double currentWidth = 74.0 + (260.0 - 74.0) * _sidebarAnimation.value;
+                                        final bool isCollapsed = _sidebarAnimation.value < 0.5;
 
-                                    return SizedBox(
-                                      width: currentWidth,
-                                      height: double.infinity,
-                                      child: ClipRect(
-                                        child: _buildSidebarContent(
-                                          false,
-                                          isCollapsed: isCollapsed,
-                                          expansionFactor: _sidebarAnimation.value,
+                                        return SizedBox(
+                                          width: currentWidth,
+                                          height: double.infinity,
+                                          child: ClipRect(
+                                            child: _buildSidebarContent(
+                                              false,
+                                              isCollapsed: isCollapsed,
+                                              expansionFactor: _sidebarAnimation.value,
+                                            ),
+                                          ),
+                                        );
+                                      },
+                                    ),
+
+                                  Expanded(
+                                    child: SmoothAnimatedIndexedStack(
+                                      index: _selectedIndex.clamp(0, 11),
+                                      tabBuilders: [
+                                        (ctx) => _canAccessTab(0)
+                                            ? GlassDashboardScreen(
+                                                key: _dashboardKey,
+                                                isActive: _selectedIndex == 0,
+                                                onNavigateTab: (index) => _selectTab(index),
+                                              )
+                                            : _buildAccessDeniedScreen('Dashboard'),
+                                        (ctx) => _canAccessTab(1)
+                                            ? PosRegisterScreen(
+                                                initialTable: _selectedTableForPos,
+                                                initialOrderType: _selectedOrderTypeForPos,
+                                                onOpenDrawer: _toggleSidebar,
+                                                onOpenTablesTab: () => _selectTab(2),
+                                                isFullScreen: _isPosFullScreen,
+                                                onToggleFullScreen: () {
+                                                  setState(() {
+                                                    _isPosFullScreen = !_isPosFullScreen;
+                                                  });
+                                                },
+                                                onFullScreenChanged: (full) {
+                                                  setState(() {
+                                                    _isPosFullScreen = full;
+                                                  });
+                                                },
+                                              )
+                                            : _buildAccessDeniedScreen('POS'),
+                                        (ctx) => _canAccessTab(2)
+                                            ? TableManagementScreen(
+                                                onTakeOrder: (tableName) {
+                                                  setState(() {
+                                                    _selectedTableForPos = tableName;
+                                                    _selectedOrderTypeForPos = OrderType.dineIn;
+                                                  });
+                                                  _selectTab(1);
+                                                },
+                                                onTakeOrderForType: (orderType) {
+                                                  setState(() {
+                                                    _selectedTableForPos = null;
+                                                    _selectedOrderTypeForPos = orderType;
+                                                  });
+                                                  _selectTab(1);
+                                                },
+                                              )
+                                            : _buildAccessDeniedScreen('Tables'),
+                                        (ctx) => _canAccessTab(3)
+                                            ? OrdersScreen(
+                                                onOpenPosForTable: (tableName) {
+                                                  setState(() {
+                                                    _selectedTableForPos = tableName;
+                                                    _selectedOrderTypeForPos = OrderType.dineIn;
+                                                  });
+                                                  _selectTab(1);
+                                                },
+                                              )
+                                            : _buildAccessDeniedScreen('My Orders'),
+                                        (ctx) => _canAccessTab(4)
+                                            ? const MenuManagementScreen()
+                                            : _buildAccessDeniedScreen('Menu & Categories'),
+                                        (ctx) => _canAccessTab(5)
+                                            ? InventoryScreen(onBack: _navigateToRootTab)
+                                            : _buildAccessDeniedScreen('Inventory'),
+                                        (ctx) => _canAccessTab(6)
+                                            ? const ReportsScreen()
+                                            : _buildAccessDeniedScreen('Sales Report'),
+                                        (ctx) => _canAccessTab(7)
+                                            ? CrmLeadsScreen(
+                                                onOpenDrawer: _toggleSidebar,
+                                                onNavigateToDashboard: _navigateToRootTab,
+                                              )
+                                            : _buildAccessDeniedScreen('CRM'),
+                                        (ctx) => _canAccessTab(8)
+                                            ? LoyaltyLandingScreen(onBack: _navigateToRootTab)
+                                            : _buildAccessDeniedScreen('Loyalty'),
+                                        (ctx) => _canAccessTab(9)
+                                            ? CampaignScreen(onBack: _navigateToRootTab)
+                                            : _buildAccessDeniedScreen('Campaign'),
+                                        (ctx) => _canAccessTab(10)
+                                            ? StaffManagementScreen(
+                                                onOpenDrawer: _toggleSidebar,
+                                                onNavigateToDashboard: _navigateToRootTab,
+                                              )
+                                            : _buildAccessDeniedScreen('Staff Setting'),
+                                        (ctx) => _canAccessTab(11)
+                                            ? const BusinessSettingsHubScreen()
+                                            : _buildAccessDeniedScreen('Business Setting'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          // MOBILE / SMALL SCREEN SIDEBAR OVERLAY (TOUCHING HEADER DOWNSIDE & LEFT SCREEN EDGE)
+                          if (isSmallScreen)
+                            AnimatedBuilder(
+                              animation: _sidebarController,
+                              builder: (context, child) {
+                                if (_sidebarController.value <= 0.001 && !_isSidebarOpen) {
+                                  return const SizedBox.shrink();
+                                }
+                                final double mobileDrawerWidth = (constraints.maxWidth * 0.74).clamp(265.0, 295.0);
+
+                                return Stack(
+                                  children: [
+                                    // Smooth Backdrop Fade Overlay (Synchronized with finger drag)
+                                    Positioned.fill(
+                                      child: GestureDetector(
+                                        onTap: _closeSidebar,
+                                        behavior: HitTestBehavior.opaque,
+                                        onHorizontalDragUpdate: (details) {
+                                          if (details.primaryDelta != null) {
+                                            _sidebarController.value = (_sidebarController.value + details.primaryDelta! / mobileDrawerWidth).clamp(0.0, 1.0);
+                                          }
+                                        },
+                                        onHorizontalDragEnd: (details) {
+                                          final velocity = details.primaryVelocity ?? 0.0;
+                                          if (velocity < -250 || _sidebarController.value < 0.5) {
+                                            _closeSidebar();
+                                          } else {
+                                            _openSidebar();
+                                          }
+                                        },
+                                        child: Container(
+                                          color: Colors.black.withOpacity(0.50 * _sidebarController.value),
                                         ),
                                       ),
-                                    );
-                                  },
-                                ),
-
-                              Expanded(
-                                child: SmoothAnimatedIndexedStack(
-                                  index: _selectedIndex.clamp(0, 11),
-                                  children: [
-                                    _canAccessTab(0)
-                                        ? GlassDashboardScreen(
-                                            key: _dashboardKey,
-                                            isActive: _selectedIndex == 0,
-                                            onNavigateTab: (index) => _selectTab(index),
-                                          )
-                                        : _buildAccessDeniedScreen('Dashboard'),
-                                     _canAccessTab(1)
-                                         ? PosRegisterScreen(
-                                             initialTable: _selectedTableForPos,
-                                             initialOrderType: _selectedOrderTypeForPos,
-                                             onOpenDrawer: _toggleSidebar,
-                                             onOpenTablesTab: () => _selectTab(2),
-                                             isFullScreen: _isPosFullScreen,
-                                             onToggleFullScreen: () {
-                                               setState(() {
-                                                 _isPosFullScreen = !_isPosFullScreen;
-                                               });
-                                             },
-                                             onFullScreenChanged: (full) {
-                                               setState(() {
-                                                 _isPosFullScreen = full;
-                                               });
-                                             },
-                                           )
-                                         : _buildAccessDeniedScreen('POS'),
-                                     _canAccessTab(2)
-                                         ? TableManagementScreen(
-                                             onTakeOrder: (tableName) {
-                                               setState(() {
-                                                 _selectedTableForPos = tableName;
-                                                 _selectedOrderTypeForPos = OrderType.dineIn;
-                                               });
-                                               _selectTab(1);
-                                             },
-                                             onTakeOrderForType: (orderType) {
-                                               setState(() {
-                                                 _selectedTableForPos = null;
-                                                 _selectedOrderTypeForPos = orderType;
-                                               });
-                                               _selectTab(1);
-                                             },
-                                           )
-                                         : _buildAccessDeniedScreen('Tables'),
-                                     _canAccessTab(3)
-                                         ? OrdersScreen(
-                                             onOpenPosForTable: (tableName) {
-                                               setState(() {
-                                                 _selectedTableForPos = tableName;
-                                                 _selectedOrderTypeForPos = OrderType.dineIn;
-                                               });
-                                               _selectTab(1);
-                                             },
-                                           )
-                                         : _buildAccessDeniedScreen('My Orders'),
-                                    _canAccessTab(4)
-                                        ? const MenuManagementScreen()
-                                        : _buildAccessDeniedScreen('Menu & Categories'),
-                                    _canAccessTab(5)
-                                        ? InventoryScreen(onBack: _navigateToRootTab)
-                                        : _buildAccessDeniedScreen('Inventory'),
-                                    _canAccessTab(6)
-                                        ? const ReportsScreen()
-                                        : _buildAccessDeniedScreen('Sales Report'),
-                                    _canAccessTab(7)
-                                        ? CrmLeadsScreen(
-                                            onOpenDrawer: _toggleSidebar,
-                                            onNavigateToDashboard: _navigateToRootTab,
-                                          )
-                                        : _buildAccessDeniedScreen('CRM'),
-                                    _canAccessTab(8)
-                                        ? LoyaltyLandingScreen(onBack: _navigateToRootTab)
-                                        : _buildAccessDeniedScreen('Loyalty'),
-                                    _canAccessTab(9)
-                                        ? CampaignScreen(onBack: _navigateToRootTab)
-                                        : _buildAccessDeniedScreen('Campaign'),
-                                    _canAccessTab(10)
-                                        ? StaffManagementScreen(
-                                            onOpenDrawer: _toggleSidebar,
-                                            onNavigateToDashboard: _navigateToRootTab,
-                                          )
-                                        : _buildAccessDeniedScreen('Staff Setting'),
-                                    _canAccessTab(11)
-                                        ? const BusinessSettingsHubScreen()
-                                        : _buildAccessDeniedScreen('Business Setting'),
+                                    ),
+                                    // Smooth Sliding Sidebar (1:1 Finger tracking on hold and slide)
+                                    Positioned(
+                                      left: 0,
+                                      top: 0,
+                                      bottom: 0,
+                                      width: mobileDrawerWidth,
+                                      child: SlideTransition(
+                                        position: _sidebarSlideAnimation,
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onHorizontalDragUpdate: (details) {
+                                            if (details.primaryDelta != null) {
+                                              _sidebarController.value = (_sidebarController.value + details.primaryDelta! / mobileDrawerWidth).clamp(0.0, 1.0);
+                                            }
+                                          },
+                                          onHorizontalDragEnd: (details) {
+                                            final velocity = details.primaryVelocity ?? 0.0;
+                                            if (velocity < -250) {
+                                              _closeSidebar();
+                                            } else if (velocity > 250) {
+                                              _openSidebar();
+                                            } else if (_sidebarController.value < 0.5) {
+                                              _closeSidebar();
+                                            } else {
+                                              _openSidebar();
+                                            }
+                                          },
+                                          child: _buildSidebarContent(true),
+                                        ),
+                                      ),
+                                    ),
                                   ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                                );
+                              },
+                            ),
+                        ],
                       ),
                     ),
                   ],
-                ),
-
-                // FULL HEIGHT SIDEBAR OVERLAY ON MOBILE / SMALL SCREENS WITH SMOOTH SLIDE & FADE
-                if (isSmallScreen)
-                  AnimatedBuilder(
-                    animation: _sidebarAnimation,
-                    builder: (context, child) {
-                      if (_sidebarAnimation.value <= 0.001 && !_isSidebarOpen) {
-                        return const SizedBox.shrink();
-                      }
-                      final double mobileDrawerWidth = (constraints.maxWidth * 0.82).clamp(270.0, 310.0);
-
-                      return Stack(
-                        children: [
-                          // Smooth Backdrop Fade Overlay (Full screen coverage)
-                          Positioned.fill(
-                            child: GestureDetector(
-                              onTap: _closeSidebar,
-                              behavior: HitTestBehavior.opaque,
-                              child: FadeTransition(
-                                opacity: _sidebarFadeAnimation,
-                                child: Container(
-                                  color: Colors.black.withOpacity(0.55),
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Smooth Sliding & Scaling Sidebar (Full height)
-                          Positioned(
-                            left: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: mobileDrawerWidth,
-                            child: SlideTransition(
-                              position: _sidebarSlideAnimation,
-                              child: ScaleTransition(
-                                scale: _sidebarScaleAnimation,
-                                alignment: Alignment.centerLeft,
-                                child: GestureDetector(
-                                  onHorizontalDragUpdate: (details) {
-                                    if (details.primaryDelta != null && details.primaryDelta! < 0) {
-                                      _sidebarController.value += details.primaryDelta! / mobileDrawerWidth;
-                                    }
-                                  },
-                                  onHorizontalDragEnd: (details) {
-                                    if (details.primaryVelocity != null && details.primaryVelocity! < -200) {
-                                      _closeSidebar();
-                                    } else if (_sidebarController.value < 0.5) {
-                                      _closeSidebar();
-                                    } else {
-                                      _openSidebar();
-                                    }
-                                  },
-                                  child: _buildSidebarContent(true),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-              ],
-            );
-          },
+                );
+              },
+            ),
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -1409,17 +1423,17 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     return Padding(
       key: key,
-      padding: const EdgeInsets.only(bottom: 3),
+      padding: EdgeInsets.only(bottom: isSmallScreen ? 2.5 : 3),
       child: Tooltip(
         message: isCollapsedRail
             ? (isPermitted ? title : '$title (Restricted)')
             : '',
         waitDuration: const Duration(milliseconds: 300),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(14),
           child: InkWell(
             onTap: onTapAction,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(14),
             child: Stack(
               children: [
                 AnimatedContainer(
@@ -1428,15 +1442,15 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                   alignment: isCollapsedRail ? Alignment.center : Alignment.centerLeft,
                   padding: EdgeInsets.symmetric(
                     horizontal: isSmallScreen
-                        ? (isSelected ? 10 : 8)
+                        ? (isSelected ? 9 : 7)
                         : (isCollapsedRail ? 0 : (isSelected ? 6 : 4)),
-                    vertical: isSelected ? 6 : 5,
+                    vertical: isSelected ? (isSmallScreen ? 6 : 6) : (isSmallScreen ? 5 : 5),
                   ),
                   decoration: BoxDecoration(
                     color: showTileHighlight
                         ? const Color(0xFFEBF3FE)
                         : (isPremium ? const Color(0xFFFEF7DC) : Colors.transparent),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(14),
                     border: showTileHighlight
                         ? Border.all(color: const Color(0xFF1D4ED8).withOpacity(0.18), width: 1.2)
                         : null,
@@ -1497,14 +1511,14 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                         errorBuilder: (context, error, stackTrace) => Icon(
                                           icon ?? Icons.circle_outlined,
                                           color: isPermitted ? iconColor : const Color(0xFF94A3B8),
-                                          size: 24,
+                                          size: 23,
                                         ),
                                       ),
                                     )
                                   : Icon(
                                       icon ?? Icons.circle_outlined,
                                       color: isPermitted ? iconColor : const Color(0xFF94A3B8),
-                                      size: 24,
+                                      size: 23,
                                     ),
                             ),
                           ),
@@ -1562,7 +1576,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                         ],
                       ),
                       if (isSmallScreen || textOpacity > 0.0) ...[
-                        SizedBox(width: isSmallScreen ? 12 : (12.0 * textOpacity)),
+                        SizedBox(width: isSmallScreen ? 11 : (12.0 * textOpacity)),
                         Expanded(
                           child: Opacity(
                             opacity: textOpacity,
@@ -1579,7 +1593,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                   fontWeight: isSelected
                                       ? FontWeight.w900
                                       : (isPremium ? FontWeight.w800 : FontWeight.w700),
-                                  fontSize: 14.5,
+                                  fontSize: isSmallScreen ? 14.5 : 14.5,
                                   letterSpacing: 0.1,
                                 ),
                                 maxLines: 1,
@@ -1600,10 +1614,13 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                       color: Color(0xFF94A3B8),
                                     )
                                   : isPremium
-                                      ? const Text('👑', style: TextStyle(fontSize: 19))
+                                      ? Text('👑', style: TextStyle(fontSize: isSmallScreen ? 17 : 19))
                                       : (badge != null && badge != '0')
                                           ? Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: isSmallScreen ? 8 : 9,
+                                                vertical: isSmallScreen ? 2.5 : 3,
+                                              ),
                                               decoration: BoxDecoration(
                                                 color: isSelected
                                                     ? const Color(0xFF1D4ED8)
@@ -1614,7 +1631,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                                 badge,
                                                 style: TextStyle(
                                                   color: isSelected ? Colors.white : const Color(0xFF475569),
-                                                  fontSize: 11.5,
+                                                  fontSize: isSmallScreen ? 11.0 : 11.5,
                                                   fontWeight: FontWeight.w900,
                                                 ),
                                               ),
@@ -1648,16 +1665,16 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   }
 }
 
-/// A state-preserving IndexedStack with silky-smooth frame transitions (fade + subtle slide & scale)
+/// A state-preserving Lazy IndexedStack with silky-smooth frame transitions (fade + subtle slide & scale)
 class SmoothAnimatedIndexedStack extends StatefulWidget {
   final int index;
-  final List<Widget> children;
+  final List<WidgetBuilder> tabBuilders;
   final Duration duration;
 
   const SmoothAnimatedIndexedStack({
     super.key,
     required this.index,
-    required this.children,
+    required this.tabBuilders,
     this.duration = const Duration(milliseconds: 260),
   });
 
@@ -1672,11 +1689,13 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
   late final Animation<Offset> _slideAnimation;
   late final Animation<double> _scaleAnimation;
   late int _currentIndex;
+  final Set<int> _activatedTabs = {};
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.index;
+    _activatedTabs.add(_currentIndex);
     _controller = AnimationController(
       vsync: this,
       duration: widget.duration,
@@ -1707,6 +1726,7 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
   @override
   void didUpdateWidget(SmoothAnimatedIndexedStack oldWidget) {
     super.didUpdateWidget(oldWidget);
+    _activatedTabs.add(widget.index);
     if (widget.index != _currentIndex) {
       setState(() {
         _currentIndex = widget.index;
@@ -1723,6 +1743,14 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
 
   @override
   Widget build(BuildContext context) {
+    _activatedTabs.add(_currentIndex);
+    final children = List<Widget>.generate(widget.tabBuilders.length, (i) {
+      if (_activatedTabs.contains(i)) {
+        return widget.tabBuilders[i](context);
+      }
+      return const SizedBox.shrink();
+    });
+
     return FadeTransition(
       opacity: _fadeAnimation,
       child: SlideTransition(
@@ -1730,8 +1758,8 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
         child: ScaleTransition(
           scale: _scaleAnimation,
           child: IndexedStack(
-            index: _currentIndex.clamp(0, widget.children.length - 1),
-            children: widget.children,
+            index: _currentIndex.clamp(0, widget.tabBuilders.length - 1),
+            children: children,
           ),
         ),
       ),

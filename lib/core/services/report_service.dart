@@ -907,13 +907,20 @@ class ReportService {
         final lastDay = DateTime(now.year, now.month + 1, 0).day;
         trendEnd = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
       } else {
-        // allTime: find date range of actual orders or default to last 7 days
+        // allTime: generate at least past 6 months to current month
         if (settled.isNotEmpty) {
           final earliest = settled.map((o) => o.createdDateTime.toLocal()).reduce((a, b) => a.isBefore(b) ? a : b);
-          trendStart = DateTime(earliest.year, earliest.month, earliest.day);
+          final monthsDiff = (now.year - earliest.year) * 12 + (now.month - earliest.month);
+          if (monthsDiff >= 5) {
+            trendStart = DateTime(earliest.year, earliest.month, 1);
+          } else {
+            trendStart = DateTime(now.year, now.month - 5, 1);
+          }
         } else {
-          trendStart = now.subtract(const Duration(days: 6));
+          trendStart = DateTime(now.year, now.month - 5, 1);
         }
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        trendEnd = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
       }
 
       final totalDays = trendEnd.difference(trendStart).inDays.abs() + 1;

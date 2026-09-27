@@ -11,6 +11,17 @@ void main() {
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    final db = DatabaseService();
+    db.menuItems.clear();
+    db.orders.clear();
+    db.tables.clear();
+    db.categories.clear();
+    db.inventoryItems.clear();
+    db.customers.clear();
+    db.staffList.clear();
+    db.registeredUsers.clear();
+    db.currentUser = null;
+    db.restaurant = null;
   });
 
   test('User isolation: User B does not see User A products and orders', () async {

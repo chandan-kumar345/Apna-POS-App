@@ -115,10 +115,8 @@ void main() {
   });
 
   group('DatabaseService Staff Operations', () {
-    test('DatabaseService pre-populates default staff list and supports CRUD', () {
+    test('DatabaseService supports staff CRUD operations', () {
       final db = DatabaseService();
-      expect(db.staffList.isNotEmpty, isTrue);
-      expect(db.staffList.length, greaterThanOrEqualTo(8));
 
       // Test Add
       final newStaff = StaffModel(
@@ -145,6 +143,16 @@ void main() {
   group('StaffManagementScreen Widget Tests', () {
     testWidgets('StaffManagementScreen renders title, summary cards, and staff rows', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 800));
+
+      final db = DatabaseService();
+      db.addStaff(StaffModel(
+        id: 'st_test_001',
+        name: 'Vikram Singh',
+        employeeId: 'EMP001',
+        role: 'Admin',
+        status: 'Active',
+        createdAt: DateTime.now(),
+      ));
 
       await tester.pumpWidget(
         const MaterialApp(
@@ -175,8 +183,8 @@ void main() {
       expect(find.text('Status'), findsOneWidget);
       expect(find.text('Actions'), findsOneWidget);
 
-      // Verify first seed staff row
-      expect(find.text('Amit Sharma'), findsOneWidget);
+      // Verify staff row
+      expect(find.text('Vikram Singh'), findsOneWidget);
       expect(find.text('EMP001'), findsOneWidget);
       expect(find.text('Admin'), findsWidgets);
     });
@@ -353,6 +361,17 @@ void main() {
     testWidgets('Tapping staff row in StaffManagementScreen navigates to StaffSettingsScreen', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 800));
 
+      final db = DatabaseService();
+      db.addStaff(StaffModel(
+        id: 'st_test_001',
+        name: 'Vikram Singh',
+        employeeId: 'EMP001',
+        role: 'Admin',
+        status: 'Active',
+        reportingTo: 'Store Owner / Admin',
+        createdAt: DateTime.now(),
+      ));
+
       await tester.pumpWidget(
         const MaterialApp(
           home: StaffManagementScreen(),
@@ -362,11 +381,11 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Verify seed staff row exists
-      expect(find.text('Amit Sharma'), findsOneWidget);
+      // Verify test staff row exists
+      expect(find.text('Vikram Singh'), findsOneWidget);
 
-      // Tap on the Amit Sharma row
-      await tester.tap(find.text('Amit Sharma'));
+      // Tap on the Vikram Singh row
+      await tester.tap(find.text('Vikram Singh'));
       await tester.pumpAndSettle();
 
       // Verify Staff Settings screen opened

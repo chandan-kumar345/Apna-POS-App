@@ -438,7 +438,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       onTap: () => _openCalendarPopup(context, isMobile: isMobile),
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        height: isMobile ? 34 : 42,
+        height: isMobile ? 36 : 42,
         padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -450,30 +450,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
         ),
         child: Row(
           mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Flexible(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.calendar_today_rounded, size: isMobile ? 13 : 16, color: const Color(0xFF0F172A)),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      dateRangeText,
-                      style: TextStyle(
-                        fontSize: isMobile ? 10.5 : 13.5,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF0F172A),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+            Icon(Icons.calendar_today_rounded, size: isMobile ? 13 : 16, color: const Color(0xFF0F172A)),
+            SizedBox(width: isMobile ? 5 : 6),
+            if (isMobile)
+              Expanded(
+                child: Text(
+                  dateRangeText,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
                   ),
-                ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              )
+            else
+              Text(
+                dateRangeText,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-            const SizedBox(width: 6),
+            SizedBox(width: isMobile ? 3 : 6),
             Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
           ],
         ),
@@ -518,7 +522,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           _buildPopupMenuItem(SalesDateFilter.allTime, 'All Time', _selectedDateFilter == SalesDateFilter.allTime),
         ],
         child: Container(
-          height: isMobile ? 34 : 42,
+          height: isMobile ? 36 : 42,
           padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
           decoration: BoxDecoration(
             color: Colors.white,
@@ -530,30 +534,34 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ),
           child: Row(
             mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Flexible(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.calendar_month_outlined, size: isMobile ? 14 : 17, color: const Color(0xFF0F172A)),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        displayLabel,
-                        style: TextStyle(
-                          fontSize: isMobile ? 10.5 : 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF0F172A),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+              Icon(Icons.calendar_month_outlined, size: isMobile ? 14 : 17, color: const Color(0xFF0F172A)),
+              SizedBox(width: isMobile ? 5 : 6),
+              if (isMobile)
+                Expanded(
+                  child: Text(
+                    displayLabel,
+                    style: const TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
                     ),
-                  ],
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )
+              else
+                Text(
+                  displayLabel,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(width: 6),
+              SizedBox(width: isMobile ? 3 : 6),
               Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
             ],
           ),
@@ -804,7 +812,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildTopFilterBar({required bool isMobile}) {
     if (isMobile) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
@@ -819,19 +827,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
             Row(
               children: [
                 Expanded(
-                  flex: 5,
+                  flex: 6,
                   child: _buildDateRangeBox(isMobile: true),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Expanded(
-                  flex: 4,
+                  flex: 5,
                   child: _buildPresetFilterDropdown(isMobile: true),
                 ),
               ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
 
-            // Row 2: Filter Dropdowns
+            // Row 2: Outlet and Payment Mode Dropdowns
             Row(
               children: [
                 Expanded(
@@ -844,7 +852,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     },
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Expanded(
                   child: _buildCurvedDropdown(
                     value: _selectedPaymentMode == 'All Payment Modes' ? 'All Payments' : _selectedPaymentMode,
@@ -859,7 +867,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     },
                   ),
                 ),
-                const SizedBox(width: 6),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Row 3: Order Type and Staff Dropdowns
+            Row(
+              children: [
                 Expanded(
                   child: _buildCurvedDropdown(
                     value: _selectedOrderType == 'All Order Types' ? 'All Orders' : _selectedOrderType,
@@ -875,7 +889,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ),
                 if (!_isStaffUser) ...[
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: _buildCurvedDropdown(
                       value: _selectedStaff,
@@ -891,7 +905,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             ),
             const SizedBox(height: 8),
 
-            // Row 3: Action Buttons: Apply, Reset, and Refresh Icon
+            // Row 4: Action Buttons: Apply, Reset, and Refresh Icon
             Row(
               children: [
                 Expanded(
@@ -905,13 +919,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       backgroundColor: const Color(0xFF2563EB),
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
-                    child: const Text('Apply', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: const Text('Apply', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
                   child: OutlinedButton(
@@ -919,24 +933,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF334155),
                       side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       backgroundColor: Colors.white,
                     ),
-                    child: const Text('Reset', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    child: const Text('Reset', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                   ),
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Container(
-                  height: 32,
-                  width: 32,
+                  height: 36,
+                  width: 36,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 16),
+                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 18),
                     tooltip: 'Refresh Data',
                     onPressed: () => _loadSalesReport(),
                     padding: EdgeInsets.zero,
@@ -1097,8 +1111,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final effectiveValue = items.contains(value) ? value : items.first;
 
     return Container(
-      height: isMobile ? 34 : 42,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 14),
+      height: isMobile ? 36 : 42,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(8),
@@ -1111,12 +1125,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
         child: DropdownButton<String>(
           value: effectiveValue,
           isDense: true,
+          isExpanded: isMobile,
           dropdownColor: Colors.white,
           borderRadius: BorderRadius.circular(10),
           elevation: 6,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 14 : 19, color: const Color(0xFF64748B)),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
           style: TextStyle(
-            fontSize: isMobile ? 10.5 : 13.5,
+            fontSize: isMobile ? 11 : 13.5,
             fontWeight: FontWeight.w600,
             color: const Color(0xFF0F172A),
           ),
@@ -1128,7 +1143,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: isMobile ? 10.5 : 13.5,
+                  fontSize: isMobile ? 11 : 13.5,
                   fontWeight: FontWeight.w600,
                   color: const Color(0xFF0F172A),
                 ),

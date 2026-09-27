@@ -34,7 +34,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   static const int _pageSize = 8;
   int _totalCount = 0;
   int _totalPages = 1;
-  bool _isLoading = false;
+  bool _isLoading = true;
 
   List<StaffModel> _staffList = [];
   StaffStatsModel _stats = const StaffStatsModel();
@@ -62,7 +62,12 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   @override
   void initState() {
     super.initState();
-    _applyLocalFilter();
+    if (_db.staffList.isNotEmpty) {
+      _applyLocalFilter();
+      _isLoading = false;
+    } else {
+      _isLoading = true;
+    }
     _loadStaffData();
   }
 
@@ -357,41 +362,27 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Title & Subtitle
+        // Title & Subtitle (Without the 3-line hamburger menu icon)
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.onOpenDrawer != null && isMobile) ...[
-                    IconButton(
-                      icon: const Icon(Icons.menu_rounded, color: Color(0xFF0F172A), size: 22),
-                      onPressed: widget.onOpenDrawer,
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
-                    ),
-                    const SizedBox(width: 6),
-                  ],
-                  Text(
-                    'Staff Management',
-                    style: TextStyle(
-                      fontSize: isMobile ? 19 : 22,
-                      fontWeight: FontWeight.w800,
-                      color: const Color(0xFF0F172A),
-                      letterSpacing: -0.3,
-                    ),
-                  ),
-                ],
+              Text(
+                'Staff Management',
+                style: TextStyle(
+                  fontSize: isMobile ? 16.5 : 20,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF0F172A),
+                  letterSpacing: -0.3,
+                ),
               ),
-              const SizedBox(height: 3),
-              const Text(
+              const SizedBox(height: 2),
+              Text(
                 'Manage your team, roles and permissions',
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: isMobile ? 10.5 : 12,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF64748B),
+                  color: const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -406,16 +397,16 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
             foregroundColor: Colors.white,
             elevation: 0,
             padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 12 : 16,
-              vertical: isMobile ? 9 : 11,
+              horizontal: isMobile ? 10 : 16,
+              vertical: isMobile ? 7 : 10,
             ),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
-          icon: Icon(Icons.add_rounded, size: isMobile ? 17 : 18),
+          icon: Icon(Icons.add_rounded, size: isMobile ? 15 : 17),
           label: Text(
             'Create Staff',
             style: TextStyle(
-              fontSize: isMobile ? 12 : 13,
+              fontSize: isMobile ? 11.5 : 12.5,
               fontWeight: FontWeight.w700,
               letterSpacing: 0.1,
             ),
@@ -460,21 +451,19 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     ];
 
     if (isMobile) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        clipBehavior: Clip.none,
-        child: Row(
-          children: cards
-              .map((c) => Padding(
-                    padding: const EdgeInsets.only(right: 10),
-                    child: SizedBox(
-                      width: 145,
-                      child: _buildMetricCard(c, isMobile: true),
-                    ),
-                  ))
-              .toList(),
+      return GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: cards.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+          childAspectRatio: 2.15,
         ),
+        itemBuilder: (context, index) {
+          return _buildMetricCard(cards[index], isMobile: true);
+        },
       );
     }
 
@@ -491,11 +480,90 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Widget _buildMetricCard(_SummaryCardItem item, {bool isMobile = false}) {
+    if (isMobile) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          boxShadow: const [
+            BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
+          ],
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: item.iconBg,
+                borderRadius: BorderRadius.circular(7),
+              ),
+              child: Icon(item.icon, color: item.iconColor, size: 15),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    item.count,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                      height: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 1.5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (item.isDotGreen) ...[
+                        Container(
+                          width: 4.5,
+                          height: 4.5,
+                          decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 3),
+                      ] else if (item.isDotRed) ...[
+                        Container(
+                          width: 4.5,
+                          height: 4.5,
+                          decoration: const BoxDecoration(color: Color(0xFFDC2626), shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 3),
+                      ],
+                      Flexible(
+                        child: Text(
+                          item.label,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF64748B),
+                            height: 1.1,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
-      padding: EdgeInsets.all(isMobile ? 12 : 14),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: const [
           BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
@@ -505,43 +573,40 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Icon Container
           Container(
-            width: isMobile ? 32 : 36,
-            height: isMobile ? 32 : 36,
+            width: 32,
+            height: 32,
             decoration: BoxDecoration(
               color: item.iconBg,
-              borderRadius: BorderRadius.circular(9),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(item.icon, color: item.iconColor, size: isMobile ? 17 : 19),
+            child: Icon(item.icon, color: item.iconColor, size: 17),
           ),
-          SizedBox(height: isMobile ? 8 : 10),
-          // Count
+          const SizedBox(height: 8),
           Text(
             item.count,
-            style: TextStyle(
-              fontSize: isMobile ? 18 : 20,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF0F172A),
-              letterSpacing: -0.4,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+              letterSpacing: -0.3,
             ),
           ),
           const SizedBox(height: 2),
-          // Label with optional green / red dot
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (item.isDotGreen) ...[
                 Container(
-                  width: 5.5,
-                  height: 5.5,
+                  width: 5,
+                  height: 5,
                   decoration: const BoxDecoration(color: Color(0xFF16A34A), shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 4),
               ] else if (item.isDotRed) ...[
                 Container(
-                  width: 5.5,
-                  height: 5.5,
+                  width: 5,
+                  height: 5,
                   decoration: const BoxDecoration(color: Color(0xFFDC2626), shape: BoxShape.circle),
                 ),
                 const SizedBox(width: 4),
@@ -549,7 +614,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
               Text(
                 item.label,
                 style: const TextStyle(
-                  fontSize: 11.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: Color(0xFF64748B),
                 ),
@@ -567,48 +632,49 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       child: isMobile
           ? Column(
               children: [
-                _buildSearchField(),
-                const SizedBox(height: 8),
+                _buildSearchField(isMobile: true),
+                const SizedBox(height: 6),
                 Row(
                   children: [
-                    Expanded(child: _buildRoleDropdown()),
-                    const SizedBox(width: 8),
-                    Expanded(child: _buildStatusDropdown()),
+                    Expanded(child: _buildRoleDropdown(isMobile: true)),
+                    const SizedBox(width: 6),
+                    Expanded(child: _buildStatusDropdown(isMobile: true)),
                   ],
                 ),
               ],
             )
           : Row(
               children: [
-                Expanded(child: _buildSearchField()),
-                const SizedBox(width: 10),
-                SizedBox(width: 160, child: _buildRoleDropdown()),
-                const SizedBox(width: 10),
-                SizedBox(width: 150, child: _buildStatusDropdown()),
+                Expanded(child: _buildSearchField(isMobile: false)),
+                const SizedBox(width: 8),
+                SizedBox(width: 150, child: _buildRoleDropdown(isMobile: false)),
+                const SizedBox(width: 8),
+                SizedBox(width: 140, child: _buildStatusDropdown(isMobile: false)),
               ],
             ),
     );
   }
 
-  Widget _buildSearchField() {
+  Widget _buildSearchField({bool isMobile = false}) {
     return Container(
-      height: 40,
+      height: isMobile ? 35 : 38,
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: TextField(
         controller: _searchController,
         onChanged: _onSearchChanged,
-        style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+        style: TextStyle(fontSize: isMobile ? 11.5 : 12.5, color: const Color(0xFF0F172A)),
         decoration: InputDecoration(
           hintText: 'Search by name, email or role...',
-          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-          prefixIcon: const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 18),
+          hintStyle: TextStyle(color: const Color(0xFF94A3B8), fontSize: isMobile ? 11 : 12),
+          prefixIcon: Icon(Icons.search_rounded, color: const Color(0xFF94A3B8), size: isMobile ? 15 : 17),
+          prefixIconConstraints: BoxConstraints(minWidth: isMobile ? 30 : 36),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF94A3B8)),
+                  icon: Icon(Icons.clear_rounded, size: isMobile ? 14 : 16, color: const Color(0xFF94A3B8)),
                   onPressed: () {
                     _searchController.clear();
                     _onSearchChanged('');
@@ -616,19 +682,19 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(vertical: 9),
+          contentPadding: EdgeInsets.symmetric(vertical: isMobile ? 7 : 9),
         ),
       ),
     );
   }
 
-  Widget _buildRoleDropdown() {
+  Widget _buildRoleDropdown({bool isMobile = false}) {
     return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: isMobile ? 34 : 38,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: DropdownButtonHideUnderline(
@@ -636,15 +702,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           value: _selectedRole,
           isExpanded: true,
           dropdownColor: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          borderRadius: BorderRadius.circular(8),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: const Color(0xFF64748B), size: isMobile ? 16 : 18),
+          style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
           items: _roleOptions
               .map((r) => DropdownMenuItem(
                     value: r,
                     child: Text(
                       r,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
                     ),
                   ))
               .toList(),
@@ -654,13 +720,13 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     );
   }
 
-  Widget _buildStatusDropdown() {
+  Widget _buildStatusDropdown({bool isMobile = false}) {
     return Container(
-      height: 40,
-      padding: const EdgeInsets.symmetric(horizontal: 10),
+      height: isMobile ? 34 : 38,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 10),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
       child: DropdownButtonHideUnderline(
@@ -668,15 +734,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
           value: _selectedStatus,
           isExpanded: true,
           dropdownColor: Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF64748B), size: 18),
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+          borderRadius: BorderRadius.circular(8),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: const Color(0xFF64748B), size: isMobile ? 16 : 18),
+          style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
           items: _statusOptions
               .map((s) => DropdownMenuItem(
                     value: s,
                     child: Text(
                       s,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w600, color: const Color(0xFF0F172A)),
                     ),
                   ))
               .toList(),
@@ -693,7 +759,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: const CircularProgressIndicator(color: Color(0xFF2563EB)),
@@ -703,36 +769,36 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     if (_staffList.isEmpty) {
       final hasActiveFilters = _selectedRole != 'All Roles' || _selectedStatus != 'All Status' || _searchController.text.trim().isNotEmpty;
       return Container(
-        height: 280,
+        height: 260,
         alignment: Alignment.center,
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: const BoxDecoration(color: Color(0xFFF1F5F9), shape: BoxShape.circle),
-              child: const Icon(Icons.group_off_rounded, color: Color(0xFF94A3B8), size: 36),
+              child: const Icon(Icons.group_off_rounded, color: Color(0xFF94A3B8), size: 32),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
               hasActiveFilters ? 'No Matching Staff Members' : 'No Staff Members Found',
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              style: TextStyle(fontSize: isMobile ? 14.5 : 16, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 3),
             Text(
               hasActiveFilters
                   ? 'Try clearing your search query or role filter'
                   : 'Add your first team member to start managing permissions',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: isMobile ? 11.5 : 13, color: const Color(0xFF64748B)),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             if (hasActiveFilters)
               OutlinedButton.icon(
                 onPressed: () {
@@ -742,23 +808,25 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                   _currentPage = 1;
                   _loadStaffData();
                 },
-                icon: const Icon(Icons.clear_all_rounded, size: 18),
+                icon: const Icon(Icons.clear_all_rounded, size: 16),
                 label: const Text('Reset Filters'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xFF2563EB),
                   side: const BorderSide(color: Color(0xFF2563EB)),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               )
             else
               ElevatedButton.icon(
                 onPressed: _openCreateStaffScreen,
-                icon: const Icon(Icons.add_rounded, size: 18),
+                icon: const Icon(Icons.add_rounded, size: 16),
                 label: const Text('Add Staff Member'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF2563EB),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
           ],
@@ -769,30 +837,30 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
         boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 8, offset: Offset(0, 2)),
+          BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
         ],
       ),
       child: Column(
         children: [
           // Table Column Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: isMobile ? 8 : 10),
             decoration: const BoxDecoration(
               color: Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
               border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                SizedBox(width: 28, child: Text('#', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
-                SizedBox(width: 10),
-                Expanded(flex: 3, child: Text('Staff Member', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
-                Expanded(flex: 2, child: Text('Role', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
-                Expanded(flex: 2, child: Text('Status', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
-                SizedBox(width: 40, child: Text('Actions', textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B)))),
+                SizedBox(width: isMobile ? 22 : 28, child: Text('#', style: TextStyle(fontSize: isMobile ? 10 : 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)))),
+                SizedBox(width: isMobile ? 6 : 10),
+                Expanded(flex: 3, child: Text('Staff Member', style: TextStyle(fontSize: isMobile ? 10 : 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)))),
+                Expanded(flex: 2, child: Text('Role', style: TextStyle(fontSize: isMobile ? 10 : 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)))),
+                Expanded(flex: 2, child: Text('Status', style: TextStyle(fontSize: isMobile ? 10 : 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)))),
+                SizedBox(width: isMobile ? 32 : 40, child: Text('Actions', textAlign: TextAlign.center, style: TextStyle(fontSize: isMobile ? 10 : 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B)))),
               ],
             ),
           ),
@@ -806,7 +874,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
             itemBuilder: (context, index) {
               final staff = _staffList[index];
               final rowNumber = ((_currentPage - 1) * _pageSize) + index + 1;
-              return _buildStaffRow(staff, rowNumber);
+              return _buildStaffRow(staff, rowNumber, isMobile: isMobile);
             },
           ),
         ],
@@ -814,228 +882,234 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     );
   }
 
-  Widget _buildStaffRow(StaffModel staff, int rowNumber) {
+  Widget _buildStaffRow(StaffModel staff, int rowNumber, {bool isMobile = false}) {
     return InkWell(
       onTap: () => _openStaffSettingsScreen(staff),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: isMobile ? 7 : 9),
         child: Row(
-        children: [
-          // # Index Column
-          SizedBox(
-            width: 28,
-            child: Text(
-              '$rowNumber',
-              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+          children: [
+            // # Index Column
+            SizedBox(
+              width: isMobile ? 22 : 28,
+              child: Text(
+                '$rowNumber',
+                style: TextStyle(fontSize: isMobile ? 10.5 : 11.5, fontWeight: FontWeight.w600, color: const Color(0xFF64748B)),
+              ),
             ),
-          ),
-          const SizedBox(width: 10),
+            SizedBox(width: isMobile ? 6 : 10),
 
-          // Staff Member (Avatar + Name + EMP ID)
-          Expanded(
-            flex: 3,
-            child: Row(
-              children: [
-                _buildAvatar(staff),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        staff.name,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0F172A),
+            // Staff Member (Avatar + Name + EMP ID)
+            Expanded(
+              flex: 3,
+              child: Row(
+                children: [
+                  _buildAvatar(staff, isMobile: isMobile),
+                  SizedBox(width: isMobile ? 7 : 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          staff.name,
+                          style: TextStyle(
+                            fontSize: isMobile ? 11.5 : 12.5,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF0F172A),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 1),
-                      Text(
-                        staff.employeeId.isNotEmpty ? staff.employeeId : (staff.phone.isNotEmpty ? staff.phone : 'Staff'),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF94A3B8),
+                        const SizedBox(height: 1),
+                        Text(
+                          staff.employeeId.isNotEmpty ? staff.employeeId : (staff.phone.isNotEmpty ? staff.phone : 'Staff'),
+                          style: TextStyle(
+                            fontSize: isMobile ? 9.5 : 11,
+                            fontWeight: FontWeight.w500,
+                            color: const Color(0xFF94A3B8),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
-          // Role Badge Column
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: staff.roleBgColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  staff.role,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: staff.roleTextColor,
+            // Role Badge Column
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8, vertical: isMobile ? 2 : 3),
+                  decoration: BoxDecoration(
+                    color: staff.roleBgColor,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    staff.role,
+                    style: TextStyle(
+                      fontSize: isMobile ? 9.5 : 11,
+                      fontWeight: FontWeight.w700,
+                      color: staff.roleTextColor,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ),
             ),
-          ),
 
-          // Status Badge Column
-          Expanded(
-            flex: 2,
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: staff.isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 5.5,
-                      height: 5.5,
-                      decoration: BoxDecoration(
-                        color: staff.isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      staff.status,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: staff.isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // Actions 3-dots Menu
-          SizedBox(
-            width: 40,
-            child: PopupMenuButton<String>(
-              color: Colors.white,
-              surfaceTintColor: Colors.white,
-              icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF94A3B8), size: 18),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFE2E8F0))),
-              elevation: 4,
-              onSelected: (action) {
-                if (action == 'edit') {
-                  _showStaffFormDialog(existingStaff: staff);
-                } else if (action == 'toggle') {
-                  _toggleStatus(staff);
-                } else if (action == 'delete') {
-                  _deleteStaff(staff);
-                }
-              },
-              itemBuilder: (ctx) => [
-                const PopupMenuItem(
-                  value: 'edit',
-                  child: Row(
-                    children: [
-                      Icon(Icons.edit_outlined, size: 16, color: Color(0xFF2563EB)),
-                      SizedBox(width: 8),
-                      Text('Edit Staff Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
-                    ],
+            // Status Badge Column
+            Expanded(
+              flex: 2,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 6 : 8, vertical: isMobile ? 2 : 3),
+                  decoration: BoxDecoration(
+                    color: staff.isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                ),
-                PopupMenuItem(
-                  value: 'toggle',
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(
-                        staff.isActive ? Icons.toggle_off_outlined : Icons.toggle_on_outlined,
-                        size: 16,
-                        color: staff.isActive ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
+                      Container(
+                        width: isMobile ? 4.5 : 5.5,
+                        height: isMobile ? 4.5 : 5.5,
+                        decoration: BoxDecoration(
+                          color: staff.isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                      SizedBox(width: 8),
+                      SizedBox(width: isMobile ? 3 : 4),
                       Text(
-                        staff.isActive ? 'Mark as Inactive' : 'Mark as Active',
+                        staff.status,
                         style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontSize: isMobile ? 9.5 : 11,
+                          fontWeight: FontWeight.w700,
+                          color: staff.isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Actions 3-dots Menu
+            SizedBox(
+              width: isMobile ? 32 : 40,
+              child: PopupMenuButton<String>(
+                color: Colors.white,
+                surfaceTintColor: Colors.white,
+                icon: Icon(Icons.more_vert_rounded, color: const Color(0xFF94A3B8), size: isMobile ? 16 : 18),
+                padding: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: const BorderSide(color: Color(0xFFE2E8F0))),
+                elevation: 4,
+                onSelected: (action) {
+                  if (action == 'edit') {
+                    _showStaffFormDialog(existingStaff: staff);
+                  } else if (action == 'toggle') {
+                    _toggleStatus(staff);
+                  } else if (action == 'delete') {
+                    _deleteStaff(staff);
+                  }
+                },
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: 'edit',
+                    child: Row(
+                      children: [
+                        Icon(Icons.edit_outlined, size: 15, color: Color(0xFF2563EB)),
+                        SizedBox(width: 8),
+                        Text('Edit Staff Details', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: Row(
+                      children: [
+                        Icon(
+                          staff.isActive ? Icons.toggle_off_outlined : Icons.toggle_on_outlined,
+                          size: 15,
                           color: staff.isActive ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
                         ),
-                      ),
-                    ],
+                        SizedBox(width: 8),
+                        Text(
+                          staff.isActive ? 'Mark as Inactive' : 'Mark as Active',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                            color: staff.isActive ? const Color(0xFFEA580C) : const Color(0xFF16A34A),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete_outline_rounded, size: 16, color: Color(0xFFEF4444)),
-                      SizedBox(width: 8),
-                      Text('Delete Staff', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
-                    ],
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFFEF4444)),
+                        SizedBox(width: 8),
+                        Text('Delete Staff', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
-  Widget _buildAvatar(StaffModel staff) {
+  Widget _buildAvatar(StaffModel staff, {bool isMobile = false}) {
+    final double size = isMobile ? 26 : 32;
     if (staff.avatarUrl.isNotEmpty) {
       if (staff.avatarUrl.startsWith('http://') || staff.avatarUrl.startsWith('https://')) {
         return SizedBox(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           child: ClipOval(
             child: Image.network(
               staff.avatarUrl,
-              width: 32,
-              height: 32,
+              width: size,
+              height: size,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff),
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff, size: size),
             ),
           ),
         );
       } else if (File(staff.avatarUrl).existsSync()) {
         return SizedBox(
-          width: 32,
-          height: 32,
+          width: size,
+          height: size,
           child: ClipOval(
             child: Image.file(
               File(staff.avatarUrl),
-              width: 32,
-              height: 32,
+              width: size,
+              height: size,
               fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff),
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff, size: size),
             ),
           ),
         );
       }
     }
-    return _buildAvatarFallback(staff);
+    return _buildAvatarFallback(staff, size: size);
   }
 
-  Widget _buildAvatarFallback(StaffModel staff) {
+  Widget _buildAvatarFallback(StaffModel staff, {double size = 32}) {
     return Container(
-      width: 32,
-      height: 32,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: LinearGradient(
@@ -1047,8 +1121,8 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       child: Center(
         child: Text(
           staff.initials,
-          style: const TextStyle(
-            fontSize: 11.5,
+          style: TextStyle(
+            fontSize: size * 0.38,
             fontWeight: FontWeight.w800,
             color: Colors.white,
           ),
@@ -1060,56 +1134,61 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   Widget _buildPaginationFooter(bool isMobile) {
     final startNumber = _totalCount == 0 ? 0 : ((_currentPage - 1) * _pageSize) + 1;
     final endNumber = (_currentPage * _pageSize).clamp(0, _totalCount);
+    final double btnSize = isMobile ? 26 : 30;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        // Left text: Showing 1–8 of 12 staff members
-        Text(
-          'Showing $startNumber–$endNumber of $_totalCount staff members',
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w500,
-            color: Color(0xFF64748B),
+        // Left text: Showing 1–8 of 12 staff
+        Flexible(
+          child: Text(
+            'Showing $startNumber–$endNumber of $_totalCount staff',
+            style: TextStyle(
+              fontSize: isMobile ? 10.5 : 11.5,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF64748B),
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
 
         // Right pagination controls
         Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Previous button (<)
             InkWell(
               onTap: _currentPage > 1 ? () => _goToPage(_currentPage - 1) : null,
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(6),
               child: Container(
-                width: 30,
-                height: 30,
+                width: btnSize,
+                height: btnSize,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Icon(
                   Icons.chevron_left_rounded,
-                  size: 18,
+                  size: isMobile ? 15 : 18,
                   color: _currentPage > 1 ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
                 ),
               ),
             ),
-            const SizedBox(width: 5),
+            const SizedBox(width: 4),
 
             // Numbered Page buttons
             for (int p = 1; p <= _totalPages; p++) ...[
               InkWell(
                 onTap: () => _goToPage(p),
-                borderRadius: BorderRadius.circular(7),
+                borderRadius: BorderRadius.circular(6),
                 child: Container(
-                  width: 30,
-                  height: 30,
+                  width: btnSize,
+                  height: btnSize,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     color: _currentPage == p ? const Color(0xFF2563EB) : Colors.white,
-                    borderRadius: BorderRadius.circular(7),
+                    borderRadius: BorderRadius.circular(6),
                     border: Border.all(
                       color: _currentPage == p ? const Color(0xFF2563EB) : const Color(0xFFE2E8F0),
                     ),
@@ -1117,31 +1196,31 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
                   child: Text(
                     '$p',
                     style: TextStyle(
-                      fontSize: 11.5,
+                      fontSize: isMobile ? 10 : 11.5,
                       fontWeight: FontWeight.w700,
                       color: _currentPage == p ? Colors.white : const Color(0xFF334155),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 4),
             ],
 
             // Next button (>)
             InkWell(
               onTap: _currentPage < _totalPages ? () => _goToPage(_currentPage + 1) : null,
-              borderRadius: BorderRadius.circular(7),
+              borderRadius: BorderRadius.circular(6),
               child: Container(
-                width: 30,
-                height: 30,
+                width: btnSize,
+                height: btnSize,
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(7),
+                  borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Icon(
                   Icons.chevron_right_rounded,
-                  size: 18,
+                  size: isMobile ? 15 : 18,
                   color: _currentPage < _totalPages ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
                 ),
               ),

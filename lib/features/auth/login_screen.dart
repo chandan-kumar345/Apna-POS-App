@@ -892,7 +892,10 @@ class _LoginScreenState extends State<LoginScreen> {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      otpController.dispose();
+      otpFocusNode.dispose();
+    });
   }
 
   Future<void> _handleAuthAction() async {

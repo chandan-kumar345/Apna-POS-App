@@ -759,6 +759,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         fit: widget.fit,
         width: double.infinity,
         height: double.infinity,
+        cacheWidth: 320,
+        cacheHeight: 320,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) => fallback,
       );
     }
@@ -775,6 +778,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         fit: widget.fit,
         width: double.infinity,
         height: double.infinity,
+        cacheWidth: 320,
+        cacheHeight: 320,
+        filterQuality: FilterQuality.medium,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('[PosProductMediaBox] Image network load failed for "$resolved": $error');
           if (!kIsWeb) {
@@ -787,6 +793,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
                   fit: widget.fit,
                   width: double.infinity,
                   height: double.infinity,
+                  cacheWidth: 320,
+                  cacheHeight: 320,
+                  filterQuality: FilterQuality.medium,
                   errorBuilder: (context, error, stackTrace) => fallback,
                 );
               }
@@ -806,6 +815,9 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
             fit: widget.fit,
             width: double.infinity,
             height: double.infinity,
+            cacheWidth: 320,
+            cacheHeight: 320,
+            filterQuality: FilterQuality.medium,
             errorBuilder: (context, error, stackTrace) => fallback,
           );
         }
@@ -825,6 +837,8 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         child: Image.asset(
           'assets/images/product_placeholder.png',
           fit: BoxFit.contain,
+          cacheWidth: 120,
+          cacheHeight: 120,
           errorBuilder: (context, error, stackTrace) {
             return Icon(
               Icons.inventory_2_outlined,

@@ -634,6 +634,6 @@ class ApiEndpoints {
           },
         );
       },
-    );
+    ).whenComplete(() => controller.dispose());
   }
 }

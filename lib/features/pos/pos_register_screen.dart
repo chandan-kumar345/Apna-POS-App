@@ -640,9 +640,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   }
 
   int _getItemCartQuantity(MenuItemModel item) {
-    return _cartItems
-        .where((e) => e.item.id == item.id || e.item.id.startsWith('${item.id}_var_'))
-        .fold(0, (sum, e) => sum + e.quantity);
+    if (_cartItems.isEmpty) return 0;
+    int total = 0;
+    final itemId = item.id;
+    final varPrefix = '${itemId}_var_';
+    for (int i = 0; i < _cartItems.length; i++) {
+      final cId = _cartItems[i].item.id;
+      if (cId == itemId || cId.startsWith(varPrefix)) {
+        total += _cartItems[i].quantity;
+      }
+    }
+    return total;
   }
 
   /// Reusable Pill-shaped Quantity Stepper matching user design (Light container + Dark circular buttons)
@@ -1864,6 +1872,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             return ChoiceChip(
                               label: Text(label, style: TextStyle(fontSize: 10.5, color: isSel ? Colors.white : const Color(0xFF475569), fontWeight: FontWeight.bold)),
                               selected: isSel,
+                              showCheckmark: false,
                               selectedColor: const Color(0xFF051C48),
                               backgroundColor: const Color(0xFFF1F5F9),
                               visualDensity: VisualDensity.compact,
@@ -2665,6 +2674,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               padding: const EdgeInsets.only(right: 6),
                               child: ChoiceChip(
                                 label: Text(flr),
+                                showCheckmark: false,
                                 labelStyle: TextStyle(
                                   color: isSel ? Colors.white : const Color(0xFF475569),
                                   fontWeight: FontWeight.bold,
@@ -3203,6 +3213,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     padding: const EdgeInsets.only(right: 6),
                                     child: ChoiceChip(
                                       label: Text(flr),
+                                      showCheckmark: false,
                                       labelStyle: TextStyle(
                                         color: isSel ? Colors.white : const Color(0xFF475569),
                                         fontWeight: FontWeight.bold,
@@ -6345,7 +6356,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             height: 32,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
+              physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+              cacheExtent: 600.0,
               itemCount: allCategories.length,
               itemBuilder: (context, index) {
                 final cat = allCategories[index];
@@ -6627,7 +6639,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           height: 38,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 600.0,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: allCategories.length,
             itemBuilder: (context, index) {
@@ -6638,6 +6651,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 padding: const EdgeInsets.only(right: 6),
                 child: ChoiceChip(
                   label: Text(cat),
+                  showCheckmark: false,
                   visualDensity: VisualDensity.compact,
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
@@ -7258,36 +7272,38 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final bool showImages = (db.restaurant?.posViewMode ?? 'with_image') != 'without_image' &&
         (db.restaurant?.showItemImages ?? true);
 
-    // ANDROID / MOBILE: Wrapped Product Boxes layout for Without Images mode
+    // ANDROID / MOBILE: Grid layout for Without Images mode (Fully virtualized & recycled)
     if (!isDesktop && !showImages) {
       return LayoutBuilder(
         builder: (context, constraints) {
           final double availableWidth = constraints.maxWidth;
           final int cols = availableWidth >= 680 ? 4 : (availableWidth >= 460 ? 3 : 2);
-          const double spacing = 8.0;
-          final double itemWidth = (availableWidth - (spacing * (cols - 1)) - 8) / cols;
 
-          return SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+          return GridView.builder(
+            physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+            cacheExtent: 1200.0,
+            addAutomaticKeepAlives: false,
+            addRepaintBoundaries: true,
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 90),
-            child: Wrap(
-              spacing: spacing,
-              runSpacing: spacing,
-              children: filteredItems.map((item) {
-                return SizedBox(
-                  width: itemWidth,
-                  height: 90,
-                  child: RepaintBoundary(
-                    child: _buildProductCard(
-                      item,
-                      showImages: false,
-                      currency: currency,
-                      isDesktop: false,
-                    ),
-                  ),
-                );
-              }).toList(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 1.55,
             ),
+            itemCount: filteredItems.length,
+            itemBuilder: (context, index) {
+              final item = filteredItems[index];
+              return RepaintBoundary(
+                key: ValueKey('prod_noimg_${item.id}_${item.productId}'),
+                child: _buildProductCard(
+                  item,
+                  showImages: false,
+                  currency: currency,
+                  isDesktop: false,
+                ),
+              );
+            },
           );
         },
       );
@@ -7303,7 +7319,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             : (showImages ? 0.54 : 1.55);
 
         return GridView.builder(
-          physics: const BouncingScrollPhysics(),
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          cacheExtent: 1400.0,
+          addAutomaticKeepAlives: false,
+          addRepaintBoundaries: true,
           padding: EdgeInsets.fromLTRB(4, 4, 4, isDesktop ? 10 : 90),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columnCount,
@@ -7313,8 +7332,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ),
           itemCount: filteredItems.length,
           itemBuilder: (context, index) {
+            final item = filteredItems[index];
             return RepaintBoundary(
-              child: _buildProductCard(filteredItems[index], showImages: showImages, currency: currency, isDesktop: isDesktop),
+              key: ValueKey('prod_img_${item.id}_${item.productId}'),
+              child: _buildProductCard(
+                item,
+                showImages: showImages,
+                currency: currency,
+                isDesktop: isDesktop,
+              ),
             );
           },
         );

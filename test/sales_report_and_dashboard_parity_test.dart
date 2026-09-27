@@ -209,6 +209,7 @@ void main() {
       final upiStat = todayReport.paymentModes.firstWhere((p) => p.mode.toLowerCase().contains('upi'));
       expect(cashStat.amount, 305.0);
       expect(upiStat.amount, 500.0);
+      expect(todayDashPayments.totalAmount, 805.0);
 
       // Order types: Dine-In, Delivery, Takeaway
       expect(todayDashOrderTypes.dineIn.count, 2); // order1 + order4
