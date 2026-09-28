@@ -29,6 +29,54 @@ const userSchema = new mongoose.Schema(
       trim: true,
       default: 'owner',
     },
+    status: {
+      type: String,
+      enum: ['active', 'inactive', 'suspended'],
+      default: 'active',
+      index: true,
+    },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    subscription: {
+      plan: {
+        type: String,
+        enum: ['starter', 'growth', 'pro', 'enterprise', 'custom'],
+        default: 'starter',
+      },
+      status: {
+        type: String,
+        enum: ['active', 'trial', 'expired', 'cancelled'],
+        default: 'active',
+      },
+      startDate: {
+        type: Date,
+        default: Date.now,
+      },
+      expiresAt: {
+        type: Date,
+        default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+      },
+      billingCycle: {
+        type: String,
+        enum: ['monthly', 'annual', 'lifetime'],
+        default: 'annual',
+      },
+      maxTables: {
+        type: Number,
+        default: 50,
+      },
+      maxStaff: {
+        type: Number,
+        default: 20,
+      },
+      notes: {
+        type: String,
+        default: '',
+      },
+    },
     businessId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Business',

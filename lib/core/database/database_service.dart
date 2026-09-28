@@ -28,6 +28,7 @@ import '../services/dashboard_service.dart';
 import '../services/payment_service.dart';
 import '../services/print_log_service.dart';
 import '../services/socket_service.dart';
+import '../services/staff_service.dart';
 import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -57,6 +58,7 @@ class DatabaseService extends ChangeNotifier {
   DashboardService get dashboardService => DashboardService();
   PrintLogService get printLogService => PrintLogService();
   SocketService get socketService => SocketService();
+  StaffService get staffService => StaffService();
   
   ProductService get _productService => productService;
   OrderService get _orderService => orderService;
@@ -65,6 +67,7 @@ class DatabaseService extends ChangeNotifier {
   CustomerService get _customerService => customerService;
   ExtraService get _extraService => extraService;
   SocketService get _socketService => socketService;
+  StaffService get _staffService => staffService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -562,17 +565,8 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.clear();
     _liveTableCarts.clear();
 
-    // 1. Load Restaurant Profile (User-scoped with store & owner fallback)
-    String? restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant') ?? _prefs?.getString('apna_pos_restaurant');
-    if (restaurantJson == null || restaurantJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_restaurant');
-        if (cand != null && cand.isNotEmpty) {
-          restaurantJson = cand;
-          break;
-        }
-      }
-    }
+    // 1. Load Restaurant Profile (Strictly User-scoped)
+    String? restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant');
     if (restaurantJson != null && restaurantJson.isNotEmpty) {
       try {
         restaurant = RestaurantModel.fromJson(jsonDecode(restaurantJson));
@@ -594,93 +588,62 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // 2. Load Menu Items (User-scoped with store & owner fallback)
-    String? menuJson = _prefs?.getString('apna_pos_${userId}_menu') ?? _prefs?.getString('apna_pos_menu');
-    if (menuJson == null || menuJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_menu');
-        if (cand != null && cand.isNotEmpty) {
-          menuJson = cand;
-          break;
-        }
-      }
-    }
+    // 2. Load Menu Items (Strictly User-scoped)
+    String? menuJson = _prefs?.getString('apna_pos_${userId}_menu');
     if (menuJson != null && menuJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(menuJson);
         menuItems = raw.map((e) => MenuItemModel.fromJson(e)).toList();
         _deduplicateMenuItems();
       } catch (e) {
-        if (menuItems.isEmpty) menuItems = [];
+        menuItems = [];
       }
+    } else {
+      menuItems = [];
     }
 
-    // 3. Load Categories (User-scoped with store & owner fallback)
-    String? catJson = _prefs?.getString('apna_pos_${userId}_categories') ?? _prefs?.getString('apna_pos_categories');
-    if (catJson == null || catJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_categories');
-        if (cand != null && cand.isNotEmpty) {
-          catJson = cand;
-          break;
-        }
-      }
-    }
+    // 3. Load Categories (Strictly User-scoped)
+    String? catJson = _prefs?.getString('apna_pos_${userId}_categories');
     if (catJson != null && catJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(catJson);
         categories = raw.map((e) => (e ?? '').toString().trim()).where((s) => s.isNotEmpty).toList();
       } catch (e) {
-        if (categories.isEmpty) categories = [];
+        categories = [];
       }
-    } else if (categories.isEmpty) {
+    } else {
+      categories = [];
       _syncCategoriesFromMenu();
     }
 
-    // 3b. Load Category Images (User-scoped with store & owner fallback)
-    String? catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images') ?? _prefs?.getString('apna_pos_category_images');
-    if (catImagesJson == null || catImagesJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_category_images');
-        if (cand != null && cand.isNotEmpty) {
-          catImagesJson = cand;
-          break;
-        }
-      }
-    }
+    // 3b. Load Category Images (Strictly User-scoped)
+    String? catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images');
     if (catImagesJson != null && catImagesJson.isNotEmpty) {
       try {
         final Map rawMap = jsonDecode(catImagesJson);
         categoryImages = rawMap.map((k, v) => MapEntry((k ?? '').toString().trim(), (v ?? '').toString().trim()));
       } catch (e) {
-        if (categoryImages.isEmpty) categoryImages = {};
+        categoryImages = {};
       }
+    } else {
+      categoryImages = {};
     }
 
-    // 4. Load Tables (User-scoped with store & owner fallback)
-    String? tablesJson = _prefs?.getString('apna_pos_${userId}_tables') ?? _prefs?.getString('apna_pos_tables');
-    if (tablesJson == null || tablesJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_tables');
-        if (cand != null && cand.isNotEmpty) {
-          tablesJson = cand;
-          break;
-        }
-      }
-    }
+    // 4. Load Tables (Strictly User-scoped)
+    String? tablesJson = _prefs?.getString('apna_pos_${userId}_tables');
     if (tablesJson != null && tablesJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(tablesJson);
         tables = raw.map((e) => TableModel.fromJson(e)).toList();
         _sortTablesSequentially();
       } catch (e) {
-        if (tables.isEmpty) _seedCleanTables(restaurant?.tableCount ?? 12);
+        _seedCleanTables(restaurant?.tableCount ?? 12);
       }
-    } else if (tables.isEmpty) {
+    } else {
       _seedCleanTables(restaurant?.tableCount ?? 12);
     }
 
-    // 5. Load Orders (User-scoped, store-scoped & cross-account store sync)
+    // 5. Load Orders (Strictly User-scoped)
     final List<OrderModel> loadedOrders = [];
     final Set<String> loadedKeys = {};
 
@@ -703,61 +666,40 @@ class DatabaseService extends ChangeNotifier {
     }
 
     tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${userId}_orders'));
-    if (restaurant?.id != null) {
+    if (restaurant?.id != null && restaurant!.id != userId) {
       tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_orders'));
-    }
-    tryLoadOrdersFromJson(_prefs?.getString('apna_pos_orders'));
-    for (final u in registeredUsers) {
-      if (u.id != userId) {
-        tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${u.id}_orders'));
-      }
     }
 
     if (loadedOrders.isNotEmpty) {
       orders = deduplicateOrdersList(loadedOrders);
-      _saveOrdersToPrefs();
-    } else if (orders.isEmpty) {
+    } else {
       orders = [];
     }
 
-    // 6. Load Inventory (User-scoped with store & owner fallback)
-    String? inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory') ?? _prefs?.getString('apna_pos_inventory');
-    if (inventoryJson == null || inventoryJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_inventory');
-        if (cand != null && cand.isNotEmpty) {
-          inventoryJson = cand;
-          break;
-        }
-      }
-    }
+    // 6. Load Inventory (Strictly User-scoped)
+    String? inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory');
     if (inventoryJson != null && inventoryJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(inventoryJson);
         inventoryItems = raw.map((e) => InventoryItemModel.fromJson(e)).toList();
       } catch (e) {
-        if (inventoryItems.isEmpty) inventoryItems = [];
+        inventoryItems = [];
       }
+    } else {
+      inventoryItems = [];
     }
 
-    // 7. Load Customers (User-scoped with store & owner fallback)
-    String? customersJson = _prefs?.getString('apna_pos_${userId}_customers') ?? _prefs?.getString('apna_pos_customers');
-    if (customersJson == null || customersJson.isEmpty) {
-      for (final u in registeredUsers) {
-        final cand = _prefs?.getString('apna_pos_${u.id}_customers');
-        if (cand != null && cand.isNotEmpty) {
-          customersJson = cand;
-          break;
-        }
-      }
-    }
+    // 7. Load Customers (Strictly User-scoped)
+    String? customersJson = _prefs?.getString('apna_pos_${userId}_customers');
     if (customersJson != null && customersJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(customersJson);
         customers = raw.map((e) => CustomerModel.fromJson(e)).toList();
       } catch (e) {
-        if (customers.isEmpty) customers = [];
+        customers = [];
       }
+    } else {
+      customers = [];
     }
 
     // 8. Load persistent live table carts
@@ -854,6 +796,7 @@ class DatabaseService extends ChangeNotifier {
       categories.clear();
       orders.clear();
       inventoryItems.clear();
+      staffList.clear();
       _holdOrders.clear();
       _liveCartTotals.clear();
       _liveTableCarts.clear();
@@ -1686,6 +1629,13 @@ class DatabaseService extends ChangeNotifier {
       } catch (e) {
         debugPrint('[DatabaseService] sync inventory error: $e');
       }
+
+      // 6. Fetch Live Staff from Backend
+      try {
+        await _staffService.fetchStaff(limit: 100);
+      } catch (e) {
+        debugPrint('[DatabaseService] sync staff error: $e');
+      }
     } finally {
       _isSyncing = false;
       notifyListeners();
@@ -2121,15 +2071,24 @@ class DatabaseService extends ChangeNotifier {
       notifyListeners();
       return true;
     }
-    // Default PIN check
-    if (pin == '1234' || pin == '0000') {
-      currentUser ??= UserModel(
-        id: 'usr_staff_01',
-        name: 'Manager Staff',
-        email: 'manager@apnapos.com',
-        role: 'Manager',
-        pin: pin,
+    // Check dynamic staff list for active staff member matching PIN
+    final matchedStaff = staffList.where((s) => s.pin == pin && s.isActive).firstOrNull;
+    if (matchedStaff != null) {
+      currentUser = UserModel(
+        id: matchedStaff.id,
+        name: matchedStaff.name,
+        email: matchedStaff.email.isNotEmpty ? matchedStaff.email : 'staff_${matchedStaff.id}@apnapos.com',
+        role: matchedStaff.role,
+        pin: matchedStaff.pin,
         restaurantId: restaurant?.id ?? 'rest_001',
+        phone: matchedStaff.phone,
+        employeeId: matchedStaff.employeeId,
+        profilePhotoPath: matchedStaff.avatarUrl,
+        permissions: matchedStaff.permissions,
+        jobTitle: matchedStaff.role,
+        companyName: restaurant?.name,
+        onboardingCompleted: true,
+        onboardingStep: 4,
       );
       notifyListeners();
       return true;
@@ -2148,6 +2107,7 @@ class DatabaseService extends ChangeNotifier {
     tables.clear();
     orders.clear();
     inventoryItems.clear();
+    staffList.clear();
     _holdOrders.clear();
     _liveCartTotals.clear();
     _liveTableCarts.clear();
@@ -3795,14 +3755,8 @@ class DatabaseService extends ChangeNotifier {
     orders = deduplicateOrdersList(orders);
     final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
     await _prefs?.setString(_userKey('orders'), encoded);
-    await _prefs?.setString('apna_pos_orders', encoded);
     if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
       await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
-    }
-    for (final u in registeredUsers) {
-      if (u.id != currentUser?.id) {
-        await _prefs?.setString('apna_pos_${u.id}_orders', encoded);
-      }
     }
   }
 
@@ -4345,7 +4299,10 @@ class DatabaseService extends ChangeNotifier {
     try {
       final jsonStr = jsonEncode(staffList.map((s) => s.toJson()).toList());
       await _prefs?.setString(_userKey('staff_list'), jsonStr);
-      await _prefs?.setString('apna_pos_staff_list', jsonStr);
+      final uid = currentUser?.id;
+      if (uid != null && uid.isNotEmpty) {
+        await _prefs?.setString('apna_pos_${uid}_staff_list', jsonStr);
+      }
       if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
         await _prefs?.setString('apna_pos_${restaurant!.id}_staff_list', jsonStr);
       }
@@ -4356,6 +4313,11 @@ class DatabaseService extends ChangeNotifier {
     try {
       _loadStaffRolesFromPrefs();
       _loadBusinessBranchesFromPrefs();
+
+      // Clean up legacy global key if present to permanently purge old dummy data
+      if (_prefs?.containsKey('apna_pos_staff_list') == true) {
+        _prefs?.remove('apna_pos_staff_list');
+      }
 
       final List<StaffModel> loadedStaff = [];
       final Set<String> loadedKeys = {};
@@ -4375,21 +4337,27 @@ class DatabaseService extends ChangeNotifier {
               if (s.employeeId.isNotEmpty) {
                 loadedKeys.add('emp_${s.employeeId}');
               }
+              if (s.email.isNotEmpty) {
+                loadedKeys.add('email_${s.email.toLowerCase()}');
+              }
               loadedStaff.add(s);
             }
           }
         } catch (_) {}
       }
 
+      // 1. Load active user-scoped staff list
       tryLoadStaffFromJson(_prefs?.getString(_userKey('staff_list')));
-      tryLoadStaffFromJson(_prefs?.getString('apna_pos_staff_list'));
-      if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
-        tryLoadStaffFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_staff_list'));
+
+      // 1b. Load by explicit user ID
+      final uid = currentUser?.id;
+      if (loadedStaff.isEmpty && uid != null && uid.isNotEmpty) {
+        tryLoadStaffFromJson(_prefs?.getString('apna_pos_${uid}_staff_list'));
       }
-      for (final u in registeredUsers) {
-        if (u.id.isNotEmpty) {
-          tryLoadStaffFromJson(_prefs?.getString('apna_pos_${u.id}_staff_list'));
-        }
+
+      // 2. If empty and restaurant ID is known, check restaurant-scoped staff list
+      if (loadedStaff.isEmpty && restaurant?.id != null && restaurant!.id.isNotEmpty) {
+        tryLoadStaffFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_staff_list'));
       }
 
       if (loadedStaff.isNotEmpty) {
@@ -4401,39 +4369,45 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void syncStaffList(List<StaffModel> remoteStaff) {
-    if (remoteStaff.isEmpty) return;
-    final Map<String, StaffModel> map = {};
-    for (final s in staffList) {
-      map[s.id] = s;
-      if (s.employeeId.isNotEmpty) {
-        map['emp_${s.employeeId}'] = s;
+    if (remoteStaff.isEmpty) {
+      // If remote query is empty (e.g. search/filter or offline), preserve existing local staff
+      return;
+    }
+
+    final Map<String, StaffModel> merged = {};
+
+    // 1. First add all local staff
+    for (final local in staffList) {
+      final key = local.id.isNotEmpty ? local.id : (local.employeeId.isNotEmpty ? local.employeeId : local.email);
+      if (key.isNotEmpty) {
+        merged[key] = local;
       }
     }
-    for (final s in remoteStaff) {
-      if (s.employeeId.isNotEmpty && map.containsKey('emp_${s.employeeId}')) {
-        final old = map['emp_${s.employeeId}']!;
-        map.remove(old.id);
-      }
-      map[s.id] = s;
-      if (s.employeeId.isNotEmpty) {
-        map['emp_${s.employeeId}'] = s;
-      }
-    }
-    final Set<String> seenIds = {};
-    final List<StaffModel> unique = [];
-    for (final s in map.values) {
-      if (!seenIds.contains(s.id)) {
-        seenIds.add(s.id);
-        unique.add(s);
+
+    // 2. Overlay remote staff
+    for (final remote in remoteStaff) {
+      // Remove any matching local item by ID, employeeId, or email to prevent duplicates
+      merged.removeWhere((k, v) =>
+          v.id == remote.id ||
+          (remote.employeeId.isNotEmpty && v.employeeId == remote.employeeId) ||
+          (remote.email.isNotEmpty && v.email.trim().toLowerCase() == remote.email.trim().toLowerCase()));
+
+      final key = remote.id.isNotEmpty ? remote.id : (remote.employeeId.isNotEmpty ? remote.employeeId : remote.email);
+      if (key.isNotEmpty) {
+        merged[key] = remote;
       }
     }
-    staffList = unique;
+
+    staffList = merged.values.toList();
     _saveStaffToPrefs();
     notifyListeners();
   }
 
   void addStaff(StaffModel staff) {
-    staffList.removeWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
+    staffList.removeWhere((s) =>
+        s.id == staff.id ||
+        (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId) ||
+        (s.email.isNotEmpty && staff.email.isNotEmpty && s.email.trim().toLowerCase() == staff.email.trim().toLowerCase()));
     staffList.insert(0, staff);
     if (staff.role.trim().isNotEmpty) {
       addCustomRole(staff.role.trim());

@@ -1,0 +1,2532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Apna POS — Owner Master Admin Dashboard</title>
+  
+  <!-- Google Fonts & Font Awesome Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Chart.js & SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              100: '#dcfce7',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              accent: '#3b82f6',
+              dark: '#0f172a',
+              darker: '#090d16',
+              card: '#1e293b',
+              border: '#334155',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #090d16;
+      color: #f1f5f9;
+    }
+    
+    /* Custom Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0f172a;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+
+    .glass-card {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    
+    .glass-card-interactive:hover {
+      background: rgba(30, 41, 59, 0.9);
+      border-color: rgba(16, 185, 129, 0.3);
+      transform: translateY(-2px);
+      transition: all 0.2s ease;
+    }
+
+    .glow-emerald {
+      box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.25);
+    }
+
+    .glow-blue {
+      box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.25);
+    }
+
+    .badge-active {
+      background-color: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    
+    .badge-inactive {
+      background-color: rgba(239, 68, 68, 0.15);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .badge-suspended {
+      background-color: rgba(245, 158, 11, 0.15);
+      color: #fbbf24;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    .badge-plan-starter {
+      background: rgba(148, 163, 184, 0.15);
+      color: #cbd5e1;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+    }
+
+    .badge-plan-growth, .badge-plan-pro {
+      background: rgba(59, 130, 246, 0.15);
+      color: #60a5fa;
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .badge-plan-enterprise {
+      background: rgba(168, 85, 247, 0.15);
+      color: #c084fc;
+      border: 1px solid rgba(168, 85, 247, 0.3);
+    }
+
+    .modal-backdrop {
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(8px);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-emerald-500 selection:text-white">
+
+  <!-- ================= AUTH CONTAINER (LOGIN) ================= -->
+  <div id="authContainer" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gradient-to-br from-gray-950 via-slate-900 to-gray-950 overflow-y-auto">
+    <div class="w-full max-w-md p-8 glass-card rounded-2xl shadow-2xl border border-slate-700/60 relative overflow-hidden">
+      <!-- Glow decoration -->
+      <div class="absolute -top-24 -right-24 w-48 h-48 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+      <div class="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div class="text-center mb-8 relative z-10">
+        <div class="w-16 h-16 mx-auto mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-center shadow-inner">
+          <i class="fa-solid fa-crown text-3xl text-emerald-400"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-white tracking-tight">Apna POS Owner Portal</h1>
+        <p class="text-xs text-slate-400 mt-1">Super Admin & Platform Database Control</p>
+      </div>
+
+      <div id="loginAlert" class="hidden mb-4 p-3 rounded-lg text-sm flex items-center gap-2"></div>
+
+      <form id="loginForm" class="space-y-5 relative z-10">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Owner Email</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fa-regular fa-envelope"></i>
+            </div>
+            <input
+              type="email"
+              id="loginEmail"
+              required
+              value="chandanyaduvanshi190@gmail.com"
+              class="w-full pl-10 pr-4 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              placeholder="chandanyaduvanshi190@gmail.com"
+            />
+          </div>
+          <p class="text-[11px] text-slate-400 mt-1">Restricted to platform owner account.</p>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Password</label>
+          <div class="relative">
+            <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <i class="fa-solid fa-lock"></i>
+            </div>
+            <input
+              type="password"
+              id="loginPassword"
+              required
+              value="Admin@12"
+              class="w-full pl-10 pr-10 py-3 bg-slate-800/80 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              placeholder="••••••••"
+            />
+            <button
+              type="button"
+              id="togglePasswordBtn"
+              class="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-white"
+            >
+              <i class="fa-regular fa-eye" id="togglePasswordIcon"></i>
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          id="loginSubmitBtn"
+          class="w-full py-3 px-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-semibold text-sm rounded-xl shadow-lg shadow-emerald-500/25 transition-all flex items-center justify-center gap-2"
+        >
+          <i class="fa-solid fa-arrow-right-to-bracket"></i>
+          <span>Access Super Admin Dashboard</span>
+        </button>
+
+        <div class="p-3 bg-slate-800/50 rounded-xl border border-slate-700/50 text-[11px] text-slate-400 text-center">
+          <i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i>
+          Secure Master Controller for Apna POS ecosystem.
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= MAIN APP LAYOUT ================= -->
+  <div id="mainApp" class="hidden min-h-screen flex flex-col md:flex-row">
+    
+    <!-- SIDEBAR -->
+    <aside class="w-full md:w-64 bg-slate-900 border-r border-slate-800 flex flex-col shrink-0">
+      <!-- Brand Header -->
+      <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center shadow-lg shadow-emerald-500/20 text-white font-black text-lg">
+            ⚡
+          </div>
+          <div>
+            <div class="font-bold text-white text-base leading-tight">Apna POS</div>
+            <div class="text-[10px] text-emerald-400 font-semibold uppercase tracking-wider flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              Owner Portal
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="flex-1 p-4 space-y-1.5 overflow-y-auto">
+        <button
+          onclick="switchTab('overview')"
+          id="nav-overview"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-white bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+        >
+          <i class="fa-solid fa-chart-pie w-5 text-center"></i>
+          <span>Dashboard Overview</span>
+        </button>
+
+        <button
+          onclick="switchTab('users')"
+          id="nav-users"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800"
+        >
+          <i class="fa-solid fa-users w-5 text-center"></i>
+          <span>Users & Stores</span>
+          <span id="navUsersCountBadge" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">0</span>
+        </button>
+
+        <button
+          onclick="switchTab('subscriptions')"
+          id="nav-subscriptions"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800"
+        >
+          <i class="fa-solid fa-credit-card w-5 text-center"></i>
+          <span>Subscriptions</span>
+        </button>
+
+        <button
+          onclick="switchTab('database')"
+          id="nav-database"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800"
+        >
+          <i class="fa-solid fa-database w-5 text-center"></i>
+          <span>Database Activity</span>
+        </button>
+
+        <button
+          onclick="switchTab('leads')"
+          id="nav-leads"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800"
+        >
+          <i class="fa-solid fa-envelope-open-text w-5 text-center"></i>
+          <span>Leads & Inquiries</span>
+          <span id="navLeadsCountBadge" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30">0</span>
+        </button>
+      </nav>
+
+      <!-- User Profile & Logout -->
+      <div class="p-4 border-t border-slate-800 bg-slate-900/80">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            <div class="w-8 h-8 rounded-full bg-slate-700 border border-slate-600 flex items-center justify-center font-bold text-white text-xs shrink-0">
+              CY
+            </div>
+            <div class="truncate">
+              <div class="text-xs font-semibold text-white truncate" id="sidebarUserEmail">chandanyaduvanshi190@gmail.com</div>
+              <div class="text-[10px] text-emerald-400 font-bold">SUPER ADMIN</div>
+            </div>
+          </div>
+        </div>
+        <button
+          onclick="handleLogout()"
+          class="w-full py-2 px-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs font-semibold rounded-lg border border-red-500/20 transition-all flex items-center justify-center gap-2"
+        >
+          <i class="fa-solid fa-right-from-bracket"></i>
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 flex flex-col min-w-0 bg-[#090d16] overflow-y-auto">
+      
+      <!-- Top Navigation Header -->
+      <header class="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 id="pageHeaderTitle" class="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+            <span>Platform Overview</span>
+          </h1>
+          <p id="pageHeaderSubtitle" class="text-xs text-slate-400">Live metrics & aggregate data for Apna POS app</p>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <!-- DB Online pill -->
+          <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
+            <span class="font-medium text-emerald-400">DB Online</span>
+          </div>
+
+          <!-- Quick Action: Create User -->
+          <button
+            onclick="openCreateUserModal()"
+            class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center gap-2"
+          >
+            <i class="fa-solid fa-plus"></i>
+            <span>Create Store / User</span>
+          </button>
+
+          <!-- Refresh Data -->
+          <button
+            onclick="refreshActiveTab()"
+            title="Refresh Data"
+            class="w-9 h-9 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl border border-slate-700 transition-colors"
+          >
+            <i class="fa-solid fa-rotate" id="refreshIcon"></i>
+          </button>
+        </div>
+      </header>
+
+      <!-- CONTENT BODY -->
+      <div class="p-6 space-y-6 flex-1">
+
+        <!-- ================= TAB 1: OVERVIEW ================= -->
+        <section id="tab-overview" class="space-y-6">
+          
+          <!-- Key Metric Stats Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <!-- Total Users Card -->
+            <div class="glass-card p-5 rounded-2xl border border-slate-800 relative overflow-hidden">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Users</span>
+                <div class="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+                  <i class="fa-solid fa-users text-lg"></i>
+                </div>
+              </div>
+              <div class="mt-3 flex items-baseline gap-2">
+                <span id="statTotalUsers" class="text-3xl font-extrabold text-white">0</span>
+                <span class="text-xs text-slate-400">registered</span>
+              </div>
+              <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
+                <span class="text-emerald-400 font-semibold flex items-center gap-1">
+                  <i class="fa-solid fa-circle-check"></i> <span id="statActiveUsers">0</span> Active
+                </span>
+                <span class="text-rose-400 font-semibold flex items-center gap-1">
+                  <i class="fa-solid fa-circle-xmark"></i> <span id="statInactiveUsers">0</span> Inactive
+                </span>
+              </div>
+            </div>
+
+            <!-- Total Businesses / Outlets -->
+            <div class="glass-card p-5 rounded-2xl border border-slate-800 relative overflow-hidden">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Stores</span>
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <i class="fa-solid fa-store text-lg"></i>
+                </div>
+              </div>
+              <div class="mt-3 flex items-baseline gap-2">
+                <span id="statTotalBusinesses" class="text-3xl font-extrabold text-white">0</span>
+                <span class="text-xs text-slate-400">outlets</span>
+              </div>
+              <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                <span>Tables: <strong id="statTotalTables" class="text-white">0</strong></span>
+                <span>Staff: <strong id="statTotalStaff" class="text-white">0</strong></span>
+              </div>
+            </div>
+
+            <!-- Total Orders Processed -->
+            <div class="glass-card p-5 rounded-2xl border border-slate-800 relative overflow-hidden">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Platform Orders</span>
+                <div class="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                  <i class="fa-solid fa-receipt text-lg"></i>
+                </div>
+              </div>
+              <div class="mt-3 flex items-baseline gap-2">
+                <span id="statTotalOrders" class="text-3xl font-extrabold text-white">0</span>
+                <span class="text-xs text-slate-400">orders</span>
+              </div>
+              <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                <span>Products: <strong id="statTotalProducts" class="text-white">0</strong></span>
+                <span>Customers: <strong id="statTotalCustomers" class="text-white">0</strong></span>
+              </div>
+            </div>
+
+            <!-- Platform Total Revenue -->
+            <div class="glass-card p-5 rounded-2xl border border-slate-800 relative overflow-hidden">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Platform Revenue</span>
+                <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <i class="fa-solid fa-indian-rupee-sign text-lg"></i>
+                </div>
+              </div>
+              <div class="mt-3 flex items-baseline gap-2">
+                <span class="text-3xl font-extrabold text-white">₹<span id="statTotalRevenue">0</span></span>
+              </div>
+              <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+                <span>Avg Bill: ₹<strong id="statAvgOrder" class="text-white">0</strong></span>
+                <span>Leads: <strong id="statTotalLeads" class="text-amber-400">0</strong></span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Charts Row -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- User Registrations Growth Chart -->
+            <div class="lg:col-span-2 glass-card p-6 rounded-2xl border border-slate-800">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="font-bold text-white text-base">User Registration & Growth</h3>
+                  <p class="text-xs text-slate-400">New store onboarding activity over time</p>
+                </div>
+                <div class="px-2.5 py-1 bg-slate-800 rounded-lg text-xs font-semibold text-emerald-400 border border-slate-700">
+                  <i class="fa-solid fa-arrow-trend-up mr-1"></i> Live
+                </div>
+              </div>
+              <div class="h-64">
+                <canvas id="userGrowthChart"></canvas>
+              </div>
+            </div>
+
+            <!-- Subscriptions Breakdown Doughnut Chart -->
+            <div class="glass-card p-6 rounded-2xl border border-slate-800 flex flex-col">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="font-bold text-white text-base">Plan Distribution</h3>
+                  <p class="text-xs text-slate-400">Starter vs Growth vs Enterprise</p>
+                </div>
+              </div>
+              <div class="flex-1 flex items-center justify-center relative min-h-[200px]">
+                <canvas id="planDoughnutChart"></canvas>
+              </div>
+              <div class="grid grid-cols-3 gap-2 text-center text-xs mt-4 pt-3 border-t border-slate-800">
+                <div>
+                  <div class="text-slate-400">Starter</div>
+                  <div id="doughnutStarterCount" class="font-bold text-slate-200">0</div>
+                </div>
+                <div>
+                  <div class="text-blue-400">Growth/Pro</div>
+                  <div id="doughnutGrowthCount" class="font-bold text-blue-400">0</div>
+                </div>
+                <div>
+                  <div class="text-purple-400">Enterprise</div>
+                  <div id="doughnutEnterpriseCount" class="font-bold text-purple-400">0</div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Recent Users Activity Stream -->
+          <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden">
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 class="font-bold text-white text-base">Recent Registered Stores</h3>
+                <p class="text-xs text-slate-400">Latest merchants on boarded on Apna POS</p>
+              </div>
+              <button
+                onclick="switchTab('users')"
+                class="text-xs font-semibold text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
+              >
+                View All Users <i class="fa-solid fa-arrow-right"></i>
+              </button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-800/50 text-slate-400 uppercase tracking-wider text-[11px] border-b border-slate-800">
+                  <tr>
+                    <th class="py-3 px-4">Merchant / User</th>
+                    <th class="py-3 px-4">Store Name</th>
+                    <th class="py-3 px-4">Phone</th>
+                    <th class="py-3 px-4">Plan</th>
+                    <th class="py-3 px-4">Status</th>
+                    <th class="py-3 px-4">Orders</th>
+                    <th class="py-3 px-4">Joined Date</th>
+                    <th class="py-3 px-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="recentUsersTableBody" class="divide-y divide-slate-800/60 text-slate-300">
+                  <tr>
+                    <td colspan="8" class="text-center py-6 text-slate-500">Loading recent stores...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= TAB 2: USERS & STORES MANAGEMENT ================= -->
+        <section id="tab-users" class="hidden space-y-4">
+          
+          <!-- Controls Bar -->
+          <div class="glass-card p-4 rounded-2xl border border-slate-800 flex flex-col lg:flex-row gap-4 items-center justify-between">
+            
+            <!-- Search & Filters -->
+            <div class="w-full lg:w-auto flex flex-wrap items-center gap-3 flex-1">
+              
+              <!-- Search Input -->
+              <div class="relative flex-1 min-w-[220px]">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <i class="fa-solid fa-magnifying-glass text-xs"></i>
+                </div>
+                <input
+                  type="text"
+                  id="userSearchInput"
+                  oninput="debounceUserSearch()"
+                  placeholder="Search by email, name, phone, store..."
+                  class="w-full pl-9 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <!-- Status Filter -->
+              <select
+                id="userStatusFilter"
+                onchange="fetchUsers(1)"
+                class="bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="all">All Statuses</option>
+                <option value="active">Active Only</option>
+                <option value="inactive">Inactive</option>
+                <option value="suspended">Suspended</option>
+              </select>
+
+              <!-- Plan Filter -->
+              <select
+                id="userPlanFilter"
+                onchange="fetchUsers(1)"
+                class="bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="all">All Plans</option>
+                <option value="starter">Starter / Free</option>
+                <option value="growth">Growth / Pro</option>
+                <option value="enterprise">Enterprise</option>
+                <option value="custom">Custom</option>
+              </select>
+
+            </div>
+
+            <!-- Add User Button -->
+            <button
+              onclick="openCreateUserModal()"
+              class="w-full lg:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl shadow-md shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 shrink-0"
+            >
+              <i class="fa-solid fa-user-plus"></i>
+              <span>Create New User & Store</span>
+            </button>
+
+          </div>
+
+          <!-- Main Users Table -->
+          <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-800/80 text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-700/80">
+                  <tr>
+                    <th class="py-3.5 px-4 font-bold">User & Email</th>
+                    <th class="py-3.5 px-4 font-bold">Store / Company</th>
+                    <th class="py-3.5 px-4 font-bold">Phone</th>
+                    <th class="py-3.5 px-4 font-bold">Subscription Plan</th>
+                    <th class="py-3.5 px-4 font-bold">Status (Click to Toggle)</th>
+                    <th class="py-3.5 px-4 font-bold">Store Metrics</th>
+                    <th class="py-3.5 px-4 font-bold">Created Date</th>
+                    <th class="py-3.5 px-4 font-bold text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody" class="divide-y divide-slate-800 text-slate-300">
+                  <tr>
+                    <td colspan="8" class="text-center py-8 text-slate-500">Loading user database...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="p-4 bg-slate-800/40 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div id="usersPaginationSummary">Showing 0 of 0 users</div>
+              <div class="flex items-center gap-2" id="usersPaginationButtons">
+                <!-- Pagination buttons dynamically rendered -->
+              </div>
+            </div>
+
+          </div>
+
+        </section>
+
+        <!-- ================= TAB 3: SUBSCRIPTIONS & PLANS ================= -->
+        <section id="tab-subscriptions" class="hidden space-y-6">
+          
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            
+            <!-- Starter Plan Card -->
+            <div class="glass-card p-6 rounded-2xl border border-slate-700 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-3">
+                  <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-700 text-slate-300">Starter</span>
+                  <span class="text-xs text-slate-400">Free Tier</span>
+                </div>
+                <h3 class="text-2xl font-bold text-white">₹0 <span class="text-xs text-slate-400 font-normal">/ month</span></h3>
+                <p class="text-xs text-slate-400 mt-2">Essential POS billing and basic menu management.</p>
+                <ul class="mt-4 space-y-2 text-xs text-slate-300">
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Standard POS Billing</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Up to 50 Tables</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Up to 5 Staff Logins</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Thermal Receipt Printing</li>
+                </ul>
+              </div>
+              <div class="mt-6 pt-4 border-t border-slate-800">
+                <span class="text-xs text-slate-400">Active users on this plan: <strong id="subCountStarter" class="text-white">0</strong></span>
+              </div>
+            </div>
+
+            <!-- Growth / Pro Plan Card -->
+            <div class="glass-card p-6 rounded-2xl border border-blue-500/40 relative flex flex-col justify-between glow-blue">
+              <div class="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-500 text-white tracking-wider">
+                POPULAR 🔥
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-3">
+                  <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">Growth / Pro</span>
+                  <span class="text-xs text-blue-300 font-semibold">₹7,999/yr</span>
+                </div>
+                <h3 class="text-2xl font-bold text-white">₹999 <span class="text-xs text-slate-400 font-normal">/ month</span></h3>
+                <p class="text-xs text-slate-400 mt-2">Complete powerhouse for growing outlets.</p>
+                <ul class="mt-4 space-y-2 text-xs text-slate-300">
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> All Starter features</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Advanced Inventory & Alerts</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Loyalty & Rewards Engine</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Dynamic UPI QR Payments</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Unlimited Staff & Role Scoping</li>
+                </ul>
+              </div>
+              <div class="mt-6 pt-4 border-t border-slate-800">
+                <span class="text-xs text-slate-400">Active users on this plan: <strong id="subCountGrowth" class="text-blue-400">0</strong></span>
+              </div>
+            </div>
+
+            <!-- Enterprise Plan Card -->
+            <div class="glass-card p-6 rounded-2xl border border-purple-500/30 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-3">
+                  <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-purple-500/20 text-purple-400 border border-purple-500/30">Enterprise</span>
+                  <span class="text-xs text-purple-300">Multi-Store</span>
+                </div>
+                <h3 class="text-2xl font-bold text-white">₹2,499 <span class="text-xs text-slate-400 font-normal">/ month</span></h3>
+                <p class="text-xs text-slate-400 mt-2">Multi-branch franchises & custom integrations.</p>
+                <ul class="mt-4 space-y-2 text-xs text-slate-300">
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Central Multi-Outlet Dashboard</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Central Kitchen & Raw Inventory</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> AI Chotu Assistant Engine</li>
+                  <li class="flex items-center gap-2"><i class="fa-solid fa-check text-emerald-400"></i> Dedicated Account Manager & SLA</li>
+                </ul>
+              </div>
+              <div class="mt-6 pt-4 border-t border-slate-800">
+                <span class="text-xs text-slate-400">Active users on this plan: <strong id="subCountEnterprise" class="text-purple-400">0</strong></span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Quick Subscription Management Guidance -->
+          <div class="glass-card p-5 rounded-2xl border border-slate-800 flex items-center gap-4">
+            <div class="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0 text-xl">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </div>
+            <div>
+              <h4 class="font-bold text-white text-sm">Owner Subscription Control</h4>
+              <p class="text-xs text-slate-400 mt-0.5">You can upgrade, downgrade, extend expiry dates, or activate lifetime access for any user directly from the <strong>Users & Stores</strong> tab using the "Manage Subscription" action button.</p>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= TAB 4: DATABASE ACTIVITY & COLLECTIONS ================= -->
+        <section id="tab-database" class="hidden space-y-6">
+          
+          <div class="glass-card p-5 rounded-2xl border border-slate-800 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <i class="fa-solid fa-server text-lg"></i>
+              </div>
+              <div>
+                <h3 class="font-bold text-white text-base">MongoDB Database Status</h3>
+                <p class="text-xs text-slate-400">Database: <span id="dbName" class="text-emerald-400 font-mono font-semibold">apna_pos</span> &bull; Status: <span id="dbState" class="text-emerald-400 font-semibold">Connected</span></p>
+              </div>
+            </div>
+            <button
+              onclick="fetchDatabaseOverview()"
+              class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl border border-slate-700 flex items-center gap-2"
+            >
+              <i class="fa-solid fa-arrows-rotate"></i>
+              <span>Refresh Collections</span>
+            </button>
+          </div>
+
+          <!-- Collections Grid -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" id="collectionsGrid">
+            <!-- Dynamically populated collection cards -->
+          </div>
+
+          <!-- Document Inspection Section -->
+          <div id="collectionInspectorCard" class="hidden glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
+            <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-table-list text-emerald-400"></i>
+                <h3 class="font-bold text-white text-base">Collection: <span id="inspectCollectionName" class="text-emerald-400"></span></h3>
+                <span id="inspectCollectionCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold border border-slate-700">0 documents</span>
+              </div>
+              <button
+                onclick="closeCollectionInspector()"
+                class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center"
+              >
+                <i class="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+            
+            <div class="p-4 max-h-[500px] overflow-auto">
+              <pre id="inspectCollectionJson" class="text-[11px] font-mono text-emerald-300 bg-slate-950 p-4 rounded-xl border border-slate-800 overflow-x-auto"></pre>
+            </div>
+          </div>
+
+        </section>
+
+        <!-- ================= TAB 5: LEADS & INQUIRIES ================= -->
+        <section id="tab-leads" class="hidden space-y-4">
+          
+          <div class="glass-card p-4 rounded-2xl border border-slate-800 flex items-center justify-between">
+            <div>
+              <h3 class="font-bold text-white text-base">App Subscription Inquiries & Leads</h3>
+              <p class="text-xs text-slate-400">Merchants who submitted upgrade or sales requests from the Apna POS app</p>
+            </div>
+            <select
+              id="leadsStatusFilter"
+              onchange="fetchLeads(1)"
+              class="bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+            >
+              <option value="all">All Lead Statuses</option>
+              <option value="new">New Inquiries</option>
+              <option value="contacted">Contacted</option>
+              <option value="converted">Converted to Pro</option>
+              <option value="closed">Closed</option>
+            </select>
+          </div>
+
+          <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-800/80 text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-700/80">
+                  <tr>
+                    <th class="py-3.5 px-4 font-bold">Restaurant / Lead</th>
+                    <th class="py-3.5 px-4 font-bold">Contact Person</th>
+                    <th class="py-3.5 px-4 font-bold">Phone (Call / WhatsApp)</th>
+                    <th class="py-3.5 px-4 font-bold">Plan Interested</th>
+                    <th class="py-3.5 px-4 font-bold">Status</th>
+                    <th class="py-3.5 px-4 font-bold">Submitted Date</th>
+                    <th class="py-3.5 px-4 font-bold text-center">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="leadsTableBody" class="divide-y divide-slate-800 text-slate-300">
+                  <tr>
+                    <td colspan="7" class="text-center py-8 text-slate-500">Loading leads...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Leads Pagination -->
+            <div class="p-4 bg-slate-800/40 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+              <div id="leadsPaginationSummary">Showing 0 of 0 leads</div>
+              <div class="flex items-center gap-2" id="leadsPaginationButtons"></div>
+            </div>
+          </div>
+
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ================= MODALS ================= -->
+
+  <!-- MODAL: CREATE NEW USER & STORE -->
+  <div id="createUserModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop overflow-y-auto">
+    <div class="w-full max-w-2xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+            <i class="fa-solid fa-user-plus"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Create New User & Store</h3>
+            <p class="text-xs text-slate-400">Add an owner account with pre-configured subscription</p>
+          </div>
+        </div>
+        <button onclick="closeModal('createUserModal')" class="text-slate-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="createUserForm" onsubmit="handleCreateUserSubmit(event)" class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Owner Email *</label>
+            <input type="email" id="newEmail" required class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500" placeholder="merchant@example.com" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Password *</label>
+            <input type="password" id="newPassword" required minlength="6" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500" placeholder="Minimum 6 characters" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Owner Full Name</label>
+            <input type="text" id="newName" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500" placeholder="Rahul Sharma" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Phone Number</label>
+            <input type="text" id="newPhone" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500" placeholder="+91 9876543210" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Store / Restaurant Name</label>
+            <input type="text" id="newCompanyName" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500" placeholder="Royal Biryani & Cafe" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Business Type</label>
+            <select id="newBusinessType" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500">
+              <option value="Restaurant">Restaurant</option>
+              <option value="Cafe">Cafe / Bakery</option>
+              <option value="Fast Food">Fast Food / QSR</option>
+              <option value="Food Truck">Food Truck</option>
+              <option value="Bar & Pub">Bar & Pub</option>
+              <option value="Retail Grocery">Retail / Grocery</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="p-4 bg-slate-800/40 rounded-xl border border-slate-700/60 space-y-3">
+          <div class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+            <i class="fa-solid fa-crown"></i> Initial Subscription Configuration
+          </div>
+          
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[11px] text-slate-300 mb-1">Plan</label>
+              <select id="newPlan" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white">
+                <option value="starter">Starter / Free</option>
+                <option value="growth">Growth / Pro (₹999/mo)</option>
+                <option value="enterprise">Enterprise (₹2,499/mo)</option>
+                <option value="custom">Custom Lifetime</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 mb-1">Duration</label>
+              <select id="newDuration" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white">
+                <option value="30">1 Month (30 Days)</option>
+                <option value="90">3 Months (90 Days)</option>
+                <option value="180">6 Months (180 Days)</option>
+                <option value="365" selected>1 Year (365 Days)</option>
+                <option value="36500">Lifetime (100 Years)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 mb-1">Status</label>
+              <select id="newStatus" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white">
+                <option value="active" selected>Active (Enabled)</option>
+                <option value="inactive">Inactive</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+            <div>
+              <label class="block text-[11px] text-slate-300 mb-1">Max Tables Limit</label>
+              <input type="number" id="newMaxTables" value="50" min="1" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+            </div>
+            <div>
+              <label class="block text-[11px] text-slate-300 mb-1">Max Staff Limit</label>
+              <input type="number" id="newMaxStaff" value="20" min="1" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <button type="button" onclick="closeModal('createUserModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl">
+            Cancel
+          </button>
+          <button type="submit" id="createUserSubmitBtn" class="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2">
+            <i class="fa-solid fa-check"></i>
+            <span>Create Store & User</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: EDIT USER & STORE -->
+  <div id="editUserModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop overflow-y-auto">
+    <div class="w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+            <i class="fa-solid fa-pen-to-square"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Edit User & Store Profile</h3>
+            <p class="text-xs text-slate-400" id="editUserSubtitle">Updating user information</p>
+          </div>
+        </div>
+        <button onclick="closeModal('editUserModal')" class="text-slate-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="editUserForm" onsubmit="handleEditUserSubmit(event)" class="space-y-4">
+        <input type="hidden" id="editUserId" />
+        
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Email Address</label>
+          <input type="email" id="editEmail" required class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Owner Name</label>
+            <input type="text" id="editName" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Phone Number</label>
+            <input type="text" id="editPhone" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Store / Company Name</label>
+            <input type="text" id="editCompanyName" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Business Type</label>
+            <input type="text" id="editBusinessType" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">City</label>
+            <input type="text" id="editCity" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">State</label>
+            <input type="text" id="editState" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <button type="button" onclick="closeModal('editUserModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl">
+            Cancel
+          </button>
+          <button type="submit" id="editUserSubmitBtn" class="px-5 py-2 bg-blue-500 hover:bg-blue-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-blue-500/20 flex items-center gap-2">
+            <i class="fa-solid fa-save"></i>
+            <span>Save Changes</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: MANAGE SUBSCRIPTION -->
+  <div id="subscriptionModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop overflow-y-auto">
+    <div class="w-full max-w-md bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+            <i class="fa-solid fa-credit-card"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Manage Subscription</h3>
+            <p class="text-xs text-slate-400" id="subModalUserEmail">user@example.com</p>
+          </div>
+        </div>
+        <button onclick="closeModal('subscriptionModal')" class="text-slate-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="subscriptionForm" onsubmit="handleSubscriptionSubmit(event)" class="space-y-4">
+        <input type="hidden" id="subUserId" />
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Subscription Plan</label>
+          <select id="subPlan" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500">
+            <option value="starter">Starter / Essential (Free)</option>
+            <option value="growth">Growth / Pro All-in-One (₹999/mo)</option>
+            <option value="enterprise">Enterprise / Multi-Store (₹2,499/mo)</option>
+            <option value="custom">Custom Lifetime Plan</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Status</label>
+            <select id="subStatus" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500">
+              <option value="active">Active</option>
+              <option value="trial">Trial Period</option>
+              <option value="expired">Expired</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Billing Cycle</label>
+            <select id="subBillingCycle" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500">
+              <option value="annual">Annual</option>
+              <option value="monthly">Monthly</option>
+              <option value="lifetime">Lifetime</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Expiration Date</label>
+          <input type="date" id="subExpiresAt" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500" />
+          
+          <div class="flex flex-wrap gap-1.5 mt-2">
+            <button type="button" onclick="setQuickExpiry(30)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] border border-slate-700">+30 Days</button>
+            <button type="button" onclick="setQuickExpiry(90)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] border border-slate-700">+90 Days</button>
+            <button type="button" onclick="setQuickExpiry(365)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] border border-slate-700">+1 Year</button>
+            <button type="button" onclick="setQuickExpiry(36500)" class="px-2 py-1 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-lg text-[10px] border border-purple-500/30">Lifetime</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Max Tables</label>
+            <input type="number" id="subMaxTables" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Max Staff</label>
+            <input type="number" id="subMaxStaff" class="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">Admin Notes</label>
+          <input type="text" id="subNotes" placeholder="Reason or reference notes" class="w-full px-3.5 py-2 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white" />
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <button type="button" onclick="closeModal('subscriptionModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl">
+            Cancel
+          </button>
+          <button type="submit" id="subSubmitBtn" class="px-5 py-2 bg-purple-500 hover:bg-purple-600 text-white text-xs font-semibold rounded-xl shadow-lg shadow-purple-500/20 flex items-center gap-2">
+            <i class="fa-solid fa-check"></i>
+            <span>Update Plan</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: RESET PASSWORD -->
+  <div id="resetPasswordModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop">
+    <div class="w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-800 mb-5">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+            <i class="fa-solid fa-key"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-white">Reset Password</h3>
+            <p class="text-xs text-slate-400" id="resetPasswordUserEmail">user@example.com</p>
+          </div>
+        </div>
+        <button onclick="closeModal('resetPasswordModal')" class="text-slate-400 hover:text-white text-lg">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <form id="resetPasswordForm" onsubmit="handleResetPasswordSubmit(event)" class="space-y-4">
+        <input type="hidden" id="resetPasswordUserId" />
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">New Password</label>
+          <input type="password" id="newPasswordInput" required minlength="6" class="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-xs text-white focus:outline-none focus:border-amber-500" placeholder="Minimum 6 characters" />
+        </div>
+
+        <div class="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+          <button type="button" onclick="closeModal('resetPasswordModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold rounded-xl">
+            Cancel
+          </button>
+          <button type="submit" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-2">
+            <i class="fa-solid fa-lock"></i>
+            <span>Set New Password</span>
+          </button>
+        </div>
+  <!-- MODAL: STORE SALES & STAFF SEGREGATION -->
+  <div id="storeSalesModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 modal-backdrop overflow-y-auto">
+    <div class="w-full max-w-5xl bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-6 relative max-h-[92vh] overflow-y-auto">
+      <!-- Header -->
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-4 mb-5">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 text-lg">
+            <i class="fa-solid fa-store"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-lg font-bold text-white" id="salesModalStoreName">Store Sales & Staff Segregation</h3>
+              <span id="salesModalPlanBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-500/20 text-blue-400 border border-blue-500/30">Growth</span>
+            </div>
+            <p class="text-xs text-slate-400" id="salesModalStoreSubtitle">merchant@example.com</p>
+          </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+          <input type="hidden" id="salesModalActiveUserId" />
+          <select id="storeSalesPeriodSelect" onchange="fetchStoreSalesForModal()" class="bg-slate-800 border border-slate-700 text-slate-200 text-xs rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="thisWeek">This Week</option>
+            <option value="thisMonth" selected>This Month</option>
+            <option value="thisYear">This Year</option>
+            <option value="allTime">All Time</option>
+          </select>
+          <button onclick="closeModal('storeSalesModal')" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Overview Stats Grid -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6" id="salesModalStatsGrid">
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 uppercase font-semibold">Total Revenue</div>
+          <div class="text-xl font-extrabold text-emerald-400 mt-1" id="salesModalTotalRevenue">₹0</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">Gross: <span id="salesModalGrossSales">₹0</span></div>
+        </div>
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 uppercase font-semibold">Total Orders</div>
+          <div class="text-xl font-extrabold text-white mt-1" id="salesModalTotalOrders">0</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">Avg Ticket: <span id="salesModalAvgTicket">₹0</span></div>
+        </div>
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 uppercase font-semibold">Items Sold</div>
+          <div class="text-xl font-extrabold text-blue-400 mt-1" id="salesModalTotalItems">0</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">Discounts: <span id="salesModalDiscounts">₹0</span></div>
+        </div>
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <div class="text-[11px] text-slate-400 uppercase font-semibold">Total Tax</div>
+          <div class="text-xl font-extrabold text-purple-400 mt-1" id="salesModalTotalTax">₹0</div>
+          <div class="text-[10px] text-slate-500 mt-0.5">CGST+SGST: <span id="salesModalGst">₹0</span></div>
+        </div>
+      </div>
+
+      <!-- STAFF WISE SEGREGATION SECTION -->
+      <div class="glass-card rounded-xl border border-slate-800 p-5 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-users-gear text-emerald-400"></i>
+            <h4 class="font-bold text-white text-sm">Staff-Wise Sales Segregation</h4>
+            <span id="salesModalStaffCountBadge" class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">0 Staff</span>
+          </div>
+          <div class="text-xs text-slate-400">Sales credited per cashier, waiter & owner</div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-800/80 text-slate-300 uppercase tracking-wider text-[10px] border-b border-slate-700">
+              <tr>
+                <th class="py-2.5 px-3">Staff Member</th>
+                <th class="py-2.5 px-3">Role</th>
+                <th class="py-2.5 px-3">Bills Count</th>
+                <th class="py-2.5 px-3">Total Sales (₹)</th>
+                <th class="py-2.5 px-3">Sales Share (%)</th>
+                <th class="py-2.5 px-3">Avg Ticket</th>
+              </tr>
+            </thead>
+            <tbody id="salesModalStaffTableBody" class="divide-y divide-slate-800 text-slate-300">
+              <tr><td colspan="6" class="text-center py-4 text-slate-500">No staff sales records.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bottom Row: Payment Modes & Top Products -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <!-- Payment Breakdown -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <h4 class="font-bold text-white text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-wallet text-blue-400"></i> Payment Modes
+          </h4>
+          <div id="salesModalPaymentModesList" class="space-y-2">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- Top Selling Products in this Store -->
+        <div class="glass-card p-4 rounded-xl border border-slate-800">
+          <h4 class="font-bold text-white text-xs uppercase tracking-wider mb-3 flex items-center gap-2">
+            <i class="fa-solid fa-fire text-amber-400"></i> Top Products Sold
+          </h4>
+          <div id="salesModalTopProductsList" class="space-y-2">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Orders in Store -->
+      <div class="glass-card rounded-xl border border-slate-800 overflow-hidden">
+        <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+          <h4 class="font-bold text-white text-xs uppercase tracking-wider flex items-center gap-2">
+            <i class="fa-solid fa-receipt text-purple-400"></i> Store Orders List
+          </h4>
+          <span id="salesModalOrdersCountBadge" class="text-[10px] text-slate-400">0 orders</span>
+        </div>
+        <div class="max-h-60 overflow-y-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-800/80 text-slate-400 uppercase tracking-wider text-[10px] sticky top-0">
+              <tr>
+                <th class="py-2 px-3">Order #</th>
+                <th class="py-2 px-3">Staff / Cashier</th>
+                <th class="py-2 px-3">Type / Table</th>
+                <th class="py-2 px-3">Items</th>
+                <th class="py-2 px-3">Payment</th>
+                <th class="py-2 px-3">Amount</th>
+                <th class="py-2 px-3">Date</th>
+              </tr>
+            </thead>
+            <tbody id="salesModalOrdersTableBody" class="divide-y divide-slate-800 text-slate-300">
+              <tr><td colspan="7" class="text-center py-4 text-slate-500">No orders for selected range.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- JAVASCRIPT APPLICATION SCRIPT -->
+  <script>
+    // Constants & State
+    const API_BASE = window.location.origin + '/api/v1/superadmin';
+    const SUPERADMIN_EMAIL = 'chandanyaduvanshi190@gmail.com';
+    
+    let activeTab = 'overview';
+    let token = localStorage.getItem('apna_pos_superadmin_token') || '';
+    let currentUser = null;
+    let cachedStats = null;
+    let growthChartInstance = null;
+    let doughnutChartInstance = null;
+    let debounceTimer = null;
+
+    // Initialize App
+    document.addEventListener('DOMContentLoaded', () => {
+      // Toggle Password Button
+      const toggleBtn = document.getElementById('togglePasswordBtn');
+      if (toggleBtn) {
+        toggleBtn.addEventListener('click', () => {
+          const pwdInput = document.getElementById('loginPassword');
+          const icon = document.getElementById('togglePasswordIcon');
+          if (pwdInput.type === 'password') {
+            pwdInput.type = 'text';
+            icon.classList.replace('fa-eye', 'fa-eye-slash');
+          } else {
+            pwdInput.type = 'password';
+            icon.classList.replace('fa-eye-slash', 'fa-eye');
+          }
+        });
+      }
+
+      // Check if already authenticated
+      if (token) {
+        verifySession();
+      } else {
+        showAuth();
+      }
+
+      // Login form submission
+      document.getElementById('loginForm').addEventListener('submit', handleLogin);
+    });
+
+    // Helper: Show/Hide Auth Views
+    function showAuth() {
+      document.getElementById('authContainer').classList.remove('hidden');
+      document.getElementById('mainApp').classList.add('hidden');
+    }
+
+    function showMainApp() {
+      document.getElementById('authContainer').classList.add('hidden');
+      document.getElementById('mainApp').classList.remove('hidden');
+      document.getElementById('sidebarUserEmail').innerText = currentUser?.email || SUPERADMIN_EMAIL;
+      loadInitialData();
+    }
+
+    // Verify existing token session
+    async function verifySession() {
+      try {
+        const res = await fetch(`${API_BASE}/me`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data) {
+          currentUser = data.data;
+          showMainApp();
+        } else {
+          localStorage.removeItem('apna_pos_superadmin_token');
+          token = '';
+          showAuth();
+        }
+      } catch (err) {
+        localStorage.removeItem('apna_pos_superadmin_token');
+        token = '';
+        showAuth();
+      }
+    }
+
+    // Handle Login
+    async function handleLogin(e) {
+      e.preventDefault();
+      const email = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const btn = document.getElementById('loginSubmitBtn');
+      const alertBox = document.getElementById('loginAlert');
+
+      alertBox.classList.add('hidden');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Authenticating...';
+
+      try {
+        const res = await fetch(`${API_BASE}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          token = json.data.accessToken || json.data.tokens?.accessToken || json.data.token;
+          localStorage.setItem('apna_pos_superadmin_token', token);
+          currentUser = json.data.user;
+          showMainApp();
+        } else {
+          alertBox.className = 'mb-4 p-3 rounded-lg text-sm flex items-center gap-2 bg-red-500/20 text-red-300 border border-red-500/30';
+          alertBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> ${json.error?.message || json.message || 'Login failed. Access restricted to owner.'}`;
+          alertBox.classList.remove('hidden');
+        }
+      } catch (err) {
+        alertBox.className = 'mb-4 p-3 rounded-lg text-sm flex items-center gap-2 bg-red-500/20 text-red-300 border border-red-500/30';
+        alertBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Connection error: ${err.message}`;
+        alertBox.classList.remove('hidden');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-arrow-right-to-bracket"></i> <span>Access Super Admin Dashboard</span>';
+      }
+    }
+
+    // Logout
+    function handleLogout() {
+      Swal.fire({
+        title: 'Sign out of Owner Portal?',
+        text: 'You will need to enter your master owner password again to log back in.',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, sign out'
+      }).then((result) => {
+        if (result.isConfirmed) {
+          localStorage.removeItem('apna_pos_superadmin_token');
+          token = '';
+          currentUser = null;
+          showAuth();
+        }
+      });
+    }
+
+    // Tab Navigation
+    function switchTab(tabId) {
+      activeTab = tabId;
+      const tabs = ['overview', 'users', 'subscriptions', 'database', 'leads'];
+      
+      tabs.forEach(t => {
+        const el = document.getElementById(`tab-${t}`);
+        const navEl = document.getElementById(`nav-${t}`);
+        if (el) el.classList.toggle('hidden', t !== tabId);
+        if (navEl) {
+          if (t === tabId) {
+            navEl.className = 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-white bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          } else {
+            navEl.className = 'w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800';
+          }
+        }
+      });
+
+      // Update Header
+      const titles = {
+        overview: { title: 'Platform Overview', sub: 'Live metrics & aggregate data for Apna POS ecosystem' },
+        users: { title: 'Users & Stores Management', sub: 'Control subscriptions, status, passwords, and outlets' },
+        subscriptions: { title: 'Subscriptions & Plan Tiers', sub: 'Manage tier pricing, feature limits, and active merchant plans' },
+        database: { title: 'Database Activity & Collections', sub: 'Direct inspection of MongoDB collections and live documents' },
+        leads: { title: 'App Subscription Inquiries & Leads', sub: 'Review merchants interested in Growth & Enterprise plans' },
+      };
+
+      document.getElementById('pageHeaderTitle').innerText = titles[tabId]?.title || 'Owner Portal';
+      document.getElementById('pageHeaderSubtitle').innerText = titles[tabId]?.sub || '';
+
+      // Trigger load for active tab
+      refreshActiveTab();
+    }
+
+    function refreshActiveTab() {
+      const icon = document.getElementById('refreshIcon');
+      if (icon) icon.classList.add('fa-spin');
+
+      if (activeTab === 'overview') {
+        fetchStats();
+      } else if (activeTab === 'users') {
+        fetchUsers(1);
+      } else if (activeTab === 'subscriptions') {
+        fetchStats();
+      } else if (activeTab === 'database') {
+        fetchDatabaseOverview();
+      } else if (activeTab === 'leads') {
+        fetchLeads(1);
+      }
+
+      setTimeout(() => {
+        if (icon) icon.classList.remove('fa-spin');
+      }, 600);
+    }
+
+    function loadInitialData() {
+      fetchStats();
+      fetchUsers(1);
+      fetchLeads(1);
+    }
+
+    // ================= STATS & OVERVIEW API =================
+    async function fetchStats() {
+      try {
+        const res = await fetch(`${API_BASE}/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          cachedStats = json.data;
+          renderStats(json.data);
+        }
+      } catch (err) {
+        console.error('Fetch stats error:', err);
+      }
+    }
+
+    function renderStats(data) {
+      const t = data.totals || {};
+      document.getElementById('statTotalUsers').innerText = t.users || 0;
+      document.getElementById('statActiveUsers').innerText = t.activeUsers || 0;
+      document.getElementById('statInactiveUsers').innerText = (t.inactiveUsers || 0) + (t.suspendedUsers || 0);
+      document.getElementById('statTotalBusinesses').innerText = t.businesses || 0;
+      document.getElementById('statTotalOrders').innerText = (t.orders || 0).toLocaleString('en-IN');
+      document.getElementById('statTotalRevenue').innerText = (t.revenue || 0).toLocaleString('en-IN');
+      document.getElementById('statAvgOrder').innerText = (t.avgOrderValue || 0).toLocaleString('en-IN');
+      document.getElementById('statTotalProducts').innerText = t.products || 0;
+      document.getElementById('statTotalTables').innerText = t.tables || 0;
+      document.getElementById('statTotalStaff').innerText = t.staff || 0;
+      document.getElementById('statTotalCustomers').innerText = t.customers || 0;
+      document.getElementById('statTotalLeads').innerText = t.leads || 0;
+
+      // Nav Badges
+      const navUsersBadge = document.getElementById('navUsersCountBadge');
+      if (navUsersBadge) navUsersBadge.innerText = t.users || 0;
+      const navLeadsBadge = document.getElementById('navLeadsCountBadge');
+      if (navLeadsBadge) navLeadsBadge.innerText = t.leads || 0;
+
+      // Plan Counts
+      const plans = data.plansBreakdown || {};
+      const starterCount = plans.starter || 0;
+      const growthCount = (plans.growth || 0) + (plans.pro || 0);
+      const enterpriseCount = (plans.enterprise || 0) + (plans.custom || 0);
+
+      document.getElementById('doughnutStarterCount').innerText = starterCount;
+      document.getElementById('doughnutGrowthCount').innerText = growthCount;
+      document.getElementById('doughnutEnterpriseCount').innerText = enterpriseCount;
+
+      const subStarter = document.getElementById('subCountStarter');
+      if (subStarter) subStarter.innerText = starterCount;
+      const subGrowth = document.getElementById('subCountGrowth');
+      if (subGrowth) subGrowth.innerText = growthCount;
+      const subEnterprise = document.getElementById('subCountEnterprise');
+      if (subEnterprise) subEnterprise.innerText = enterpriseCount;
+
+      // Render Charts
+      renderCharts(data);
+
+      // Render Recent Users Table
+      renderRecentUsers(data.recentUsers || []);
+    }
+
+    function renderCharts(data) {
+      // 1. User Growth Chart
+      const growthCtx = document.getElementById('userGrowthChart');
+      if (growthCtx) {
+        if (growthChartInstance) growthChartInstance.destroy();
+
+        const monthly = data.monthlyGrowth || [];
+        const labels = monthly.length > 0
+          ? monthly.map(m => `Month ${m._id.month}/${m._id.year}`)
+          : ['Past Months', 'Current Month'];
+        const values = monthly.length > 0 ? monthly.map(m => m.count) : [0, data.totals?.users || 1];
+
+        growthChartInstance = new Chart(growthCtx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'New Store Registrations',
+              data: values,
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16, 185, 129, 0.1)',
+              fill: true,
+              tension: 0.4,
+              borderWidth: 2,
+              pointBackgroundColor: '#10b981',
+              pointRadius: 4,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            scales: {
+              x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8' } },
+              y: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: '#94a3b8', stepSize: 1 } }
+            }
+          }
+        });
+      }
+
+      // 2. Plan Doughnut Chart
+      const doughnutCtx = document.getElementById('planDoughnutChart');
+      if (doughnutCtx) {
+        if (doughnutChartInstance) doughnutChartInstance.destroy();
+
+        const plans = data.plansBreakdown || {};
+        doughnutChartInstance = new Chart(doughnutCtx, {
+          type: 'doughnut',
+          data: {
+            labels: ['Starter / Free', 'Growth / Pro', 'Enterprise / Custom'],
+            datasets: [{
+              data: [
+                plans.starter || 0,
+                (plans.growth || 0) + (plans.pro || 0),
+                (plans.enterprise || 0) + (plans.custom || 0)
+              ],
+              backgroundColor: ['#94a3b8', '#3b82f6', '#a855f7'],
+              borderWidth: 0,
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false }
+            },
+            cutout: '70%'
+          }
+        });
+      }
+    }
+
+    function renderRecentUsers(users) {
+      const tbody = document.getElementById('recentUsersTableBody');
+      if (!tbody) return;
+
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-6 text-slate-500">No stores registered yet.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => {
+        const statusClass = u.status === 'inactive' ? 'badge-inactive' : (u.status === 'suspended' ? 'badge-suspended' : 'badge-active');
+        const planClass = `badge-plan-${u.subscription?.plan || 'starter'}`;
+        const joinedDate = new Date(u.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-3 px-4">
+              <div class="font-semibold text-white">${u.email}</div>
+              <div class="text-[10px] text-slate-400 capitalize">${u.role || 'owner'}</div>
+            </td>
+            <td class="py-3 px-4">
+              <div class="font-medium text-slate-200">${u.companyName || 'Apna POS Store'}</div>
+              <div class="text-[10px] text-slate-500">${u.businessType || 'Restaurant'}</div>
+            </td>
+            <td class="py-3 px-4 font-mono text-slate-300">${u.phone || '—'}</td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${planClass}">
+                ${u.subscription?.plan || 'Starter'}
+              </span>
+            </td>
+            <td class="py-3 px-4">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusClass}">
+                ${u.status || 'Active'}
+              </span>
+            </td>
+            <td class="py-3 px-4 font-semibold text-emerald-400">${u.orderCount || 0}</td>
+            <td class="py-3 px-4 text-slate-400 text-[11px]">${joinedDate}</td>
+            <td class="py-3 px-4 text-right">
+              <button onclick="openSubscriptionModal('${u.id}', '${u.email}', '${u.subscription?.plan || 'starter'}', '${u.subscription?.status || 'active'}', '${u.subscription?.expiresAt || ''}', ${u.subscription?.maxTables || 50}, ${u.subscription?.maxStaff || 20})" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium">
+                Manage
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // ================= USERS MANAGEMENT API =================
+    async function fetchUsers(page = 1) {
+      const search = document.getElementById('userSearchInput')?.value || '';
+      const status = document.getElementById('userStatusFilter')?.value || 'all';
+      const plan = document.getElementById('userPlanFilter')?.value || 'all';
+
+      const tbody = document.getElementById('usersTableBody');
+      tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-emerald-400 mr-2"></i> Loading users...</td></tr>';
+
+      try {
+        const queryParams = new URLSearchParams({ page, limit: 15, search, status, plan });
+        const res = await fetch(`${API_BASE}/users?${queryParams}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          renderUsersTable(json.data.users || [], json.data.pagination);
+        } else {
+          tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-red-400">${json.message || 'Failed to fetch users'}</td></tr>`;
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-red-400">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    function debounceUserSearch() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchUsers(1);
+      }, 350);
+    }
+
+    function renderUsersTable(users, pagination) {
+      const tbody = document.getElementById('usersTableBody');
+      if (!tbody) return;
+
+      if (users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-10 text-slate-500">No users found matching your filters.</td></tr>';
+        document.getElementById('usersPaginationSummary').innerText = 'Showing 0 of 0 users';
+        document.getElementById('usersPaginationButtons').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = users.map(u => {
+        const isMasterAdmin = u.email.toLowerCase() === SUPERADMIN_EMAIL.toLowerCase();
+        const status = u.status || 'active';
+        const statusClass = status === 'inactive' ? 'badge-inactive' : (status === 'suspended' ? 'badge-suspended' : 'badge-active');
+        const planClass = `badge-plan-${u.subscription?.plan || 'starter'}`;
+        const joinedDate = new Date(u.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+        
+        let daysRemaining = '—';
+        if (u.subscription?.expiresAt) {
+          const diff = Math.ceil((new Date(u.subscription.expiresAt) - new Date()) / (1000 * 60 * 60 * 24));
+          daysRemaining = diff > 3000 ? 'Lifetime' : (diff > 0 ? `${diff}d left` : 'Expired');
+        }
+
+        const metrics = u.metrics || {};
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-3.5 px-4">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-white text-xs shrink-0">
+                  ${(u.business?.name || u.email).substring(0, 2).toUpperCase()}
+                </div>
+                <div>
+                  <div class="font-bold text-white flex items-center gap-1.5">
+                    <span>${u.email}</span>
+                    ${isMasterAdmin ? '<span class="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-400 rounded text-[9px] font-extrabold border border-emerald-500/30">OWNER</span>' : ''}
+                  </div>
+                  <div class="text-[11px] text-slate-400">${u.business?.name || 'Owner Profile'} &bull; <span class="capitalize">${u.role}</span></div>
+                </div>
+              </div>
+            </td>
+            
+            <td class="py-3.5 px-4">
+              <div class="font-semibold text-slate-200">${u.business?.companyName || 'Apna POS Outlet'}</div>
+              <div class="text-[10px] text-slate-400">${u.business?.businessType || 'Restaurant'} &bull; ${u.business?.city || 'India'}</div>
+            </td>
+
+            <td class="py-3.5 px-4 font-mono text-slate-300 text-[11px]">${u.phone || '—'}</td>
+
+            <td class="py-3.5 px-4">
+              <div class="flex flex-col gap-1 items-start">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${planClass}">
+                  ${u.subscription?.plan || 'Starter'}
+                </span>
+                <span class="text-[10px] text-slate-400">${daysRemaining}</span>
+              </div>
+            </td>
+
+            <!-- Instant Toggle Status -->
+            <td class="py-3.5 px-4">
+              ${isMasterAdmin ? `
+                <span class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase badge-active">Active</span>
+              ` : `
+                <button
+                  onclick="toggleUserStatus('${u.id}', '${status}', '${u.email}')"
+                  title="Click to toggle Active / Inactive"
+                  class="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase ${statusClass} hover:opacity-80 transition-all flex items-center gap-1.5"
+                >
+                  <span class="w-1.5 h-1.5 rounded-full ${status === 'active' ? 'bg-emerald-400' : 'bg-red-400'}"></span>
+                  <span>${status}</span>
+                  <i class="fa-solid fa-arrows-rotate text-[8px] opacity-70"></i>
+                </button>
+              `}
+            </td>
+
+            <td class="py-3.5 px-4">
+              <div class="text-xs font-semibold text-slate-200">₹${(metrics.totalSales || 0).toLocaleString('en-IN')}</div>
+              <div class="text-[10px] text-slate-400">${metrics.ordersCount || 0} orders &bull; ${metrics.staffCount || 0} staff</div>
+            </td>
+
+            <td class="py-3.5 px-4 text-slate-400 text-[11px]">${joinedDate}</td>
+
+            <td class="py-3.5 px-4 text-center">
+              <div class="flex items-center justify-center gap-1">
+                <!-- View Store Sales & Staff Segregation -->
+                <button
+                  onclick="openStoreSalesModal('${u.id}', '${u.email}', '${(u.business?.companyName || u.business?.name || u.email).replace(/'/g, "\\'")}', '${u.subscription?.plan || 'starter'}')"
+                  title="View Store Sales & Staff Segregation"
+                  class="w-7 h-7 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs"
+                >
+                  <i class="fa-solid fa-chart-line"></i>
+                </button>
+
+                <!-- Edit Info -->
+                <button
+                  onclick="openEditUserModal('${u.id}', '${u.email}', '${u.business?.name || ''}', '${u.phone || ''}', '${u.business?.companyName || ''}', '${u.business?.businessType || ''}', '${u.business?.city || ''}', '${u.business?.state || ''}')"
+                  title="Edit Profile"
+                  class="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center text-xs"
+                >
+                  <i class="fa-solid fa-pen"></i>
+                </button>
+
+                <!-- Manage Subscription -->
+                <button
+                  onclick="openSubscriptionModal('${u.id}', '${u.email}', '${u.subscription?.plan || 'starter'}', '${u.subscription?.status || 'active'}', '${u.subscription?.expiresAt || ''}', ${u.subscription?.maxTables || 50}, ${u.subscription?.maxStaff || 20}, '${u.subscription?.notes || ''}')"
+                  title="Manage Subscription"
+                  class="w-7 h-7 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 flex items-center justify-center text-xs"
+                >
+                  <i class="fa-solid fa-credit-card"></i>
+                </button>
+
+                <!-- Reset Password -->
+                <button
+                  onclick="openResetPasswordModal('${u.id}', '${u.email}')"
+                  title="Reset Password"
+                  class="w-7 h-7 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 flex items-center justify-center text-xs"
+                >
+                  <i class="fa-solid fa-key"></i>
+                </button>
+
+                <!-- Delete User (Disabled for master admin) -->
+                ${isMasterAdmin ? '' : `
+                  <button
+                    onclick="handleDeleteUser('${u.id}', '${u.email}')"
+                    title="Delete User & Store"
+                    class="w-7 h-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center text-xs"
+                  >
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                `}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Render Pagination
+      if (pagination) {
+        const start = ((pagination.page - 1) * pagination.limit) + 1;
+        const end = Math.min(pagination.total, pagination.page * pagination.limit);
+        document.getElementById('usersPaginationSummary').innerText = `Showing ${start} to ${end} of ${pagination.total} users`;
+
+        let btns = '';
+        if (pagination.page > 1) {
+          btns += `<button onclick="fetchUsers(${pagination.page - 1})" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold"><i class="fa-solid fa-chevron-left mr-1"></i> Prev</button>`;
+        }
+        btns += `<span class="px-3 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-xs font-bold border border-emerald-500/20">Page ${pagination.page} of ${pagination.pages}</span>`;
+        if (pagination.page < pagination.pages) {
+          btns += `<button onclick="fetchUsers(${pagination.page + 1})" class="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-semibold">Next <i class="fa-solid fa-chevron-right ml-1"></i></button>`;
+        }
+        document.getElementById('usersPaginationButtons').innerHTML = btns;
+      }
+    }
+
+    // Toggle User Status AJAX
+    async function toggleUserStatus(userId, currentStatus, email) {
+      const nextStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ status: nextStatus })
+        });
+        const json = await res.json();
+        if (json.success) {
+          Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `User ${email} is now ${nextStatus.toUpperCase()}`,
+            showConfirmButton: false,
+            timer: 2000
+          });
+          fetchUsers(1);
+          fetchStats();
+        } else {
+          Swal.fire('Error', json.message || 'Failed to update user status', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    // Delete User
+    function handleDeleteUser(userId, email) {
+      Swal.fire({
+        title: `Delete Store & User?`,
+        html: `Are you sure you want to permanently delete <strong>${email}</strong>?<br><span class="text-xs text-red-400">Warning: All orders, products, tables, staff, and store records will be permanently erased.</span>`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, Delete Permanently'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          try {
+            const res = await fetch(`${API_BASE}/users/${userId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const json = await res.json();
+            if (json.success) {
+              Swal.fire('Deleted!', `User ${email} and all store records have been removed.`, 'success');
+              fetchUsers(1);
+              fetchStats();
+            } else {
+              Swal.fire('Error', json.message || 'Failed to delete user', 'error');
+            }
+          } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+          }
+        }
+      });
+    }
+
+    // ================= MODAL HANDLERS =================
+    function openModal(id) {
+      document.getElementById(id).classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.add('hidden');
+    }
+
+    function openCreateUserModal() {
+      document.getElementById('createUserForm').reset();
+      openModal('createUserModal');
+    }
+
+    async function handleCreateUserSubmit(e) {
+      e.preventDefault();
+      const btn = document.getElementById('createUserSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Creating...';
+
+      const payload = {
+        email: document.getElementById('newEmail').value.trim(),
+        password: document.getElementById('newPassword').value,
+        name: document.getElementById('newName').value.trim(),
+        phone: document.getElementById('newPhone').value.trim(),
+        companyName: document.getElementById('newCompanyName').value.trim(),
+        businessType: document.getElementById('newBusinessType').value,
+        plan: document.getElementById('newPlan').value,
+        expiresInDays: document.getElementById('newDuration').value,
+        status: document.getElementById('newStatus').value,
+        maxTables: document.getElementById('newMaxTables').value,
+        maxStaff: document.getElementById('newMaxStaff').value,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/users`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          closeModal('createUserModal');
+          Swal.fire('Created!', `New store created for ${payload.email}`, 'success');
+          fetchUsers(1);
+          fetchStats();
+        } else {
+          Swal.fire('Error', json.error?.message || json.message || 'Failed to create user', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> <span>Create Store & User</span>';
+      }
+    }
+
+    function openEditUserModal(id, email, name, phone, company, type, city, state) {
+      document.getElementById('editUserId').value = id;
+      document.getElementById('editEmail').value = email;
+      document.getElementById('editName').value = name;
+      document.getElementById('editPhone').value = phone;
+      document.getElementById('editCompanyName').value = company;
+      document.getElementById('editBusinessType').value = type;
+      document.getElementById('editCity').value = city;
+      document.getElementById('editState').value = state;
+      document.getElementById('editUserSubtitle').innerText = `Editing ${email}`;
+      openModal('editUserModal');
+    }
+
+    async function handleEditUserSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('editUserId').value;
+      const btn = document.getElementById('editUserSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+
+      const payload = {
+        email: document.getElementById('editEmail').value.trim(),
+        name: document.getElementById('editName').value.trim(),
+        phone: document.getElementById('editPhone').value.trim(),
+        companyName: document.getElementById('editCompanyName').value.trim(),
+        businessType: document.getElementById('editBusinessType').value.trim(),
+        city: document.getElementById('editCity').value.trim(),
+        state: document.getElementById('editState').value.trim(),
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/users/${id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          closeModal('editUserModal');
+          Swal.fire('Updated!', 'User and store profile updated successfully.', 'success');
+          fetchUsers(1);
+        } else {
+          Swal.fire('Error', json.message || 'Failed to update user', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-save"></i> <span>Save Changes</span>';
+      }
+    }
+
+    function openSubscriptionModal(id, email, plan, status, expiresAt, maxTables, maxStaff, notes = '') {
+      document.getElementById('subUserId').value = id;
+      document.getElementById('subModalUserEmail').innerText = email;
+      document.getElementById('subPlan').value = plan || 'starter';
+      document.getElementById('subStatus').value = status || 'active';
+      document.getElementById('subMaxTables').value = maxTables || 50;
+      document.getElementById('subMaxStaff').value = maxStaff || 20;
+      document.getElementById('subNotes').value = notes || '';
+
+      if (expiresAt) {
+        const dateObj = new Date(expiresAt);
+        const yyyy = dateObj.getFullYear();
+        const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+        const dd = String(dateObj.getDate()).padStart(2, '0');
+        document.getElementById('subExpiresAt').value = `${yyyy}-${mm}-${dd}`;
+      } else {
+        document.getElementById('subExpiresAt').value = '';
+      }
+
+      openModal('subscriptionModal');
+    }
+
+    function setQuickExpiry(days) {
+      const now = new Date();
+      now.setDate(now.getDate() + days);
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      document.getElementById('subExpiresAt').value = `${yyyy}-${mm}-${dd}`;
+    }
+
+    async function handleSubscriptionSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('subUserId').value;
+      const btn = document.getElementById('subSubmitBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Updating...';
+
+      const payload = {
+        plan: document.getElementById('subPlan').value,
+        status: document.getElementById('subStatus').value,
+        billingCycle: document.getElementById('subBillingCycle').value,
+        expiresAt: document.getElementById('subExpiresAt').value ? new Date(document.getElementById('subExpiresAt').value) : null,
+        maxTables: document.getElementById('subMaxTables').value,
+        maxStaff: document.getElementById('subMaxStaff').value,
+        notes: document.getElementById('subNotes').value,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/users/${id}/subscription`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          closeModal('subscriptionModal');
+          Swal.fire('Plan Updated!', 'Subscription configuration updated successfully.', 'success');
+          fetchUsers(1);
+          fetchStats();
+        } else {
+          Swal.fire('Error', json.message || 'Failed to update subscription', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> <span>Update Plan</span>';
+      }
+    }
+
+    function openResetPasswordModal(id, email) {
+      document.getElementById('resetPasswordUserId').value = id;
+      document.getElementById('resetPasswordUserEmail').innerText = email;
+      document.getElementById('newPasswordInput').value = '';
+      openModal('resetPasswordModal');
+    }
+
+    async function handleResetPasswordSubmit(e) {
+      e.preventDefault();
+      const id = document.getElementById('resetPasswordUserId').value;
+      const newPassword = document.getElementById('newPasswordInput').value;
+
+      try {
+        const res = await fetch(`${API_BASE}/users/${id}/reset-password`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ password: newPassword })
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          closeModal('resetPasswordModal');
+          Swal.fire('Password Reset!', json.message || 'Password has been updated.', 'success');
+        } else {
+          Swal.fire('Error', json.message || 'Failed to reset password', 'error');
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    // ================= DATABASE INSPECTOR API =================
+    async function fetchDatabaseOverview() {
+      const grid = document.getElementById('collectionsGrid');
+      grid.innerHTML = '<div class="col-span-full text-center py-8 text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-emerald-400 mr-2"></i> Inspecting collections...</div>';
+
+      try {
+        const res = await fetch(`${API_BASE}/database/overview`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          document.getElementById('dbName').innerText = json.data.databaseName || 'apna_pos';
+          document.getElementById('dbState').innerText = json.data.connectionState || 'Connected';
+          renderCollectionsGrid(json.data.collections || []);
+        }
+      } catch (err) {
+        grid.innerHTML = `<div class="col-span-full text-center text-red-400 py-6">Error: ${err.message}</div>`;
+      }
+    }
+
+    function renderCollectionsGrid(collections) {
+      const grid = document.getElementById('collectionsGrid');
+      if (collections.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center text-slate-500 py-6">No collections found.</div>';
+        return;
+      }
+
+      grid.innerHTML = collections.map(c => {
+        return `
+          <div class="glass-card p-5 rounded-2xl border border-slate-800 flex flex-col justify-between glass-card-interactive">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <div class="w-9 h-9 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300">
+                  <i class="fa-solid fa-${c.icon || 'database'}"></i>
+                </div>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-slate-800 text-emerald-400 border border-slate-700">
+                  ${(c.count || 0).toLocaleString('en-IN')} docs
+                </span>
+              </div>
+              <h4 class="font-bold text-white text-base">${c.name}</h4>
+              <p class="text-xs text-slate-400 mt-1">${c.desc || 'System collection'}</p>
+            </div>
+            
+            <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
+              <span class="text-[10px] text-slate-500">
+                ${c.lastActivity ? 'Updated ' + new Date(c.lastActivity).toLocaleDateString() : 'No activity'}
+              </span>
+              <button
+                onclick="inspectCollection('${c.name}', ${c.count})"
+                class="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-lg text-xs font-semibold border border-emerald-500/20 transition-all flex items-center gap-1.5"
+              >
+                <i class="fa-solid fa-code"></i> Inspect
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function inspectCollection(collectionName, totalCount) {
+      const card = document.getElementById('collectionInspectorCard');
+      card.classList.remove('hidden');
+      document.getElementById('inspectCollectionName').innerText = collectionName;
+      document.getElementById('inspectCollectionCountBadge').innerText = `${totalCount} documents`;
+      
+      const jsonPre = document.getElementById('inspectCollectionJson');
+      jsonPre.innerText = '// Fetching collection documents...';
+
+      try {
+        const res = await fetch(`${API_BASE}/database/collection/${collectionName}?limit=15`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (json.success && json.data) {
+          jsonPre.innerText = JSON.stringify(json.data.documents, null, 2);
+          card.scrollIntoView({ behavior: 'smooth' });
+        } else {
+          jsonPre.innerText = `// Error: ${json.message}`;
+        }
+      } catch (err) {
+        jsonPre.innerText = `// Error: ${err.message}`;
+      }
+    }
+
+    function closeCollectionInspector() {
+      document.getElementById('collectionInspectorCard').classList.add('hidden');
+    }
+
+    // ================= LEADS API =================
+    async function fetchLeads(page = 1) {
+      const status = document.getElementById('leadsStatusFilter')?.value || 'all';
+      const tbody = document.getElementById('leadsTableBody');
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center py-8 text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-amber-400 mr-2"></i> Loading leads...</td></tr>';
+
+      try {
+        const queryParams = new URLSearchParams({ page, limit: 15, status });
+        const res = await fetch(`${API_BASE}/leads?${queryParams}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          renderLeadsTable(json.data.leads || [], json.data.pagination);
+        } else {
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-400">${json.message || 'Failed to fetch leads'}</td></tr>`;
+        }
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center py-6 text-red-400">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderLeadsTable(leads, pagination) {
+      const tbody = document.getElementById('leadsTableBody');
+      if (!tbody) return;
+
+      if (leads.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-10 text-slate-500">No subscription leads submitted yet.</td></tr>';
+        document.getElementById('leadsPaginationSummary').innerText = 'Showing 0 of 0 leads';
+        document.getElementById('leadsPaginationButtons').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = leads.map(l => {
+        const cleanPhone = String(l.phone || '').replace(/\D/g, '');
+        const dateStr = new Date(l.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition-colors">
+            <td class="py-3.5 px-4 font-bold text-white">${l.restaurantName || 'Restaurant Outlet'}</td>
+            <td class="py-3.5 px-4 text-slate-200">${l.contactPerson || 'Owner'}</td>
+            <td class="py-3.5 px-4 font-mono">
+              <div class="flex items-center gap-2">
+                <a href="tel:${l.phone}" class="text-emerald-400 hover:underline"><i class="fa-solid fa-phone mr-1"></i> ${l.phone}</a>
+                <a href="https://wa.me/${cleanPhone}" target="_blank" class="w-6 h-6 rounded bg-emerald-500/20 text-emerald-400 flex items-center justify-center hover:bg-emerald-500/30" title="Open WhatsApp">
+                  <i class="fa-brands fa-whatsapp"></i>
+                </a>
+              </div>
+            </td>
+            <td class="py-3.5 px-4 font-semibold text-blue-400">${l.selectedPlan || 'Pro Plan'}</td>
+            <td class="py-3.5 px-4">
+              <select
+                onchange="handleLeadStatusChange('${l._id}', this.value)"
+                class="bg-slate-800 border border-slate-700 text-xs rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none"
+              >
+                <option value="new" ${l.status === 'new' ? 'selected' : ''}>🟡 New</option>
+                <option value="contacted" ${l.status === 'contacted' ? 'selected' : ''}>🔵 Contacted</option>
+                <option value="converted" ${l.status === 'converted' ? 'selected' : ''}>🟢 Converted</option>
+                <option value="rejected" ${l.status === 'rejected' ? 'selected' : ''}>🔴 Closed</option>
+              </select>
+            </td>
+            <td class="py-3.5 px-4 text-slate-400 text-[11px]">${dateStr}</td>
+            <td class="py-3.5 px-4 text-center">
+              <button
+                onclick="handleDeleteLead('${l._id}')"
+                class="w-7 h-7 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 flex items-center justify-center text-xs"
+                title="Delete Lead"
+              >
+                <i class="fa-solid fa-trash"></i>
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function handleLeadStatusChange(leadId, status) {
+      try {
+        const res = await fetch(`${API_BASE}/leads/${leadId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ status })
+        });
+        const json = await res.json();
+        if (json.success) {
+          Swal.fire({
+            toast: true,
+            position: 'top-end',
+            icon: 'success',
+            title: `Lead updated to ${status.toUpperCase()}`,
+            showConfirmButton: false,
+            timer: 1800
+          });
+        }
+      } catch (err) {
+        Swal.fire('Error', err.message, 'error');
+      }
+    }
+
+    async function handleDeleteLead(leadId) {
+      Swal.fire({
+        title: 'Delete Lead?',
+        text: 'This inquiry record will be removed.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Delete'
+      }).then(async (result) => {
+        if (result.isConfirmed) {
+          try {
+            const res = await fetch(`${API_BASE}/leads/${leadId}`, {
+              method: 'DELETE',
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const json = await res.json();
+            if (json.success) {
+              fetchLeads(1);
+              fetchStats();
+              Swal.fire('Deleted!', 'Lead removed successfully.', 'success');
+            } else {
+              Swal.fire('Error', json.message || 'Failed to delete lead', 'error');
+            }
+          } catch (err) {
+            Swal.fire('Error', err.message, 'error');
+          }
+        }
+      });
+    }
+
+    // ================= STORE SALES & STAFF SEGREGATION =================
+    let currentStoreSalesUserId = null;
+
+    function openStoreSalesModal(userId, email, storeName, plan = 'Starter') {
+      currentStoreSalesUserId = userId;
+      document.getElementById('salesModalActiveUserId').value = userId;
+      document.getElementById('salesModalStoreName').innerText = storeName || 'Store Outlet';
+      document.getElementById('salesModalStoreSubtitle').innerText = `${email} • Detailed Store Sales & Staff Performance`;
+      
+      const planBadge = document.getElementById('salesModalPlanBadge');
+      if (planBadge) {
+        planBadge.innerText = plan.toUpperCase();
+        planBadge.className = `px-2 py-0.5 rounded-full text-[10px] font-bold uppercase badge-plan-${plan.toLowerCase()}`;
+      }
+
+      openModal('storeSalesModal');
+      fetchStoreSalesForModal();
+    }
+
+    async function fetchStoreSalesForModal() {
+      const userId = currentStoreSalesUserId || document.getElementById('salesModalActiveUserId').value;
+      if (!userId) return;
+
+      const period = document.getElementById('storeSalesPeriodSelect')?.value || 'thisMonth';
+      const staffTbody = document.getElementById('salesModalStaffTableBody');
+      const ordersTbody = document.getElementById('salesModalOrdersTableBody');
+
+      staffTbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-emerald-400 mr-2"></i> Computing staff sales...</td></tr>';
+      ordersTbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-purple-400 mr-2"></i> Loading store orders...</td></tr>';
+
+      try {
+        const res = await fetch(`${API_BASE}/users/${userId}/sales?period=${period}`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+
+        if (json.success && json.data) {
+          renderStoreSalesData(json.data);
+        } else {
+          staffTbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-400">${json.message || 'Failed to fetch sales'}</td></tr>`;
+          ordersTbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-400">${json.message || 'Failed to fetch orders'}</td></tr>`;
+        }
+      } catch (err) {
+        staffTbody.innerHTML = `<tr><td colspan="6" class="text-center py-4 text-red-400">Error: ${err.message}</td></tr>`;
+        ordersTbody.innerHTML = `<tr><td colspan="7" class="text-center py-4 text-red-400">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    function renderStoreSalesData(data) {
+      const sum = data.summary || {};
+      document.getElementById('salesModalTotalRevenue').innerText = `₹${(sum.totalRevenue || 0).toLocaleString('en-IN')}`;
+      document.getElementById('salesModalGrossSales').innerText = `₹${(sum.grossSales || 0).toLocaleString('en-IN')}`;
+      document.getElementById('salesModalTotalOrders').innerText = (sum.totalOrders || 0).toLocaleString('en-IN');
+      document.getElementById('salesModalAvgTicket').innerText = `₹${(sum.avgOrderValue || 0).toLocaleString('en-IN')}`;
+      document.getElementById('salesModalTotalItems').innerText = (sum.totalItems || 0).toLocaleString('en-IN');
+      document.getElementById('salesModalDiscounts').innerText = `₹${(sum.totalDiscount || 0).toLocaleString('en-IN')}`;
+      document.getElementById('salesModalTotalTax').innerText = `₹${(sum.totalTax || 0).toLocaleString('en-IN')}`;
+      document.getElementById('salesModalGst').innerText = `₹${((sum.cgst || 0) + (sum.sgst || 0)).toLocaleString('en-IN')}`;
+
+      // Staff Wise Segregation
+      const staffList = data.staffWise || [];
+      document.getElementById('salesModalStaffCountBadge').innerText = `${staffList.length} Staff Member${staffList.length === 1 ? '' : 's'}`;
+
+      const staffTbody = document.getElementById('salesModalStaffTableBody');
+      if (staffList.length === 0) {
+        staffTbody.innerHTML = '<tr><td colspan="6" class="text-center py-6 text-slate-500">No staff sales records found for this period.</td></tr>';
+      } else {
+        staffTbody.innerHTML = staffList.map(s => {
+          const isOwner = (s.role || '').toLowerCase().includes('owner') || (s.staffName || '').toLowerCase().includes('owner');
+          const roleBadgeClass = isOwner ? 'bg-amber-500/20 text-amber-300 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
+          const pct = Math.min(100, Math.max(0, s.percentage || 0));
+
+          return `
+            <tr class="hover:bg-slate-800/50 transition-colors">
+              <td class="py-2.5 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-xs text-white">
+                    ${(s.staffName || 'S').substring(0, 1).toUpperCase()}
+                  </div>
+                  <div>
+                    <div class="font-bold text-white text-xs">${s.staffName || 'Staff'}</div>
+                    <div class="text-[10px] text-slate-500">${s.staffId ? 'ID: ' + s.staffId : 'Direct POS'}</div>
+                  </div>
+                </div>
+              </td>
+              <td class="py-2.5 px-3">
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase border ${roleBadgeClass}">
+                  ${s.role || (isOwner ? 'Owner' : 'Staff')}
+                </span>
+              </td>
+              <td class="py-2.5 px-3 font-semibold text-white">${s.billsCount || 0} bills</td>
+              <td class="py-2.5 px-3 font-bold text-emerald-400">₹${(s.totalRevenue || 0).toLocaleString('en-IN')}</td>
+              <td class="py-2.5 px-3">
+                <div class="flex items-center gap-2">
+                  <div class="flex-1 bg-slate-800 rounded-full h-1.5 overflow-hidden max-w-[80px]">
+                    <div class="bg-emerald-400 h-full rounded-full" style="width: ${pct}%"></div>
+                  </div>
+                  <span class="text-[11px] font-semibold text-slate-300">${pct.toFixed(1)}%</span>
+                </div>
+              </td>
+              <td class="py-2.5 px-3 font-medium text-slate-300">₹${(s.avgTicket || 0).toLocaleString('en-IN')}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Payment Modes Breakdown
+      const pList = document.getElementById('salesModalPaymentModesList');
+      const modes = data.paymentModes || [];
+      if (modes.length === 0) {
+        pList.innerHTML = '<div class="text-slate-500 text-xs text-center py-3">No payments recorded.</div>';
+      } else {
+        pList.innerHTML = modes.map(m => `
+          <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/50">
+            <div class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full ${m.mode.includes('Cash') ? 'bg-emerald-400' : (m.mode.includes('UPI') ? 'bg-blue-400' : 'bg-purple-400')}"></span>
+              <span class="text-xs font-semibold text-white">${m.mode}</span>
+              <span class="text-[10px] text-slate-400">(${m.count} bills)</span>
+            </div>
+            <div class="text-right">
+              <div class="text-xs font-bold text-slate-200">₹${(m.amount || 0).toLocaleString('en-IN')}</div>
+              <div class="text-[10px] text-slate-400">${(m.percentage || 0).toFixed(1)}%</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Top Products
+      const prodList = document.getElementById('salesModalTopProductsList');
+      const prods = data.topProducts || [];
+      if (prods.length === 0) {
+        prodList.innerHTML = '<div class="text-slate-500 text-xs text-center py-3">No product sales yet.</div>';
+      } else {
+        prodList.innerHTML = prods.slice(0, 5).map((p, idx) => `
+          <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/40 border border-slate-700/50">
+            <div class="flex items-center gap-2 truncate">
+              <span class="w-5 h-5 rounded-md bg-slate-800 text-slate-400 font-bold text-[10px] flex items-center justify-center shrink-0">#${idx + 1}</span>
+              <span class="text-xs font-semibold text-white truncate">${p.name}</span>
+            </div>
+            <div class="text-right shrink-0">
+              <div class="text-xs font-bold text-amber-400">${p.quantity} sold</div>
+              <div class="text-[10px] text-slate-400">₹${(p.revenue || 0).toLocaleString('en-IN')}</div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Orders List
+      const orders = data.orders || [];
+      document.getElementById('salesModalOrdersCountBadge').innerText = `${orders.length} order${orders.length === 1 ? '' : 's'}`;
+      const ordersTbody = document.getElementById('salesModalOrdersTableBody');
+      if (orders.length === 0) {
+        ordersTbody.innerHTML = '<tr><td colspan="7" class="text-center py-6 text-slate-500">No orders for selected range.</td></tr>';
+      } else {
+        ordersTbody.innerHTML = orders.map(o => {
+          const dateStr = new Date(o.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+          const staffAttribution = o.staffName || (o.customerName && o.customerName.startsWith('Staff:') ? o.customerName.replace('Staff:', '').trim() : 'Owner / Main Terminal');
+
+          return `
+            <tr class="hover:bg-slate-800/40 transition-colors">
+              <td class="py-2 px-3 font-mono font-bold text-white">${o.orderNumber || o.id.substring(0, 6)}</td>
+              <td class="py-2 px-3 text-slate-200">
+                <span class="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium text-[11px] border border-slate-700">
+                  <i class="fa-solid fa-user-tag text-[9px] mr-1 text-emerald-400"></i> ${staffAttribution}
+                </span>
+              </td>
+              <td class="py-2 px-3 text-slate-300">${o.orderType || 'dineIn'} &bull; ${o.tableNumber || 'Takeaway'}</td>
+              <td class="py-2 px-3 text-slate-400">${o.totalItems || o.items?.length || 1} items</td>
+              <td class="py-2 px-3 capitalize font-medium text-slate-300">${o.paymentMethod || 'Cash'}</td>
+              <td class="py-2 px-3 font-bold text-emerald-400">₹${(o.totalAmount || 0).toLocaleString('en-IN')}</td>
+              <td class="py-2 px-3 text-slate-400 text-[10px]">${dateStr}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+    }
+  </script>
+</body>
+</html>

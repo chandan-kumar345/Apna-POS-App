@@ -1235,7 +1235,7 @@ class BluetoothPrinterService {
 
     final empId = staff.employeeId.isNotEmpty
         ? staff.employeeId
-        : (staff.id.length >= 4 ? 'EMP${staff.id.substring(0, 4).toUpperCase()}' : 'EMP001');
+        : (staff.id.length >= 4 ? 'EMP${staff.id.substring(0, 4).toUpperCase()}' : staff.id);
 
     final phone = staff.phone.isNotEmpty ? staff.phone : '';
     final email = staff.email.isNotEmpty ? staff.email : '';

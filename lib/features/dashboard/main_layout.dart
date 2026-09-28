@@ -112,8 +112,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       NavItemDef(
         index: 12,
         title: 'Staff Profile',
-        icon: Icons.badge_rounded,
-        imageAsset: 'assets/images/Side bar icons/staff.png',
+        icon: Icons.person_rounded,
+        imageAsset: 'assets/images/Side bar icons/staff_profile.png',
         iconColor: const Color(0xFF2563EB),
         iconBgColor: const Color(0xFFEFF6FF),
         getBadge: (db) => null,

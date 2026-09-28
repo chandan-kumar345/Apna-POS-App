@@ -6,6 +6,8 @@ const { connectDB } = require('./config/db');
 const cronService = require('./services/cronService');
 const socketService = require('./services/socketService');
 
+const superadminService = require('./services/superadminService');
+
 const startServer = async () => {
   try {
     const server = http.createServer(app);
@@ -18,6 +20,7 @@ const startServer = async () => {
       console.log(` Apna POS Backend Server Running (with Socket.IO)`);
       console.log(` Environment: ${env.NODE_ENV}`);
       console.log(` Port:        ${env.PORT}`);
+      console.log(` Web Admin:   http://localhost:${env.PORT}/admin`);
       console.log(` Local:       http://localhost:${env.PORT}/api/v1/health`);
       console.log(` Network:     http://0.0.0.0:${env.PORT}/api/v1/health`);
       console.log(`================================================`);
@@ -25,7 +28,10 @@ const startServer = async () => {
 
     // Connect to Database asynchronously
     connectDB()
-      .then(() => {
+      .then(async () => {
+        // Ensure Master SuperAdmin user is seeded and active
+        await superadminService.seedSuperAdmin();
+
         // Initialize daily summary cron jobs after DB is connected
         cronService.initSchedulers();
       })

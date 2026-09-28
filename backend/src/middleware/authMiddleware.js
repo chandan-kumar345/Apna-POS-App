@@ -24,6 +24,15 @@ const authMiddleware = async (req, res, next) => {
       throw ApiError.unauthorized('The user belonging to this token no longer exists', 'USER_NOT_FOUND');
     }
 
+    // Check user active status (Owner / SuperAdmin exempted)
+    const isSuperAdminEmail = (user.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com';
+    if (user.status && user.status !== 'active' && !user.isSuperAdmin && !isSuperAdminEmail) {
+      throw ApiError.forbidden(
+        'Your account is currently inactive or suspended. Please contact Apna POS Owner/Support.',
+        'ACCOUNT_INACTIVE'
+      );
+    }
+
     // Resolve or find linked staff details
     let staff = null;
     if (user.staffId) {

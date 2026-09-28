@@ -40,61 +40,59 @@ class StaffService {
   }) async {
     try {
       final isAuth = await _authService.isAuthenticated();
-      if (!isAuth) {
-        return _getLocalStaff(page: page, limit: limit, role: role, status: status, search: search);
-      }
+      if (isAuth) {
+        final queryParams = <String, dynamic>{
+          'page': 1,
+          'limit': 100, // Fetch full staff directory so local database stays rich and offline-ready
+        };
+        if (role != null && role.isNotEmpty && role != 'All Roles' && role != 'All') {
+          queryParams['role'] = role.trim();
+        }
+        if (status != null && status.isNotEmpty && status != 'All Status' && status != 'All') {
+          queryParams['status'] = status.trim();
+        }
+        if (search != null && search.trim().isNotEmpty) {
+          queryParams['search'] = search.trim();
+        }
 
-      final queryParams = <String, dynamic>{
-        'page': page,
-        'limit': limit,
-      };
-      if (role != null && role.isNotEmpty && role != 'All Roles' && role != 'All') {
-        queryParams['role'] = role.trim();
-      }
-      if (status != null && status.isNotEmpty && status != 'All Status' && status != 'All') {
-        queryParams['status'] = status.trim();
-      }
-      if (search != null && search.trim().isNotEmpty) {
-        queryParams['search'] = search.trim();
-      }
+        final response = await _apiClient.get(
+          ApiEndpoints.staff,
+          queryParameters: queryParams,
+        );
 
-      final response = await _apiClient.get(
-        ApiEndpoints.staff,
-        queryParameters: queryParams,
-      );
+        if (response != null) {
+          List<dynamic> rawList = [];
 
-      if (response != null) {
-        List<dynamic> rawList = [];
-
-        if (response is Map<String, dynamic>) {
-          if (response['data'] is Map<String, dynamic>) {
-            final data = response['data'] as Map<String, dynamic>;
-            if (data['staff'] is List) {
-              rawList = data['staff'] as List<dynamic>;
-            } else if (data['data'] is List) {
-              rawList = data['data'] as List<dynamic>;
+          if (response is Map<String, dynamic>) {
+            if (response['data'] is Map<String, dynamic>) {
+              final data = response['data'] as Map<String, dynamic>;
+              if (data['staff'] is List) {
+                rawList = data['staff'] as List<dynamic>;
+              } else if (data['data'] is List) {
+                rawList = data['data'] as List<dynamic>;
+              }
+            } else if (response['data'] is List) {
+              rawList = response['data'] as List<dynamic>;
+            } else if (response['staff'] is List) {
+              rawList = response['staff'] as List<dynamic>;
             }
-          } else if (response['data'] is List) {
-            rawList = response['data'] as List<dynamic>;
-          } else if (response['staff'] is List) {
-            rawList = response['staff'] as List<dynamic>;
+          } else if (response is List) {
+            rawList = response;
           }
-        } else if (response is List) {
-          rawList = response;
+
+          if (rawList.isNotEmpty) {
+            final staffMembers = rawList
+                .whereType<Map>()
+                .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
+                .toList();
+
+            // Safely merge with local cache without deleting local-only members
+            _db.syncStaffList(staffMembers);
+          }
+
+          // Trigger background sync for any unsynced local staff
+          syncUnsyncedStaff();
         }
-
-        final staffMembers = rawList
-            .whereType<Map>()
-            .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
-            .toList();
-
-        // Sync local cache with remote results
-        if (staffMembers.isNotEmpty) {
-          _db.syncStaffList(staffMembers);
-        }
-
-        // Trigger background sync for any unsynced local staff
-        syncUnsyncedStaff();
       }
     } catch (e) {
       debugPrint('[StaffService] fetchStaff error: $e. Using local database.');

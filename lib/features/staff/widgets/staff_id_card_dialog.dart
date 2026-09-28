@@ -160,7 +160,9 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
     final staff = widget.staff;
     final db = DatabaseService();
     final restaurant = db.restaurant;
-    final restaurantName = (restaurant?.name.isNotEmpty == true) ? restaurant!.name : 'MOTI MAHAL';
+    final restaurantName = (restaurant?.name.isNotEmpty == true)
+        ? restaurant!.name
+        : (db.currentUser?.companyName?.isNotEmpty == true ? db.currentUser!.companyName! : 'Apna POS Store');
     final restaurantTagline = (restaurant?.tagline.isNotEmpty == true) ? restaurant!.tagline : 'Authentic Flavors & Swift Service';
     final companyLogoPath = db.companyLogoPath;
 
@@ -176,12 +178,14 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
 
     final empId = staff.employeeId.isNotEmpty
         ? staff.employeeId
-        : (staff.id.length >= 4 ? 'EMP${staff.id.substring(0, 4).toUpperCase()}' : 'EMP001');
+        : (staff.id.length >= 4 ? 'EMP${staff.id.substring(0, 4).toUpperCase()}' : staff.id);
 
-    final phone = staff.phone.isNotEmpty ? staff.phone : '+91 9709593706';
+    final phone = staff.phone.isNotEmpty ? staff.phone : (restaurant?.phone.isNotEmpty == true ? restaurant!.phone : (db.currentUser?.phone ?? ''));
     final email = staff.email.isNotEmpty
         ? staff.email
-        : '${staff.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '.')}@${restaurantName.toLowerCase().replaceAll(RegExp(r'\s+'), '')}.com';
+        : (db.currentUser?.email.isNotEmpty == true
+            ? db.currentUser!.email
+            : '${staff.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '.')}@${restaurantName.toLowerCase().replaceAll(RegExp(r'\s+'), '')}.com');
 
     final joinDateStr = staff.joiningDate != null
         ? DateFormat('dd MMM yyyy').format(staff.joiningDate!)

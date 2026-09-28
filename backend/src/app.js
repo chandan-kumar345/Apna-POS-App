@@ -89,6 +89,16 @@ app.use(
   })
 );
 
+// 6b. Serve Super Admin Web Dashboard
+const adminPublicPath = path.join(__dirname, '../public/admin');
+app.use('/admin', express.static(adminPublicPath));
+app.use('/dashboard', express.static(adminPublicPath));
+
+// Route /admin and /dashboard requests to index.html
+app.get(['/admin', '/admin/*', '/dashboard', '/dashboard/*'], (req, res) => {
+  res.sendFile(path.join(adminPublicPath, 'index.html'));
+});
+
 // 7. Mount Versioned APIs under /api/v1
 app.use('/api/v1', routes);
 

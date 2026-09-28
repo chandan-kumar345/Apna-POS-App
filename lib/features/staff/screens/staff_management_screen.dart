@@ -76,7 +76,8 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Future<void> _loadStaffData() async {
-    if (_staffList.isEmpty) {
+    _applyLocalFilter();
+    if (_staffList.isEmpty && _db.staffList.isEmpty) {
       setState(() => _isLoading = true);
     }
     try {
@@ -256,11 +257,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       context,
       MaterialPageRoute(
         builder: (ctx) => CreateStaffScreen(
-          onStaffCreated: _loadStaffData,
+          onStaffCreated: () {
+            _applyLocalFilter();
+            _loadStaffData();
+          },
         ),
       ),
     );
-    if (created == true) {
+    if (mounted) {
+      _applyLocalFilter();
       _loadStaffData();
     }
   }
@@ -271,11 +276,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       MaterialPageRoute(
         builder: (ctx) => StaffSettingsScreen(
           staff: staff,
-          onStaffUpdated: _loadStaffData,
+          onStaffUpdated: () {
+            _applyLocalFilter();
+            _loadStaffData();
+          },
         ),
       ),
     );
-    if (updated == true) {
+    if (mounted) {
+      _applyLocalFilter();
       _loadStaffData();
     }
   }

@@ -417,7 +417,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
   /// Top Header Bar with Refresh
   Widget _buildHeader() {
-    final storeName = _db.restaurant?.name ?? 'Apna POS Diner';
+    final user = _db.currentUser;
+    final isStaff = user != null && !user.isOwner && !user.isAdmin;
+    final staffCompanyName = user?.companyName;
+    final storeName = _db.restaurant?.name ?? ((isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty) ? staffCompanyName : 'Apna POS Diner');
 
     return Row(
       children: [
@@ -425,21 +428,55 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                storeName,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF0F172A),
-                  letterSpacing: -0.5,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Flexible(
+                    child: Text(
+                      storeName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: -0.5,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF051C48).withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFF051C48).withOpacity(0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.business_rounded, size: 12, color: Color(0xFF051C48)),
+                          const SizedBox(width: 4),
+                          Text(
+                            staffCompanyName,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF051C48),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 1),
-              const Text(
-                'Real-Time Cloud Business Analytics',
-                style: TextStyle(
+              Text(
+                isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty
+                    ? 'Workplace: $staffCompanyName • Real-Time Business Analytics'
+                    : 'Real-Time Cloud Business Analytics',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: Color(0xFF64748B),

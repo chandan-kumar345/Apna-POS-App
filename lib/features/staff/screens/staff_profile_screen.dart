@@ -28,9 +28,9 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     if (user == null) {
       if (db.staffList.isNotEmpty) return db.staffList.first;
       return StaffModel(
-        id: 'staff_001',
-        name: 'Staff Member',
-        employeeId: 'EMP001',
+        id: '',
+        name: '',
+        employeeId: '',
         createdAt: DateTime.now(),
       );
     }
@@ -46,7 +46,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
     final empId = user.employeeId?.isNotEmpty == true
         ? user.employeeId!
-        : (user.id.length >= 4 ? 'EMP${user.id.substring(0, 4).toUpperCase()}' : 'EMP001');
+        : (user.id.length >= 4 ? 'EMP${user.id.substring(0, 4).toUpperCase()}' : user.id);
 
     final dept = user.role.toLowerCase().contains('cash')
         ? 'Front Office'
@@ -56,12 +56,16 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                 ? 'Dining & Service'
                 : (user.isOwner || user.isAdmin ? 'Management' : 'Operations')));
 
+    final fallbackPhone = (user.phone?.isNotEmpty == true)
+        ? user.phone!
+        : (db.restaurant?.phone.isNotEmpty == true ? db.restaurant!.phone : '');
+
     return StaffModel(
-      id: user.id.isNotEmpty ? user.id : 'staff_001',
-      name: user.name.isNotEmpty ? user.name : 'Staff Member',
+      id: user.id,
+      name: user.name,
       employeeId: empId,
       email: user.email,
-      phone: user.phone ?? '+91 9709593706',
+      phone: fallbackPhone,
       role: user.role.isNotEmpty ? user.role : 'Staff',
       status: 'Active',
       department: dept,
@@ -107,16 +111,20 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     final db = DatabaseService();
     final staff = _getEffectiveStaff(db);
     final restaurant = db.restaurant;
-    final restaurantName = (restaurant?.name.isNotEmpty == true) ? restaurant!.name : 'MOTI MAHAL';
+    final restaurantName = (restaurant?.name.isNotEmpty == true)
+        ? restaurant!.name
+        : (db.currentUser?.companyName?.isNotEmpty == true ? db.currentUser!.companyName! : 'Apna POS Store');
     final restaurantTagline = (restaurant?.tagline.isNotEmpty == true) ? restaurant!.tagline : 'Authentic Flavors & Swift Service';
     final companyLogoPath = db.companyLogoPath;
 
     final department = staff.department.isNotEmpty ? staff.department : 'Dining & Service';
-    final empId = staff.employeeId.isNotEmpty ? staff.employeeId : 'EMP001';
-    final phone = staff.phone.isNotEmpty ? staff.phone : '+91 9709593706';
+    final empId = staff.employeeId.isNotEmpty ? staff.employeeId : staff.id;
+    final phone = staff.phone.isNotEmpty ? staff.phone : (restaurant?.phone.isNotEmpty == true ? restaurant!.phone : (db.currentUser?.phone ?? ''));
     final email = staff.email.isNotEmpty
         ? staff.email
-        : '${staff.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '.')}@${restaurantName.toLowerCase().replaceAll(RegExp(r'\s+'), '')}.com';
+        : (db.currentUser?.email.isNotEmpty == true
+            ? db.currentUser!.email
+            : '${staff.name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), '.')}@${restaurantName.toLowerCase().replaceAll(RegExp(r'\s+'), '')}.com');
 
     final joinDateStr = staff.joiningDate != null
         ? DateFormat('dd MMM yyyy').format(staff.joiningDate!)

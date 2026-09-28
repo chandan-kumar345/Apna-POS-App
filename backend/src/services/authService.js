@@ -152,6 +152,15 @@ class AuthService {
       throw ApiError.unauthorized('Incorrect password or PIN. Please check and try again.', 'INVALID_CREDENTIALS');
     }
 
+    // Check user active status (Owner / SuperAdmin exempted)
+    const isSuperAdminEmail = (user?.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com';
+    if (user && user.status && user.status !== 'active' && !user.isSuperAdmin && !isSuperAdminEmail) {
+      throw ApiError.forbidden(
+        'Your account is currently inactive or suspended. Please contact Apna POS Owner/Support.',
+        'ACCOUNT_INACTIVE'
+      );
+    }
+
     // 6. Ensure user record exists for token generation
     if (!user && staff) {
       const emailPlaceholder = staff.email ? staff.email.toLowerCase() : `${staff.employeeId.toLowerCase()}@apnapos.internal`;
