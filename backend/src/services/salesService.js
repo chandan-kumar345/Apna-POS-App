@@ -10,7 +10,33 @@ class SalesService {
     const now = new Date();
     const p = (period || '').toLowerCase().trim();
 
-    // 1. If an explicit known named period is provided, resolve it directly
+    // 1. Prioritize explicit start/end dates from client if provided (matches user timezone)
+    const effectiveFrom = fromDate || from || startDate;
+    const effectiveTo = toDate || to || endDate;
+
+    if (effectiveFrom && effectiveTo) {
+      let start = new Date(effectiveFrom);
+      let end = new Date(effectiveTo);
+
+      if (isNaN(start.getTime())) {
+        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      } else if (typeof effectiveFrom === 'string' && !effectiveFrom.includes('T') && !effectiveFrom.includes(':')) {
+        start.setHours(0, 0, 0, 0);
+      }
+
+      if (isNaN(end.getTime())) {
+        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      } else if (typeof effectiveTo === 'string' && !effectiveTo.includes('T') && !effectiveTo.includes(':')) {
+        end.setHours(23, 59, 59, 999);
+      }
+
+      const isSingleDayCustom = (end.getTime() - start.getTime()) <= (24 * 60 * 60 * 1000 + 1000) ||
+        (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate());
+
+      return { start, end, resolvedPeriod: isSingleDayCustom ? (p || 'singleDay') : (p || 'custom') };
+    }
+
+    // 2. Named period resolution if no explicit date strings passed
     if (p === 'today') {
       const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
       const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
@@ -37,32 +63,6 @@ class SalesService {
       const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
       const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
       return { start, end, resolvedPeriod: 'thisYear' };
-    }
-
-    // 2. Custom Date Range resolution
-    const effectiveFrom = fromDate || from || startDate;
-    const effectiveTo = toDate || to || endDate;
-
-    if (effectiveFrom && effectiveTo) {
-      let start = new Date(effectiveFrom);
-      let end = new Date(effectiveTo);
-
-      if (isNaN(start.getTime())) {
-        start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-      } else if (typeof effectiveFrom === 'string' && !effectiveFrom.includes('T') && !effectiveFrom.includes(':')) {
-        start.setHours(0, 0, 0, 0);
-      }
-
-      if (isNaN(end.getTime())) {
-        end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-      } else if (typeof effectiveTo === 'string' && !effectiveTo.includes('T') && !effectiveTo.includes(':')) {
-        end.setHours(23, 59, 59, 999);
-      }
-
-      const isSingleDayCustom = (end.getTime() - start.getTime()) <= (24 * 60 * 60 * 1000 + 1000) ||
-        (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth() && start.getDate() === end.getDate());
-
-      return { start, end, resolvedPeriod: isSingleDayCustom ? 'singleDay' : 'custom' };
     }
 
     // 3. Fallback: allTime

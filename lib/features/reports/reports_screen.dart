@@ -46,7 +46,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   // Active Tab & Pagination
   int _activeTabIndex = 0;
   int _currentPage = 1;
-  int _pageSize = 6;
+  int _pageSize = 15;
 
   bool get _isStaffUser => _db.currentUser != null && !_db.currentUser!.isOwner && !_db.currentUser!.isAdmin;
 

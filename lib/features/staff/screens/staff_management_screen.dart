@@ -1090,14 +1090,22 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
 
   Widget _buildAvatar(StaffModel staff, {bool isMobile = false}) {
     final double size = isMobile ? 26 : 32;
-    if (staff.avatarUrl.isNotEmpty) {
-      if (staff.avatarUrl.startsWith('http://') || staff.avatarUrl.startsWith('https://')) {
+    final db = DatabaseService();
+    final bool isOwner = staff.role.toLowerCase() == 'owner' || staff.role.toLowerCase() == 'admin';
+
+    String effectiveUrl = staff.avatarUrl.trim();
+    if (effectiveUrl.isEmpty && isOwner) {
+      effectiveUrl = db.companyLogoPath ?? db.restaurant?.logoUrl ?? '';
+    }
+
+    if (effectiveUrl.isNotEmpty) {
+      if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
         return SizedBox(
           width: size,
           height: size,
           child: ClipOval(
             child: Image.network(
-              staff.avatarUrl,
+              effectiveUrl,
               width: size,
               height: size,
               fit: BoxFit.cover,
@@ -1105,13 +1113,27 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
             ),
           ),
         );
-      } else if (File(staff.avatarUrl).existsSync()) {
+      } else if (effectiveUrl.startsWith('assets/')) {
+        return SizedBox(
+          width: size,
+          height: size,
+          child: ClipOval(
+            child: Image.asset(
+              effectiveUrl,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff, size: size),
+            ),
+          ),
+        );
+      } else if (File(effectiveUrl).existsSync()) {
         return SizedBox(
           width: size,
           height: size,
           child: ClipOval(
             child: Image.file(
-              File(staff.avatarUrl),
+              File(effectiveUrl),
               width: size,
               height: size,
               fit: BoxFit.cover,
@@ -1125,6 +1147,35 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Widget _buildAvatarFallback(StaffModel staff, {double size = 32}) {
+    final bool isOwner = staff.role.toLowerCase() == 'owner' || staff.role.toLowerCase() == 'admin';
+    if (isOwner) {
+      return SizedBox(
+        width: size,
+        height: size,
+        child: ClipOval(
+          child: Image.asset(
+            'assets/images/restaurant_icon.png',
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Container(
+              color: const Color(0xFF1E3A8A),
+              child: Center(
+                child: Text(
+                  staff.initials,
+                  style: TextStyle(
+                    fontSize: size * 0.38,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Container(
       width: size,
       height: size,

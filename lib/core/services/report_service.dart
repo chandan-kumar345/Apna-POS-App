@@ -407,7 +407,13 @@ class ReportService {
           final bool isSingleDayPeriod = pLower == 'today' || pLower == 'yesterday' || pLower == 'singleday';
           final bool hasStaffFilter = (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') || isStaffSession;
 
-          if (hasStaffFilter || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1) {
+          // Always compute unified report with both cloud and local orders merged to ensure complete parity
+          final mergedOrders = _db.deduplicateOrdersList([
+            ...serverReport.orders,
+            ..._db.orders,
+          ]);
+
+          if (hasStaffFilter || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1 || _db.orders.isNotEmpty) {
             final local = _buildLocalSalesReport(
               period: period,
               startDate: startDate ?? fromDate,
@@ -417,7 +423,7 @@ class ReportService {
               outlet: outlet,
               staff: isStaffSession ? currentUser.name : staff,
               search: search,
-              ordersOverride: serverReport.orders.isNotEmpty ? serverReport.orders : null,
+              ordersOverride: mergedOrders.isNotEmpty ? mergedOrders : null,
             );
             return local;
           }
@@ -565,51 +571,54 @@ class ReportService {
     DateTime? start;
     DateTime? end;
 
-    if (pLower == 'today') {
-      start = DateTime(now.year, now.month, now.day, 0, 0, 0);
-      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-    } else if (pLower == 'yesterday') {
-      final y = now.subtract(const Duration(days: 1));
-      start = DateTime(y.year, y.month, y.day, 0, 0, 0);
-      end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
-    } else if (pLower == 'thisweek' || pLower == 'week' || pLower == 'this week') {
-      final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
-      final mon = now.subtract(Duration(days: diff));
-      start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
-      end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-    } else if (pLower == 'thismonth' || pLower == 'month' || pLower == 'this month') {
-      start = DateTime(now.year, now.month, 1, 0, 0, 0);
-      final lastDay = DateTime(now.year, now.month + 1, 0).day;
-      end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
-    } else {
-      if (startDate != null && startDate.isNotEmpty) {
-        final s = DateTime.tryParse(startDate);
-        if (s != null) {
-          start = s.isUtc ? s.toLocal() : s;
-        }
+    if (startDate != null && startDate.isNotEmpty) {
+      final s = DateTime.tryParse(startDate);
+      if (s != null) {
+        start = s.isUtc ? s.toLocal() : s;
       }
-      if (endDate != null && endDate.isNotEmpty) {
-        final e = DateTime.tryParse(endDate);
-        if (e != null) {
-          end = e.isUtc ? e.toLocal() : e;
-        }
+    }
+    if (endDate != null && endDate.isNotEmpty) {
+      final e = DateTime.tryParse(endDate);
+      if (e != null) {
+        end = e.isUtc ? e.toLocal() : e;
       }
     }
 
-    List<OrderModel> settled;
-    if (ordersOverride != null) {
-      settled = _db.deduplicateOrdersList(ordersOverride);
-      if (start != null || end != null) {
-        settled = settled.where((o) {
-          final oDate = o.createdDateTime.toLocal();
-          if (start != null && oDate.isBefore(start)) return false;
-          if (end != null && oDate.isAfter(end)) return false;
-          return true;
-        }).toList();
+    if (start == null || end == null) {
+      if (pLower == 'today') {
+        start = DateTime(now.year, now.month, now.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (pLower == 'yesterday') {
+        final y = now.subtract(const Duration(days: 1));
+        start = DateTime(y.year, y.month, y.day, 0, 0, 0);
+        end = DateTime(y.year, y.month, y.day, 23, 59, 59, 999);
+      } else if (pLower == 'thisweek' || pLower == 'week' || pLower == 'this week') {
+        final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+        final mon = now.subtract(Duration(days: diff));
+        start = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+        end = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+      } else if (pLower == 'thismonth' || pLower == 'month' || pLower == 'this month') {
+        start = DateTime(now.year, now.month, 1, 0, 0, 0);
+        final lastDay = DateTime(now.year, now.month + 1, 0).day;
+        end = DateTime(now.year, now.month, lastDay, 23, 59, 59, 999);
       }
-    } else {
-      settled = _db.getValidOrders(start: start, end: end);
     }
+
+    // Merge both override orders and local database orders to guarantee zero missing orders
+    final List<OrderModel> allCandidates = [];
+    if (ordersOverride != null && ordersOverride.isNotEmpty) {
+      allCandidates.addAll(ordersOverride);
+    }
+    allCandidates.addAll(_db.orders);
+    final deduplicated = _db.deduplicateOrdersList(allCandidates);
+
+    List<OrderModel> settled = deduplicated.where((o) {
+      if (o.status == OrderStatus.cancelled) return false;
+      final oDate = o.createdDateTime.toLocal();
+      if (start != null && oDate.isBefore(start)) return false;
+      if (end != null && oDate.isAfter(end)) return false;
+      return true;
+    }).toList();
 
     // If logged in as staff (not Owner / Admin), strictly filter to ONLY this staff member's orders
     final currentUser = _db.currentUser;

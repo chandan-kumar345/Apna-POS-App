@@ -708,16 +708,23 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
   // Circular Staff Avatar
   Widget _buildStaffAvatar(StaffModel staff) {
     const double size = 72;
-    Widget avatarContent;
+    final db = DatabaseService();
+    final bool isOwnerStaff = staff.role.toLowerCase() == 'owner' ||
+        staff.role.toLowerCase() == 'admin' ||
+        (db.currentUser != null && (db.currentUser!.isOwner || db.currentUser!.isAdmin) &&
+            (db.currentUser!.id == staff.id || db.currentUser!.employeeId == staff.employeeId || staff.name.toLowerCase() == db.currentUser!.name.toLowerCase()));
 
     String effectivePhoto = staff.avatarUrl.trim();
     if (effectivePhoto.isEmpty) {
-      final db = DatabaseService();
       if (db.currentUser != null && (db.currentUser!.id == staff.id || db.currentUser!.employeeId == staff.employeeId)) {
         effectivePhoto = db.currentUser!.profilePhotoPath?.trim() ?? '';
       }
+      if (effectivePhoto.isEmpty && isOwnerStaff) {
+        effectivePhoto = db.companyLogoPath ?? db.restaurant?.logoUrl ?? '';
+      }
     }
 
+    Widget avatarContent;
     if (effectivePhoto.isNotEmpty) {
       if (effectivePhoto.startsWith('http://') || effectivePhoto.startsWith('https://')) {
         avatarContent = Image.network(
@@ -725,7 +732,8 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+          errorBuilder: (context, error, stackTrace) =>
+              isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
         );
       } else if (effectivePhoto.startsWith('data:image') || (effectivePhoto.length > 50 && !effectivePhoto.startsWith('/'))) {
         try {
@@ -736,10 +744,11 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+            errorBuilder: (context, error, stackTrace) =>
+                isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
           );
         } catch (_) {
-          avatarContent = _buildInitialsAvatar(staff, size);
+          avatarContent = isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size);
         }
       } else if (effectivePhoto.startsWith('assets/')) {
         avatarContent = Image.asset(
@@ -747,7 +756,8 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+          errorBuilder: (context, error, stackTrace) =>
+              isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
         );
       } else if (!effectivePhoto.contains('_selected') && File(effectivePhoto).existsSync()) {
         avatarContent = Image.file(
@@ -755,13 +765,14 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
           width: size,
           height: size,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+          errorBuilder: (context, error, stackTrace) =>
+              isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
         );
       } else {
-        avatarContent = _buildInitialsAvatar(staff, size);
+        avatarContent = isOwnerStaff ? _buildCompanyLogoImage(db.companyLogoPath, size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size);
       }
     } else {
-      avatarContent = _buildInitialsAvatar(staff, size);
+      avatarContent = isOwnerStaff ? _buildCompanyLogoImage(db.companyLogoPath, size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size);
     }
 
     return Container(
@@ -769,6 +780,7 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
+        color: Colors.white,
         border: Border.all(color: Colors.white, width: 3.0),
         boxShadow: const [
           BoxShadow(
@@ -783,6 +795,22 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
   }
 
   Widget _buildInitialsAvatar(StaffModel staff, double size) {
+    final db = DatabaseService();
+    final bool isOwnerStaff = staff.role.toLowerCase() == 'owner' ||
+        staff.role.toLowerCase() == 'admin' ||
+        (db.currentUser != null && (db.currentUser!.isOwner || db.currentUser!.isAdmin) &&
+            (db.currentUser!.id == staff.id || db.currentUser!.employeeId == staff.employeeId || staff.name.toLowerCase() == db.currentUser!.name.toLowerCase()));
+
+    if (isOwnerStaff) {
+      return Container(
+        width: size,
+        height: size,
+        color: Colors.white,
+        alignment: Alignment.center,
+        child: _buildCompanyLogoImage(db.companyLogoPath, size, fit: BoxFit.cover),
+      );
+    }
+
     return Container(
       width: size,
       height: size,
