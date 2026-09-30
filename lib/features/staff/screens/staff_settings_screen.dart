@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1175,19 +1176,29 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
                     shape: BoxShape.circle,
                     color: const Color(0xFFF1F5F9),
                     border: Border.all(color: const Color(0xFFCBD5E1), width: isMobile ? 1.5 : 2),
-                    image: _avatarImageFile != null
-                        ? DecorationImage(
-                            image: FileImage(_avatarImageFile!),
-                            fit: BoxFit.cover,
-                          )
-                        : (_currentStaff.avatarUrl.isNotEmpty
-                            ? DecorationImage(
-                                image: (_currentStaff.avatarUrl.startsWith('http://') || _currentStaff.avatarUrl.startsWith('https://'))
-                                    ? NetworkImage(_currentStaff.avatarUrl) as ImageProvider
-                                    : FileImage(File(_currentStaff.avatarUrl)),
-                                fit: BoxFit.cover,
-                              )
-                            : null),
+                    image: () {
+                      if (_avatarImageFile != null) {
+                        return DecorationImage(image: FileImage(_avatarImageFile!), fit: BoxFit.cover);
+                      }
+                      final url = _currentStaff.avatarUrl.trim();
+                      if (url.isEmpty) return null;
+                      if (url.startsWith('http://') || url.startsWith('https://')) {
+                        return DecorationImage(image: NetworkImage(url), fit: BoxFit.cover);
+                      }
+                      if (url.startsWith('assets/')) {
+                        return DecorationImage(image: AssetImage(url), fit: BoxFit.cover);
+                      }
+                      if (url.startsWith('data:image') || (url.length > 50 && !url.startsWith('/') && !url.contains('\\'))) {
+                        try {
+                          final clean = url.contains(',') ? url.split(',').last : url;
+                          return DecorationImage(image: MemoryImage(base64Decode(clean.trim())), fit: BoxFit.cover);
+                        } catch (_) {}
+                      }
+                      if (!url.contains('_selected') && File(url).existsSync()) {
+                        return DecorationImage(image: FileImage(File(url)), fit: BoxFit.cover);
+                      }
+                      return null;
+                    }(),
                   ),
                   child: (_avatarImageFile == null && _currentStaff.avatarUrl.isEmpty)
                       ? Container(

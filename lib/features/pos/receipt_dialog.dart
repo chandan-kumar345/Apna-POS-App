@@ -93,7 +93,7 @@ class ReceiptDialog extends StatelessWidget {
   }
 
   Widget _buildReceiptLogo(UserModel? user, RestaurantModel? rest) {
-    final String photoPath = user?.profilePhotoPath ?? '';
+    final String photoPath = DatabaseService().companyLogoPath ?? user?.profilePhotoPath ?? '';
 
     if (photoPath.isNotEmpty) {
       if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {

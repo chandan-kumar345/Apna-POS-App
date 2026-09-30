@@ -246,7 +246,7 @@ void main() {
         pin: '4444',
         restaurantId: 'rest_001',
         profilePhotoPath: '/old/path.png',
-        permissions: const ['pos_view_all_orders'],
+        permissions: const ['orders_view_all'],
       );
 
       await db.saveActiveUser(staffUser);
@@ -257,7 +257,7 @@ void main() {
         email: 'sunita@apnapos.com',
         role: 'Waiter',
         status: 'Active',
-        permissions: const ['pos_view_all_orders'],
+        permissions: const ['orders_view_all'],
         createdAt: DateTime.now(),
       ));
       expect(db.currentUser?.hasPermission('orders'), isTrue);
@@ -267,7 +267,7 @@ void main() {
       // Store owner updates Sunita's avatar photo and adds table management permission
       final updatedStaff = db.staffList.firstWhere((s) => s.employeeId == 'EMP004').copyWith(
         avatarUrl: '/new/sunita_headshot.jpg',
-        permissions: const ['pos_view_all_orders', 'pos_manage_tables'],
+        permissions: const ['orders_view_all', 'tables_manage'],
       );
       db.updateStaff(updatedStaff);
 

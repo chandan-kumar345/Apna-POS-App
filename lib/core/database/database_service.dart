@@ -99,7 +99,7 @@ class DatabaseService extends ChangeNotifier {
     if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.isNotEmpty) {
       return ownerUser.profilePhotoPath;
     }
-    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner') &&
+    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner' || currentUser!.isAdmin) &&
         currentUser!.profilePhotoPath != null && currentUser!.profilePhotoPath!.isNotEmpty) {
       return currentUser!.profilePhotoPath;
     }
@@ -107,6 +107,9 @@ class DatabaseService extends ChangeNotifier {
       if (u.profilePhotoPath != null && u.profilePhotoPath!.isNotEmpty && !u.profilePhotoPath!.contains('staff')) {
         return u.profilePhotoPath;
       }
+    }
+    if (currentUser?.profilePhotoPath != null && currentUser!.profilePhotoPath!.isNotEmpty) {
+      return currentUser!.profilePhotoPath;
     }
     return null;
   }

@@ -897,18 +897,48 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     const double size = 72;
     Widget avatarContent;
 
-    if (staff.avatarUrl.isNotEmpty) {
-      if (staff.avatarUrl.startsWith('http://') || staff.avatarUrl.startsWith('https://')) {
+    String effectivePhoto = staff.avatarUrl.trim();
+    if (effectivePhoto.isEmpty) {
+      final db = DatabaseService();
+      if (db.currentUser != null && (db.currentUser!.id == staff.id || db.currentUser!.employeeId == staff.employeeId)) {
+        effectivePhoto = db.currentUser!.profilePhotoPath?.trim() ?? '';
+      }
+    }
+
+    if (effectivePhoto.isNotEmpty) {
+      if (effectivePhoto.startsWith('http://') || effectivePhoto.startsWith('https://')) {
         avatarContent = Image.network(
-          staff.avatarUrl,
+          effectivePhoto,
           width: size,
           height: size,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
         );
-      } else if (File(staff.avatarUrl).existsSync()) {
+      } else if (effectivePhoto.startsWith('data:image') || (effectivePhoto.length > 50 && !effectivePhoto.startsWith('/'))) {
+        try {
+          final cleanBase64 = effectivePhoto.contains(',') ? effectivePhoto.split(',').last : effectivePhoto;
+          final bytes = base64Decode(cleanBase64.trim());
+          avatarContent = Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+          );
+        } catch (_) {
+          avatarContent = _buildInitialsAvatar(staff, size);
+        }
+      } else if (effectivePhoto.startsWith('assets/')) {
+        avatarContent = Image.asset(
+          effectivePhoto,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildInitialsAvatar(staff, size),
+        );
+      } else if (!effectivePhoto.contains('_selected') && File(effectivePhoto).existsSync()) {
         avatarContent = Image.file(
-          File(staff.avatarUrl),
+          File(effectivePhoto),
           width: size,
           height: size,
           fit: BoxFit.cover,
@@ -1041,7 +1071,15 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           width: size,
           height: size,
           fit: fit,
-          errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
+          errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
+        );
+      } else if (photoPath.startsWith('assets/')) {
+        return Image.asset(
+          photoPath,
+          width: size,
+          height: size,
+          fit: fit,
+          errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
         );
       } else if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
         return Image.file(
@@ -1049,7 +1087,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           width: size,
           height: size,
           fit: fit,
-          errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
+          errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
         );
       } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
         try {
@@ -1060,26 +1098,28 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
             width: size,
             height: size,
             fit: fit,
-            errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
+            errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
           );
         } catch (_) {}
-      } else if (photoPath.startsWith('assets/')) {
-        return Image.asset(
-          photoPath,
-          width: size,
-          height: size,
-          fit: fit,
-          errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
-        );
       }
     }
 
+    return _buildDefaultCompanyLogo(size, fit: fit);
+  }
+
+  Widget _buildDefaultCompanyLogo(double size, {BoxFit fit = BoxFit.contain}) {
     return Image.asset(
-      'assets/images/logo.png',
+      'assets/images/restaurant_icon.png',
       width: size,
       height: size,
       fit: fit,
-      errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
+      errorBuilder: (context, error, stackTrace) => Image.asset(
+        'assets/images/logo.png',
+        width: size,
+        height: size,
+        fit: fit,
+        errorBuilder: (context, error, stackTrace) => _buildCompanyFallbackInitial(size),
+      ),
     );
   }
 

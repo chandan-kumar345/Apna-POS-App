@@ -474,44 +474,72 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   Widget _buildCompanyProfileLogo(double size) {
     final logoPath = db.companyLogoPath;
     if (logoPath != null && logoPath.isNotEmpty) {
-      if (!logoPath.contains('_selected') && File(logoPath).existsSync()) {
-        return ClipOval(
-          child: Image.file(
-            File(logoPath),
-            width: size,
-            height: size,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
-          ),
-        );
-      } else if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
+      if (logoPath.startsWith('http://') || logoPath.startsWith('https://')) {
         return ClipOval(
           child: Image.network(
             logoPath,
             width: size,
             height: size,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+            errorBuilder: (_, __, ___) => _buildDefaultBrandLogo(size),
+          ),
+        );
+      } else if (logoPath.startsWith('assets/')) {
+        return ClipOval(
+          child: Image.asset(
+            logoPath,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildDefaultBrandLogo(size),
+          ),
+        );
+      } else if (!logoPath.contains('_selected') && File(logoPath).existsSync()) {
+        return ClipOval(
+          child: Image.file(
+            File(logoPath),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildDefaultBrandLogo(size),
           ),
         );
       } else if (logoPath.startsWith('data:image') || (logoPath.length > 50 && !logoPath.startsWith('/'))) {
         try {
           final cleanBase64 = logoPath.contains(',') ? logoPath.split(',').last : logoPath;
-          final bytes = base64Decode(cleanBase64);
+          final bytes = base64Decode(cleanBase64.trim());
           return ClipOval(
             child: Image.memory(
               bytes,
               width: size,
               height: size,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+              errorBuilder: (_, __, ___) => _buildDefaultBrandLogo(size),
             ),
           );
         } catch (_) {}
       }
     }
 
-    return _buildCompanyFallbackInitial(size);
+    return _buildDefaultBrandLogo(size);
+  }
+
+  Widget _buildDefaultBrandLogo(double size) {
+    return ClipOval(
+      child: Image.asset(
+        'assets/images/restaurant_icon.png',
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Image.asset(
+          'assets/images/logo.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildCompanyFallbackInitial(size),
+        ),
+      ),
+    );
   }
 
   Widget _buildCompanyFallbackInitial(double size) {
@@ -566,6 +594,16 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
           ),
         );
+      } else if (photoPath.startsWith('assets/')) {
+        return ClipOval(
+          child: Image.asset(
+            photoPath,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
+          ),
+        );
       } else if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
         return ClipOval(
           child: Image.file(
@@ -579,7 +617,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
         try {
           final cleanBase64 = photoPath.contains(',') ? photoPath.split(',').last : photoPath;
-          final bytes = base64Decode(cleanBase64);
+          final bytes = base64Decode(cleanBase64.trim());
           return ClipOval(
             child: Image.memory(
               bytes,
@@ -591,6 +629,23 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           );
         } catch (_) {}
       }
+    }
+
+    // If owner or admin has no custom user avatar, check company logo or default brand icon
+    if (user != null && (user.isOwner || user.role.toLowerCase() == 'owner' || user.isAdmin)) {
+      final compLogo = db.companyLogoPath;
+      if (compLogo != null && compLogo.isNotEmpty && compLogo != photoPath) {
+        return _buildCompanyProfileLogo(size);
+      }
+      return ClipOval(
+        child: Image.asset(
+          'assets/images/restaurant_icon.png',
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _buildStaffFallbackInitial(size),
+        ),
+      );
     }
 
     return _buildStaffFallbackInitial(size);
