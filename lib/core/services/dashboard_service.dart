@@ -298,13 +298,6 @@ class DashboardService {
   final ReportService _reportService = ReportService();
   DatabaseService get _db => DatabaseService();
 
-  Map<String, dynamic> _buildQueryParams(String period, String? startDate, String? endDate) {
-    final queryParams = <String, dynamic>{'period': period};
-    if (startDate != null && startDate.isNotEmpty) queryParams['startDate'] = startDate;
-    if (endDate != null && endDate.isNotEmpty) queryParams['endDate'] = endDate;
-    return queryParams;
-  }
-
   (DateTime?, DateTime?) _parseDateRange({String? period, String? startDate, String? endDate}) {
     DateTime? start;
     DateTime? end;
@@ -358,14 +351,23 @@ class DashboardService {
     DateTime? start,
     DateTime? end,
   }) {
-    final allOrders = _db.deduplicateOrdersList(_db.orders);
+    final allOrders = _db.deduplicateOrdersList([
+      ...report.orders,
+      ..._db.orders,
+    ]);
     final activeOrders = allOrders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
+
+    final nonCancelledOrders = allOrders.where((o) => o.status != OrderStatus.cancelled).toList();
+    final completedPaidOrders = nonCancelledOrders.where((o) => o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid').toList();
+    final double computedPaidRevenue = completedPaidOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+    final double effectiveRevenue = math.max(report.summary.totalRevenue, computedPaidRevenue);
+    final int effectiveOrdersCount = math.max(report.summary.totalOrders, nonCancelledOrders.length);
 
     // 1. Summary
     final summary = DashboardSummaryData(
       period: period,
-      revenue: report.summary.totalRevenue,
-      totalOrders: report.summary.totalOrders,
+      revenue: effectiveRevenue,
+      totalOrders: effectiveOrdersCount,
       activeOrdersCount: activeOrders.length,
       totalProductsCount: _db.menuItems.length,
       topProducts: report.topProducts,
@@ -397,7 +399,7 @@ class DashboardService {
       dineIn: OrderTypeCountAmount(count: dineInCount, amount: dineInAmount),
       delivery: OrderTypeCountAmount(count: deliveryCount, amount: deliveryAmount),
       takeaway: OrderTypeCountAmount(count: takeawayCount, amount: takeawayAmount),
-      total: OrderTypeCountAmount(count: report.summary.totalOrders, amount: report.summary.totalRevenue),
+      total: OrderTypeCountAmount(count: effectiveOrdersCount, amount: effectiveRevenue),
     );
 
     // 3. Product Sales List

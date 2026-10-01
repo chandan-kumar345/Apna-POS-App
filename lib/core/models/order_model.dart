@@ -72,44 +72,72 @@ class CartItemModel {
       };
 
   factory CartItemModel.fromJson(Map<dynamic, dynamic> json) {
-    final int parsedKotQty = (json['kotQuantity'] as num?)?.toInt() ?? 0;
+    final int parsedKotQty = _toIntSafe(json['kotQuantity']);
     if (json['item'] != null && json['item'] is Map) {
       return CartItemModel(
         item: MenuItemModel.fromJson(Map<String, dynamic>.from(json['item'] as Map)),
-        quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+        quantity: _toIntSafe(json['quantity'], fallback: 1),
         note: json['note']?.toString(),
         kotQuantity: parsedKotQty,
       );
     }
     // Flat item structure returned from backend Order / Sale
-    final double rawPrice = (json['price'] as num?)?.toDouble() ?? 0.0;
-    final double rawSale = (json['salePrice'] as num?)?.toDouble() ?? (json['effectivePrice'] as num?)?.toDouble() ?? 0.0;
-    final double rawDisc = (json['discountPercent'] as num?)?.toDouble() ?? (json['discount'] as num?)?.toDouble() ?? 0.0;
+    final double rawPrice = _toDoubleSafe(json['price']);
+    final double rawSale = _toDoubleSafe(json['salePrice'] ?? json['effectivePrice']);
+    final double rawDisc = _toDoubleSafe(json['discountPercent'] ?? json['discount']);
     final bool hasDisc = json['hasDiscount'] == true || rawDisc > 0 || (rawSale > 0 && rawSale < rawPrice);
-    final double? rawGst = (json['gstPercent'] as num?)?.toDouble() ??
-        (json['taxPercentage'] as num?)?.toDouble() ??
-        (json['gst'] as num?)?.toDouble();
+    final double? rawGst = json['gstPercent'] != null
+        ? _toDoubleSafe(json['gstPercent'])
+        : (json['taxPercentage'] != null
+            ? _toDoubleSafe(json['taxPercentage'])
+            : (json['gst'] != null ? _toDoubleSafe(json['gst']) : null));
+
+    final String foodTypeStr = (json['foodType'] ?? json['itemType'] ?? '').toString().toLowerCase();
+    final String resolvedFoodType = foodTypeStr.contains('non')
+        ? 'Non-Veg'
+        : (foodTypeStr.contains('egg') ? 'Egg' : 'Veg');
 
     final menuItem = MenuItemModel(
-      id: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
-      productId: json['productId']?.toString() ?? json['_id']?.toString() ?? '',
-      name: json['name']?.toString() ?? 'Item',
+      id: json['productId']?.toString() ?? json['_id']?.toString() ?? json['id']?.toString() ?? '',
+      productId: json['productId']?.toString() ?? json['_id']?.toString() ?? json['id']?.toString() ?? '',
+      name: json['name']?.toString() ?? json['productName']?.toString() ?? 'Item',
       category: json['category']?.toString() ?? 'General',
       price: rawPrice,
       salePrice: rawSale > 0 ? rawSale : null,
       hasDiscount: hasDisc,
       discountPercent: rawDisc,
       gstPercent: rawGst,
-      description: '',
-      itemType: json['foodType'] == 'non_veg' ? 'Non-Veg' : json['foodType'] == 'egg' ? 'Egg' : 'Veg',
+      description: json['description']?.toString() ?? '',
+      imageUrl: json['imageUrl']?.toString() ?? json['image']?.toString() ?? '',
+      itemType: resolvedFoodType,
     );
     return CartItemModel(
       item: menuItem,
-      quantity: (json['quantity'] as num?)?.toInt() ?? 1,
+      quantity: _toIntSafe(json['quantity'], fallback: 1),
       note: json['note']?.toString(),
       kotQuantity: parsedKotQty,
     );
   }
+}
+
+double _toDoubleSafe(dynamic val, {double fallback = 0.0}) {
+  if (val == null) return fallback;
+  if (val is num) return val.toDouble();
+  if (val is String) {
+    final clean = val.replaceAll(RegExp(r'[^0-9.-]'), '');
+    return double.tryParse(clean) ?? fallback;
+  }
+  return fallback;
+}
+
+int _toIntSafe(dynamic val, {int fallback = 0}) {
+  if (val == null) return fallback;
+  if (val is num) return val.toInt();
+  if (val is String) {
+    final clean = val.replaceAll(RegExp(r'[^0-9-]'), '');
+    return int.tryParse(clean) ?? fallback;
+  }
+  return fallback;
 }
 
 class OrderModel {
@@ -132,6 +160,7 @@ class OrderModel {
   final bool isSynced;
   final String? deliveryAddress;
   final String createdAt;
+  final String? customerId;
   final String? customerName;
   final String? customerPhone;
   final String? invoiceNumber;
@@ -162,6 +191,7 @@ class OrderModel {
     this.isSynced = false,
     this.deliveryAddress,
     required this.createdAt,
+    this.customerId,
     this.customerName,
     this.customerPhone,
     this.invoiceNumber,
@@ -193,6 +223,7 @@ class OrderModel {
         'isSynced': isSynced,
         'deliveryAddress': deliveryAddress,
         'createdAt': createdAt,
+        'customerId': customerId,
         'customerName': customerName,
         'customerPhone': customerPhone,
         'invoiceNumber': invoiceNumber,
@@ -205,46 +236,146 @@ class OrderModel {
       };
 
   factory OrderModel.fromJson(Map<dynamic, dynamic> json) {
-    final rawPm = (json['paymentMethod'] ?? 'Cash').toString();
-    final rawPs = (json['paymentStatus'] ?? '').toString().toLowerCase();
-    final bool rawIsPaid = json['isPaid'] == true || rawPs == 'paid' || json['status'] == 'completed';
+    final rawPm = (json['paymentMethod'] ?? json['paymentMode'] ?? 'Cash').toString();
+    final rawPs = (json['paymentStatus'] ?? '').toString().toLowerCase().trim();
     final String rawId = json['id']?.toString() ?? json['_id']?.toString() ?? '';
     final bool rawIsSynced = json['isSynced'] == true || (rawId.isNotEmpty && rawId.length == 24 && !rawId.startsWith('ORD-') && !rawId.startsWith('LOCAL_'));
 
+    // Status normalization (case-insensitive & synonym-aware)
+    final String rawStatusStr = (json['status'] ?? json['orderStatus'] ?? '').toString().toLowerCase().trim();
+    final OrderStatus parsedStatus;
+    if (rawStatusStr == 'completed' ||
+        rawStatusStr == 'settled' ||
+        rawStatusStr == 'paid' ||
+        rawStatusStr == 'closed' ||
+        rawStatusStr == 'delivered' ||
+        rawStatusStr == 'done' ||
+        rawStatusStr == 'success' ||
+        rawStatusStr == 'served') {
+      parsedStatus = OrderStatus.completed;
+    } else if (rawStatusStr == 'cancelled' || rawStatusStr == 'canceled' || rawStatusStr == 'void' || rawStatusStr == 'voided' || rawStatusStr == 'rejected') {
+      parsedStatus = OrderStatus.cancelled;
+    } else if (rawStatusStr == 'preparing' || rawStatusStr == 'cooking' || rawStatusStr == 'in_kitchen' || rawStatusStr == 'running_kot' || rawStatusStr == 'kot') {
+      parsedStatus = OrderStatus.preparing;
+    } else if (rawStatusStr == 'ready' || rawStatusStr == 'prepared') {
+      parsedStatus = OrderStatus.ready;
+    } else {
+      parsedStatus = OrderStatus.pending;
+    }
+
+    final bool rawIsPaid = json['isPaid'] == true ||
+        rawPs == 'paid' ||
+        rawPs == 'success' ||
+        rawPs == 'settled' ||
+        parsedStatus == OrderStatus.completed;
+
+    // Order Type normalization
+    final String rawTypeStr = (json['orderType'] ?? json['type'] ?? json['order_type'] ?? '').toString().toLowerCase().trim();
+    final OrderType parsedType;
+    if (rawTypeStr.contains('takeaway') || rawTypeStr.contains('take_away') || rawTypeStr.contains('pickup') || rawTypeStr.contains('parcel')) {
+      parsedType = OrderType.takeaway;
+    } else if (rawTypeStr.contains('delivery') || rawTypeStr.contains('deliv')) {
+      parsedType = OrderType.delivery;
+    } else {
+      parsedType = OrderType.dineIn;
+    }
+
+    // Order Number resolution
+    final String resolvedOrderNumber = json['orderNumber']?.toString() ??
+        json['orderNo']?.toString() ??
+        json['order_number']?.toString() ??
+        json['billNo']?.toString() ??
+        json['billNumber']?.toString() ??
+        json['invoiceNumber']?.toString() ??
+        json['invoiceNo']?.toString() ??
+        (rawId.isNotEmpty ? rawId : '');
+
+    // Robust extraction of customer details from flat or nested/populated MongoDB structures
+    String? resolvedCustomerName = json['customerName']?.toString() ??
+        json['customer_name']?.toString() ??
+        json['clientName']?.toString();
+    String? resolvedCustomerPhone = json['customerPhone']?.toString() ??
+        json['customer_phone']?.toString() ??
+        json['phone']?.toString() ??
+        json['mobile']?.toString() ??
+        json['customerMobile']?.toString() ??
+        json['mobileNumber']?.toString() ??
+        json['contactPhone']?.toString() ??
+        json['contactNumber']?.toString();
+    String? resolvedDeliveryAddress = json['deliveryAddress']?.toString() ?? json['address']?.toString();
+    String? resolvedCustomerId = json['customerId']?.toString() ?? json['customer_id']?.toString();
+
+    if (json['customer'] is Map) {
+      final custMap = json['customer'] as Map;
+      resolvedCustomerId ??= custMap['_id']?.toString() ?? custMap['id']?.toString();
+      resolvedCustomerName ??= custMap['name']?.toString() ?? custMap['customerName']?.toString();
+      resolvedCustomerPhone ??= custMap['phone']?.toString() ?? custMap['mobile']?.toString() ?? custMap['customerPhone']?.toString();
+      resolvedDeliveryAddress ??= custMap['address']?.toString();
+    } else if (json['customer'] is String && json['customer'].toString().isNotEmpty) {
+      final cStr = json['customer'].toString();
+      if (cStr.length == 24) {
+        resolvedCustomerId ??= cStr;
+      } else if (RegExp(r'^[0-9+ -]+$').hasMatch(cStr) && cStr.replaceAll(RegExp(r'[^0-9]'), '').length >= 7) {
+        resolvedCustomerPhone ??= cStr;
+      } else {
+        resolvedCustomerName ??= cStr;
+      }
+    }
+
+    final double subtotalVal = _toDoubleSafe(json['subtotal']);
+    final double taxVal = _toDoubleSafe(json['taxAmount'] ?? json['tax']);
+    final double discVal = _toDoubleSafe(json['discountAmount'] ?? json['discount']);
+    final double tipVal = _toDoubleSafe(json['tipAmount'] ?? json['tip']);
+    final double delVal = _toDoubleSafe(json['deliveryCharge'] ?? json['delivery_charge']);
+    final double roundVal = _toDoubleSafe(json['roundOff'] ?? json['round_off']);
+    final double totalVal = _toDoubleSafe(json['totalAmount'] ?? json['amount'] ?? json['total']);
+
+    final String resolvedCreatedAt = json['createdAt']?.toString() ??
+        json['created_at']?.toString() ??
+        json['date']?.toString() ??
+        json['orderDate']?.toString() ??
+        json['timestamp']?.toString() ??
+        json['updatedAt']?.toString() ??
+        '';
+
     return OrderModel(
       id: rawId,
-      orderNumber: json['orderNumber']?.toString() ?? '',
-      tableNumber: json['tableNumber']?.toString(),
-      orderType: OrderType.values.firstWhere(
-        (e) => e.name == (json['orderType']?.toString() ?? ''),
-        orElse: () => OrderType.dineIn,
-      ),
-      status: OrderStatus.values.firstWhere(
-        (e) => e.name == (json['status']?.toString() ?? ''),
-        orElse: () => OrderStatus.pending,
-      ),
+      orderNumber: resolvedOrderNumber,
+      tableNumber: json['tableNumber']?.toString() ?? json['table']?.toString(),
+      orderType: parsedType,
+      status: parsedStatus,
       items: (json['items'] as List<dynamic>?)
-              ?.map((i) => i is Map ? CartItemModel.fromJson(i) : null)
+              ?.map((i) {
+                if (i is Map) {
+                  try {
+                    return CartItemModel.fromJson(i);
+                  } catch (_) {
+                    return null;
+                  }
+                }
+                return null;
+              })
               .whereType<CartItemModel>()
               .toList() ??
           [],
-      subtotal: (json['subtotal'] as num?)?.toDouble() ?? 0.0,
-      taxAmount: (json['taxAmount'] as num?)?.toDouble() ?? 0.0,
-      discountAmount: (json['discountAmount'] as num?)?.toDouble() ?? 0.0,
-      tipAmount: (json['tipAmount'] as num?)?.toDouble() ?? 0.0,
-      deliveryCharge: (json['deliveryCharge'] as num?)?.toDouble() ?? 0.0,
-      roundOff: (json['roundOff'] as num?)?.toDouble() ?? 0.0,
-      totalAmount: (json['totalAmount'] as num?)?.toDouble() ?? 0.0,
+      subtotal: subtotalVal > 0 ? subtotalVal : (totalVal > 0 ? totalVal : 0.0),
+      taxAmount: taxVal,
+      discountAmount: discVal,
+      tipAmount: tipVal,
+      deliveryCharge: delVal,
+      roundOff: roundVal,
+      totalAmount: totalVal > 0 ? totalVal : (subtotalVal + taxVal - discVal),
       paymentMethod: rawPm,
       paymentStatus: rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending'),
       isPaid: rawIsPaid,
       isSynced: rawIsSynced,
-      deliveryAddress: json['deliveryAddress']?.toString(),
-      createdAt: json['createdAt']?.toString() ?? '',
-      customerName: json['customerName']?.toString(),
-      customerPhone: json['customerPhone']?.toString(),
-      invoiceNumber: json['invoiceNumber']?.toString(),
-      printCount: (json['printCount'] as num?)?.toInt() ?? 0,
+      deliveryAddress: resolvedDeliveryAddress,
+      createdAt: resolvedCreatedAt,
+      customerId: resolvedCustomerId,
+      customerName: resolvedCustomerName,
+      customerPhone: resolvedCustomerPhone,
+      invoiceNumber: json['invoiceNumber']?.toString() ?? json['invoiceNo']?.toString(),
+      printCount: _toIntSafe(json['printCount']),
       qrIntentUrl: json['qrIntentUrl']?.toString(),
       qrImageUrl: json['qrImageUrl']?.toString(),
       staffId: json['staffId']?.toString() ?? json['waiterId']?.toString() ?? json['userId']?.toString() ?? json['cashierId']?.toString(),
@@ -303,6 +434,7 @@ class OrderModel {
     bool? isPaid,
     bool? isSynced,
     String? deliveryAddress,
+    String? customerId,
     String? customerName,
     String? customerPhone,
     double? roundOff,
@@ -341,6 +473,7 @@ class OrderModel {
       isSynced: isSynced ?? this.isSynced,
       deliveryAddress: deliveryAddress ?? this.deliveryAddress,
       createdAt: createdAt,
+      customerId: customerId ?? this.customerId,
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
       invoiceNumber: invoiceNumber ?? this.invoiceNumber,

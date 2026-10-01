@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import '../models/order_model.dart';
@@ -5,6 +6,20 @@ import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../database/database_service.dart';
 import 'auth_service.dart';
+
+double _toReportDouble(dynamic val, [double fallback = 0.0]) {
+  if (val == null) return fallback;
+  if (val is double) return val;
+  if (val is num) return val.toDouble();
+  return double.tryParse(val.toString().replaceAll(RegExp(r'[^0-9.-]'), '')) ?? fallback;
+}
+
+int _toReportInt(dynamic val, [int fallback = 0]) {
+  if (val == null) return fallback;
+  if (val is int) return val;
+  if (val is num) return val.toInt();
+  return int.tryParse(val.toString().replaceAll(RegExp(r'[^0-9-]'), '')) ?? fallback;
+}
 
 /// Complete Sales Report Summary Metrics
 class SalesReportSummary {
@@ -43,21 +58,21 @@ class SalesReportSummary {
   });
 
   factory SalesReportSummary.fromJson(Map<String, dynamic> json) => SalesReportSummary(
-        totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
-        grossSales: (json['grossSales'] as num?)?.toDouble() ?? 0.0,
-        netSales: (json['netSales'] as num?)?.toDouble() ?? 0.0,
-        totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
-        totalItems: (json['totalItems'] as num?)?.toInt() ?? 0,
-        totalDiscount: (json['totalDiscount'] as num?)?.toDouble() ?? 0.0,
-        totalTax: (json['totalTax'] as num?)?.toDouble() ?? 0.0,
-        cgst: (json['cgst'] as num?)?.toDouble() ?? 0.0,
-        sgst: (json['sgst'] as num?)?.toDouble() ?? 0.0,
-        igst: (json['igst'] as num?)?.toDouble() ?? 0.0,
-        avgOrderValue: (json['avgOrderValue'] as num?)?.toDouble() ?? 0.0,
-        growthSalesPct: (json['growthSalesPct'] as num?)?.toDouble() ?? 12.0,
-        growthOrdersPct: (json['growthOrdersPct'] as num?)?.toDouble() ?? 8.0,
-        growthAovPct: (json['growthAovPct'] as num?)?.toDouble() ?? 5.0,
-        growthItemsPct: (json['growthItemsPct'] as num?)?.toDouble() ?? 14.0,
+        totalRevenue: _toReportDouble(json['totalRevenue'] ?? json['revenue'] ?? json['totalSales'] ?? json['totalAmount']),
+        grossSales: _toReportDouble(json['grossSales'] ?? json['grossRevenue'] ?? json['totalRevenue'] ?? json['revenue']),
+        netSales: _toReportDouble(json['netSales'] ?? json['netRevenue']),
+        totalOrders: _toReportInt(json['totalOrders'] ?? json['ordersCount'] ?? json['orderCount'] ?? json['count'] ?? json['total_orders']),
+        totalItems: _toReportInt(json['totalItems'] ?? json['itemsCount'] ?? json['itemCount'] ?? json['total_items']),
+        totalDiscount: _toReportDouble(json['totalDiscount'] ?? json['discount']),
+        totalTax: _toReportDouble(json['totalTax'] ?? json['tax'] ?? json['taxAmount']),
+        cgst: _toReportDouble(json['cgst']),
+        sgst: _toReportDouble(json['sgst']),
+        igst: _toReportDouble(json['igst']),
+        avgOrderValue: _toReportDouble(json['avgOrderValue'] ?? json['aov']),
+        growthSalesPct: _toReportDouble(json['growthSalesPct'], 12.0),
+        growthOrdersPct: _toReportDouble(json['growthOrdersPct'], 8.0),
+        growthAovPct: _toReportDouble(json['growthAovPct'], 5.0),
+        growthItemsPct: _toReportDouble(json['growthItemsPct'], 14.0),
       );
 }
 
@@ -78,11 +93,11 @@ class PaymentModeStat {
   });
 
   factory PaymentModeStat.fromJson(Map<String, dynamic> json) => PaymentModeStat(
-        mode: json['mode']?.toString() ?? 'Cash',
-        rawMode: json['rawMode']?.toString() ?? '',
-        count: (json['count'] as num?)?.toInt() ?? 0,
-        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
+        mode: json['mode']?.toString() ?? json['paymentMethod']?.toString() ?? 'Cash',
+        rawMode: json['rawMode']?.toString() ?? json['paymentMethod']?.toString() ?? '',
+        count: _toReportInt(json['count'] ?? json['ordersCount'] ?? json['orderCount']),
+        amount: _toReportDouble(json['amount'] ?? json['totalAmount'] ?? json['totalRevenue']),
+        percentage: _toReportDouble(json['percentage']),
       );
 }
 
@@ -105,12 +120,12 @@ class OrderTypeStat {
   });
 
   factory OrderTypeStat.fromJson(Map<String, dynamic> json) => OrderTypeStat(
-        type: json['type']?.toString() ?? 'Dine In',
-        rawType: json['rawType']?.toString() ?? '',
-        count: (json['count'] as num?)?.toInt() ?? 0,
-        amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
-        avgTicket: (json['avgTicket'] as num?)?.toDouble() ?? 0.0,
+        type: json['type']?.toString() ?? json['orderType']?.toString() ?? 'Dine In',
+        rawType: json['rawType']?.toString() ?? json['orderType']?.toString() ?? '',
+        count: _toReportInt(json['count'] ?? json['ordersCount'] ?? json['orderCount']),
+        amount: _toReportDouble(json['amount'] ?? json['totalAmount'] ?? json['totalRevenue']),
+        percentage: _toReportDouble(json['percentage']),
+        avgTicket: _toReportDouble(json['avgTicket'] ?? json['aov']),
       );
 }
 
@@ -131,9 +146,9 @@ class TopProductData {
   });
 
   factory TopProductData.fromJson(Map<String, dynamic> json) => TopProductData(
-        name: json['name']?.toString() ?? '',
-        quantity: (json['totalQuantity'] ?? json['quantity'] as num?)?.toInt() ?? 0,
-        revenue: (json['totalRevenue'] ?? json['revenue'] as num?)?.toDouble() ?? 0.0,
+        name: json['name']?.toString() ?? json['productName']?.toString() ?? '',
+        quantity: _toReportInt(json['totalQuantity'] ?? json['quantity'] ?? json['count'] ?? json['qty']),
+        revenue: _toReportDouble(json['totalRevenue'] ?? json['revenue'] ?? json['totalAmount'] ?? json['amount']),
         foodType: json['foodType']?.toString() ?? 'veg',
         category: json['category']?.toString() ?? 'General',
       );
@@ -155,9 +170,9 @@ class DailySalesTrendPoint {
 
   factory DailySalesTrendPoint.fromJson(Map<String, dynamic> json) => DailySalesTrendPoint(
         date: json['date'] != null ? (DateTime.tryParse(json['date'].toString()) ?? DateTime.now()) : DateTime.now(),
-        dateLabel: json['dateLabel']?.toString() ?? '',
-        salesAmount: (json['salesAmount'] as num?)?.toDouble() ?? 0.0,
-        orderCount: (json['orderCount'] as num?)?.toInt() ?? 0,
+        dateLabel: json['dateLabel']?.toString() ?? json['date']?.toString() ?? '',
+        salesAmount: _toReportDouble(json['salesAmount'] ?? json['amount'] ?? json['revenue'] ?? json['totalRevenue']),
+        orderCount: _toReportInt(json['orderCount'] ?? json['ordersCount'] ?? json['count']),
       );
 }
 
@@ -176,10 +191,10 @@ class CategorySaleStat {
   });
 
   factory CategorySaleStat.fromJson(Map<String, dynamic> json) => CategorySaleStat(
-        categoryName: json['categoryName']?.toString() ?? 'General',
-        itemsSold: (json['itemsSold'] as num?)?.toInt() ?? 0,
-        totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
+        categoryName: json['categoryName']?.toString() ?? json['category']?.toString() ?? 'General',
+        itemsSold: _toReportInt(json['itemsSold'] ?? json['quantity'] ?? json['totalQuantity'] ?? json['count']),
+        totalRevenue: _toReportDouble(json['totalRevenue'] ?? json['revenue'] ?? json['amount']),
+        percentage: _toReportDouble(json['percentage']),
       );
 }
 
@@ -209,12 +224,21 @@ class StaffSaleStat {
         staffId: json['staffId']?.toString() ?? '',
         staffName: json['staffName']?.toString() ?? json['name']?.toString() ?? 'Staff',
         role: json['role']?.toString() ?? 'Staff',
-        billsCount: (json['billsCount'] as num?)?.toInt() ?? 0,
-        totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
-        avgTicket: (json['avgTicket'] as num?)?.toDouble() ?? 0.0,
+        billsCount: _toReportInt(json['billsCount'] ?? json['ordersCount'] ?? json['count']),
+        totalRevenue: _toReportDouble(json['totalRevenue'] ?? json['revenue'] ?? json['amount']),
+        percentage: _toReportDouble(json['percentage']),
+        avgTicket: _toReportDouble(json['avgTicket'] ?? json['aov']),
         orders: (json['orders'] as List<dynamic>?)
-                ?.map((e) => e is Map ? OrderModel.fromJson(e) : null)
+                ?.map((e) {
+                  if (e is Map) {
+                    try {
+                      return OrderModel.fromJson(Map<String, dynamic>.from(e));
+                    } catch (_) {
+                      return null;
+                    }
+                  }
+                  return null;
+                })
                 .whereType<OrderModel>()
                 .toList() ??
             const [],
@@ -237,9 +261,9 @@ class OutletSaleStat {
 
   factory OutletSaleStat.fromJson(Map<String, dynamic> json) => OutletSaleStat(
         outletName: json['outletName']?.toString() ?? 'Main Outlet',
-        billsCount: (json['billsCount'] as num?)?.toInt() ?? 0,
-        totalRevenue: (json['totalRevenue'] as num?)?.toDouble() ?? 0.0,
-        percentage: (json['percentage'] as num?)?.toDouble() ?? 0.0,
+        billsCount: _toReportInt(json['billsCount'] ?? json['ordersCount'] ?? json['count']),
+        totalRevenue: _toReportDouble(json['totalRevenue'] ?? json['revenue'] ?? json['amount']),
+        percentage: _toReportDouble(json['percentage']),
       );
 }
 
@@ -276,29 +300,59 @@ class SalesReportData {
   factory SalesReportData.fromJson(Map<String, dynamic> json) {
     final summaryJson = json['summary'] as Map<String, dynamic>? ?? {};
     final paymentModesList = (json['paymentModes'] as List<dynamic>? ?? [])
-        .map((p) => PaymentModeStat.fromJson(p as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((p) => PaymentModeStat.fromJson(Map<String, dynamic>.from(p)))
         .toList();
     final orderTypesList = (json['salesByOrderType'] as List<dynamic>? ?? [])
-        .map((t) => OrderTypeStat.fromJson(t as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((t) => OrderTypeStat.fromJson(Map<String, dynamic>.from(t)))
         .toList();
     final topProductsList = (json['topProducts'] as List<dynamic>? ?? [])
-        .map((tp) => TopProductData.fromJson(tp as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((tp) => TopProductData.fromJson(Map<String, dynamic>.from(tp)))
         .toList();
     final trendList = (json['salesTrend'] as List<dynamic>? ?? [])
-        .map((tr) => DailySalesTrendPoint.fromJson(tr as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((tr) => DailySalesTrendPoint.fromJson(Map<String, dynamic>.from(tr)))
         .toList();
     final catList = (json['categoryWise'] as List<dynamic>? ?? [])
-        .map((c) => CategorySaleStat.fromJson(c as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((c) => CategorySaleStat.fromJson(Map<String, dynamic>.from(c)))
         .toList();
     final staffList = (json['staffWise'] as List<dynamic>? ?? [])
-        .map((s) => StaffSaleStat.fromJson(s as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((s) => StaffSaleStat.fromJson(Map<String, dynamic>.from(s)))
         .toList();
     final outletList = (json['outletWise'] as List<dynamic>? ?? [])
-        .map((o) => OutletSaleStat.fromJson(o as Map<String, dynamic>))
+        .whereType<Map>()
+        .map((o) => OutletSaleStat.fromJson(Map<String, dynamic>.from(o)))
         .toList();
-    final ordersList = (json['orders'] as List<dynamic>? ?? [])
-        .map((o) => OrderModel.fromJson(o as Map<String, dynamic>))
-        .toList();
+
+    List<dynamic> rawOrdersList = [];
+    if (json['orders'] is List) {
+      rawOrdersList = json['orders'] as List;
+    } else if (json['docs'] is List) {
+      rawOrdersList = json['docs'] as List;
+    } else if (json['items'] is List) {
+      rawOrdersList = json['items'] as List;
+    } else if (json['records'] is List) {
+      rawOrdersList = json['records'] as List;
+    } else if (json['sales'] is List) {
+      rawOrdersList = json['sales'] as List;
+    } else if (json['data'] is List) {
+      rawOrdersList = json['data'] as List;
+    } else if (json['results'] is List) {
+      rawOrdersList = json['results'] as List;
+    }
+
+    final List<OrderModel> ordersList = [];
+    for (final item in rawOrdersList) {
+      if (item is Map) {
+        try {
+          ordersList.add(OrderModel.fromJson(Map<String, dynamic>.from(item)));
+        } catch (_) {}
+      }
+    }
     final deduplicatedOrders = DatabaseService().deduplicateOrdersList(ordersList);
 
     return SalesReportData(
@@ -405,29 +459,96 @@ class ReportService {
           final serverReport = SalesReportData.fromJson(response['data'] as Map<String, dynamic>);
           final pLower = (period ?? 'allTime').toLowerCase().trim();
           final bool isSingleDayPeriod = pLower == 'today' || pLower == 'yesterday' || pLower == 'singleday';
-          final bool hasStaffFilter = (staff != null && staff.isNotEmpty && staff != 'All Staff' && staff != 'All') || isStaffSession;
 
-          // Always compute unified report with both cloud and local orders merged to ensure complete parity
+          // Merge any remote orders into local database orders so DatabaseService has them
+          if (serverReport.orders.isNotEmpty) {
+            final Map<String, OrderModel> map = {};
+            for (final o in _db.orders) {
+              final k = o.orderNumber.isNotEmpty ? o.orderNumber : o.id;
+              if (k.isNotEmpty) map[k] = o;
+            }
+            for (final o in serverReport.orders) {
+              final k = o.orderNumber.isNotEmpty ? o.orderNumber : o.id;
+              if (k.isNotEmpty) map[k] = o;
+            }
+            _db.orders = _db.deduplicateOrdersList(map.values.toList());
+            _db.saveOrdersToPrefs();
+          }
+
           final mergedOrders = _db.deduplicateOrdersList([
             ...serverReport.orders,
             ..._db.orders,
           ]);
 
-          if (hasStaffFilter || serverReport.salesTrend.isEmpty || serverReport.categoryWise.isEmpty || isSingleDayPeriod || serverReport.salesTrend.length <= 1 || _db.orders.isNotEmpty) {
-            final local = _buildLocalSalesReport(
-              period: period,
-              startDate: startDate ?? fromDate,
-              endDate: endDate ?? toDate,
-              paymentMethod: paymentMethod,
-              orderType: orderType,
-              outlet: outlet,
-              staff: isStaffSession ? currentUser.name : staff,
-              search: search,
-              ordersOverride: mergedOrders.isNotEmpty ? mergedOrders : null,
-            );
-            return local;
-          }
-          return serverReport;
+          final local = _buildLocalSalesReport(
+            period: period,
+            startDate: startDate ?? fromDate,
+            endDate: endDate ?? toDate,
+            paymentMethod: paymentMethod,
+            orderType: orderType,
+            outlet: outlet,
+            staff: isStaffSession ? currentUser.name : staff,
+            search: search,
+            ordersOverride: mergedOrders.isNotEmpty ? mergedOrders : null,
+          );
+
+          // Authoritatively blend server report metrics and local calculations:
+          // Take the maximum to guarantee we NEVER show 1 order when cloud has 130+ orders!
+          final double finalRevenue = math.max(serverReport.summary.totalRevenue, local.summary.totalRevenue);
+          final double finalGross = math.max(serverReport.summary.grossSales, local.summary.grossSales);
+          final double finalNet = math.max(serverReport.summary.netSales, local.summary.netSales);
+          final int finalOrdersCount = math.max(serverReport.summary.totalOrders, local.summary.totalOrders);
+          final int finalItemsCount = math.max(serverReport.summary.totalItems, local.summary.totalItems);
+          final double finalDiscount = math.max(serverReport.summary.totalDiscount, local.summary.totalDiscount);
+          final double finalTax = math.max(serverReport.summary.totalTax, local.summary.totalTax);
+          final double finalCgst = math.max(serverReport.summary.cgst, local.summary.cgst);
+          final double finalSgst = math.max(serverReport.summary.sgst, local.summary.sgst);
+          final double finalIgst = math.max(serverReport.summary.igst, local.summary.igst);
+          final double finalAov = finalOrdersCount > 0 ? (finalRevenue / finalOrdersCount) : 0.0;
+
+          final mergedSummary = SalesReportSummary(
+            totalRevenue: finalRevenue,
+            grossSales: finalGross > 0 ? finalGross : finalRevenue,
+            netSales: finalNet > 0 ? finalNet : (finalRevenue - finalTax),
+            totalOrders: finalOrdersCount,
+            totalItems: finalItemsCount,
+            totalDiscount: finalDiscount,
+            totalTax: finalTax,
+            cgst: finalCgst,
+            sgst: finalSgst,
+            igst: finalIgst,
+            avgOrderValue: finalAov,
+            growthSalesPct: serverReport.summary.growthSalesPct,
+            growthOrdersPct: serverReport.summary.growthOrdersPct,
+            growthAovPct: serverReport.summary.growthAovPct,
+            growthItemsPct: serverReport.summary.growthItemsPct,
+          );
+
+          final finalTrend = (local.salesTrend.isNotEmpty && (isSingleDayPeriod || serverReport.salesTrend.length <= 1))
+              ? local.salesTrend
+              : (serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend);
+
+          final finalCatWise = local.categoryWise.isNotEmpty ? local.categoryWise : serverReport.categoryWise;
+          final finalPaymentModes = local.paymentModes.isNotEmpty ? local.paymentModes : serverReport.paymentModes;
+          final finalSalesByOrderType = local.salesByOrderType.isNotEmpty ? local.salesByOrderType : serverReport.salesByOrderType;
+          final finalTopProducts = local.topProducts.isNotEmpty ? local.topProducts : serverReport.topProducts;
+          final finalStaffWise = local.staffWise.isNotEmpty ? local.staffWise : serverReport.staffWise;
+          final finalOutletWise = local.outletWise.isNotEmpty ? local.outletWise : serverReport.outletWise;
+
+          return SalesReportData(
+            summary: mergedSummary,
+            paymentModes: finalPaymentModes,
+            salesByOrderType: finalSalesByOrderType,
+            topProducts: finalTopProducts,
+            salesTrend: finalTrend,
+            categoryWise: finalCatWise,
+            staffWise: finalStaffWise,
+            outletWise: finalOutletWise,
+            orders: local.orders.isNotEmpty ? local.orders : (serverReport.orders.isNotEmpty ? serverReport.orders : mergedOrders),
+            startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : (startDate ?? ''),
+            endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : (endDate ?? ''),
+            period: period ?? 'allTime',
+          );
         }
       }
     } catch (e) {

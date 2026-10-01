@@ -61,7 +61,14 @@ class BusinessProfile {
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
     return BusinessProfile(
-      profileImage: json['profileImage']?.toString() ?? '',
+      profileImage: json['profileImage']?.toString() ??
+          json['logoUrl']?.toString() ??
+          json['logo']?.toString() ??
+          json['profileLogo']?.toString() ??
+          json['avatarUrl']?.toString() ??
+          json['avatar']?.toString() ??
+          json['profilePhotoPath']?.toString() ??
+          '',
       name: json['name']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',
       companyName: json['companyName']?.toString() ?? '',

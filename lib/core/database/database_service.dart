@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
@@ -92,24 +93,23 @@ class DatabaseService extends ChangeNotifier {
   /// Resolves the authoritative company / restaurant profile logo path or url
   String? get companyLogoPath {
     final savedCompanyLogo = _prefs?.getString('apna_pos_company_logo');
-    if (savedCompanyLogo != null && savedCompanyLogo.isNotEmpty) {
-      return savedCompanyLogo;
+    if (savedCompanyLogo != null && savedCompanyLogo.trim().isNotEmpty) {
+      return savedCompanyLogo.trim();
+    }
+    if (restaurant?.logoUrl != null && restaurant!.logoUrl!.trim().isNotEmpty) {
+      return restaurant!.logoUrl!.trim();
+    }
+    if (currentUser?.profilePhotoPath != null && currentUser!.profilePhotoPath!.trim().isNotEmpty) {
+      return currentUser!.profilePhotoPath!.trim();
     }
     final ownerUser = registeredUsers.where((u) => u.isOwner || u.role.toLowerCase() == 'owner').firstOrNull;
-    if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.isNotEmpty) {
-      return ownerUser.profilePhotoPath;
-    }
-    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner' || currentUser!.isAdmin) &&
-        currentUser!.profilePhotoPath != null && currentUser!.profilePhotoPath!.isNotEmpty) {
-      return currentUser!.profilePhotoPath;
+    if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.trim().isNotEmpty) {
+      return ownerUser.profilePhotoPath!.trim();
     }
     for (final u in registeredUsers) {
-      if (u.profilePhotoPath != null && u.profilePhotoPath!.isNotEmpty && !u.profilePhotoPath!.contains('staff')) {
-        return u.profilePhotoPath;
+      if (u.profilePhotoPath != null && u.profilePhotoPath!.trim().isNotEmpty && !u.profilePhotoPath!.contains('staff')) {
+        return u.profilePhotoPath!.trim();
       }
-    }
-    if (currentUser?.profilePhotoPath != null && currentUser!.profilePhotoPath!.isNotEmpty) {
-      return currentUser!.profilePhotoPath;
     }
     return null;
   }
@@ -1198,7 +1198,7 @@ class DatabaseService extends ChangeNotifier {
       final remoteTables = await _tableService.fetchTables();
 
       // 3. Fetch latest active orders from backend
-      final remoteOrders = await _orderService.fetchOrders(limit: 200);
+      final remoteOrders = await _orderService.fetchOrders(limit: 1000);
 
       bool hasChanged = false;
 
@@ -1343,6 +1343,26 @@ class DatabaseService extends ChangeNotifier {
           final prof = b?['profile'] as Map<String, dynamic>?;
           final ordSet = b?['orderSettings'] as Map<String, dynamic>?;
 
+          final resolvedLogo = prof?['profileImage']?.toString() ??
+              prof?['logoUrl']?.toString() ??
+              prof?['logo']?.toString() ??
+              prof?['profileLogo']?.toString() ??
+              prof?['avatarUrl']?.toString() ??
+              prof?['avatar']?.toString() ??
+              b?['logoUrl']?.toString() ??
+              b?['logo']?.toString() ??
+              b?['profileImage']?.toString() ??
+              b?['profileLogo']?.toString() ??
+              u['profilePhotoPath']?.toString() ??
+              u['profileImage']?.toString() ??
+              u['avatarUrl']?.toString() ??
+              u['avatar']?.toString() ??
+              u['logoUrl']?.toString() ??
+              u['logo']?.toString() ??
+              (meData['profile'] is Map ? (meData['profile']['profileImage'] ?? meData['profile']['logoUrl'] ?? meData['profile']['logo'])?.toString() : null);
+
+          final cleanLogo = (resolvedLogo != null && resolvedLogo.trim().isNotEmpty) ? resolvedLogo.trim() : null;
+
           final isStaffSession = currentUser != null &&
               (!currentUser!.isOwner && !currentUser!.isAdmin) &&
               (currentUser!.employeeId != null && currentUser!.employeeId!.isNotEmpty);
@@ -1357,7 +1377,7 @@ class DatabaseService extends ChangeNotifier {
               pin: '1234',
               restaurantId: b?['id']?.toString() ?? u['restaurantId']?.toString() ?? restaurant?.id ?? 'rest_001',
               companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
-              profilePhotoPath: prof?['profileImage']?.toString() ?? u['profilePhotoPath']?.toString(),
+              profilePhotoPath: cleanLogo ?? currentUser?.profilePhotoPath,
             );
           }
 
@@ -1375,8 +1395,13 @@ class DatabaseService extends ChangeNotifier {
               upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
               enableChotuVoice: ordSet?['enableChotuVoice'] ?? true,
+              logoUrl: cleanLogo ?? restaurant?.logoUrl,
             );
             await _saveRestaurantToPrefs();
+          }
+
+          if (cleanLogo != null && cleanLogo.isNotEmpty) {
+            await _prefs?.setString('apna_pos_company_logo', cleanLogo);
           }
 
           // Sync Category Images from Business Profile / Settings
@@ -1578,7 +1603,7 @@ class DatabaseService extends ChangeNotifier {
         }
 
         // B. Fetch Live Orders from Backend (Pull latest orders for multi-device synchronization)
-        final remoteOrders = await _orderService.fetchOrders(limit: 500);
+        final remoteOrders = await _orderService.fetchOrders(limit: 1000);
         if (remoteOrders.isNotEmpty) {
           final Map<String, OrderModel> orderMap = {};
 
@@ -3393,6 +3418,9 @@ class DatabaseService extends ChangeNotifier {
     String? staffId,
     String? staffName,
     String? staffRole,
+    String? customerName,
+    String? customerPhone,
+    String? deliveryAddress,
   }) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     OrderModel baseOrder;
@@ -3414,6 +3442,10 @@ class DatabaseService extends ChangeNotifier {
     final resolvedStaffName = staffName ?? baseOrder.staffName ?? (currentUser != null ? (currentUser!.name.isNotEmpty ? currentUser!.name : (currentUser!.isOwner ? 'Owner' : 'Staff')) : 'Cashier / Counter');
     final resolvedStaffRole = staffRole ?? baseOrder.staffRole ?? currentUser?.role;
 
+    final resolvedCustName = customerName ?? baseOrder.customerName;
+    final resolvedCustPhone = customerPhone ?? baseOrder.customerPhone;
+    final resolvedDelivAddr = deliveryAddress ?? baseOrder.deliveryAddress;
+
     final completedOrder = baseOrder.copyWith(
       status: OrderStatus.completed,
       paymentStatus: 'paid',
@@ -3425,12 +3457,24 @@ class DatabaseService extends ChangeNotifier {
       staffId: resolvedStaffId,
       staffName: resolvedStaffName,
       staffRole: resolvedStaffRole,
+      customerName: resolvedCustName,
+      customerPhone: resolvedCustPhone,
+      deliveryAddress: resolvedDelivAddr,
     );
 
     if (index >= 0) {
       orders[index] = completedOrder;
     } else {
       orders.insert(0, completedOrder);
+    }
+
+    // Automatically record customer in CRM & database
+    if (resolvedCustPhone != null && resolvedCustPhone.trim().isNotEmpty) {
+      saveCustomer(
+        name: (resolvedCustName != null && resolvedCustName.trim().isNotEmpty) ? resolvedCustName.trim() : 'Customer',
+        phone: resolvedCustPhone.trim(),
+        address: (resolvedDelivAddr != null && resolvedDelivAddr.trim().isNotEmpty) ? resolvedDelivAddr.trim() : null,
+      );
     }
 
     // Remove any stale / duplicate pending draft orders for this table or takeaway/delivery
@@ -3754,7 +3798,7 @@ class DatabaseService extends ChangeNotifier {
     }).toList();
   }
 
-  Future<void> _saveOrdersToPrefs() async {
+  Future<void> saveOrdersToPrefs() async {
     orders = deduplicateOrdersList(orders);
     final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
     await _prefs?.setString(_userKey('orders'), encoded);
@@ -3762,6 +3806,8 @@ class DatabaseService extends ChangeNotifier {
       await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
     }
   }
+
+  Future<void> _saveOrdersToPrefs() => saveOrdersToPrefs();
 
   // --- INVENTORY SERVICES ---
   Future<void> addInventoryStock(String id, double addedQty) async {
@@ -3798,15 +3844,67 @@ class DatabaseService extends ChangeNotifier {
       final isAuth = await _authService.isAuthenticated();
       if (!isAuth) return;
 
-      final remoteCustomers = await _customerService.fetchCustomers(limit: 100);
-      if (remoteCustomers.isNotEmpty) {
-        final Map<String, CustomerModel> merged = {
-          for (var c in customers) c.phone.trim(): c,
-        };
-        for (var rc in remoteCustomers) {
-          merged[rc.phone.trim()] = rc;
+      final remoteCustomers = await _customerService.fetchCustomers(limit: 1000);
+      if (remoteCustomers.isNotEmpty || customers.isNotEmpty) {
+        final Map<String, CustomerModel> merged = {};
+
+        // 1. First add all local customers
+        for (final c in customers) {
+          final key = c.phone.trim().isNotEmpty ? c.phone.trim() : (c.id.isNotEmpty ? c.id : c.name.trim());
+          if (key.isNotEmpty) {
+            merged[key] = c;
+          }
         }
-        customers = merged.values.toList();
+
+        // 2. Overlay / merge remote customers
+        for (final rc in remoteCustomers) {
+          final key = rc.phone.trim().isNotEmpty ? rc.phone.trim() : (rc.id.isNotEmpty ? rc.id : rc.name.trim());
+          if (key.isNotEmpty) {
+            final existing = merged[key];
+            if (existing != null) {
+              merged[key] = rc.copyWith(
+                totalOrders: math.max(rc.totalOrders, existing.totalOrders),
+                totalSpent: math.max(rc.totalSpent, existing.totalSpent),
+                avatarUrl: rc.avatarUrl.isNotEmpty ? rc.avatarUrl : existing.avatarUrl,
+                address: rc.address.isNotEmpty ? rc.address : existing.address,
+                email: rc.email.isNotEmpty ? rc.email : existing.email,
+              );
+            } else {
+              merged[key] = rc;
+            }
+          }
+        }
+
+        // 3. Enrich customer order counts and spend from all synchronized orders
+        final List<CustomerModel> enrichedCustomers = [];
+        for (final c in merged.values) {
+          final cleanPhone = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+          final p10 = cleanPhone.length >= 10 ? cleanPhone.substring(cleanPhone.length - 10) : cleanPhone;
+          final custOrders = orders.where((o) {
+            if (o.status == OrderStatus.cancelled) return false;
+            if (p10.isNotEmpty && o.customerPhone != null) {
+              final oClean = o.customerPhone!.replaceAll(RegExp(r'[^0-9]'), '');
+              final o10 = oClean.length >= 10 ? oClean.substring(oClean.length - 10) : oClean;
+              if (o10 == p10) return true;
+            }
+            if (c.name.isNotEmpty && c.name != 'Customer' && (o.customerName ?? '').trim().toLowerCase() == c.name.trim().toLowerCase()) {
+              return true;
+            }
+            return false;
+          }).toList();
+
+          final computedCount = custOrders.length;
+          final computedSpent = custOrders.fold<double>(0.0, (sum, o) => sum + o.totalAmount);
+          final finalOrders = math.max(c.totalOrders, computedCount);
+          final finalSpent = math.max(c.totalSpent, computedSpent);
+
+          enrichedCustomers.add(c.copyWith(
+            totalOrders: finalOrders,
+            totalSpent: finalSpent,
+          ));
+        }
+
+        customers = enrichedCustomers;
         await _saveCustomersToPrefs();
         notifyListeners();
       }

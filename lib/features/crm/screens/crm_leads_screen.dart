@@ -12,6 +12,7 @@ import '../../../core/models/crm_model.dart';
 import '../../../core/models/order_model.dart';
 import '../../../core/services/crm_service.dart';
 import '../../../core/services/customer_service.dart';
+import '../../../core/services/order_service.dart';
 
 class CrmLeadsScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
@@ -30,6 +31,7 @@ class CrmLeadsScreen extends StatefulWidget {
 class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   final CrmService _crmService = CrmService();
   final CustomerService _customerService = CustomerService();
+  final OrderService _orderService = OrderService();
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _noteInputController = TextEditingController();
 
@@ -146,11 +148,22 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     final normSource = _normalizeLeadSource(lead.source);
     final localOrders = DatabaseService().orders;
     final matchingLocalOrders = localOrders.where((o) {
+      if (lead.id.isNotEmpty && o.customerId != null && o.customerId!.trim().isNotEmpty) {
+        if (o.customerId == lead.id || o.customerId == lead.phone) {
+          return true;
+        }
+      }
       if (lead.phone.isNotEmpty && o.customerPhone != null && o.customerPhone!.trim().isNotEmpty) {
-        return _isSamePhone(lead.phone, o.customerPhone);
+        if (_isSamePhone(lead.phone, o.customerPhone)) {
+          return true;
+        }
       }
       if (lead.name.isNotEmpty && lead.name != 'Customer' && lead.name != 'Guest Customer') {
-        return (o.customerName ?? '').trim().toLowerCase() == lead.name.trim().toLowerCase();
+        final cName = (o.customerName ?? '').trim().toLowerCase();
+        final lName = lead.name.trim().toLowerCase();
+        if (cName.isNotEmpty && (cName == lName || cName.contains(lName) || lName.contains(cName))) {
+          return true;
+        }
       }
       return false;
     }).toList();
@@ -175,14 +188,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     }
 
     final localOrderCount = nonCancelledLocalOrders.length;
-    final localVisitCount = localVisitDates.length;
-
-    // Take max / merged values between backend lead data and local orders
-    final int effTotalOrders = math.max(lead.totalOrders, localOrderCount);
-    final double effTotalSpent = math.max(lead.totalSpent, localTotalSpent);
-    // In Apna POS (POS/restaurant), each completed order represents a customer visit, ensuring 100% parity with Dashboard analytics
-    final int effVisitCount = effTotalOrders > 0 ? effTotalOrders : (lead.visitCount > 0 ? lead.visitCount : 0);
-    final int effReturnCount = math.max(lead.returnCount, cancelledLocalOrdersCount);
 
     // Merge recent orders for Orders Tab display
     final List<Map<String, dynamic>> enrichedRecentOrders = [];
@@ -214,19 +219,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     }
 
     // 2. Add backend recentOrders if not already seen
+    double backendRecentSpent = 0.0;
     for (final ord in lead.recentOrders) {
       if (ord is Map) {
         final id = ord['id']?.toString() ?? ord['_id']?.toString() ?? ord['orderNumber']?.toString() ?? '';
         if (id.isNotEmpty && seenOrderIds.contains(id)) continue;
         if (id.isNotEmpty) seenOrderIds.add(id);
 
+        final status = ord['status']?.toString() ?? 'completed';
+        final isCancelled = status.toLowerCase() == 'cancelled' || status.toLowerCase() == 'canceled';
+        final amt = (ord['totalAmount'] is num)
+            ? (ord['totalAmount'] as num).toDouble()
+            : (double.tryParse((ord['totalAmount'] ?? ord['amount'] ?? 0).toString()) ?? 0.0);
+        if (!isCancelled) {
+          backendRecentSpent += amt;
+        }
+
         enrichedRecentOrders.add({
           'id': id.isNotEmpty ? id : 'Order',
           'orderNumber': ord['orderNumber'] ?? id,
           'orderType': 'POS',
-          'status': ord['status']?.toString() ?? 'completed',
-          'totalAmount': ord['totalAmount'] ?? ord['amount'] ?? 0.0,
-          'amount': ord['totalAmount'] ?? ord['amount'] ?? 0.0,
+          'status': status,
+          'totalAmount': amt,
+          'amount': amt,
           'createdAt': ord['createdAt'] ?? ord['date'],
           'date': ord['date'] ?? ord['createdAt'],
           'items': ord['items'] is List ? ord['items'] : [],
@@ -241,6 +256,18 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       return db.compareTo(da);
     });
 
+    final nonCancelledEnrichedCount = enrichedRecentOrders.where((ord) {
+      final st = (ord['status'] ?? '').toString().toLowerCase();
+      return st != 'cancelled' && st != 'canceled';
+    }).length;
+
+    // Take max / merged values between backend lead data, enriched recent orders, and local orders
+    final int effTotalOrders = math.max(lead.totalOrders, math.max(nonCancelledEnrichedCount, localOrderCount));
+    final double effTotalSpent = math.max(lead.totalSpent, math.max(localTotalSpent, backendRecentSpent + localTotalSpent));
+    // In Apna POS (POS/restaurant), each completed order represents a customer visit, ensuring 100% parity with Dashboard analytics
+    final int effVisitCount = effTotalOrders > 0 ? effTotalOrders : (lead.visitCount > 0 ? lead.visitCount : 0);
+    final int effReturnCount = math.max(lead.returnCount, cancelledLocalOrdersCount);
+
     final isRegular = effTotalOrders > 1 || lead.customerType.toLowerCase().contains('regular');
 
     return lead.copyWith(
@@ -254,7 +281,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  /// Load leads dynamically from all sources (CRM API + Customer DB + POS Live Orders)
+  /// Load leads dynamically from all sources (CRM API + Customer DB + POS Live Orders + Order Backend Sync)
   Future<void> _loadLeadsFromBackend() async {
     setState(() {
       _isLoading = true;
@@ -262,6 +289,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     try {
       final Map<String, CrmLeadModel> aggregatedMap = {};
+
+      // 0. Fetch all remote orders from OrderService (limit 1000) so local cache and CRM enrichment have complete order history
+      try {
+        final remoteOrders = await _orderService.fetchOrders(limit: 1000);
+        if (remoteOrders.isNotEmpty) {
+          final Map<String, OrderModel> orderMap = {};
+          for (final r in remoteOrders) {
+            final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
+            orderMap[key] = r.copyWith(isSynced: true);
+          }
+          for (final local in DatabaseService().orders) {
+            final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
+            final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
+            if (existingRemote == null) {
+              orderMap[key] = local;
+            }
+          }
+          DatabaseService().orders = DatabaseService().deduplicateOrdersList(orderMap.values.toList());
+          DatabaseService().saveOrdersToPrefs();
+        }
+      } catch (e) {
+        debugPrint('[CrmLeadsScreen] OrderService fetch error: $e');
+      }
 
       // 1. Fetch from CRM Backend API (Request large limit to populate client-side filters & full dataset)
       CrmFetchResult? crmApiResult;
@@ -305,6 +355,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               phone: cust.phone,
               email: cust.email,
               address: cust.address,
+              avatarUrl: cust.avatarUrl,
               source: 'POS',
               stage: effStage,
               status: effStage,
@@ -343,6 +394,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               phone: cust.phone,
               email: cust.email,
               address: cust.address,
+              avatarUrl: cust.avatarUrl,
               source: 'POS',
               stage: effStage,
               status: effStage,
@@ -383,7 +435,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             final isRegular = orderCount > 1;
 
             final baseLead = CrmLeadModel(
-              id: 'ord_${ord.id}',
+              id: ord.customerId?.isNotEmpty == true ? ord.customerId! : 'ord_${ord.id}',
               name: n.isNotEmpty ? n : 'Guest Customer',
               phone: p,
               email: '',
@@ -1385,6 +1437,92 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return primaryNavy;
   }
 
+  /// Builds customer profile logo / avatar with support for Cloudflare R2 bucket URLs and fallback initials
+  Widget _buildLeadAvatar(CrmLeadModel lead, {double size = 38, double fontSize = 15}) {
+    final avatarColor = _getAvatarColor(lead.name);
+    final initial = lead.name.isNotEmpty ? lead.name[0].toUpperCase() : 'G';
+    final hasRemoteUrl = lead.avatarUrl.isNotEmpty &&
+        (lead.avatarUrl.startsWith('http://') || lead.avatarUrl.startsWith('https://'));
+
+    if (hasRemoteUrl) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: avatarColor.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        ),
+        child: ClipOval(
+          child: Image.network(
+            lead.avatarUrl,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Center(
+              child: Text(
+                initial,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w800,
+                  color: avatarColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (lead.avatarUrl.isNotEmpty && !lead.avatarUrl.contains('_selected') && File(lead.avatarUrl).existsSync()) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: avatarColor.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        ),
+        child: ClipOval(
+          child: Image.file(
+            File(lead.avatarUrl),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => Center(
+              child: Text(
+                initial,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w800,
+                  color: avatarColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: avatarColor,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2125,8 +2263,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
   // --- Mobile Lead Card Item (Optimized Area Management & Standalone Action Icons) ---
   Widget _buildMobileLeadCardItem(CrmLeadModel lead, bool isSelected) {
-    final avatarColor = _getAvatarColor(lead.name);
-    final initial = lead.name.isNotEmpty ? lead.name[0].toUpperCase() : 'G';
     final interactionDate = DateFormat('dd MMM').format(lead.lastVisit ?? lead.createdAt);
 
     return InkWell(
@@ -2157,23 +2293,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Container(
-                  width: 34,
-                  height: 34,
-                  decoration: BoxDecoration(
-                    color: avatarColor,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    initial,
-                    style: const TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
+                _buildLeadAvatar(lead, size: 34, fontSize: 13.5),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Column(
@@ -2552,8 +2672,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   }
 
   Widget _buildTableRow(CrmLeadModel lead, bool isSelected) {
-    final avatarColor = _getAvatarColor(lead.name);
-    final initial = lead.name.isNotEmpty ? lead.name[0].toUpperCase() : 'G';
     final interactionDate = DateFormat('MMM dd, yyyy').format(lead.lastVisit ?? lead.createdAt);
     final interactionTime = DateFormat('h:mm a').format(lead.lastVisit ?? lead.createdAt);
 
@@ -2572,23 +2690,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               flex: 26,
               child: Row(
                 children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: avatarColor,
-                      shape: BoxShape.circle,
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      initial,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
+                  _buildLeadAvatar(lead, size: 30, fontSize: 12.5),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Column(
@@ -3115,9 +3217,6 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       );
     }
 
-    final avatarColor = _getAvatarColor(lead.name);
-    final initial = lead.name.isNotEmpty ? lead.name[0].toUpperCase() : 'G';
-
     return Container(
       padding: EdgeInsets.all(isMobile ? 14 : 18),
       decoration: BoxDecoration(
@@ -3139,23 +3238,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: isMobile ? 38 : 42,
-                height: isMobile ? 38 : 42,
-                decoration: BoxDecoration(
-                  color: avatarColor,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial,
-                  style: TextStyle(
-                    fontSize: isMobile ? 15 : 17,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
+              _buildLeadAvatar(lead, size: isMobile ? 38 : 42, fontSize: isMobile ? 15 : 17),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(

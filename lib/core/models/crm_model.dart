@@ -23,6 +23,7 @@ class CrmLeadModel {
   final DateTime? lastVisit;
   final List<dynamic> recentOrders;
   final List<dynamic> notesList;
+  final String avatarUrl;
 
   double get totalSpend => totalSpent;
   bool get isRegularCustomer => totalOrders > 1 || customerType.toLowerCase().contains('regular');
@@ -53,6 +54,7 @@ class CrmLeadModel {
     this.lastVisit,
     this.recentOrders = const [],
     this.notesList = const [],
+    this.avatarUrl = '',
   });
 
   factory CrmLeadModel.fromJson(Map<String, dynamic> json) {
@@ -100,14 +102,60 @@ class CrmLeadModel {
       rawSource = 'POS';
     }
 
+    final rawOrdersList = (json['recentOrders'] is List)
+        ? (json['recentOrders'] as List)
+        : (json['orders'] is List)
+            ? (json['orders'] as List)
+            : (json['sales'] is List)
+                ? (json['sales'] as List)
+                : (json['orderHistory'] is List)
+                    ? (json['orderHistory'] as List)
+                    : const [];
+
+    final rawTotalOrders = _parseCrmInt(
+      json['totalOrders'] ??
+          json['orderCount'] ??
+          json['ordersCount'] ??
+          json['totalOrdersCount'] ??
+          json['salesCount'] ??
+          json['ordersTotal'] ??
+          rawOrdersList.length,
+    );
+
+    final rawTotalSpent = _parseCrmDouble(
+      json['totalSpent'] ??
+          json['totalSpend'] ??
+          json['totalAmount'] ??
+          json['totalSales'] ??
+          json['totalRevenue'] ??
+          json['amount'] ??
+          json['spend'],
+    );
+
+    final rawAvatar = json['avatarUrl']?.toString() ??
+        json['profileImage']?.toString() ??
+        json['avatar']?.toString() ??
+        json['photoUrl']?.toString() ??
+        json['logoUrl']?.toString() ??
+        json['logo']?.toString() ??
+        json['profilePhotoPath']?.toString() ??
+        '';
+
+    final rawPhone = json['phone']?.toString() ??
+        json['customerPhone']?.toString() ??
+        json['mobile']?.toString() ??
+        json['phoneNumber']?.toString() ??
+        json['contactNumber']?.toString() ??
+        '';
+
+    final rawName = (json['name']?.toString() ?? json['customerName']?.toString() ?? json['clientName']?.toString() ?? '').trim();
+
     return CrmLeadModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
-      name: (json['name']?.toString() ?? '').trim().isNotEmpty
-          ? json['name'].toString().trim()
-          : 'Guest Customer',
-      phone: json['phone']?.toString() ?? '',
+      name: rawName.isNotEmpty ? rawName : 'Guest Customer',
+      phone: rawPhone,
       email: json['email']?.toString() ?? '',
-      address: json['address']?.toString() ?? '',
+      address: json['address']?.toString() ?? json['deliveryAddress']?.toString() ?? '',
       source: rawSource,
       stage: json['stage']?.toString() ?? 'New Lead',
       status: json['status']?.toString() ?? 'New Lead',
@@ -119,14 +167,15 @@ class CrmLeadModel {
       followupNotes: json['followupNotes']?.toString() ?? '',
       followupStatus: json['followupStatus']?.toString() ?? 'none',
       notes: json['notes']?.toString() ?? '',
-      totalOrders: _parseCrmInt(json['totalOrders']),
-      totalSpent: _parseCrmDouble(json['totalSpent']),
-      visitCount: _parseCrmInt(json['visitCount'], _parseCrmInt(json['totalOrders'])),
+      totalOrders: rawTotalOrders,
+      totalSpent: rawTotalSpent,
+      visitCount: _parseCrmInt(json['visitCount'], rawTotalOrders),
       returnCount: _parseCrmInt(json['returnCount'], _parseCrmInt(json['cancelledOrders'])),
       createdAt: parsedCreated,
       lastVisit: parsedLastVisit,
-      recentOrders: json['recentOrders'] is List ? json['recentOrders'] as List : const [],
+      recentOrders: rawOrdersList,
       notesList: parsedNotesList,
+      avatarUrl: rawAvatar,
     );
   }
 
@@ -154,6 +203,7 @@ class CrmLeadModel {
         'createdAt': createdAt.toIso8601String(),
         'lastVisit': lastVisit?.toIso8601String(),
         'notesList': notesList,
+        'avatarUrl': avatarUrl,
       };
 
   CrmLeadModel copyWith({
@@ -179,6 +229,7 @@ class CrmLeadModel {
     DateTime? lastVisit,
     List<dynamic>? recentOrders,
     List<dynamic>? notesList,
+    String? avatarUrl,
   }) {
     return CrmLeadModel(
       id: id,
@@ -205,6 +256,7 @@ class CrmLeadModel {
       lastVisit: lastVisit ?? this.lastVisit,
       recentOrders: recentOrders ?? this.recentOrders,
       notesList: notesList ?? this.notesList,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 }

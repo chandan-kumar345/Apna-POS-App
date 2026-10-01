@@ -24,6 +24,8 @@ class RestaurantModel {
   final String managerPin; // Security / Manager PIN to clear running KOT carts & void orders (default: '1234')
   final bool enableChotuVoice; // Whether Chotu AI Voice assistant icon is enabled in POS
 
+  final String? logoUrl;
+
   bool get showItemImages => posViewMode != 'without_image';
 
   RestaurantModel({
@@ -49,6 +51,7 @@ class RestaurantModel {
     this.posViewMode = 'with_image',
     this.managerPin = '1234',
     this.enableChotuVoice = true,
+    this.logoUrl,
   });
 
   Map<String, dynamic> toJson() => {
@@ -74,6 +77,7 @@ class RestaurantModel {
         'posViewMode': posViewMode,
         'managerPin': managerPin,
         'enableChotuVoice': enableChotuVoice,
+        'logoUrl': logoUrl,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -104,6 +108,12 @@ class RestaurantModel {
                 ? json['securityPin'].toString().trim()
                 : '1234'),
         enableChotuVoice: json['enableChotuVoice'] ?? (json['orderSettings'] is Map ? json['orderSettings']['enableChotuVoice'] : null) ?? true,
+        logoUrl: json['logoUrl']?.toString() ??
+            json['logo']?.toString() ??
+            json['profileImage']?.toString() ??
+            json['profileLogo']?.toString() ??
+            json['profilePhotoPath']?.toString() ??
+            (json['profile'] is Map ? (json['profile']['profileImage'] ?? json['profile']['logoUrl'] ?? json['profile']['logo'])?.toString() : null),
       );
 
   RestaurantModel copyWith({
@@ -128,6 +138,7 @@ class RestaurantModel {
     String? posViewMode,
     String? managerPin,
     bool? enableChotuVoice,
+    String? logoUrl,
   }) {
     return RestaurantModel(
       id: id,
@@ -152,6 +163,7 @@ class RestaurantModel {
       posViewMode: posViewMode ?? this.posViewMode,
       managerPin: managerPin ?? this.managerPin,
       enableChotuVoice: enableChotuVoice ?? this.enableChotuVoice,
+      logoUrl: logoUrl ?? this.logoUrl,
     );
   }
 }

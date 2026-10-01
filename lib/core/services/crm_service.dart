@@ -67,16 +67,56 @@ class CrmService {
         queryParameters: queryParams,
       );
 
-      if (response != null && response['data'] != null) {
-        final data = response['data'] as Map<String, dynamic>;
-        final rawLeads = data['leads'] as List<dynamic>? ?? [];
-        final pagination = data['pagination'] as Map<String, dynamic>? ?? {};
-        final rawStats = data['stats'] as Map<String, dynamic>?;
+      if (response != null) {
+        List<dynamic> rawLeads = [];
+        Map<String, dynamic> pagination = {};
+        Map<String, dynamic>? rawStats;
 
-        final leads = rawLeads
-            .whereType<Map<String, dynamic>>()
-            .map((item) => CrmLeadModel.fromJson(item))
-            .toList();
+        if (response is List) {
+          rawLeads = response;
+        } else if (response is Map) {
+          final data = response['data'];
+          if (data is List) {
+            rawLeads = data;
+          } else if (data is Map) {
+            final Map<String, dynamic> dataMap = Map<String, dynamic>.from(data);
+            rawLeads = (dataMap['leads'] ??
+                    dataMap['customers'] ??
+                    dataMap['docs'] ??
+                    dataMap['items'] ??
+                    dataMap['records'] ??
+                    dataMap['data'] ??
+                    dataMap['results']) as List<dynamic>? ??
+                [];
+            pagination = dataMap['pagination'] is Map ? Map<String, dynamic>.from(dataMap['pagination'] as Map) : {};
+            rawStats = dataMap['stats'] is Map ? Map<String, dynamic>.from(dataMap['stats'] as Map) : null;
+          }
+
+          if (rawLeads.isEmpty) {
+            rawLeads = (response['leads'] ??
+                    response['customers'] ??
+                    response['docs'] ??
+                    response['items'] ??
+                    response['records'] ??
+                    response['results'] ??
+                    []) as List<dynamic>;
+          }
+          if (pagination.isEmpty && response['pagination'] is Map) {
+            pagination = Map<String, dynamic>.from(response['pagination'] as Map);
+          }
+          rawStats ??= response['stats'] is Map ? Map<String, dynamic>.from(response['stats'] as Map) : null;
+        }
+
+        final List<CrmLeadModel> leads = [];
+        for (final item in rawLeads) {
+          if (item is Map) {
+            try {
+              leads.add(CrmLeadModel.fromJson(Map<String, dynamic>.from(item)));
+            } catch (err) {
+              debugPrint('[CrmService.fetchLeads] Skipping malformed lead: $err');
+            }
+          }
+        }
 
         final totalVal = int.tryParse(pagination['total']?.toString() ?? '') ?? leads.length;
         final pageVal = int.tryParse(pagination['page']?.toString() ?? '') ?? page;

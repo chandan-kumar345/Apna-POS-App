@@ -5917,6 +5917,9 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               paymentMethod: resultMethod,
               totalAmount: totalAmount ?? calc.totalPayableAmount,
               roundOff: roundOff ?? 0.0,
+              customerName: _customerName ?? targetKotOrder.customerName,
+              customerPhone: _customerPhone ?? targetKotOrder.customerPhone,
+              deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : targetKotOrder.deliveryAddress,
             );
           } else {
             // CREATE FINALIZED COMPLETED ORDER ATOMICALLY

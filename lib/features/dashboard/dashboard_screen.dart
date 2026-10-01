@@ -187,34 +187,17 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       );
 
       if (mounted) {
-        if (overview != null) {
-          setState(() {
-            _summaryData = overview.summary;
-            _orderTypesData = overview.orderTypes;
-            _productSales = overview.productSales;
-            _customerData = overview.customers;
-            _paymentMethodsData = overview.paymentMethods;
-            _taxData = overview.taxes;
-            _orderStatsData = overview.orderStats;
-            _isLoading = false;
-            _errorMessage = null;
-          });
-        } else {
-          final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
-          setState(() {
-            if (localData != null) {
-              _summaryData = localData.summary;
-              _orderTypesData = localData.orderTypes;
-              _productSales = localData.productSales;
-              _customerData = localData.customers;
-              _paymentMethodsData = localData.payments;
-              _taxData = localData.taxes;
-              _orderStatsData = localData.orderStats;
-            }
-            _isLoading = false;
-            _errorMessage = null;
-          });
-        }
+        setState(() {
+          _summaryData = overview.summary;
+          _orderTypesData = overview.orderTypes;
+          _productSales = overview.productSales;
+          _customerData = overview.customers;
+          _paymentMethodsData = overview.paymentMethods;
+          _taxData = overview.taxes;
+          _orderStatsData = overview.orderStats;
+          _isLoading = false;
+          _errorMessage = null;
+        });
       }
     } catch (e) {
       debugPrint('[GlassDashboardScreen] Error fetching dashboard data: $e');

@@ -255,7 +255,11 @@ class UserModel {
           json['avatarUrl']?.toString() ??
           json['photoUrl']?.toString() ??
           json['avatar']?.toString() ??
-          json['profileImage']?.toString(),
+          json['profileImage']?.toString() ??
+          json['logoUrl']?.toString() ??
+          json['logo']?.toString() ??
+          json['profileLogo']?.toString() ??
+          (json['profile'] is Map ? (json['profile']['profileImage'] ?? json['profile']['logoUrl'] ?? json['profile']['logo'])?.toString() : null),
       communicationPreferences: json['communicationPreferences'] != null
           ? Map<String, bool>.from(json['communicationPreferences'])
           : null,

@@ -44,8 +44,15 @@ class OrderService {
         'status': isPaid ? 'completed' : order.status.name,
         'tableNumber': order.orderType == OrderType.dineIn ? (order.tableNumber ?? '') : '',
         'deliveryAddress': order.orderType == OrderType.delivery ? (order.deliveryAddress ?? '') : '',
+        'customerId': order.customerId ?? '',
         'customerName': order.customerName ?? '',
         'customerPhone': order.customerPhone ?? '',
+        if (order.customerPhone != null && order.customerPhone!.isNotEmpty)
+          'customer': {
+            'name': order.customerName ?? 'Customer',
+            'phone': order.customerPhone,
+            'address': order.deliveryAddress ?? '',
+          },
         'staffId': order.staffId ?? '',
         'staffName': order.staffName ?? '',
         'staffRole': order.staffRole ?? '',
@@ -151,7 +158,7 @@ class OrderService {
   /// Fetch orders list
   Future<List<OrderModel>> fetchOrders({
     int page = 1,
-    int limit = 500,
+    int limit = 1000,
     String? status,
     String? orderType,
     String? search,
@@ -184,19 +191,42 @@ class OrderService {
         List<dynamic>? ordersData;
         if (response is List) {
           ordersData = response;
-        } else if (response['data'] is List) {
-          ordersData = response['data'] as List<dynamic>;
-        } else if (response['data'] is Map && response['data']['orders'] is List) {
-          ordersData = response['data']['orders'] as List<dynamic>;
-        } else if (response['orders'] is List) {
-          ordersData = response['orders'] as List<dynamic>;
+        } else if (response is Map) {
+          final data = response['data'];
+          if (data is List) {
+            ordersData = data;
+          } else if (data is Map) {
+            ordersData = (data['orders'] ??
+                    data['docs'] ??
+                    data['items'] ??
+                    data['records'] ??
+                    data['data'] ??
+                    data['sales'] ??
+                    data['results'] ??
+                    data['list']) as List<dynamic>?;
+          }
+          ordersData ??= (response['orders'] ??
+                  response['docs'] ??
+                  response['items'] ??
+                  response['records'] ??
+                  response['sales'] ??
+                  response['results'] ??
+                  response['list'] ??
+                  (response['data'] is List ? response['data'] : null)) as List<dynamic>?;
         }
 
         if (ordersData != null) {
-          return ordersData
-              .whereType<Map>()
-              .map((o) => OrderModel.fromJson(Map<String, dynamic>.from(o)))
-              .toList();
+          final List<OrderModel> parsedOrders = [];
+          for (final item in ordersData) {
+            if (item is Map) {
+              try {
+                parsedOrders.add(OrderModel.fromJson(Map<String, dynamic>.from(item)));
+              } catch (itemErr) {
+                debugPrint('[OrderService.fetchOrders] Skipping single malformed order: $itemErr');
+              }
+            }
+          }
+          return parsedOrders;
         }
       }
       return [];
