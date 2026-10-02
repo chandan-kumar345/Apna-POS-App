@@ -293,9 +293,9 @@ class SalesService {
     ]);
 
     const paymentMap = {
-      'Cash': { count: 0, amount: 0 },
+      'Cash Payments': { count: 0, amount: 0 },
       'UPI / Digital QR': { count: 0, amount: 0 },
-      'Card (Debit/Credit)': { count: 0, amount: 0 },
+      'Cards (Debit/Credit)': { count: 0, amount: 0 },
       'Wallet': { count: 0, amount: 0 },
       'Other': { count: 0, amount: 0 },
     };
@@ -307,9 +307,9 @@ class SalesService {
       if (rawMode.startsWith('UPI') || rawMode.includes('ONLINE') || rawMode.includes('GPAY') || rawMode.includes('PHONEPE') || rawMode.includes('PAYTM') || rawMode.includes('QR')) {
         key = 'UPI / Digital QR';
       } else if (rawMode.startsWith('CARD') || rawMode.includes('DEBIT') || rawMode.includes('CREDIT')) {
-        key = 'Card (Debit/Credit)';
+        key = 'Cards (Debit/Credit)';
       } else if (rawMode.startsWith('CASH') || !rawMode) {
-        key = 'Cash';
+        key = 'Cash Payments';
       } else if (rawMode.startsWith('WALLET')) {
         key = 'Wallet';
       } else {
@@ -320,17 +320,19 @@ class SalesService {
       paymentMap[key].amount += item.amount;
     }
 
-    const paymentModes = Object.entries(paymentMap).map(([modeName, val]) => {
-      const amt = Number(val.amount.toFixed(2));
-      const pct = totalRevenue > 0 ? Number(((amt / totalRevenue) * 100).toFixed(1)) : 0.0;
-      return {
-        mode: modeName,
-        rawMode: modeName.toLowerCase(),
-        count: val.count,
-        amount: amt,
-        percentage: pct,
-      };
-    });
+    const paymentModes = Object.entries(paymentMap)
+      .filter(([_, val]) => val.count > 0)
+      .map(([modeName, val]) => {
+        const amt = Number(val.amount.toFixed(2));
+        const pct = totalRevenue > 0 ? Number(((amt / totalRevenue) * 100).toFixed(1)) : 0.0;
+        return {
+          mode: modeName,
+          rawMode: modeName.toLowerCase(),
+          count: val.count,
+          amount: amt,
+          percentage: pct,
+        };
+      });
 
     // 4. Order Types Breakdown
     const orderTypeAgg = await Order.aggregate([

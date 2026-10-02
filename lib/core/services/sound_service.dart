@@ -99,8 +99,12 @@ class SoundService {
     _instance._lastButtonClickTime = now;
 
     // 1. Instant zero-latency native hardware sound & haptic feedback
-    SystemSound.play(SystemSoundType.click);
-    HapticFeedback.selectionClick();
+    try {
+      SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
+    try {
+      HapticFeedback.selectionClick();
+    } catch (_) {}
 
     // 2. Fast low-latency asset playback non-blockingly
     if (_instance._isInitialized) {

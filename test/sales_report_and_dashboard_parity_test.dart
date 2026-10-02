@@ -184,7 +184,7 @@ void main() {
       db.orders.addAll([order1, order2, order3, order4, order5, order6]);
 
       // ----------------------------------------------------
-      // A. Verify "Today" Filter Parity
+      // A. Verify "Today" Filter Parity (Only settled orders: order1 and order2, excluding pending KOT order4 and cancelled order3)
       // ----------------------------------------------------
       final todayReport = reportService.getLocalSalesReport(period: 'today');
       final todayDashSummary = await dashboardService.fetchSummary(period: 'Today');
@@ -192,30 +192,31 @@ void main() {
       final todayDashTaxes = await dashboardService.fetchTaxes(period: 'Today');
       final todayDashOrderTypes = await dashboardService.fetchOrderTypes(period: 'Today');
 
-      // Total placed orders: exactly 3 (order1, order2, order4 - excluding cancelled order3)
-      expect(todayReport.summary.totalOrders, 3);
-      expect(todayDashSummary.totalOrders, 3);
+      // Total settled orders: exactly 2 (order1, order2 - excluding pending KOT order4 and cancelled order3)
+      expect(todayReport.summary.totalOrders, 2);
+      expect(todayDashSummary.totalOrders, 2);
+      expect(todayDashSummary.activeOrdersCount, 1); // 1 active/pending KOT order (order4)
 
-      // Total revenue: 200 + 500 + 105 = 805
-      expect(todayReport.summary.totalRevenue, 805.0);
-      expect(todayDashSummary.revenue, 805.0);
+      // Total revenue: 200 + 500 = 700
+      expect(todayReport.summary.totalRevenue, 700.0);
+      expect(todayDashSummary.revenue, 700.0);
 
-      // Total taxes: 10 + 25 + 5 = 40
-      expect(todayReport.summary.totalTax, 40.0);
-      expect(todayDashTaxes.totalGST, 40.0);
+      // Total taxes: 10 + 25 = 35
+      expect(todayReport.summary.totalTax, 35.0);
+      expect(todayDashTaxes.totalGST, 35.0);
 
-      // Payment breakdown: Cash 200 + 105 = 305, UPI 500
+      // Payment breakdown: Cash 200, UPI 500
       final cashStat = todayReport.paymentModes.firstWhere((p) => p.mode.toLowerCase().contains('cash'));
       final upiStat = todayReport.paymentModes.firstWhere((p) => p.mode.toLowerCase().contains('upi'));
-      expect(cashStat.amount, 305.0);
+      expect(cashStat.amount, 200.0);
       expect(upiStat.amount, 500.0);
-      expect(todayDashPayments.totalAmount, 805.0);
+      expect(todayDashPayments.totalAmount, 700.0);
 
-      // Order types: Dine-In, Delivery, Takeaway
-      expect(todayDashOrderTypes.dineIn.count, 2); // order1 + order4
+      // Order types: Dine-In (1 settled), Delivery (1 settled), Takeaway (0)
+      expect(todayDashOrderTypes.dineIn.count, 1); // order1 only (order4 is unpaid pending KOT)
       expect(todayDashOrderTypes.delivery.count, 1); // order2
       expect(todayDashOrderTypes.takeaway.count, 0);
-      expect(todayDashOrderTypes.total.count, 3);
+      expect(todayDashOrderTypes.total.count, 2);
 
       // ----------------------------------------------------
       // B. Verify "Yesterday" Filter Parity
@@ -242,23 +243,23 @@ void main() {
       expect(yestReport.paymentModes.first.amount, 300.0);
 
       // ----------------------------------------------------
-      // C. Verify "All Time" Filter Parity
+      // C. Verify "All Time" Filter Parity (Only settled orders: order1, order2, order5, order6)
       // ----------------------------------------------------
       final allReport = reportService.getLocalSalesReport(period: 'allTime');
       final allDashSummary = await dashboardService.fetchSummary(period: 'All Time');
       final allDashTaxes = await dashboardService.fetchTaxes(period: 'All Time');
 
-      // Total non-cancelled orders: 5 (order1, order2, order4, order5, order6)
-      expect(allReport.summary.totalOrders, 5);
-      expect(allDashSummary.totalOrders, 5);
+      // Total settled orders: 4 (order1, order2, order5, order6)
+      expect(allReport.summary.totalOrders, 4);
+      expect(allDashSummary.totalOrders, 4);
 
-      // Total revenue: 200 + 500 + 105 + 300 + 600 = 1705
-      expect(allReport.summary.totalRevenue, 1705.0);
-      expect(allDashSummary.revenue, 1705.0);
+      // Total revenue: 200 + 500 + 300 + 600 = 1600
+      expect(allReport.summary.totalRevenue, 1600.0);
+      expect(allDashSummary.revenue, 1600.0);
 
-      // Total taxes: 10 + 25 + 5 + 15 + 30 = 85
-      expect(allReport.summary.totalTax, 85.0);
-      expect(allDashTaxes.totalGST, 85.0);
+      // Total taxes: 10 + 25 + 15 + 30 = 80
+      expect(allReport.summary.totalTax, 80.0);
+      expect(allDashTaxes.totalGST, 80.0);
     });
 
     test('Deduplication handles duplicate orders consistently in both reports and dashboard', () async {

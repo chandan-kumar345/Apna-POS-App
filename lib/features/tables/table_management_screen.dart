@@ -22,6 +22,7 @@ class TableManagementScreen extends StatefulWidget {
 class _TableManagementScreenState extends State<TableManagementScreen> with AutomaticKeepAliveClientMixin {
   final db = DatabaseService();
   String _selectedFloor = 'All Floors';
+  final Set<String> _collapsedFloors = <String>{};
 
   @override
   bool get wantKeepAlive => true;
@@ -42,9 +43,9 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
 
   List<String> get floors {
     final list = ['All Floors'];
-    for (var t in db.tables) {
-      if (!list.contains(t.floor)) {
-        list.add(t.floor);
+    for (var f in db.allFloors) {
+      if (!list.contains(f)) {
+        list.add(f);
       }
     }
     return list;
@@ -78,11 +79,53 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
       case TableStatus.free:
         return const Color(0xFF10B981); // Emerald Green
       case TableStatus.occupied:
-        return const Color(0xFF051C48); // Deep Navy
+        return const Color(0xFF2563EB); // Royal Blue
       case TableStatus.runningKot:
-        return const Color(0xFFEF4444); // Red Color for Running KOT!
+        return const Color(0xFFEF4444); // Red/Coral
       case TableStatus.reserved:
         return const Color(0xFF8B5CF6); // Purple
+    }
+  }
+
+  Color _getStatusBg(TableStatus? status) {
+    if (status == null) return const Color(0xFFE8FAF3);
+    switch (status) {
+      case TableStatus.free:
+        return const Color(0xFFE8FAF3);
+      case TableStatus.occupied:
+        return const Color(0xFFEFF6FF);
+      case TableStatus.runningKot:
+        return const Color(0xFFFFF1F2);
+      case TableStatus.reserved:
+        return const Color(0xFFFAF5FF);
+    }
+  }
+
+  Color _getStatusBorder(TableStatus? status) {
+    if (status == null) return const Color(0xFFC7F3E2);
+    switch (status) {
+      case TableStatus.free:
+        return const Color(0xFFC7F3E2);
+      case TableStatus.occupied:
+        return const Color(0xFFBFDBFE);
+      case TableStatus.runningKot:
+        return const Color(0xFFFECDD3);
+      case TableStatus.reserved:
+        return const Color(0xFFE9D5FF);
+    }
+  }
+
+  IconData _getStatusIcon(TableStatus? status) {
+    if (status == null) return Icons.chair_rounded;
+    switch (status) {
+      case TableStatus.free:
+        return Icons.chair_rounded;
+      case TableStatus.occupied:
+        return Icons.people_alt_rounded;
+      case TableStatus.runningKot:
+        return Icons.soup_kitchen_rounded;
+      case TableStatus.reserved:
+        return Icons.calendar_today_rounded;
     }
   }
 
@@ -128,10 +171,157 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     }
   }
 
+  void _promptCreateNewFloor(BuildContext parentCtx, Function(String newFloor) onCreated) {
+    final newFloorCtrl = TextEditingController();
+    showDialog(
+      context: parentCtx,
+      builder: (promptCtx) {
+        return Dialog(
+          backgroundColor: const Color(0xFFEFF4FA),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 12,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE2EDFB),
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                              blurRadius: 4,
+                              offset: const Offset(1.5, 2),
+                            ),
+                            const BoxShadow(
+                              color: Colors.white,
+                              blurRadius: 4,
+                              offset: Offset(-1.5, -1.5),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 17),
+                      ),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Create New Floor',
+                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                          blurRadius: 4,
+                          offset: const Offset(1, 2),
+                        ),
+                        const BoxShadow(
+                          color: Colors.white,
+                          blurRadius: 4,
+                          offset: Offset(-1, -1),
+                        ),
+                      ],
+                    ),
+                    child: TextField(
+                      controller: newFloorCtrl,
+                      autofocus: true,
+                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A)),
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. 2nd Floor, Rooftop, Garden',
+                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => Navigator.pop(promptCtx),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                                  blurRadius: 4,
+                                  offset: const Offset(1.5, 2),
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 4,
+                                  offset: Offset(-1.5, -1.5),
+                                ),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold, fontSize: 12)),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            final name = newFloorCtrl.text.trim();
+                            if (name.isNotEmpty) {
+                              await db.addCustomFloor(name);
+                              onCreated(name);
+                              if (promptCtx.mounted) {
+                                Navigator.pop(promptCtx);
+                              }
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0B2253),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                            elevation: 2,
+                          ),
+                          child: const Text('Create Floor', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   void _showAddTableDialog() {
-    final nameCtrl = TextEditingController(text: 'T-${db.tables.length + 1}');
-    final floorCtrl = TextEditingController(text: _selectedFloor == 'All Floors' ? 'Ground Floor' : _selectedFloor);
-    final existingFloors = floors.where((f) => f != 'All Floors').toList();
+    final nextNum = db.tables.isEmpty
+        ? 1
+        : ((db.tables.map((t) => t.tableNumber).reduce((a, b) => a > b ? a : b)) + 1);
+    final nameCtrl = TextEditingController(text: 'T-$nextNum');
+    String selectedFloor = _selectedFloor == 'All Floors'
+        ? (db.allFloors.isNotEmpty ? db.allFloors.first : 'Ground Floor')
+        : _selectedFloor;
+    final editFloorCtrl = TextEditingController(text: selectedFloor);
 
     showDialog(
       context: context,
@@ -140,131 +330,353 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
         return StatefulBuilder(
           builder: (context, setDialogState) {
             final screenWidth = MediaQuery.of(context).size.width;
+            final availableFloors = db.allFloors;
 
             return Dialog(
-              backgroundColor: Colors.white,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              elevation: 12,
+              backgroundColor: const Color(0xFFEFF4FA),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+              elevation: 16,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: screenWidth >= 650 ? 580 : screenWidth * 0.94,
-                  minWidth: 320,
-                  maxHeight: MediaQuery.of(context).size.height * 0.85,
+                  maxWidth: screenWidth >= 650 ? 400 : screenWidth * 0.90,
+                  minWidth: 280,
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
                 ),
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(18),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Header Row
+                      // Neumorphic Top Header
                       Row(
                         children: [
                           Container(
-                            padding: const EdgeInsets.all(10),
+                            width: 38,
+                            height: 38,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF051C48).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(14),
+                              color: const Color(0xFFE2EDFB),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                                  blurRadius: 5,
+                                  offset: const Offset(1.5, 2.5),
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 5,
+                                  offset: Offset(-1.5, -1.5),
+                                ),
+                              ],
                             ),
-                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF051C48), size: 24),
+                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 20),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
                                   'Add Dining Table',
-                                  style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.w900, fontSize: 18),
+                                  style: TextStyle(
+                                    color: Color(0xFF0F172A),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15.5,
+                                  ),
                                 ),
+                                SizedBox(height: 1.5),
                                 Text(
                                   'Enter table name and assign a dining floor or area',
-                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
                                 ),
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(dialogCtx),
-                            icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
-                            tooltip: 'Close',
+                          InkWell(
+                            onTap: () => Navigator.pop(dialogCtx),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFEFF4FA),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                                    blurRadius: 4,
+                                    offset: const Offset(1.5, 2),
+                                  ),
+                                  const BoxShadow(
+                                    color: Colors.white,
+                                    blurRadius: 4,
+                                    offset: Offset(-1.5, -1.5),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 16),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      const Divider(color: Color(0xFFE2E8F0), height: 1),
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
 
-                      // Scrollable Wrapped Content
+                      // Content
                       Flexible(
                         child: SingleChildScrollView(
                           physics: const BouncingScrollPhysics(),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Table Name / Number Field
-                              const Text(
-                                'Table Name / Number*',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              // 1. Table Name / Number Field
+                              Row(
+                                children: const [
+                                  Text(
+                                    'Table Name / Number',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                  ),
+                                  Text(
+                                    ' *',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 6),
-                              TextField(
-                                controller: nameCtrl,
-                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  hintText: 'e.g. T-13, Table 13, VIP-1',
-                                  prefixIcon: const Icon(Icons.chair_rounded, color: Color(0xFF051C48), size: 20),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF8FAFC),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+                              Container(
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                                      blurRadius: 4,
+                                      offset: const Offset(1, 2),
+                                    ),
+                                    const BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 4,
+                                      offset: Offset(-1, -1),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                              const SizedBox(height: 16),
-
-                              // Floor / Area Field & Quick Select Pills
-                              const Text(
-                                'Floor / Dining Area*',
-                                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                              ),
-                              const SizedBox(height: 6),
-                              if (existingFloors.isNotEmpty) ...[
-                                Wrap(
-                                  spacing: 6,
-                                  runSpacing: 6,
-                                  children: existingFloors.map((fl) {
-                                    final isSel = floorCtrl.text.trim().toLowerCase() == fl.toLowerCase();
-                                    return ChoiceChip(
-                                      label: Text(fl),
-                                      selected: isSel,
-                                      selectedColor: const Color(0xFF051C48),
-                                      labelStyle: TextStyle(
-                                        color: isSel ? Colors.white : const Color(0xFF334155),
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
+                                child: TextField(
+                                  controller: nameCtrl,
+                                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w700),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                    prefixIcon: Container(
+                                      margin: const EdgeInsets.only(left: 6, right: 8, top: 6, bottom: 6),
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE2EDFB),
+                                        borderRadius: BorderRadius.circular(8),
                                       ),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                      onSelected: (_) {
-                                        setDialogState(() => floorCtrl.text = fl);
-                                      },
-                                    );
-                                  }).toList(),
+                                      child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 15),
+                                    ),
+                                    prefixIconConstraints: const BoxConstraints(minWidth: 38, maxHeight: 36),
+                                    hintText: 'e.g. T-21',
+                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                                  ),
                                 ),
-                                const SizedBox(height: 8),
-                              ],
-                              TextField(
-                                controller: floorCtrl,
-                                style: const TextStyle(color: Color(0xFF0F172A), fontSize: 14, fontWeight: FontWeight.w600),
-                                decoration: InputDecoration(
-                                  hintText: 'e.g. Ground Floor, Terrace, 1st Floor, Rooftop',
-                                  prefixIcon: const Icon(Icons.layers_outlined, color: Color(0xFF051C48), size: 20),
-                                  filled: true,
-                                  fillColor: const Color(0xFFF8FAFC),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF051C48), width: 2)),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // 2. Floor / Dining Area Field & Selectable Cards (Horizontal Single-Row Layout)
+                              Row(
+                                children: const [
+                                  Text(
+                                    'Floor / Dining Area',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                  ),
+                                  Text(
+                                    ' *',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+
+                              // Floor Cards Row + Plus button in the same line on the right
+                              SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                physics: const BouncingScrollPhysics(),
+                                child: Row(
+                                  children: [
+                                    ...availableFloors.map((fl) {
+                                      final isSel = selectedFloor.trim().toLowerCase() == fl.trim().toLowerCase();
+                                      return Padding(
+                                        padding: const EdgeInsets.only(right: 6),
+                                        child: InkWell(
+                                          onTap: () {
+                                            setDialogState(() {
+                                              selectedFloor = fl;
+                                              editFloorCtrl.text = fl;
+                                            });
+                                          },
+                                          borderRadius: BorderRadius.circular(14),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                            decoration: BoxDecoration(
+                                              color: isSel ? const Color(0xFF0B2253) : const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(14),
+                                              border: Border.all(
+                                                color: isSel ? const Color(0xFF0B2253) : const Color(0xFFE2E8F0),
+                                                width: 1,
+                                              ),
+                                              boxShadow: isSel
+                                                  ? [
+                                                      BoxShadow(
+                                                        color: const Color(0xFF0B2253).withValues(alpha: 0.35),
+                                                        blurRadius: 6,
+                                                        offset: const Offset(1.5, 3),
+                                                      ),
+                                                    ]
+                                                  : [
+                                                      BoxShadow(
+                                                        color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                                                        blurRadius: 4,
+                                                        offset: const Offset(1.5, 2.5),
+                                                      ),
+                                                      const BoxShadow(
+                                                        color: Colors.white,
+                                                        blurRadius: 4,
+                                                        offset: Offset(-1.5, -1.5),
+                                                      ),
+                                                    ],
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(
+                                                  Icons.table_restaurant_rounded,
+                                                  color: isSel ? Colors.white : const Color(0xFF0B2253),
+                                                  size: 15,
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  fl,
+                                                  style: TextStyle(
+                                                    color: isSel ? Colors.white : const Color(0xFF0F172A),
+                                                    fontWeight: isSel ? FontWeight.bold : FontWeight.w700,
+                                                    fontSize: 11.5,
+                                                  ),
+                                                ),
+                                                if (isSel) ...[
+                                                  const SizedBox(width: 6),
+                                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                    // Plus button placed on the right of the floor chips in the same line
+                                    InkWell(
+                                      key: const ValueKey('add_floor_button'),
+                                      onTap: () => _promptCreateNewFloor(context, (newFloor) {
+                                        setDialogState(() {
+                                          selectedFloor = newFloor;
+                                          editFloorCtrl.text = newFloor;
+                                        });
+                                      }),
+                                      borderRadius: BorderRadius.circular(14),
+                                      child: Container(
+                                        width: 38,
+                                        height: 38,
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(14),
+                                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                                              blurRadius: 4,
+                                              offset: const Offset(1.5, 2.5),
+                                            ),
+                                            const BoxShadow(
+                                              color: Colors.white,
+                                              blurRadius: 4,
+                                              offset: Offset(-1.5, -1.5),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Icon(Icons.add_rounded, color: Color(0xFF0F172A), size: 20),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // 3. Edit Selected Floor Field (Full-width neumorphic field)
+                              Row(
+                                children: const [
+                                  Icon(Icons.edit_note_rounded, size: 14, color: Color(0xFF64748B)),
+                                  SizedBox(width: 3),
+                                  Text(
+                                    'Edit Selected Floor Name',
+                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 5),
+                              Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.5),
+                                      blurRadius: 3,
+                                      offset: const Offset(1, 1.5),
+                                    ),
+                                    const BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 3,
+                                      offset: Offset(-1, -1),
+                                    ),
+                                  ],
+                                ),
+                                child: TextField(
+                                  key: const ValueKey('edit_floor_name_field'),
+                                  controller: editFloorCtrl,
+                                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w700),
+                                  onChanged: (newName) async {
+                                    final clean = newName.trim();
+                                    if (clean.isNotEmpty && clean != selectedFloor) {
+                                      final oldName = selectedFloor;
+                                      await db.renameFloor(oldName, clean);
+                                      setDialogState(() {
+                                        selectedFloor = clean;
+                                      });
+                                    }
+                                  },
+                                  onSubmitted: (newName) async {
+                                    final clean = newName.trim();
+                                    if (clean.isNotEmpty && clean != selectedFloor) {
+                                      final oldName = selectedFloor;
+                                      await db.renameFloor(oldName, clean);
+                                      setDialogState(() {
+                                        selectedFloor = clean;
+                                      });
+                                    }
+                                  },
+                                  decoration: const InputDecoration(
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                                    prefixIcon: Icon(Icons.edit_rounded, size: 14, color: Color(0xFF64748B)),
+                                    prefixIconConstraints: BoxConstraints(minWidth: 32, maxHeight: 36),
+                                    hintText: 'Edit floor name',
+                                    hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  ),
                                 ),
                               ),
                             ],
@@ -272,45 +684,79 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                         ),
                       ),
                       const SizedBox(height: 16),
-                      const Divider(color: Color(0xFFE2E8F0), height: 1),
-                      const SizedBox(height: 16),
 
-                      // Action Buttons
+                      // 4. Action Buttons
                       Row(
                         children: [
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: () => Navigator.pop(dialogCtx),
-                              style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 13),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            child: InkWell(
+                              onTap: () => Navigator.pop(dialogCtx),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                                      blurRadius: 4,
+                                      offset: const Offset(1.5, 2.5),
+                                    ),
+                                    const BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 4,
+                                      offset: Offset(-1.5, -1.5),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12.5),
+                                ),
                               ),
-                              child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold)),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
                           Expanded(
-                            flex: 2,
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final name = nameCtrl.text.trim();
-                                final floor = floorCtrl.text.trim().isEmpty ? 'Ground Floor' : floorCtrl.text.trim();
+                            child: InkWell(
+                              key: const ValueKey('create_table_submit_button'),
+                              onTap: () async {
+                                final name = nameCtrl.text.trim().isEmpty ? 'T-$nextNum' : nameCtrl.text.trim();
+                                final floor = selectedFloor.trim().isEmpty ? 'Ground Floor' : selectedFloor.trim();
                                 await db.addTable(name, floor, 4, count: 1);
                                 if (dialogCtx.mounted) {
                                   Navigator.pop(dialogCtx);
                                 }
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF051C48),
-                                padding: const EdgeInsets.symmetric(vertical: 13),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                elevation: 2,
-                              ),
-                              icon: const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
-                              label: const Text(
-                                'Create Table',
-                                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0B2253),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF0B2253).withValues(alpha: 0.35),
+                                      blurRadius: 6,
+                                      offset: const Offset(1.5, 3),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: const [
+                                    Icon(Icons.check_circle_rounded, color: Colors.white, size: 15),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Create Table',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -327,113 +773,554 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     );
   }
 
-  Widget _buildFloorFilterChips() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text(
-            'Floor:',
-            style: TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.bold),
+  Widget _buildNeumorphicStatCard({
+    required String title,
+    required String value,
+    required String subtitle,
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required Color valueColor,
+    double? width,
+  }) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+            blurRadius: 6,
+            offset: const Offset(1, 2),
           ),
-          const SizedBox(width: 6),
-          ...floors.map((flr) {
-            final isSel = _selectedFloor == flr;
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: ChoiceChip(
-                label: Text(flr),
-                labelStyle: TextStyle(
-                  color: isSel ? Colors.white : const Color(0xFF475569),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 12,
+          const BoxShadow(
+            color: Colors.white,
+            blurRadius: 5,
+            offset: Offset(-1, -1),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: width != null ? MainAxisSize.min : MainAxisSize.max,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                selected: isSel,
-                selectedColor: const Color(0xFF051C48),
-                backgroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                side: BorderSide(color: isSel ? const Color(0xFF051C48) : const Color(0xFFCBD5E1)),
-                onSelected: (_) => setState(() => _selectedFloor = flr),
-              ),
-            );
-          }),
+                const SizedBox(height: 1.5),
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: valueColor,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 0.5),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: iconBg,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: iconColor.withValues(alpha: 0.12),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: Icon(icon, color: iconColor, size: 14),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTakeawayButton({bool isExpanded = false}) {
-    final btn = SizedBox(
-      height: 38,
-      child: ElevatedButton.icon(
-        onPressed: () => _openPosForOrderType(OrderType.takeaway),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF0284C7),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          elevation: 2,
-        ),
-        icon: Image.asset(
-          'assets/images/takeaway.png',
-          width: 17,
-          height: 17,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Icon(Icons.local_mall_rounded, color: Colors.white, size: 16),
-        ),
-        label: const Text(
-          'Takeaway',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
-        ),
-      ),
+  Widget _buildNeumorphicKpiRow(int freeCount, int runningKotCount, int occupiedCount, int reservedCount) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        // On mobile / narrow screens (< 520px), give each card an equal generous width
+        // and allow smooth horizontal sliding! On wider screens, expand equally.
+        final isNarrow = availableWidth < 520;
+        final cardWidth = isNarrow ? ((availableWidth - 24) / 3.1).clamp(112.0, 135.0) : null;
+
+        final cards = [
+          _buildNeumorphicStatCard(
+            title: 'Available',
+            value: '$freeCount',
+            subtitle: 'Ready',
+            icon: Icons.chair_rounded,
+            iconColor: const Color(0xFF10B981),
+            iconBg: const Color(0xFFE6FDF4),
+            valueColor: const Color(0xFF10B981),
+            width: cardWidth,
+          ),
+          _buildNeumorphicStatCard(
+            title: 'KOT Running',
+            value: '$runningKotCount',
+            subtitle: 'Kitchen',
+            icon: Icons.soup_kitchen_rounded,
+            iconColor: const Color(0xFFEF4444),
+            iconBg: const Color(0xFFFFF1F2),
+            valueColor: const Color(0xFFEF4444),
+            width: cardWidth,
+          ),
+          _buildNeumorphicStatCard(
+            title: 'Occupied',
+            value: '$occupiedCount',
+            subtitle: 'Dining',
+            icon: Icons.people_alt_rounded,
+            iconColor: const Color(0xFF2563EB),
+            iconBg: const Color(0xFFEFF6FF),
+            valueColor: const Color(0xFF2563EB),
+            width: cardWidth,
+          ),
+          _buildNeumorphicStatCard(
+            title: 'Reserved',
+            value: '$reservedCount',
+            subtitle: 'Upcoming',
+            icon: Icons.calendar_today_rounded,
+            iconColor: const Color(0xFF8B5CF6),
+            iconBg: const Color(0xFFFAF5FF),
+            valueColor: const Color(0xFF8B5CF6),
+            width: cardWidth,
+          ),
+        ];
+
+        if (isNarrow) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
+              children: [
+                for (int i = 0; i < cards.length; i++) ...[
+                  if (i > 0) const SizedBox(width: 6),
+                  cards[i],
+                ],
+              ],
+            ),
+          );
+        }
+
+        return Row(
+          children: [
+            for (int i = 0; i < cards.length; i++) ...[
+              if (i > 0) const SizedBox(width: 6),
+              Expanded(child: cards[i]),
+            ],
+          ],
+        );
+      },
     );
-    return isExpanded ? Expanded(child: btn) : btn;
   }
 
-  Widget _buildDeliveryButton({bool isExpanded = false}) {
-    final btn = SizedBox(
-      height: 38,
-      child: ElevatedButton.icon(
-        onPressed: () => _openPosForOrderType(OrderType.delivery),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFEA580C),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          elevation: 2,
-        ),
-        icon: Image.asset(
-          'assets/images/delivery.png',
-          width: 17,
-          height: 17,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => const Icon(Icons.two_wheeler_rounded, color: Colors.white, size: 16),
-        ),
-        label: const Text(
-          'Delivery',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5),
-        ),
+  Widget _buildViewAndFloorBar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          const Text(
+            'View:',
+            style: TextStyle(
+              color: Color(0xFF0F172A),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(width: 6),
+          ...floors.map((flr) {
+            final isSel = _selectedFloor == flr;
+            final isAll = flr == 'All Floors';
+            return Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: InkWell(
+                onTap: () => setState(() => _selectedFloor = flr),
+                borderRadius: BorderRadius.circular(16),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSel ? const Color(0xFF0B2253) : Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: isSel
+                        ? [
+                            BoxShadow(
+                              color: const Color(0xFF0B2253).withValues(alpha: 0.3),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ]
+                        : [
+                            BoxShadow(
+                              color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                              blurRadius: 5,
+                              offset: const Offset(0, 1.5),
+                            ),
+                          ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        isAll ? Icons.grid_view_rounded : Icons.table_restaurant_rounded,
+                        color: isSel ? Colors.white : const Color(0xFF334155),
+                        size: 13,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        flr,
+                        style: TextStyle(
+                          color: isSel ? Colors.white : const Color(0xFF334155),
+                          fontSize: 11,
+                          fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }),
+          // + Add Table button (Preserves ElevatedButton semantic compatibility for testing)
+          ElevatedButton.icon(
+            key: const ValueKey('add_table_top_button'),
+            onPressed: _showAddTableDialog,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0B2253),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              elevation: 1.5,
+              minimumSize: const Size(0, 32),
+            ),
+            icon: const Icon(Icons.add_rounded, color: Colors.white, size: 14),
+            label: const Text(
+              'Add Table',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
       ),
     );
-    return isExpanded ? Expanded(child: btn) : btn;
   }
 
-  Widget _buildAddTableButton() {
-    return SizedBox(
-      height: 38,
-      child: ElevatedButton.icon(
-        onPressed: _showAddTableDialog,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF051C48),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-          elevation: 2,
-        ),
-        icon: const Icon(Icons.add_rounded, color: Colors.white, size: 16),
-        label: const Text('Add Table', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+  Widget _buildOrderTypeBar() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          // Dine In (Active on this screen)
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 7),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF1D4ED8).withValues(alpha: 0.35),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Image.asset(
+                    'assets/images/dinein.png',
+                    width: 13,
+                    height: 13,
+                    color: Colors.white,
+                    errorBuilder: (ctx, err, stack) => const Icon(Icons.restaurant_rounded, color: Colors.white, size: 13),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    'Dine In',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Takeaway
+          Expanded(
+            child: InkWell(
+              onTap: () => _openPosForOrderType(OrderType.takeaway),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                      blurRadius: 5,
+                      offset: const Offset(0, 1.5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/takeaway.png',
+                      width: 13,
+                      height: 13,
+                      errorBuilder: (ctx, err, stack) => const Icon(Icons.shopping_bag_outlined, color: Color(0xFF0F172A), size: 13),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Takeaway',
+                      style: TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Delivery
+          Expanded(
+            child: InkWell(
+              onTap: () => _openPosForOrderType(OrderType.delivery),
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.7),
+                      blurRadius: 5,
+                      offset: const Offset(0, 1.5),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/images/delivery.png',
+                      width: 13,
+                      height: 13,
+                      errorBuilder: (ctx, err, stack) => const Icon(Icons.two_wheeler_rounded, color: Color(0xFF0F172A), size: 13),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      'Delivery',
+                      style: TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFloorSectionHeader(String floorName, int tableCount, bool isCollapsed) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 2, right: 2, bottom: 6, top: 8),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 14),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Row(
+              children: [
+                Flexible(
+                  child: Text(
+                    floorName,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  '($tableCount Tables)',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Collapse Toggle Button
+          InkWell(
+            onTap: () {
+              setState(() {
+                if (_collapsedFloors.contains(floorName)) {
+                  _collapsedFloors.remove(floorName);
+                } else {
+                  _collapsedFloors.add(floorName);
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: Icon(
+                isCollapsed ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_up_rounded,
+                color: const Color(0xFF64748B),
+                size: 18,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          // Plus Button to add table/floor
+          InkWell(
+            onTap: _showAddTableDialog,
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                    blurRadius: 3,
+                    offset: const Offset(0, 1),
+                  ),
+                ],
+              ),
+              child: const Icon(Icons.add_rounded, color: Color(0xFF0F172A), size: 16),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  PopupMenuItem<TableStatus> _buildStatusPopupItem(TableStatus status, TableStatus currentStatus, {bool isEnabled = true}) {
+    final isSelected = status == currentStatus;
+    final color = _getStatusColor(status);
+    final icon = _getStatusIcon(status);
+    final label = _getStatusLabel(status);
+
+    return PopupMenuItem<TableStatus>(
+      value: status,
+      enabled: isEnabled,
+      height: 34,
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(3),
+            decoration: BoxDecoration(
+              color: _getStatusBg(status),
+              borderRadius: BorderRadius.circular(5),
+            ),
+            child: Icon(icon, color: color, size: 12),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                color: isEnabled ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                fontSize: 11,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+              ),
+            ),
+          ),
+          if (isSelected)
+            Icon(Icons.check_rounded, color: color, size: 14),
+        ],
       ),
     );
   }
@@ -445,8 +1332,8 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
       listenable: db,
       builder: (context, _) {
         final freeCount = db.tables.where((t) => t.status == TableStatus.free).length;
+        final runningKotCount = db.tables.where((t) => t.status == TableStatus.runningKot).length;
         final occupiedCount = db.tables.where((t) => t.status == TableStatus.occupied).length;
-        final kotCount = db.tables.where((t) => t.status == TableStatus.runningKot).length;
         final reservedCount = db.tables.where((t) => t.status == TableStatus.reserved).length;
 
         final Map<String, List<TableModel>> tablesByFloor = {};
@@ -454,402 +1341,454 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           tablesByFloor.putIfAbsent(t.floor, () => []).add(t);
         }
 
-        return Material(
-          color: Colors.transparent,
-          child: SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final isMobile = constraints.maxWidth < 650;
-                return Column(
-                  children: [
-                    // Stats Bar
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
+        return Scaffold(
+          backgroundColor: const Color(0xFFEFF5FB),
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              child: Column(
+                children: [
+                  // 1. Top Neumorphic KPI Stats Row
+                  _buildNeumorphicKpiRow(freeCount, runningKotCount, occupiedCount, reservedCount),
+                  const SizedBox(height: 8),
+
+                  // 2. View / Floor Filter Bar + Add Table Button
+                  _buildViewAndFloorBar(),
+                  const SizedBox(height: 8),
+
+                  // 3. Order Type Segment Bar (Dine In / Takeaway / Delivery)
+                  _buildOrderTypeBar(),
+                  const SizedBox(height: 8),
+
+                  // 4. Floor-wise Sequenced Tables Grid View (Wrapped & 3 tables in one row on mobile)
+                  Expanded(
+                    child: ListView.builder(
                       physics: const BouncingScrollPhysics(),
-                      child: Row(
-                        children: [
-                          _buildStatCard('Free Tables', '$freeCount', 'Ready for Guests', Icons.check_circle_rounded, const Color(0xFF10B981)),
-                          const SizedBox(width: 8),
-                          _buildStatCard('Occupied', '$occupiedCount', 'Seated & Ordering', Icons.people_alt_rounded, const Color(0xFF051C48)),
-                          const SizedBox(width: 8),
-                          _buildStatCard('Running KOT', '$kotCount', 'In Kitchen Prep', Icons.soup_kitchen_rounded, const Color(0xFFEF4444)),
-                          const SizedBox(width: 8),
-                          _buildStatCard('Reserved', '$reservedCount', 'Advance Booking', Icons.bookmark_added_rounded, const Color(0xFF8B5CF6)),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+                      itemCount: tablesByFloor.keys.length,
+                      itemBuilder: (context, floorIdx) {
+                        final floorName = tablesByFloor.keys.elementAt(floorIdx);
+                        final floorTables = tablesByFloor[floorName]!;
+                        final isCollapsed = _collapsedFloors.contains(floorName);
 
-                    // Floor Filter Tabs & Action Buttons (Mobile vs Desktop Layout)
-                    if (isMobile) ...[
-                      // Mobile Row 1: Floor Filter on left, Add Table button on right
-                      Row(
-                        children: [
-                          Expanded(child: _buildFloorFilterChips()),
-                          const SizedBox(width: 6),
-                          _buildAddTableButton(),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Mobile Row 2: Takeaway and Delivery buttons below Add Table
-                      Row(
-                        children: [
-                          _buildTakeawayButton(isExpanded: true),
-                          const SizedBox(width: 8),
-                          _buildDeliveryButton(isExpanded: true),
-                        ],
-                      ),
-                    ] else ...[
-                      // Desktop/Widescreen Row: Floor Filter on left, Takeaway + Delivery + Add Table inline on right
-                      Row(
-                        children: [
-                          Expanded(child: _buildFloorFilterChips()),
-                          const SizedBox(width: 6),
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            physics: const BouncingScrollPhysics(),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                _buildTakeawayButton(),
-                                const SizedBox(width: 6),
-                                _buildDeliveryButton(),
-                                const SizedBox(width: 6),
-                                _buildAddTableButton(),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                    const SizedBox(height: 12),
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Floor Header
+                            _buildFloorSectionHeader(floorName, floorTables.length, isCollapsed),
 
-              // Floor-wise Sequenced Tables Grid View
-              Expanded(
-                child: ListView.builder(
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: tablesByFloor.keys.length,
-                  itemBuilder: (context, floorIdx) {
-                    final floorName = tablesByFloor.keys.elementAt(floorIdx);
-                    final floorTables = tablesByFloor[floorName]!;
+                            if (!isCollapsed)
+                              LayoutBuilder(
+                                builder: (context, constraints) {
+                                  final width = constraints.maxWidth;
+                                  // In mobile view (width < 600), show exactly 3 tables in one row
+                                  final cols = width >= 1400
+                                      ? 8
+                                      : width >= 1100
+                                          ? 6
+                                          : width >= 800
+                                              ? 5
+                                              : width >= 600
+                                                  ? 4
+                                                  : 3;
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Floor Section Header
-                        Padding(
-                          padding: const EdgeInsets.only(left: 4, bottom: 8, top: 4),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 4,
-                                height: 16,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF051C48),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                floorName,
-                                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                '(${floorTables.length} Tables)',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-                              ),
-                            ],
-                          ),
-                        ),
+                                  final isMobileGrid = width < 600;
 
-                        // Tables Grid for this Floor — Responsive column count
-                        LayoutBuilder(
-                          builder: (context, constraints) {
-                            final width = constraints.maxWidth;
-                            final cols = width >= 1400
-                                ? 10
-                                : width >= 1150
-                                    ? 8
-                                    : width >= 900
-                                        ? 7
-                                        : width >= 720
-                                            ? 6
-                                            : width >= 500
-                                                ? 4
-                                                : width >= 320
-                                                    ? 3
-                                                    : 2;
-                            return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: cols,
-                            childAspectRatio: width >= 600 ? 1.15 : (width >= 360 ? 1.05 : 0.95),
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
-                          ),
-                          itemCount: floorTables.length,
-                          itemBuilder: (context, idx) {
-                            final table = floorTables[idx];
-
-                            // Safely validate status against TableStatus values to prevent Dropdown assertion errors
-                            final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
-                            final statusColor = _getStatusColor(validStatus);
-                            final isRunningKot = validStatus == TableStatus.runningKot;
-
-                            // Active order cart total amount (confirmed) or live pre-KOT cart total (FREE tables NEVER show amount)
-                            final activeOrder = validStatus == TableStatus.free
-                                ? null
-                                : db.orders.where((o) => isSameTable(o.tableNumber, table.name) && (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)).firstOrNull;
-                            final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
-                            final liveAmount = validStatus == TableStatus.free ? 0.0 : db.getLiveCartTotal(table.name);
-                            final activeAmount = validStatus == TableStatus.free ? 0.0 : (confirmedAmount > 0 ? confirmedAmount : liveAmount);
-                            final hasProductsInCart = validStatus != TableStatus.free && activeAmount > 0;
-
-                            return InkWell(
-                              onTap: () => _openPosForTable(table.name),
-                              borderRadius: BorderRadius.circular(12),
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(12), // SEMI CURVED CORNERS BOX
-                                  border: Border.all(color: statusColor, width: 1.5),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: statusColor.withOpacity(0.12),
-                                      blurRadius: 6,
-                                      offset: const Offset(0, 2),
+                                  return GridView.builder(
+                                    shrinkWrap: true,
+                                    physics: const NeverScrollableScrollPhysics(),
+                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: cols,
+                                      childAspectRatio: isMobileGrid ? 0.80 : (width < 900 ? 0.90 : 0.98),
+                                      crossAxisSpacing: isMobileGrid ? 6 : 8,
+                                      mainAxisSpacing: isMobileGrid ? 6 : 8,
                                     ),
-                                  ],
-                                ),
-                                padding: const EdgeInsets.all(6),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    // 1) DROPDOWN SELECTOR AT THE VERY TOP OF TABLE BOX (DISABLED IF RUNNING KOT)
-                                    Container(
-                                      height: 22,
-                                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                                      decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(6),
-                                        border: Border.all(color: statusColor.withOpacity(0.5)),
-                                      ),
-                                      child: DropdownButtonHideUnderline(
-                                        child: DropdownButton<TableStatus>(
-                                          value: validStatus,
-                                          dropdownColor: Colors.white,
-                                          isDense: true,
-                                          isExpanded: true,
-                                          icon: Icon(Icons.arrow_drop_down, color: isRunningKot ? const Color(0xFFEF4444) : statusColor, size: 14),
-                                          items: TableStatus.values.map((s) {
-                                            final isKotOption = s == TableStatus.runningKot;
-                                            return DropdownMenuItem(
-                                              value: s,
-                                              enabled: !isKotOption,
-                                              child: Text(
-                                                _getStatusLabel(s),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                softWrap: false,
-                                                style: TextStyle(
-                                                  color: _getStatusColor(s),
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w900,
-                                                  letterSpacing: 0.1,
+                                    itemCount: floorTables.length,
+                                    itemBuilder: (context, idx) {
+                                      final table = floorTables[idx];
+                                      final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
+                                      final isRunningKot = validStatus == TableStatus.runningKot;
+                                      final statusColor = _getStatusColor(validStatus);
+                                      final statusBg = _getStatusBg(validStatus);
+                                      final statusBorder = _getStatusBorder(validStatus);
+                                      final statusIcon = _getStatusIcon(validStatus);
+                                      final statusLabel = _getStatusLabel(validStatus);
+
+                                      // Cart value calculation
+                                       // Cart value calculation
+                                       final activeOrder = validStatus == TableStatus.free
+                                           ? null
+                                           : db.orders.where((o) =>
+                                               (isSameTable(o.tableNumber, table.name) || (table.currentOrderId != null && o.id == table.currentOrderId)) &&
+                                               (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)).firstOrNull;
+                                       final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
+                                       final liveAmount = db.getLiveCartTotal(table.name);
+                                       final activeAmount = confirmedAmount > 0 ? confirmedAmount : (liveAmount > 0 ? liveAmount : table.activeOrderTotal);
+                                       final hasCartValue = activeAmount > 0;
+
+                                       return InkWell(
+                                         onTap: () => _openPosForTable(table.name),
+                                         borderRadius: BorderRadius.circular(16),
+                                         child: Container(
+                                           decoration: BoxDecoration(
+                                             color: Colors.white,
+                                             borderRadius: BorderRadius.circular(16),
+                                             border: Border.all(
+                                               color: validStatus == TableStatus.free
+                                                   ? const Color(0xFFE2E8F0)
+                                                   : statusColor.withValues(alpha: 0.75),
+                                               width: validStatus == TableStatus.free ? 1.0 : 1.5,
+                                             ),
+                                             boxShadow: [
+                                               BoxShadow(
+                                                 color: validStatus == TableStatus.free
+                                                     ? const Color(0xFFD6E2F0).withValues(alpha: 0.7)
+                                                     : statusColor.withValues(alpha: 0.18),
+                                                 blurRadius: 8,
+                                                 offset: const Offset(1.5, 3),
+                                               ),
+                                               const BoxShadow(
+                                                 color: Colors.white,
+                                                 blurRadius: 6,
+                                                 offset: Offset(-1.5, -1.5),
+                                               ),
+                                             ],
+                                           ),
+                                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+                                           child: Column(
+                                             crossAxisAlignment: CrossAxisAlignment.start,
+                                             children: [
+                                               // Top: Status Selection / Dropdown Section (Full width matching table box)
+                                               SizedBox(
+                                                 width: double.infinity,
+                                                 child: PopupMenuButton<TableStatus>(
+                                                   enabled: !isRunningKot,
+                                                   tooltip: 'Change Status',
+                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                                   color: Colors.white,
+                                                   elevation: 8,
+                                                   onSelected: (newStatus) {
+                                                     if (newStatus != TableStatus.runningKot) {
+                                                       db.updateTableStatus(table.id, newStatus);
+                                                       setState(() {});
+                                                     }
+                                                   },
+                                                   itemBuilder: (ctx) => [
+                                                     _buildStatusPopupItem(TableStatus.free, validStatus),
+                                                     _buildStatusPopupItem(TableStatus.occupied, validStatus),
+                                                     _buildStatusPopupItem(TableStatus.runningKot, validStatus, isEnabled: false),
+                                                     _buildStatusPopupItem(TableStatus.reserved, validStatus),
+                                                   ],
+                                                   child: Container(
+                                                     height: 25,
+                                                     width: double.infinity,
+                                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                                                     decoration: BoxDecoration(
+                                                       color: statusBg,
+                                                       borderRadius: BorderRadius.circular(8),
+                                                       border: Border.all(color: statusBorder, width: 0.9),
+                                                     ),
+                                                     alignment: Alignment.center,
+                                                     child: FittedBox(
+                                                       fit: BoxFit.scaleDown,
+                                                       child: Row(
+                                                         mainAxisAlignment: MainAxisAlignment.center,
+                                                         mainAxisSize: MainAxisSize.min,
+                                                         children: [
+                                                           Icon(statusIcon, color: statusColor, size: 11),
+                                                           const SizedBox(width: 3.5),
+                                                           Text(
+                                                             statusLabel,
+                                                             style: TextStyle(
+                                                               color: statusColor,
+                                                               fontSize: 9.5,
+                                                               fontWeight: FontWeight.w800,
+                                                             ),
+                                                           ),
+                                                           const SizedBox(width: 1.5),
+                                                           Icon(Icons.keyboard_arrow_down_rounded, color: statusColor, size: 12),
+                                                         ],
+                                                       ),
+                                                     ),
+                                                   ),
+                                                 ),
+                                               ),
+                                              const Spacer(),
+
+                                              // Middle: Stylized Chair & Table Info + Cart Value
+                                              Row(
+                                                children: [
+                                                  Container(
+                                                    width: 28,
+                                                    height: 28,
+                                                    decoration: BoxDecoration(
+                                                      color: statusBg,
+                                                      borderRadius: BorderRadius.circular(9),
+                                                      boxShadow: [
+                                                        BoxShadow(
+                                                          color: statusColor.withValues(alpha: 0.12),
+                                                          blurRadius: 3,
+                                                          offset: const Offset(0, 1.5),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    child: Icon(Icons.chair_rounded, color: statusColor, size: 15),
+                                                  ),
+                                                  const SizedBox(width: 6),
+                                                  Expanded(
+                                                    child: Column(
+                                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                                      mainAxisSize: MainAxisSize.min,
+                                                      children: [
+                                                        Text(
+                                                          table.name,
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF0F172A),
+                                                            fontSize: 11.5,
+                                                            fontWeight: FontWeight.w900,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                        Text(
+                                                          table.floor,
+                                                          style: const TextStyle(
+                                                            color: Color(0xFF94A3B8),
+                                                            fontSize: 8,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                        ),
+                                                        if (hasCartValue) ...[
+                                                          const SizedBox(height: 1.5),
+                                                          Container(
+                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                                            decoration: BoxDecoration(
+                                                              color: statusBg,
+                                                              borderRadius: BorderRadius.circular(5),
+                                                              border: Border.all(color: statusBorder, width: 0.7),
+                                                            ),
+                                                            child: Row(
+                                                              mainAxisSize: MainAxisSize.min,
+                                                              children: [
+                                                                Icon(Icons.shopping_bag_outlined, size: 8, color: statusColor),
+                                                                const SizedBox(width: 2),
+                                                                Flexible(
+                                                                  child: Text(
+                                                                    '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
+                                                                    style: TextStyle(
+                                                                      color: statusColor,
+                                                                      fontSize: 9,
+                                                                      fontWeight: FontWeight.w900,
+                                                                    ),
+                                                                    maxLines: 1,
+                                                                    overflow: TextOverflow.ellipsis,
+                                                                  ),
+                                                                ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ],
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              const Spacer(),
+
+                                              // Bottom: Actions per status & Reserved Box
+                                               if (validStatus == TableStatus.free)
+                                                 Center(
+                                                   child: Material(
+                                                     color: Colors.transparent,
+                                                     child: InkWell(
+                                                       key: ValueKey('add_to_cart_${table.name}'),
+                                                       onTap: () => _openPosForTable(table.name),
+                                                       customBorder: const CircleBorder(),
+                                                       child: Container(
+                                                         width: 32,
+                                                         height: 32,
+                                                         decoration: BoxDecoration(
+                                                           shape: BoxShape.circle,
+                                                           color: const Color(0xFFEFFDF5),
+                                                           border: Border.all(color: const Color(0xFFC7F3E2), width: 1.2),
+                                                           boxShadow: [
+                                                             BoxShadow(
+                                                               color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                                                               blurRadius: 5,
+                                                               offset: const Offset(0, 2),
+                                                             ),
+                                                             const BoxShadow(
+                                                               color: Colors.white,
+                                                               blurRadius: 3,
+                                                               offset: Offset(-1, -1),
+                                                             ),
+                                                           ],
+                                                         ),
+                                                         padding: const EdgeInsets.all(2.5),
+                                                         child: Container(
+                                                           decoration: const BoxDecoration(
+                                                             shape: BoxShape.circle,
+                                                             gradient: LinearGradient(
+                                                               colors: [Color(0xFF10B981), Color(0xFF059669)],
+                                                               begin: Alignment.topCenter,
+                                                               end: Alignment.bottomCenter,
+                                                             ),
+                                                           ),
+                                                           alignment: Alignment.center,
+                                                           child: const Icon(
+                                                             Icons.shopping_cart_rounded,
+                                                             color: Colors.white,
+                                                             size: 14.5,
+                                                           ),
+                                                         ),
+                                                       ),
+                                                     ),
+                                                   ),
+                                                 )
+                                              else if (validStatus == TableStatus.occupied)
+                                                Row(
+                                                  children: [
+                                                    Expanded(
+                                                      child: LiveTableDurationBadge(
+                                                        table: table,
+                                                        activeOrderCreatedAt: activeOrder?.createdAt,
+                                                      ),
+                                                    ),
+                                                    const SizedBox(width: 3),
+                                                    InkWell(
+                                                      onTap: () => _openPosForTable(table.name),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      child: Container(
+                                                        height: 22,
+                                                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                        decoration: BoxDecoration(
+                                                          color: const Color(0xFFF1F5F9),
+                                                          borderRadius: BorderRadius.circular(8),
+                                                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                                                        ),
+                                                        child: FittedBox(
+                                                          fit: BoxFit.scaleDown,
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: const [
+                                                              Icon(Icons.receipt_long_outlined, color: Color(0xFF0F172A), size: 10),
+                                                              SizedBox(width: 2),
+                                                              Text(
+                                                                'View',
+                                                                style: TextStyle(
+                                                                  color: Color(0xFF0F172A),
+                                                                  fontSize: 9,
+                                                                  fontWeight: FontWeight.bold,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                )
+                                               else if (validStatus == TableStatus.runningKot)
+                                                 Row(
+                                                   children: [
+                                                     Expanded(
+                                                       child: LiveTableDurationBadge(
+                                                         table: table,
+                                                         activeOrderCreatedAt: activeOrder?.createdAt,
+                                                       ),
+                                                     ),
+                                                     const SizedBox(width: 3),
+                                                     InkWell(
+                                                       onTap: () => _openPosForTable(table.name),
+                                                       borderRadius: BorderRadius.circular(8),
+                                                       child: Container(
+                                                         height: 22,
+                                                         padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                         decoration: BoxDecoration(
+                                                           color: const Color(0xFFFFF1F2),
+                                                           borderRadius: BorderRadius.circular(8),
+                                                           border: Border.all(color: const Color(0xFFFECDD3)),
+                                                         ),
+                                                         child: FittedBox(
+                                                           fit: BoxFit.scaleDown,
+                                                           child: Row(
+                                                             mainAxisAlignment: MainAxisAlignment.center,
+                                                             children: const [
+                                                               Icon(Icons.receipt_long_outlined, color: Color(0xFFEF4444), size: 10),
+                                                               SizedBox(width: 2),
+                                                               Text(
+                                                                 'View',
+                                                                 style: TextStyle(
+                                                                   color: Color(0xFFEF4444),
+                                                                   fontSize: 9,
+                                                                   fontWeight: FontWeight.bold,
+                                                                 ),
+                                                               ),
+                                                             ],
+                                                           ),
+                                                         ),
+                                                       ),
+                                                     ),
+                                                   ],
+                                                 )
+                                              else // Reserved Box
+                                                InkWell(
+                                                  onTap: () => _openPosForTable(table.name),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  child: Container(
+                                                    height: 22,
+                                                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFFAF5FF),
+                                                      borderRadius: BorderRadius.circular(8),
+                                                      border: Border.all(color: const Color(0xFFE9D5FF)),
+                                                    ),
+                                                    child: FittedBox(
+                                                      fit: BoxFit.scaleDown,
+                                                      child: Row(
+                                                        mainAxisAlignment: MainAxisAlignment.center,
+                                                        children: const [
+                                                          Icon(Icons.visibility_outlined, color: Color(0xFF8B5CF6), size: 10),
+                                                          SizedBox(width: 2.5),
+                                                          Text(
+                                                            'View',
+                                                            style: TextStyle(
+                                                              color: Color(0xFF8B5CF6),
+                                                              fontSize: 9,
+                                                              fontWeight: FontWeight.bold,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
-                                              ),
-                                            );
-                                          }).toList(),
-                                          // DISABLE DROPDOWN COMPLETELY WHEN ORDER HAS RUNNING KOT
-                                          onChanged: isRunningKot
-                                              ? null
-                                              : (newStatus) {
-                                                  if (newStatus != null && newStatus != TableStatus.runningKot) {
-                                                    db.updateTableStatus(table.id, newStatus);
-                                                    setState(() {});
-                                                  }
-                                                },
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 3),
-
-                                    // 2) TABLE NAME & RUNNING DURATION TIMER
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            table.name,
-                                            style: const TextStyle(fontSize: 12.0, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
+                                            ],
                                           ),
                                         ),
-                                        LiveTableDurationBadge(
-                                          table: table,
-                                          activeOrderCreatedAt: activeOrder?.createdAt,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 1),
-                                    Text(
-                                      table.floor,
-                                      style: const TextStyle(color: Color(0xFF64748B), fontSize: 9.0, fontWeight: FontWeight.w500),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-
-                                    const Spacer(),
-
-                                    // 3) CART AMOUNT MENTION & ONLY VIEW ICON / ADD TO CART ICON BUTTON
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        if (activeAmount > 0)
-                                          Flexible(
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: statusColor.withOpacity(0.12),
-                                                borderRadius: BorderRadius.circular(5),
-                                                border: Border.all(color: statusColor.withOpacity(0.4)),
-                                              ),
-                                              child: Text(
-                                                '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
-                                                style: TextStyle(color: statusColor, fontWeight: FontWeight.w900, fontSize: 9.5),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          )
-                                        else
-                                          const Expanded(
-                                            child: Text(
-                                              'No Order',
-                                              style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.0, fontWeight: FontWeight.w600),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        const SizedBox(width: 4),
-
-                                        // IF PRODUCTS IN CART: SHOW ONLY VIEW ICON. ELSE: SHOW GREEN ADD TO CART ICON
-                                        if (hasProductsInCart)
-                                          InkWell(
-                                            onTap: () => _openPosForTable(table.name),
-                                            borderRadius: BorderRadius.circular(6),
-                                            child: Container(
-                                              width: 22,
-                                              height: 22,
-                                              decoration: BoxDecoration(
-                                                color: statusColor,
-                                                borderRadius: BorderRadius.circular(6),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: statusColor.withOpacity(0.3),
-                                                    blurRadius: 3,
-                                                    offset: const Offset(0, 1),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(Icons.visibility_outlined, color: Colors.white, size: 13),
-                                            ),
-                                          )
-                                        else
-                                          InkWell(
-                                            onTap: () => _openPosForTable(table.name),
-                                            borderRadius: BorderRadius.circular(6),
-                                            child: Container(
-                                              width: 22,
-                                              height: 22,
-                                              decoration: BoxDecoration(
-                                                color: const Color(0xFF10B981), // Emerald Green
-                                                borderRadius: BorderRadius.circular(6),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: const Color(0xFF10B981).withOpacity(0.3),
-                                                    blurRadius: 3,
-                                                    offset: const Offset(0, 1),
-                                                  ),
-                                                ],
-                                              ),
-                                              child: const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 13),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
+                                      );
+                                    },
+                                  );
+                                },
                               ),
-                            );
-                          },
+                            const SizedBox(height: 8),
+                          ],
                         );
-                          },
-                        ),
-                        const SizedBox(height: 10),
-                      ],
-                    );
-                  },
-                ),
+                      },
+                    ),
+                  ),
+                ],
               ),
-            ],
-          );
-        },
-      ),
-    ),
-  );
-},
-);
-}
-
-  Widget _buildStatCard(String title, String value, String subtitle, IconData icon, Color color) {
-    return Container(
-      width: 140,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12), // SEMI CURVED CORNERS BOX
-        border: Border.all(color: color.withOpacity(0.4), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: color.withOpacity(0.08),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            ),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.bold),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              const SizedBox(width: 4),
-              Icon(icon, color: color, size: 15),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(value, style: TextStyle(color: color, fontSize: 16, fontWeight: FontWeight.w900)),
-          const SizedBox(height: 1),
-          Text(subtitle, style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 9)),
-        ],
-      ),
+        );
+      },
     );
   }
 }
 
 /// An isolated self-ticking running duration badge that updates every 1s locally
-/// without triggering full-screen or table grid rebuilds
 class LiveTableDurationBadge extends StatefulWidget {
   final TableModel table;
   final String? activeOrderCreatedAt;
@@ -876,19 +1815,19 @@ class _LiveTableDurationBadgeState extends State<LiveTableDurationBadge> {
   @override
   void didUpdateWidget(covariant LiveTableDurationBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.table.status != oldWidget.table.status ||
-        widget.table.occupiedSince != oldWidget.table.occupiedSince ||
-        widget.activeOrderCreatedAt != oldWidget.activeOrderCreatedAt) {
-      _startTimerIfNeeded();
-    }
+    _startTimerIfNeeded();
   }
 
   void _startTimerIfNeeded() {
-    _timer?.cancel();
     if (widget.table.status != TableStatus.free) {
-      _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
+      if (_timer == null || !_timer!.isActive) {
+        _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) setState(() {});
+        });
+      }
+    } else {
+      _timer?.cancel();
+      _timer = null;
     }
   }
 
@@ -902,39 +1841,38 @@ class _LiveTableDurationBadgeState extends State<LiveTableDurationBadge> {
   Widget build(BuildContext context) {
     if (widget.table.status == TableStatus.free) return const SizedBox.shrink();
 
-    final duration = widget.table.getRunningDuration(activeOrderCreatedAt: widget.activeOrderCreatedAt);
-    if (duration == null) return const SizedBox.shrink();
+    final duration = widget.table.getRunningDuration(activeOrderCreatedAt: widget.activeOrderCreatedAt) ?? Duration.zero;
 
-    final isExtended = duration.inMinutes >= 45;
-
-    return Padding(
-      padding: const EdgeInsets.only(left: 3),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: isExtended ? const Color(0xFFFEE2E2) : const Color(0xFFFEF3C7),
-          borderRadius: BorderRadius.circular(4),
-          border: Border.all(
-            color: isExtended ? const Color(0xFFEF4444).withValues(alpha: 0.5) : const Color(0xFFF59E0B).withValues(alpha: 0.5),
-            width: 0.8,
-          ),
+    return Container(
+      height: 22,
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: const Color(0xFFFDE68A),
+          width: 0.8,
         ),
+      ),
+      alignment: Alignment.center,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
         child: Row(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.timer_outlined,
-              size: 9.0,
-              color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
+            const Icon(
+              Icons.access_time_rounded,
+              size: 9.5,
+              color: Color(0xFFD97706),
             ),
-            const SizedBox(width: 2),
+            const SizedBox(width: 2.5),
             Text(
               formatRunningDuration(duration),
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 8.5,
                 fontWeight: FontWeight.w800,
-                color: isExtended ? const Color(0xFFDC2626) : const Color(0xFFD97706),
-                letterSpacing: 0.1,
+                color: Color(0xFFD97706),
               ),
             ),
           ],

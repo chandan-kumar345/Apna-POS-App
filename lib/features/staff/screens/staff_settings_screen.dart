@@ -766,7 +766,14 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
           debugPrint('[StaffSettingsScreen] Cloudflare R2 upload error: $uploadErr');
         }
         if (remoteAvatarUrl.isEmpty || remoteAvatarUrl == _currentStaff.avatarUrl) {
-          remoteAvatarUrl = _avatarImageFile!.path;
+          try {
+            final bytes = await _avatarImageFile!.readAsBytes();
+            if (bytes.isNotEmpty) {
+              remoteAvatarUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+            }
+          } catch (_) {
+            remoteAvatarUrl = _avatarImageFile!.path;
+          }
         }
       }
 

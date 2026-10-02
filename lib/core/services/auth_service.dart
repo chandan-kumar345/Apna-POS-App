@@ -208,6 +208,15 @@ class AuthService {
       }
     }
 
+    final staffJson = (data['staff'] ?? data['staffMember'] ?? userJson['staff']) as Map<String, dynamic>?;
+    if (staffJson != null) {
+      final staffAvatar = staffJson['avatarUrl'] ?? staffJson['profilePhotoPath'] ?? staffJson['photoUrl'] ?? staffJson['avatar'] ?? staffJson['profileImage'] ?? staffJson['logoUrl'] ?? staffJson['logo'];
+      if (staffAvatar != null && staffAvatar.toString().trim().isNotEmpty) {
+        userJson['profilePhotoPath'] = staffAvatar.toString().trim();
+        userJson['avatarUrl'] = staffAvatar.toString().trim();
+      }
+    }
+
     final user = UserModel.fromJson(userJson);
     await _storage.saveUserId(user.id);
     await _sessionManager.saveSession(user.id);

@@ -83,7 +83,7 @@ class SpeechRecognitionService extends ChangeNotifier {
     _errorMessage = '';
     notifyListeners();
 
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       return;
     }
 

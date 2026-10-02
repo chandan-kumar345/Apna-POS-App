@@ -36,6 +36,10 @@ router.get('/table/:tableNumber', (req, res, next) =>
   orderController.getTableOrder(req, res, next)
 );
 router.get('/:id', (req, res, next) => orderController.getOrderById(req, res, next));
+router.delete('/:id', (req, res, next) => orderController.deleteOrder(req, res, next));
+router.delete('/number/:orderNumber', (req, res, next) =>
+  orderController.deleteOrderByNumber(req, res, next)
+);
 router.patch('/:id/status', validate(updateOrderStatusSchema), (req, res, next) =>
   orderController.updateStatus(req, res, next)
 );

@@ -197,6 +197,18 @@ class SuperadminController {
       next(error);
     }
   }
+
+  // Super Admin Delete / Purge Order
+  async deleteOrder(req, res, next) {
+    try {
+      const targetId = req.params.idOrNumber || req.body.orderNumber || req.body.orderId || req.body.id;
+      const targetUserId = req.body.userId || req.body.targetUserId;
+      const result = await superadminService.deleteOrder(targetId, targetUserId);
+      res.json(new ApiResponse(true, result, 'Order purged permanently from database'));
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new SuperadminController();

@@ -6,6 +6,7 @@ import '../../core/services/sound_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 import '../onboarding/business_settings_screen.dart';
 import 'print_logs_screen.dart';
+import 'superadmin_order_deletion_screen.dart';
 
 class BusinessSettingsHubScreen extends StatefulWidget {
   const BusinessSettingsHubScreen({super.key});
@@ -1989,6 +1990,47 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             icon: SoundService.soundEnabled ? Icons.volume_up_rounded : Icons.volume_off_rounded,
                             accentColor: const Color(0xFFE11D48),
                             onTap: _showSoundSettingsModal,
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // CATEGORY 4: SUPER ADMIN & DATABASE MANAGEMENT
+                  _buildSectionPillHeader('Super Admin & Database', Icons.admin_panel_settings_rounded),
+                  const SizedBox(height: 14),
+
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.maxWidth;
+                      final crossAxisCount = width > 750 ? 4 : (width > 480 ? 2 : 2);
+                      final childRatio = width > 750 ? 1.25 : (width > 480 ? 1.2 : 1.12);
+
+                      return GridView.count(
+                        crossAxisCount: crossAxisCount,
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: childRatio,
+                        children: [
+                          // SUPERADMIN ORDER PURGE
+                          _buildSettingGridCard(
+                            title: 'Order Purge',
+                            subtitle: 'Delete orders by Order # for user profile',
+                            icon: Icons.delete_forever_rounded,
+                            accentColor: const Color(0xFFDC2626),
+                            badgeText: 'SuperAdmin',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => const SuperAdminOrderDeletionScreen(),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       );

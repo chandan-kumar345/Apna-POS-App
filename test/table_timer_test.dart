@@ -18,16 +18,30 @@ void main() {
       expect(parsed.minute, 30);
     });
 
-    test('parseTableOccupiedSince parses HH:mm format correctly', () {
-      final parsed = parseTableOccupiedSince('14:45');
+    test('parseTableOccupiedSince parses HH:mm and 12-hour AM/PM format correctly', () {
+      final parsed24 = parseTableOccupiedSince('14:45');
+      expect(parsed24, isNotNull);
+      expect(parsed24!.hour, 14);
+      expect(parsed24.minute, 45);
+
+      final parsedPm = parseTableOccupiedSince('02:30 PM');
+      expect(parsedPm, isNotNull);
+      expect(parsedPm!.hour, 14);
+      expect(parsedPm.minute, 30);
+    });
+
+    test('parseTableOccupiedSince parses numeric epoch millis correctly', () {
+      final dt = DateTime(2026, 9, 13, 10, 0, 0);
+      final millis = dt.millisecondsSinceEpoch;
+      final parsed = parseTableOccupiedSince(millis.toString());
       expect(parsed, isNotNull);
-      expect(parsed!.hour, 14);
-      expect(parsed.minute, 45);
+      expect(parsed!.millisecondsSinceEpoch, millis);
     });
 
     test('parseTableOccupiedSince handles null and invalid strings', () {
       expect(parseTableOccupiedSince(null), isNull);
       expect(parseTableOccupiedSince(''), isNull);
+      expect(parseTableOccupiedSince('null'), isNull);
       expect(parseTableOccupiedSince('invalid'), isNull);
     });
 
@@ -194,7 +208,7 @@ void main() {
 
       // Free table T-1 has no timer icon
       // Occupied tables (T-2 and T-3) each show a live timer icon
-      expect(find.byIcon(Icons.timer_outlined), findsNWidgets(2));
+      expect(find.byIcon(Icons.access_time_rounded), findsNWidgets(2));
 
       // T-2 should show an 18m duration badge
       expect(find.textContaining('18m'), findsOneWidget);
@@ -342,9 +356,9 @@ void main() {
       expect(db.tables[0].getRunningDuration(), isNull);
     });
 
-    testWidgets('TableManagementScreen mobile view places Takeaway and Delivery buttons below Add Table', (tester) async {
+    testWidgets('TableManagementScreen renders Order Type bar and triggers Takeaway and Delivery', (tester) async {
       OrderType? triggeredOrderType;
-      await tester.binding.setSurfaceSize(const Size(400, 800));
+      await tester.binding.setSurfaceSize(const Size(800, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       await tester.pumpWidget(
@@ -360,17 +374,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('Dine In'), findsOneWidget);
       expect(find.text('Takeaway'), findsOneWidget);
       expect(find.text('Delivery'), findsOneWidget);
-      expect(find.text('Add Table'), findsOneWidget);
-
-      final addTableTop = tester.getTopLeft(find.text('Add Table')).dy;
-      final takeawayTop = tester.getTopLeft(find.text('Takeaway')).dy;
-      final deliveryTop = tester.getTopLeft(find.text('Delivery')).dy;
-
-      // On mobile view, Takeaway and Delivery are positioned below Add Table
-      expect(takeawayTop, greaterThan(addTableTop));
-      expect(deliveryTop, greaterThan(addTableTop));
+      expect(find.byKey(const ValueKey('add_table_top_button')), findsOneWidget);
 
       // Tap Takeaway button
       await tester.tap(find.text('Takeaway'));
@@ -381,32 +388,6 @@ void main() {
       await tester.tap(find.text('Delivery'));
       await tester.pumpAndSettle();
       expect(triggeredOrderType, OrderType.delivery);
-    });
-
-    testWidgets('TableManagementScreen desktop view places Takeaway, Delivery, and Add Table inline', (tester) async {
-      await tester.binding.setSurfaceSize(const Size(1200, 800));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
-
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: TableManagementScreen(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.text('Takeaway'), findsOneWidget);
-      expect(find.text('Delivery'), findsOneWidget);
-      expect(find.text('Add Table'), findsOneWidget);
-
-      final addTableTop = tester.getTopLeft(find.text('Add Table')).dy;
-      final takeawayTop = tester.getTopLeft(find.text('Takeaway')).dy;
-      final deliveryTop = tester.getTopLeft(find.text('Delivery')).dy;
-
-      // On desktop view, all action buttons are on the same horizontal row
-      expect((takeawayTop - addTableTop).abs(), lessThan(5.0));
-      expect((deliveryTop - addTableTop).abs(), lessThan(5.0));
     });
   });
 }

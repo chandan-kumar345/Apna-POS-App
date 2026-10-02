@@ -709,7 +709,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text('Subtotal', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
-                          Text('$currency ${order.subtotal.toStringAsFixed(0)}',
+                          Text('$currency ${order.effectiveSubtotal.toStringAsFixed(0)}',
                               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                         ],
                       ),
@@ -746,6 +746,28 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           ],
                         ),
                       ],
+                      if (order.tipAmount > 0) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Tip', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                            Text('$currency ${order.tipAmount.toStringAsFixed(0)}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                          ],
+                        ),
+                      ],
+                      if (order.roundOff != 0) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Round Off', style: TextStyle(fontSize: 13, color: Color(0xFF64748B))),
+                            Text('${order.roundOff > 0 ? "+" : ""}$currency ${order.roundOff.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                          ],
+                        ),
+                      ],
                       const Divider(height: 20, color: Color(0xFFE2E8F0)),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -759,7 +781,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             ),
                           ),
                           Text(
-                            '$currency ${order.totalAmount.toStringAsFixed(0)}',
+                            '$currency ${order.effectiveTotalAmount.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w900,

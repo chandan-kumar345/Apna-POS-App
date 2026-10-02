@@ -239,6 +239,35 @@ class StaffModel {
       parsedSalary = double.tryParse(json['salary'].toString()) ?? 0.0;
     }
 
+    String parsedAvatar = '';
+    if (json['avatarUrl'] != null && json['avatarUrl'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['avatarUrl'].toString().trim();
+    } else if (json['profilePhotoPath'] != null && json['profilePhotoPath'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['profilePhotoPath'].toString().trim();
+    } else if (json['photoUrl'] != null && json['photoUrl'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['photoUrl'].toString().trim();
+    } else if (json['avatar'] != null && json['avatar'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['avatar'].toString().trim();
+    } else if (json['profileImage'] != null && json['profileImage'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['profileImage'].toString().trim();
+    } else if (json['logoUrl'] != null && json['logoUrl'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['logoUrl'].toString().trim();
+    } else if (json['logo'] != null && json['logo'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['logo'].toString().trim();
+    } else if (json['profileLogo'] != null && json['profileLogo'].toString().trim().isNotEmpty) {
+      parsedAvatar = json['profileLogo'].toString().trim();
+    } else if (json['profile'] is Map) {
+      final p = json['profile'] as Map;
+      parsedAvatar = p['avatarUrl']?.toString().trim() ??
+          p['profilePhotoPath']?.toString().trim() ??
+          p['photoUrl']?.toString().trim() ??
+          p['avatar']?.toString().trim() ??
+          p['profileImage']?.toString().trim() ??
+          p['logoUrl']?.toString().trim() ??
+          p['logo']?.toString().trim() ??
+          '';
+    }
+
     return StaffModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Staff Member',
@@ -248,7 +277,7 @@ class StaffModel {
       role: json['role']?.toString() ?? 'Cashier',
       status: json['status']?.toString() ?? 'Active',
       pin: json['pin']?.toString() ?? '1234',
-      avatarUrl: json['avatarUrl']?.toString() ?? '',
+      avatarUrl: parsedAvatar,
       permissions: parsedPermissions,
       salary: parsedSalary,
       joiningDate: parsedJoining,

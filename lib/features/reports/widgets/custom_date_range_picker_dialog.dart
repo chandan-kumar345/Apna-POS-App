@@ -337,7 +337,7 @@ class _CustomDateRangePickerDialogState extends State<CustomDateRangePickerDialo
 
           // Day of Week Header Row (Su Mo Tu We Th Fr Sa)
           Row(
-            children: const [
+            children: [
               Expanded(child: Center(child: Text('Su', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))))),
               Expanded(child: Center(child: Text('Mo', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))))),
               Expanded(child: Center(child: Text('Tu', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF64748B))))),

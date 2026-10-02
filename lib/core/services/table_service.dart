@@ -112,6 +112,29 @@ class TableService {
     }
   }
 
+  /// Update table (name, floor, capacity, tableNumber)
+  Future<TableModel?> updateTable(TableModel table) async {
+    try {
+      final payload = {
+        'name': table.name,
+        'floor': table.floor,
+        'capacity': table.capacity,
+        'tableNumber': table.tableNumber,
+      };
+      final response = await _apiClient.put(
+        '${ApiEndpoints.tables}/${table.id}',
+        data: payload,
+      );
+      if (response != null && response['data'] != null && response['data']['table'] != null) {
+        return TableModel.fromJson(Map<String, dynamic>.from(response['data']['table'] as Map));
+      }
+      return table;
+    } catch (e) {
+      debugPrint('[TableService.updateTable] error: $e');
+      return null;
+    }
+  }
+
   /// Shift table products, active carts, and running orders from Table A to Table B dynamically
   Future<bool> shiftTable({
     required String sourceTable,

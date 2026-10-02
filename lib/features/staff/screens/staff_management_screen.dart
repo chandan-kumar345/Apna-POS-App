@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_service.dart';
@@ -1099,7 +1100,27 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     }
 
     if (effectiveUrl.isNotEmpty) {
-      if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
+      if (effectiveUrl.startsWith('data:image') || effectiveUrl.startsWith('data:') || (effectiveUrl.length > 80 && !effectiveUrl.contains('/') && !effectiveUrl.contains('\\'))) {
+        try {
+          final commaIdx = effectiveUrl.indexOf(',');
+          final clean = commaIdx != -1 ? effectiveUrl.substring(commaIdx + 1) : effectiveUrl;
+          final bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          return SizedBox(
+            width: size,
+            height: size,
+            child: ClipOval(
+              child: Image.memory(
+                bytes,
+                width: size,
+                height: size,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(staff, size: size),
+              ),
+            ),
+          );
+        } catch (_) {}
+      } else if (effectiveUrl.startsWith('http://') || effectiveUrl.startsWith('https://')) {
         return SizedBox(
           width: size,
           height: size,

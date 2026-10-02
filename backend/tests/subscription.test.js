@@ -1,9 +1,21 @@
 const request = require('supertest');
 const app = require('../src/app');
 const { SubscriptionLead } = require('../src/models/SubscriptionLead');
+const emailService = require('../src/services/emailService');
 require('./setup');
 
 describe('Subscription & Lead Generation API', () => {
+  beforeAll(() => {
+    jest.spyOn(emailService, 'sendLeadNotificationEmail').mockResolvedValue({
+      sent: true,
+      messageId: '<test-mock-msg@gmail.com>',
+      recipient: 'sooftcode@gmail.com',
+    });
+  });
+
+  afterAll(() => {
+    jest.restoreAllMocks();
+  });
   describe('GET /api/v1/subscription/plans', () => {
     it('should return subscription plans with feature matrix', async () => {
       const res = await request(app).get('/api/v1/subscription/plans');

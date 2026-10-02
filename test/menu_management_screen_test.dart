@@ -172,9 +172,9 @@ void main() {
     expect(find.text('Masala Chai'), findsOneWidget);
     expect(find.text('Cold Coffee'), findsOneWidget);
 
-    // Verify Switches are present and rendered with high contrast styling
-    final switches = find.byType(Switch);
-    expect(switches, findsWidgets);
+    // Verify product names are rendered
+    expect(find.text('Masala Chai'), findsOneWidget);
+    expect(find.text('Cold Coffee'), findsOneWidget);
 
     // Switch to Grid View
     await tester.tap(find.text('Grid'));
@@ -284,42 +284,18 @@ void main() {
     // Verify 6-dot drag handles
     expect(find.byIcon(Icons.drag_indicator_rounded), findsWidgets);
 
-    // Expand search in Categories
-    await tester.tap(find.byIcon(Icons.search_rounded).first, warnIfMissed: false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Search categories...'), findsOneWidget);
-
-    // Close search in Categories
-    await tester.tap(find.byIcon(Icons.close_rounded).first, warnIfMissed: false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-
-    // 3. Drill down to Products via Chevron / Tap
-    await tester.tap(find.byIcon(Icons.chevron_right_rounded).first, warnIfMissed: false);
+    // 3. Drill down to Products via Category Tap
+    await tester.tap(find.text('Main Course').first, warnIfMissed: false);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
     // 4. Products Tab is now active
-    expect(find.text('CSV'), findsOneWidget);
     expect(find.text('Shahi Paneer'), findsOneWidget);
     expect(find.text('48 in stock'), findsOneWidget);
     expect(find.text('₹230'), findsOneWidget);
     expect(find.text('Dal Tadka'), findsOneWidget);
     expect(find.text('23 in stock'), findsOneWidget);
     expect(find.text('₹199'), findsOneWidget);
-
-    // Expand search in Products (hides CSV and Add)
-    await tester.tap(find.byIcon(Icons.search_rounded).first, warnIfMissed: false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('Search products...'), findsOneWidget);
-
-    // Close search in Products (restores CSV and Add)
-    await tester.tap(find.byIcon(Icons.close_rounded).first, warnIfMissed: false);
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
-    expect(find.text('CSV'), findsOneWidget);
 
     // 5. Test Filter Modal
     await tester.tap(find.byIcon(Icons.filter_alt_outlined), warnIfMissed: false);

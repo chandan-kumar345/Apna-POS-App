@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'dart:ui';
 import 'dart:math' as math;
 import '../../core/database/database_service.dart';
 import '../../core/services/dashboard_service.dart';
@@ -227,23 +226,20 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFEEF5F9),
-      body: Stack(
-        children: [
-          // 1. Ambient Liquid Background Blobs
-          _buildLiquidBackground(size),
-
-          // 2. Main Scrollable Content
-          SafeArea(
-            child: RefreshIndicator(
-              onRefresh: _loadDashboardData,
-              color: const Color(0xFF0284C7),
+      backgroundColor: const Color(0xFFF4F6FB),
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: _loadDashboardData,
+          color: const Color(0xFF0284C7),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 1100),
               child: SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   isMobile ? 12 : 24,
-                  isMobile ? 10 : 20,
+                  isMobile ? 12 : 20,
                   isMobile ? 12 : 24,
-                  isMobile ? 16 : 24,
+                  isMobile ? 20 : 28,
                 ),
                 physics: const AlwaysScrollableScrollPhysics(
                   parent: BouncingScrollPhysics(),
@@ -305,7 +301,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                     _buildSummaryCards(isMobile),
                     const SizedBox(height: 14),
 
-                    // Order Type Liquid Glass Grid (4 Cards: Dine In, Take Away, Delivery, Total)
+                    // Order Type Grid (4 Cards: Total Orders, Dine In, Take Away, Delivery)
                     _buildOrderTypeGrid(isMobile),
                     const SizedBox(height: 14),
 
@@ -328,82 +324,20 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               ),
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Ambient Liquid Background Blobs for depth & glass refraction
-  Widget _buildLiquidBackground(Size size) {
-    return Stack(
-      children: [
-        Positioned(
-          top: -40,
-          right: -40,
-          child: Container(
-            width: size.width * 0.7,
-            height: size.width * 0.7,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  Color(0x3300C2FF),
-                  Color(0x18A5F3FC),
-                  Colors.transparent,
-                ],
-                stops: [0.0, 0.5, 1.0],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          top: size.height * 0.35,
-          left: -80,
-          child: Container(
-            width: size.width * 0.6,
-            height: size.width * 0.6,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  Color(0x228B5CF6),
-                  Color(0x10DDD6FE),
-                  Colors.transparent,
-                ],
-                stops: [0.0, 0.6, 1.0],
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 100,
-          right: -60,
-          child: Container(
-            width: size.width * 0.65,
-            height: size.width * 0.65,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  Color(0x2510B981),
-                  Color(0x10A7F3D0),
-                  Colors.transparent,
-                ],
-                stops: [0.0, 0.55, 1.0],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Top Header Bar with Refresh
+  /// Top Header Bar with Neumorphic Filter Pill & Refresh Button
   Widget _buildHeader() {
     final user = _db.currentUser;
     final isStaff = user != null && !user.isOwner && !user.isAdmin;
     final staffCompanyName = user?.companyName;
-    final storeName = _db.restaurant?.name ?? ((isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty) ? staffCompanyName : 'Apna POS Diner');
+    final storeName = _db.restaurant?.name ??
+        ((isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty)
+            ? staffCompanyName
+            : 'Apna POS Diner');
 
     return Row(
       children: [
@@ -420,32 +354,48 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: Color(0xFF0F172A),
-                        letterSpacing: -0.5,
+                        letterSpacing: -0.4,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  if (isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty) ...[
+                  if (isStaff &&
+                      staffCompanyName != null &&
+                      staffCompanyName.isNotEmpty) ...[
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2.5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF051C48).withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFF051C48).withOpacity(0.2)),
+                        color: const Color(0xFFF4F6FB),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.white,
+                            offset: Offset(-1.5, -1.5),
+                            blurRadius: 3,
+                          ),
+                          BoxShadow(
+                            color: Color(0x14000000),
+                            offset: Offset(1.5, 1.5),
+                            blurRadius: 3,
+                          ),
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.business_rounded, size: 12, color: Color(0xFF051C48)),
+                          const Icon(Icons.business_rounded,
+                              size: 12, color: Color(0xFF0A1931)),
                           const SizedBox(width: 4),
                           Text(
                             staffCompanyName,
                             style: const TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF051C48),
+                              color: Color(0xFF0A1931),
                             ),
                           ),
                         ],
@@ -454,9 +404,11 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   ],
                 ],
               ),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
-                isStaff && staffCompanyName != null && staffCompanyName.isNotEmpty
+                isStaff &&
+                        staffCompanyName != null &&
+                        staffCompanyName.isNotEmpty
                     ? 'Workplace: $staffCompanyName • Real-Time Business Analytics'
                     : 'Real-Time Cloud Business Analytics',
                 style: const TextStyle(
@@ -478,38 +430,46 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             _loadDashboardData();
           },
         ),
-        const SizedBox(width: 6),
-        InkWell(
-          onTap: _loadDashboardData,
-          borderRadius: BorderRadius.circular(20),
-          child: Container(
-            padding: const EdgeInsets.all(7),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.85),
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x0A0052FF),
-                  blurRadius: 10,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
+        const SizedBox(width: 8),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: _loadDashboardData,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F6FB),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
+                  ),
+                  BoxShadow(
+                    color: Color(0x18000000),
+                    offset: Offset(2, 2),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF0284C7),
+                      ),
+                    )
+                  : const Icon(
+                      Icons.refresh_rounded,
+                      size: 16,
                       color: Color(0xFF0284C7),
                     ),
-                  )
-                : const Icon(
-                    Icons.refresh_rounded,
-                    size: 16,
-                    color: Color(0xFF0284C7),
-                  ),
+            ),
           ),
         ),
       ],
@@ -520,11 +480,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
   Widget _buildSummaryCards(bool isMobile) {
     final int totalOrdersCount = _summaryData.totalOrders;
     final double totalRevenue = _summaryData.revenue;
-    final String currentDateStr = DateFormat(
-      'd MMM yyyy',
-    ).format(DateTime.now());
+    final String currentDateStr =
+        DateFormat('d MMM yyyy').format(DateTime.now());
 
-    return _buildGlassCard(
+    return _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -534,40 +493,142 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(7),
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF3E8FF),
+                      color: const Color(0xFFF4F6FB),
                       borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.white,
+                          offset: Offset(-2, -2),
+                          blurRadius: 4,
+                        ),
+                        BoxShadow(
+                          color: Color(0x16000000),
+                          offset: Offset(2, 2),
+                          blurRadius: 4,
+                        ),
+                      ],
                     ),
                     child: const Icon(
                       Icons.shopping_bag_rounded,
                       color: Color(0xFF9333EA),
-                      size: 16,
+                      size: 18,
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   const Text(
                     'Order Summary',
                     style: TextStyle(
-                      fontSize: 13.5,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0F172A),
                     ),
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
+                  color: const Color(0xFFF4F6FB),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.white,
+                      offset: Offset(-1.5, -1.5),
+                      blurRadius: 3,
+                    ),
+                    BoxShadow(
+                      color: Color(0x10000000),
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 3,
+                    ),
+                  ],
                 ),
                 child: Text(
                   _dashboardFilter,
                   style: const TextStyle(
                     fontSize: 10.5,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF475569),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Metrics in 2 Neumorphic Inset Wells
+          Row(
+            children: [
+              Expanded(
+                child: _buildNeumorphicInset(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Total Orders',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '$totalOrdersCount',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF059669),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildNeumorphicInset(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Total Revenue',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF64748B),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          '₹${totalRevenue.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -577,81 +638,17 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
           Row(
             children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Total Orders',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: Color(0xFF64748B),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '$totalOrdersCount',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF059669),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Total Revenue',
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: Color(0xFF64748B),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '₹${totalRevenue.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0F172A),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          Row(
-            children: [
               const Icon(
                 Icons.calendar_today_rounded,
-                size: 11,
+                size: 12,
                 color: Color(0xFF94A3B8),
               ),
-              const SizedBox(width: 5),
+              const SizedBox(width: 6),
               Text(
                 currentDateStr,
                 style: const TextStyle(
-                  fontSize: 10.5,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
                   color: Color(0xFF64748B),
                 ),
               ),
@@ -671,8 +668,6 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         count: _orderTypesData.total.count,
         icon: Icons.assignment_rounded,
         accentColor: const Color(0xFF10B981),
-        bgColor: const Color(0xFFECFDF5),
-        borderColor: const Color(0xFFA7F3D0),
       ),
       _buildOrderTypeCard(
         title: 'Dine In',
@@ -681,8 +676,6 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         icon: Icons.restaurant_rounded,
         imageAsset: 'assets/images/dinein.png',
         accentColor: const Color(0xFF8B5CF6),
-        bgColor: const Color(0xFFF5F3FF),
-        borderColor: const Color(0xFFDDD6FE),
       ),
       _buildOrderTypeCard(
         title: 'Take Away',
@@ -691,8 +684,6 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         icon: Icons.local_mall_rounded,
         imageAsset: 'assets/images/takeaway.png',
         accentColor: const Color(0xFF0284C7),
-        bgColor: const Color(0xFFF0F9FF),
-        borderColor: const Color(0xFFBAE6FD),
       ),
       _buildOrderTypeCard(
         title: 'Delivery',
@@ -701,18 +692,16 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         icon: Icons.two_wheeler_rounded,
         imageAsset: 'assets/images/delivery.png',
         accentColor: const Color(0xFFF97316),
-        bgColor: const Color(0xFFFFF7ED),
-        borderColor: const Color(0xFFFED7AA),
       ),
     ];
 
     return GridView.count(
       crossAxisCount: isMobile ? 2 : 4,
-      crossAxisSpacing: 8,
-      mainAxisSpacing: 8,
+      crossAxisSpacing: 10,
+      mainAxisSpacing: 10,
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      childAspectRatio: isMobile ? 1.3 : 1.45,
+      childAspectRatio: isMobile ? 1.3 : 1.4,
       children: cards,
     );
   }
@@ -724,29 +713,37 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     required IconData icon,
     String? imageAsset,
     required Color accentColor,
-    required Color bgColor,
-    required Color borderColor,
   }) {
-    return _buildGlassCard(
-      color: bgColor,
-      borderColor: borderColor,
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+    return _buildNeumorphicCard(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
       child: FittedBox(
         fit: BoxFit.scaleDown,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              width: 30,
-              height: 30,
-              padding: const EdgeInsets.all(3),
+              width: 34,
+              height: 34,
+              padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.12),
+                color: const Color(0xFFF4F6FB),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: accentColor.withOpacity(0.3),
-                  width: 1,
+                  color: accentColor.withValues(alpha: 0.35),
+                  width: 1.2,
                 ),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-1.5, -1.5),
+                    blurRadius: 3,
+                  ),
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    offset: Offset(1.5, 1.5),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               alignment: Alignment.center,
               child: imageAsset != null && imageAsset.isNotEmpty
@@ -755,16 +752,17 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                       width: 20,
                       height: 20,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => Icon(icon, color: accentColor, size: 16),
+                      errorBuilder: (context, error, stackTrace) =>
+                          Icon(icon, color: accentColor, size: 17),
                     )
-                  : Icon(icon, color: accentColor, size: 16),
+                  : Icon(icon, color: accentColor, size: 17),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 5),
             Text(
               '₹${amount.toStringAsFixed(0)}',
               style: const TextStyle(
                 fontSize: 15,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
               ),
               maxLines: 1,
@@ -780,19 +778,31 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: const Color(0xFFF4F6FB),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-1, -1),
+                    blurRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: Color(0x10000000),
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
               ),
               child: Text(
                 '$count Orders',
                 style: const TextStyle(
                   fontSize: 9.5,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w700,
                   color: Color(0xFF0F172A),
                 ),
                 maxLines: 1,
@@ -806,7 +816,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
   /// 3. Top Product Sales Section
   Widget _buildProductPerformanceCards(bool isMobile) {
-    return _buildGlassCard(
+    return _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -817,8 +827,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                 child: Text(
                   'Total sale of item',
                   style: TextStyle(
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                   maxLines: 1,
@@ -826,17 +836,29 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.65),
-                  borderRadius: BorderRadius.circular(12),
+                  color: const Color(0xFFF4F6FB),
+                  borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.white,
+                      offset: Offset(-1.5, -1.5),
+                      blurRadius: 3,
+                    ),
+                    BoxShadow(
+                      color: Color(0x10000000),
+                      offset: Offset(1.5, 1.5),
+                      blurRadius: 3,
+                    ),
+                  ],
                 ),
                 child: Text(
                   _dashboardFilter,
                   style: const TextStyle(
                     fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: Color(0xFF64748B),
                   ),
                 ),
@@ -852,15 +874,28 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFFEF3C7),
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF4F6FB),
                         shape: BoxShape.circle,
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.white,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                          BoxShadow(
+                            color: Color(0x16000000),
+                            offset: Offset(2, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
                       child: const Icon(
                         Icons.emoji_events_rounded,
                         color: Color(0xFFD97706),
-                        size: 24,
+                        size: 22,
                       ),
                     ),
                     const SizedBox(height: 10),
@@ -868,7 +903,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                       'No product sales yet',
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
                         color: Color(0xFF0F172A),
                       ),
                     ),
@@ -877,7 +912,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                       'Item-wise sales data will appear here\nonce orders are completed.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 11,
                         color: Color(0xFF94A3B8),
                       ),
                     ),
@@ -888,14 +923,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           else
             Column(
               children: [
-                Container(
+                _buildNeumorphicInset(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(8),
+                    vertical: 8,
                   ),
                   child: const Row(
                     children: [
@@ -904,8 +935,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                         child: Text(
                           '#',
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
                             color: Color(0xFF64748B),
                           ),
                         ),
@@ -915,8 +946,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                         child: Text(
                           'Product Name',
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
                             color: Color(0xFF64748B),
                           ),
                           maxLines: 1,
@@ -928,8 +959,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                         child: Text(
                           'Price',
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
                             color: Color(0xFF64748B),
                           ),
                           textAlign: TextAlign.center,
@@ -941,8 +972,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                           'QTY',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
                             color: Color(0xFF64748B),
                           ),
                         ),
@@ -953,8 +984,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                           'Total',
                           textAlign: TextAlign.right,
                           style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w800,
                             color: Color(0xFF64748B),
                           ),
                         ),
@@ -970,13 +1001,13 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                     padding: EdgeInsets.zero,
                     itemCount: _productSales.length,
                     separatorBuilder: (context, index) =>
-                        Divider(color: Colors.white.withOpacity(0.5), height: 12),
+                        const Divider(color: Color(0xFFE2E8F0), height: 10),
                     itemBuilder: (context, index) {
                       final p = _productSales[index];
                       return Padding(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
-                          vertical: 3,
+                          vertical: 4,
                         ),
                         child: Row(
                           children: [
@@ -985,7 +1016,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                               child: Text(
                                 '${p.srNo > 0 ? p.srNo : index + 1}',
                                 style: const TextStyle(
-                                  fontSize: 10,
+                                  fontSize: 10.5,
                                   color: Color(0xFF64748B),
                                 ),
                               ),
@@ -995,8 +1026,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                               child: Text(
                                 p.productName,
                                 style: const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
                                   color: Color(0xFF0F172A),
                                 ),
                                 maxLines: 1,
@@ -1011,8 +1042,9 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                 child: Text(
                                   '₹${p.price.toStringAsFixed(0)}',
                                   style: const TextStyle(
-                                    fontSize: 10.5,
+                                    fontSize: 11,
                                     color: Color(0xFF64748B),
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -1025,8 +1057,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                 child: Text(
                                   '${p.quantity}',
                                   style: const TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
                                     color: Color(0xFF0F172A),
                                   ),
                                 ),
@@ -1040,8 +1072,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                 child: Text(
                                   '₹${p.totalAmount.toStringAsFixed(0)}',
                                   style: const TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
                                     color: Color(0xFF10B981),
                                   ),
                                 ),
@@ -1059,13 +1091,13 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                       padding: EdgeInsets.zero,
                       itemCount: _productSales.length,
                       separatorBuilder: (context, index) =>
-                          Divider(color: Colors.white.withOpacity(0.5), height: 12),
+                          const Divider(color: Color(0xFFE2E8F0), height: 10),
                       itemBuilder: (context, index) {
                         final p = _productSales[index];
                         return Padding(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
-                            vertical: 3,
+                            vertical: 4,
                           ),
                           child: Row(
                             children: [
@@ -1074,7 +1106,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                 child: Text(
                                   '${p.srNo > 0 ? p.srNo : index + 1}',
                                   style: const TextStyle(
-                                    fontSize: 10,
+                                    fontSize: 10.5,
                                     color: Color(0xFF64748B),
                                   ),
                                 ),
@@ -1084,8 +1116,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                 child: Text(
                                   p.productName,
                                   style: const TextStyle(
-                                    fontSize: 10.5,
-                                    fontWeight: FontWeight.w600,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
                                     color: Color(0xFF0F172A),
                                   ),
                                   maxLines: 1,
@@ -1100,8 +1132,9 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                   child: Text(
                                     '₹${p.price.toStringAsFixed(0)}',
                                     style: const TextStyle(
-                                      fontSize: 10.5,
+                                      fontSize: 11,
                                       color: Color(0xFF64748B),
+                                      fontWeight: FontWeight.w600,
                                     ),
                                   ),
                                 ),
@@ -1114,8 +1147,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                   child: Text(
                                     '${p.quantity}',
                                     style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
                                       color: Color(0xFF0F172A),
                                     ),
                                   ),
@@ -1129,8 +1162,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                                   child: Text(
                                     '₹${p.totalAmount.toStringAsFixed(0)}',
                                     style: const TextStyle(
-                                      fontSize: 10.5,
-                                      fontWeight: FontWeight.bold,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
                                       color: Color(0xFF10B981),
                                     ),
                                   ),
@@ -1168,18 +1201,19 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 7,
-                    vertical: 3,
+                    horizontal: 8,
+                    vertical: 3.5,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE0F2FE),
-                    borderRadius: BorderRadius.circular(10),
+                    color: const Color(0xFFF4F6FB),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
                   ),
                   child: const Text(
                     'NO ROWS YET',
                     style: TextStyle(
-                      fontSize: 8.5,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
                       color: Color(0xFF0284C7),
                     ),
                   ),
@@ -1189,12 +1223,25 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(10),
+                      width: 40,
+                      height: 40,
                       decoration: BoxDecoration(
-                        color: iconBg,
-                        borderRadius: BorderRadius.circular(14),
+                        color: const Color(0xFFF4F6FB),
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.white,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                          BoxShadow(
+                            color: Color(0x16000000),
+                            offset: Offset(2, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
                       ),
-                      child: Icon(emptyIcon, color: iconColor, size: 24),
+                      child: Icon(emptyIcon, color: iconColor, size: 20),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -1205,7 +1252,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                             emptyTitle,
                             style: const TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                              fontWeight: FontWeight.w800,
                               color: Color(0xFF0F172A),
                             ),
                             maxLines: 1,
@@ -1215,7 +1262,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                           Text(
                             emptySubtitle,
                             style: const TextStyle(
-                              fontSize: 10,
+                              fontSize: 10.5,
                               color: Color(0xFF64748B),
                             ),
                             maxLines: 2,
@@ -1236,7 +1283,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         physics: const NeverScrollableScrollPhysics(),
         itemCount: list.length,
         separatorBuilder: (context, index) =>
-            const Divider(color: Color(0xFFE2E8F0), height: 12),
+            const Divider(color: Color(0xFFE2E8F0), height: 10),
         itemBuilder: (context, index) {
           final item = list[index];
           return Row(
@@ -1246,7 +1293,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                 child: Text(
                   '${index + 1}',
                   style: const TextStyle(
-                    fontSize: 10,
+                    fontSize: 10.5,
                     color: Color(0xFF64748B),
                   ),
                 ),
@@ -1258,8 +1305,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                     Text(
                       item.name.isEmpty ? 'Customer' : item.name,
                       style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
                         color: Color(0xFF0F172A),
                       ),
                       maxLines: 1,
@@ -1270,7 +1317,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                       Text(
                         item.phone,
                         style: const TextStyle(
-                          fontSize: 9.5,
+                          fontSize: 10,
                           color: Color(0xFF64748B),
                         ),
                         maxLines: 1,
@@ -1282,10 +1329,23 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               ),
               const SizedBox(width: 6),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(6),
+                  color: const Color(0xFFF4F6FB),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Colors.white,
+                      offset: Offset(-1, -1),
+                      blurRadius: 2,
+                    ),
+                    BoxShadow(
+                      color: Color(0x10000000),
+                      offset: Offset(1, 1),
+                      blurRadius: 2,
+                    ),
+                  ],
                 ),
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -1293,6 +1353,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                     'Visits: ${item.visitCount}',
                     style: const TextStyle(
                       fontSize: 9.5,
+                      fontWeight: FontWeight.w700,
                       color: Color(0xFF475569),
                     ),
                   ),
@@ -1304,7 +1365,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       );
     }
 
-    Widget newCust = _buildGlassCard(
+    Widget newCust = _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1322,7 +1383,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       ),
     );
 
-    Widget retCust = _buildGlassCard(
+    Widget retCust = _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1406,13 +1467,13 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       1.0,
     ].reduce((a, b) => a > b ? a : b);
 
-    return _buildGlassCard(
+    return _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader('Total Sales'),
           const SizedBox(height: 12),
-          _buildProgressBarRow('CASH', cash, maxVal, const Color(0xFF00C2FF)),
+          _buildProgressBarRow('CASH', cash, maxVal, const Color(0xFF0284C7)),
           _buildProgressBarRow('CARD', card, maxVal, const Color(0xFF3B82F6)),
           _buildProgressBarRow('UPI', upi, maxVal, const Color(0xFF8B5CF6)),
           if (split > 0)
@@ -1422,22 +1483,34 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               maxVal,
               const Color(0xFFF59E0B),
             ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFFF4F6FB),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
+                  ),
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    offset: Offset(2, 2),
+                    blurRadius: 4,
+                  ),
+                ],
               ),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   'Total: ₹${total.toStringAsFixed(0)}',
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                 ),
@@ -1455,7 +1528,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     final double cgst = _taxData.cgst;
     final double sgst = _taxData.sgst;
 
-    return _buildGlassCard(
+    return _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1465,13 +1538,13 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             'TOTAL GST',
             gst,
             gst > 0 ? gst : 1.0,
-            const Color(0xFF94A3B8),
+            const Color(0xFF64748B),
           ),
           _buildProgressBarRow(
             'CGST',
             cgst,
             gst > 0 ? gst : 1.0,
-            const Color(0xFF38BDF8),
+            const Color(0xFF0284C7),
           ),
           _buildProgressBarRow(
             'SGST',
@@ -1479,22 +1552,34 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             gst > 0 ? gst : 1.0,
             const Color(0xFF818CF8),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           Center(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.8),
-                borderRadius: BorderRadius.circular(16),
+                color: const Color(0xFFF4F6FB),
+                borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
+                  ),
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    offset: Offset(2, 2),
+                    blurRadius: 4,
+                  ),
+                ],
               ),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   'Total Taxes: ₹${gst.toStringAsFixed(2)}',
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                 ),
@@ -1512,7 +1597,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     final int cancelled = _orderStatsData.cancelledOrders;
     final int total = _orderStatsData.totalOrders;
 
-    return _buildGlassCard(
+    return _buildNeumorphicCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1544,8 +1629,10 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     double max,
     Color color,
   ) {
-    final double safeVal = (!value.isNaN && !value.isInfinite && value > 0) ? value : 0.0;
-    final double safeMax = (!max.isNaN && !max.isInfinite && max > 0) ? max : 1.0;
+    final double safeVal =
+        (!value.isNaN && !value.isInfinite && value > 0) ? value : 0.0;
+    final double safeMax =
+        (!max.isNaN && !max.isInfinite && max > 0) ? max : 1.0;
     double progress = (max > 0) ? (safeVal / safeMax).clamp(0.0, 1.0) : 0.0;
     if (progress.isNaN || progress.isInfinite) progress = 0.0;
     return Padding(
@@ -1557,8 +1644,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.bold,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
                 color: Color(0xFF475569),
               ),
               maxLines: 1,
@@ -1570,15 +1657,28 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             child: Container(
               height: 10,
               decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
+                color: const Color(0xFFEFF3F9),
                 borderRadius: BorderRadius.circular(5),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x10000000),
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-1, -1),
+                    blurRadius: 2,
+                  ),
+                ],
               ),
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
                 widthFactor: progress,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.4),
+                    color: color,
                     borderRadius: BorderRadius.circular(5),
                   ),
                 ),
@@ -1592,9 +1692,21 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
+                color: const Color(0xFFF4F6FB),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-1, -1),
+                    blurRadius: 2,
+                  ),
+                  BoxShadow(
+                    color: Color(0x10000000),
+                    offset: Offset(1, 1),
+                    blurRadius: 2,
+                  ),
+                ],
               ),
               child: FittedBox(
                 fit: BoxFit.scaleDown,
@@ -1603,7 +1715,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   '₹${value.toStringAsFixed(0)}',
                   style: const TextStyle(
                     fontSize: 10.5,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w800,
                     color: Color(0xFF0F172A),
                   ),
                 ),
@@ -1617,7 +1729,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
   Widget _buildStatRow(String label, String value, Color badgeColor) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -1625,8 +1737,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.bold,
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
                 color: Color(0xFF475569),
               ),
               maxLines: 1,
@@ -1635,19 +1747,31 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 3.5),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
+              color: const Color(0xFFF4F6FB),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: const [
+                BoxShadow(
+                  color: Colors.white,
+                  offset: Offset(-1.5, -1.5),
+                  blurRadius: 3,
+                ),
+                BoxShadow(
+                  color: Color(0x12000000),
+                  offset: Offset(1.5, 1.5),
+                  blurRadius: 3,
+                ),
+              ],
             ),
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
                 style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.bold,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
                   color: badgeColor,
                 ),
               ),
@@ -1666,8 +1790,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           child: Text(
             title,
             style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
               color: Color(0xFF0F172A),
             ),
             maxLines: 1,
@@ -1676,16 +1800,29 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         ),
         const SizedBox(width: 8),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
           decoration: BoxDecoration(
-            color: const Color(0xFFF1F5F9),
+            color: const Color(0xFFF4F6FB),
             borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.white,
+                offset: Offset(-1, -1),
+                blurRadius: 2,
+              ),
+              BoxShadow(
+                color: Color(0x10000000),
+                offset: Offset(1, 1),
+                blurRadius: 2,
+              ),
+            ],
           ),
           child: Text(
             _dashboardFilter,
             style: const TextStyle(
               fontSize: 9.5,
-              fontWeight: FontWeight.bold,
+              fontWeight: FontWeight.w700,
               color: Color(0xFF64748B),
             ),
           ),
@@ -1694,24 +1831,43 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     );
   }
 
-  /// Custom Date Range TO or FROM Popup Dialog
+  /// Custom Date Range Interactive Calendar Popup Dialog (Matching Mockup & Neumorphic Design)
   Future<void> _showCustomDateRangeDialog() async {
-    DateTime tempStart = _customStartDate ?? DateTime.now().subtract(const Duration(days: 7));
+    DateTime tempStart =
+        _customStartDate ?? DateTime.now().subtract(const Duration(days: 7));
     DateTime tempEnd = _customEndDate ?? DateTime.now();
+    DateTime currentMonth = DateTime(tempStart.year, tempStart.month, 1);
+    bool isSelectingFrom = false;
 
-    final result = await showDialog<Map<String, DateTime>>(
+    final result = await showGeneralDialog<Map<String, DateTime>>(
       context: context,
-      builder: (BuildContext ctx) {
+      barrierDismissible: true,
+      barrierLabel: 'Custom Date Range',
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      transitionDuration: const Duration(milliseconds: 220),
+      pageBuilder: (dialogCtx, anim1, anim2) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
-            final fromStr = DateFormat('dd MMM yyyy').format(tempStart);
-            final toStr = DateFormat('dd MMM yyyy').format(tempEnd);
-
+          builder: (dialogCtx, setDialogState) {
             void selectPreset(Duration duration) {
               final now = DateTime.now();
               setDialogState(() {
                 tempEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
-                tempStart = DateTime(now.year, now.month, now.day).subtract(duration);
+                tempStart =
+                    DateTime(now.year, now.month, now.day).subtract(duration);
+                currentMonth = DateTime(tempStart.year, tempStart.month, 1);
+                isSelectingFrom = false;
+              });
+            }
+
+            void selectThisWeek() {
+              final now = DateTime.now();
+              final diff = (now.weekday == 7 ? 6 : now.weekday - 1);
+              final mon = now.subtract(Duration(days: diff));
+              setDialogState(() {
+                tempStart = DateTime(mon.year, mon.month, mon.day, 0, 0, 0);
+                tempEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                currentMonth = DateTime(tempStart.year, tempStart.month, 1);
+                isSelectingFrom = false;
               });
             }
 
@@ -1720,272 +1876,420 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               setDialogState(() {
                 tempStart = DateTime(now.year, now.month, 1);
                 tempEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+                currentMonth = DateTime(tempStart.year, tempStart.month, 1);
+                isSelectingFrom = false;
               });
             }
 
+            void onDateTapped(DateTime date) {
+              setDialogState(() {
+                final cleanDate = DateTime(date.year, date.month, date.day);
+                if (isSelectingFrom) {
+                  tempStart = cleanDate;
+                  if (tempEnd.isBefore(tempStart)) {
+                    tempEnd = tempStart;
+                  }
+                  isSelectingFrom = false;
+                } else {
+                  if (cleanDate.isBefore(tempStart)) {
+                    tempStart = cleanDate;
+                    isSelectingFrom = false;
+                  } else {
+                    tempEnd = cleanDate;
+                    isSelectingFrom = true;
+                  }
+                }
+              });
+            }
+
+            final rangeDisplayText = (tempStart.year == tempEnd.year &&
+                    tempStart.month == tempEnd.month &&
+                    tempStart.day == tempEnd.day)
+                ? DateFormat('dd MMM yyyy').format(tempStart)
+                : '${DateFormat('dd MMM').format(tempStart)} – ${DateFormat('dd MMM yyyy').format(tempEnd)}';
+
             return Dialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-              backgroundColor: Colors.white,
-              elevation: 10,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 20),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 500),
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
+                constraints: const BoxConstraints(maxWidth: 380),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF4F6FB),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
+                      width: 1,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x28000000),
+                        offset: Offset(0, 12),
+                        blurRadius: 30,
+                      ),
+                    ],
+                  ),
+                  child: SingleChildScrollView(
+                    physics: const ClampingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Dialog Header
+                        // Top Drag Handle Pill
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFD1D5DB),
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Month Navigator Header (< Month Year > & Close Button)
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
+                            // Previous Month Button
+                            Material(
+                              color: const Color(0xFFF4F6FB),
+                              borderRadius: BorderRadius.circular(10),
+                              child: InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    currentMonth = DateTime(
+                                      currentMonth.year,
+                                      currentMonth.month - 1,
+                                      1,
+                                    );
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
                                   decoration: BoxDecoration(
-                                    color: const Color(0xFFE0F2FE),
                                     borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: const Color(0xFFE2E8F0)),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.white,
+                                        offset: Offset(-1.5, -1.5),
+                                        blurRadius: 3,
+                                      ),
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        offset: Offset(1.5, 1.5),
+                                        blurRadius: 3,
+                                      ),
+                                    ],
                                   ),
                                   child: const Icon(
-                                    Icons.date_range_rounded,
-                                    color: Color(0xFF0284C7),
-                                    size: 20,
+                                    Icons.chevron_left_rounded,
+                                    size: 18,
+                                    color: Color(0xFF334155),
                                   ),
                                 ),
-                                const SizedBox(width: 10),
-                                const Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Custom Date Range',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.bold,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                    Text(
-                                      'Select FROM & TO filter dates',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                              ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
-                              onPressed: () => Navigator.of(ctx).pop(),
+                            const SizedBox(width: 8),
+
+                            // Month and Year Title
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  DateFormat('MMMM yyyy').format(currentMonth),
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Next Month Button
+                            Material(
+                              color: const Color(0xFFF4F6FB),
+                              borderRadius: BorderRadius.circular(10),
+                              child: InkWell(
+                                onTap: () {
+                                  setDialogState(() {
+                                    currentMonth = DateTime(
+                                      currentMonth.year,
+                                      currentMonth.month + 1,
+                                      1,
+                                    );
+                                  });
+                                },
+                                borderRadius: BorderRadius.circular(10),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                        color: const Color(0xFFE2E8F0)),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.white,
+                                        offset: Offset(-1.5, -1.5),
+                                        blurRadius: 3,
+                                      ),
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        offset: Offset(1.5, 1.5),
+                                        blurRadius: 3,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.chevron_right_rounded,
+                                    size: 18,
+                                    color: Color(0xFF334155),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+
+                            // Close Button
+                            Material(
+                              color: const Color(0xFFF4F6FB),
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                onTap: () => Navigator.pop(dialogCtx),
+                                customBorder: const CircleBorder(),
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xFFF4F6FB),
+                                    border: Border.all(
+                                        color: const Color(0xFFE2E8F0)),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.white,
+                                        offset: Offset(-1.5, -1.5),
+                                        blurRadius: 3,
+                                      ),
+                                      BoxShadow(
+                                        color: Color(0x14000000),
+                                        offset: Offset(1.5, 1.5),
+                                        blurRadius: 3,
+                                      ),
+                                    ],
+                                  ),
+                                  child: const Icon(
+                                    Icons.close_rounded,
+                                    size: 16,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 12),
 
                         // Quick Preset Chips (Wrapped)
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
                           children: [
-                            _buildPresetChip('Today', () => selectPreset(Duration.zero)),
-                            _buildPresetChip('Last 7 Days', () => selectPreset(const Duration(days: 6))),
-                            _buildPresetChip('Last 30 Days', () => selectPreset(const Duration(days: 29))),
+                            _buildPresetChip(
+                                'Today', () => selectPreset(Duration.zero)),
+                            _buildPresetChip('Yesterday', () {
+                              final now = DateTime.now();
+                              final y = now.subtract(const Duration(days: 1));
+                              setDialogState(() {
+                                tempStart =
+                                    DateTime(y.year, y.month, y.day, 0, 0, 0);
+                                tempEnd = DateTime(
+                                    y.year, y.month, y.day, 23, 59, 59);
+                                currentMonth =
+                                    DateTime(tempStart.year, tempStart.month, 1);
+                                isSelectingFrom = false;
+                              });
+                            }),
+                            _buildPresetChip('This Week', selectThisWeek),
+                            _buildPresetChip('Last 7 Days',
+                                () => selectPreset(const Duration(days: 6))),
                             _buildPresetChip('This Month', selectThisMonth),
+                            _buildPresetChip('Last 30 Days',
+                                () => selectPreset(const Duration(days: 29))),
                           ],
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 14),
 
-                        // FROM & TO Date Boxes (Responsive layout)
-                        LayoutBuilder(
-                          builder: (context, boxConstraints) {
-                            final isNarrow = boxConstraints.maxWidth < 340;
-                            final fromBox = InkWell(
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: tempStart,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                  builder: (context, child) => Theme(
-                                    data: Theme.of(context).copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: Color(0xFF0284C7),
-                                        onPrimary: Colors.white,
-                                        onSurface: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                    child: child!,
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setDialogState(() {
-                                    tempStart = picked;
-                                    if (tempEnd.isBefore(tempStart)) {
-                                      tempEnd = picked;
-                                    }
-                                  });
-                                }
-                              },
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Row(
-                                      children: [
-                                        Icon(Icons.calendar_today_outlined, size: 12, color: Color(0xFF0284C7)),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'FROM DATE',
+                        // Weekdays Header Strip
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE9EEF6),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Su',
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF0284C7),
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      fromStr,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-
-                            final toBox = InkWell(
-                              onTap: () async {
-                                final picked = await showDatePicker(
-                                  context: context,
-                                  initialDate: tempEnd,
-                                  firstDate: DateTime(2020),
-                                  lastDate: DateTime(2100),
-                                  builder: (context, child) => Theme(
-                                    data: Theme.of(context).copyWith(
-                                      colorScheme: const ColorScheme.light(
-                                        primary: Color(0xFF0284C7),
-                                        onPrimary: Colors.white,
-                                        onSurface: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                    child: child!,
-                                  ),
-                                );
-                                if (picked != null) {
-                                  setDialogState(() {
-                                    tempEnd = picked;
-                                    if (tempStart.isAfter(tempEnd)) {
-                                      tempStart = picked;
-                                    }
-                                  });
-                                }
-                              },
-                              borderRadius: BorderRadius.circular(14),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF8FAFC),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Row(
-                                      children: [
-                                        Icon(Icons.event_outlined, size: 12, color: Color(0xFF0284C7)),
-                                        SizedBox(width: 4),
-                                        Text(
-                                          'TO DATE',
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Mo',
                                           style: TextStyle(
-                                            fontSize: 10,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF0284C7),
-                                            letterSpacing: 0.5,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      toStr,
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF0F172A),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
-
-                            if (isNarrow) {
-                              return Column(
-                                children: [
-                                  fromBox,
-                                  const SizedBox(height: 8),
-                                  toBox,
-                                ],
-                              );
-                            }
-
-                            return Row(
-                              children: [
-                                Expanded(child: fromBox),
-                                const SizedBox(width: 10),
-                                Expanded(child: toBox),
-                              ],
-                            );
-                          },
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Tu',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('We',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Th',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Fr',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                              Expanded(
+                                  child: Center(
+                                      child: Text('Sa',
+                                          style: TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF64748B))))),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 20),
+                        const SizedBox(height: 6),
 
-                        // Action Buttons
+                        // Interactive Month Calendar Grid
+                        ..._buildNeumorphicMonthGrid(
+                          currentMonth,
+                          tempStart,
+                          tempEnd,
+                          onDateTapped,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Bottom Action Bar: [ Recessed Date Pill ] [ Apply Button ]
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            TextButton(
-                              onPressed: () => Navigator.of(ctx).pop(),
-                              style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF64748B),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            // Recessed Date Pill
+                            Expanded(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 8.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF3F9),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                      color: const Color(0xFFE2E8F0)),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x10000000),
+                                      offset: Offset(1.5, 1.5),
+                                      blurRadius: 3,
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white,
+                                      offset: Offset(-1.5, -1.5),
+                                      blurRadius: 3,
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.calendar_today_rounded,
+                                      size: 13,
+                                      color: Color(0xFF1D61E7),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        rangeDisplayText,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
-                              child: const Text('Cancel'),
                             ),
                             const SizedBox(width: 8),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(ctx).pop({'start': tempStart, 'end': tempEnd});
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF0284C7),
-                                foregroundColor: Colors.white,
-                                elevation: 0,
-                                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                              ),
-                              child: const Text(
-                                'Apply Filter',
-                                style: TextStyle(fontWeight: FontWeight.bold),
+
+                            // Apply Button
+                            SizedBox(
+                              height: 38,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pop(dialogCtx, {
+                                    'start': tempStart,
+                                    'end': tempEnd,
+                                  });
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1D61E7),
+                                  foregroundColor: Colors.white,
+                                  elevation: 3,
+                                  shadowColor: const Color(0xFF1D61E7)
+                                      .withValues(alpha: 0.4),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 16),
+                                ),
+                                child: const Text(
+                                  'Apply',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 12.5,
+                                    color: Colors.white,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -1997,6 +2301,17 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               ),
             );
           },
+        );
+      },
+      transitionBuilder: (dialogCtx, anim1, anim2, child) {
+        final curved =
+            CurvedAnimation(parent: anim1, curve: Curves.easeOutCubic);
+        return ScaleTransition(
+          scale: Tween<double>(begin: 0.94, end: 1.0).animate(curved),
+          child: FadeTransition(
+            opacity: curved,
+            child: child,
+          ),
         );
       },
     );
@@ -2011,30 +2326,197 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     }
   }
 
-  Widget _buildPresetChip(String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
+  /// Calendar Day Cell Builder for Neumorphic Range Picker
+  List<Widget> _buildNeumorphicMonthGrid(
+    DateTime month,
+    DateTime startDate,
+    DateTime endDate,
+    ValueChanged<DateTime> onDateTapped,
+  ) {
+    final firstDay = DateTime(month.year, month.month, 1);
+    final daysInMonth = DateTime(month.year, month.month + 1, 0).day;
+    final prevMonthDays = DateTime(month.year, month.month, 0).day;
+
+    final leadingCount = firstDay.weekday % 7;
+    final totalDaysShown = leadingCount + daysInMonth;
+    final trailingCount = (7 - (totalDaysShown % 7)) % 7;
+    final totalCells = totalDaysShown + trailingCount;
+
+    final List<Widget> rows = [];
+    List<Widget> currentRow = [];
+
+    final normStart =
+        DateTime(startDate.year, startDate.month, startDate.day);
+    final normEnd = DateTime(endDate.year, endDate.month, endDate.day);
+
+    for (int i = 0; i < totalCells; i++) {
+      DateTime cellDate;
+      bool isCurrentMonth = true;
+
+      if (i < leadingCount) {
+        final day = prevMonthDays - leadingCount + 1 + i;
+        cellDate = DateTime(month.year, month.month - 1, day);
+        isCurrentMonth = false;
+      } else if (i < leadingCount + daysInMonth) {
+        final day = i - leadingCount + 1;
+        cellDate = DateTime(month.year, month.month, day);
+      } else {
+        final day = i - (leadingCount + daysInMonth) + 1;
+        cellDate = DateTime(month.year, month.month + 1, day);
+        isCurrentMonth = false;
+      }
+
+      final isStart = cellDate.year == normStart.year &&
+          cellDate.month == normStart.month &&
+          cellDate.day == normStart.day;
+      final isEnd = cellDate.year == normEnd.year &&
+          cellDate.month == normEnd.month &&
+          cellDate.day == normEnd.day;
+      final isBetween =
+          cellDate.isAfter(normStart) && cellDate.isBefore(normEnd);
+      final isSingle = isStart && isEnd;
+
+      Color textColor;
+      if (isStart || isEnd) {
+        textColor = Colors.white;
+      } else if (!isCurrentMonth) {
+        textColor = const Color(0xFF94A3B8);
+      } else {
+        textColor = const Color(0xFF0F172A);
+      }
+
+      currentRow.add(
+        Expanded(
+          child: InkWell(
+            onTap: () => onDateTapped(cellDate),
+            borderRadius: BorderRadius.circular(8),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Connected Range Light Blue Band
+                if (isBetween)
+                  Container(
+                    height: 30,
+                    decoration: const BoxDecoration(
+                      color: Color(0xFFDBEAFE),
+                    ),
+                  ),
+
+                if (isStart && !isSingle)
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        const Expanded(child: SizedBox()),
+                        Expanded(
+                          child: Container(
+                            height: 30,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDBEAFE),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                if (isEnd && !isSingle)
+                  Positioned.fill(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Container(
+                            height: 30,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFDBEAFE),
+                            ),
+                          ),
+                        ),
+                        const Expanded(child: SizedBox()),
+                      ],
+                    ),
+                  ),
+
+                // Date Cell Node
+                Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    color: (isStart || isEnd)
+                        ? const Color(0xFF1D61E7)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '${cellDate.day}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: (isStart || isEnd || isBetween)
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                      color: textColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-        child: Text(
-          label,
-          style: const TextStyle(
-            fontSize: 10.5,
-            fontWeight: FontWeight.w600,
-            color: Color(0xFF475569),
+      );
+
+      if (currentRow.length == 7) {
+        rows.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2.0),
+            child: Row(children: currentRow),
+          ),
+        );
+        currentRow = [];
+      }
+    }
+
+    return rows;
+  }
+
+  Widget _buildPresetChip(String label, VoidCallback onTap) {
+    return Material(
+      color: const Color(0xFFF4F6FB),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4.5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.white,
+                offset: Offset(-1, -1),
+                blurRadius: 2,
+              ),
+              BoxShadow(
+                color: Color(0x10000000),
+                offset: Offset(1, 1),
+                blurRadius: 2,
+              ),
+            ],
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF475569),
+            ),
           ),
         ),
       ),
     );
   }
 
-  /// Dropdown Pill Button
+  /// Dropdown Pill Button (Neumorphic Redesigned)
   Widget _buildDropdownPill({
     required String value,
     required ValueChanged<String> onChanged,
@@ -2044,23 +2526,50 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         _customStartDate != null &&
         _customEndDate != null) {
       displayValue =
-          '${DateFormat('d MMM').format(_customStartDate!)} - ${DateFormat('d MMM').format(_customEndDate!)}';
+          '${DateFormat('dd MMM').format(_customStartDate!)} – ${DateFormat('dd MMM').format(_customEndDate!)}';
+    } else if (value == 'Week') {
+      displayValue = 'This Week';
+    } else if (value == 'Month') {
+      displayValue = 'This Month';
+    } else if (value == 'Year') {
+      displayValue = 'This Year';
     }
 
     final options = [
-      {'value': 'Today', 'label': 'Today'},
-      {'value': 'Yesterday', 'label': 'Yesterday'},
-      {'value': 'Week', 'label': 'This Week'},
-      {'value': 'Month', 'label': 'This Month'},
-      {'value': 'Year', 'label': 'This Year'},
-      {'value': 'All Time', 'label': 'All Time'},
-      {'value': 'Custom Date', 'label': 'Custom Date Range'},
+      {'value': 'Today', 'label': 'Today', 'icon': Icons.today_rounded},
+      {
+        'value': 'Yesterday',
+        'label': 'Yesterday',
+        'icon': Icons.history_rounded
+      },
+      {'value': 'Week', 'label': 'This Week', 'icon': Icons.view_week_rounded},
+      {
+        'value': 'Month',
+        'label': 'This Month',
+        'icon': Icons.calendar_view_month_rounded
+      },
+      {
+        'value': 'Year',
+        'label': 'This Year',
+        'icon': Icons.calendar_today_rounded
+      },
+      {
+        'value': 'All Time',
+        'label': 'All Time',
+        'icon': Icons.all_inclusive_rounded
+      },
+      {
+        'value': 'Custom Date',
+        'label': 'Custom Date Range',
+        'icon': Icons.date_range_rounded
+      },
     ];
 
     return PopupMenuButton<String>(
       initialValue: value,
       color: Colors.white,
       elevation: 6,
+      offset: const Offset(0, 36),
       onSelected: (val) async {
         if (val == 'Custom Date') {
           await _showCustomDateRangeDialog();
@@ -2069,47 +2578,76 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         }
       },
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(16),
         side: const BorderSide(color: Color(0xFFE2E8F0)),
       ),
       itemBuilder: (context) => options.map((opt) {
         final optVal = opt['value'] as String;
         final optLabel = opt['label'] as String;
+        final optIcon = opt['icon'] as IconData;
         final isSelected = value == optVal;
 
         return PopupMenuItem<String>(
           value: optVal,
-          child: Row(
-            children: [
-              Icon(
-                isSelected ? Icons.check_circle_rounded : Icons.circle_outlined,
-                size: 15,
-                color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF94A3B8),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                optLabel,
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                  color: isSelected ? const Color(0xFF0284C7) : const Color(0xFF0F172A),
+          height: 38,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFFEFF6FF)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  optIcon,
+                  size: 15,
+                  color: isSelected
+                      ? const Color(0xFF1D61E7)
+                      : const Color(0xFF64748B),
                 ),
-              ),
-            ],
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    optLabel,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight:
+                          isSelected ? FontWeight.w800 : FontWeight.w600,
+                      color: isSelected
+                          ? const Color(0xFF1D61E7)
+                          : const Color(0xFF0F172A),
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  const Icon(
+                    Icons.check_circle_rounded,
+                    size: 15,
+                    color: Color(0xFF1D61E7),
+                  ),
+              ],
+            ),
           ),
         );
       }).toList(),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.92),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+          color: const Color(0xFFF4F6FB),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
           boxShadow: const [
             BoxShadow(
-              color: Color(0x0A0052FF),
-              blurRadius: 8,
-              offset: Offset(0, 2),
+              color: Colors.white,
+              offset: Offset(-2, -2),
+              blurRadius: 4,
+            ),
+            BoxShadow(
+              color: Color(0x18000000),
+              offset: Offset(2, 2),
+              blurRadius: 4,
             ),
           ],
         ),
@@ -2119,7 +2657,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             const Icon(
               Icons.date_range_rounded,
               size: 14,
-              color: Color(0xFF0284C7),
+              color: Color(0xFF1D61E7),
             ),
             const SizedBox(width: 5),
             Text(
@@ -2133,7 +2671,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             const SizedBox(width: 3),
             const Icon(
               Icons.keyboard_arrow_down_rounded,
-              size: 14,
+              size: 15,
               color: Color(0xFF64748B),
             ),
           ],
@@ -2142,37 +2680,68 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     );
   }
 
-  /// Reusable Glass Card Base
-  Widget _buildGlassCard({
+  /// Reusable Neumorphic Card Base
+  Widget _buildNeumorphicCard({
     required Widget child,
     Color? color,
     Color? borderColor,
     EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
   }) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-        child: Container(
-          padding: padding ?? const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: color ?? Colors.white.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: borderColor ?? Colors.white.withOpacity(0.9),
-              width: 1.2,
-            ),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x0C0052FF),
-                blurRadius: 16,
-                offset: Offset(0, 5),
-              ),
-            ],
-          ),
-          child: child,
+    return Container(
+      padding: padding ?? const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color ?? const Color(0xFFF4F6FB),
+        borderRadius: borderRadius ?? BorderRadius.circular(18),
+        border: Border.all(
+          color: borderColor ?? const Color(0xFFE2E8F0),
+          width: 1,
         ),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-3, -3),
+            blurRadius: 6,
+          ),
+          BoxShadow(
+            color: Color(0x14000000),
+            offset: Offset(3, 3),
+            blurRadius: 6,
+          ),
+        ],
       ),
+      child: child,
+    );
+  }
+
+  /// Reusable Neumorphic Inset / Recessed Base
+  Widget _buildNeumorphicInset({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
+    Color? color,
+  }) {
+    return Container(
+      padding:
+          padding ?? const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color ?? const Color(0xFFEFF3F9),
+        borderRadius: borderRadius ?? BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x10000000),
+            offset: Offset(1.5, 1.5),
+            blurRadius: 3,
+          ),
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -2188,16 +2757,16 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       final end = range.end;
 
       final allOrders = _db.deduplicateOrdersList(_db.orders);
-      final filteredOrders = _db.getValidOrders(start: start, end: end);
-      final settledOrders = filteredOrders.where((o) =>
-          o.status == OrderStatus.completed ||
-          o.isPaid ||
-          o.paymentStatus.toLowerCase() == 'paid').toList();
+      final settledOrders = _db.getCompletedOrders(start: start, end: end);
 
-      final int totalOrders = filteredOrders.length;
-      final double totalRevenue = filteredOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+      final int totalOrders = settledOrders.length;
+      final double totalRevenue = settledOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
       final int activeOrdersCount = allOrders.where((o) =>
-          o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready).length;
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
+          !o.isPaid &&
+          o.paymentStatus.toLowerCase() != 'paid' &&
+          o.status != OrderStatus.completed &&
+          o.status != OrderStatus.cancelled).length;
       final int totalProductsCount = _db.menuItems.length;
 
       int dineInCount = 0;
@@ -2207,7 +2776,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       int takeawayCount = 0;
       double takeawayAmount = 0;
 
-      for (var o in filteredOrders) {
+      for (var o in settledOrders) {
         if (o.orderType == OrderType.dineIn) {
           dineInCount++;
           dineInAmount += o.totalAmount;
@@ -2222,7 +2791,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
       final Map<String, _LocalItemSaleAgg> productMap = {};
       final List<TopProductData> topProductList = [];
-      for (var o in filteredOrders) {
+      for (var o in settledOrders) {
         for (var item in o.items) {
           final name = item.item.name;
           final rev = item.item.effectivePrice * item.quantity;
@@ -2262,7 +2831,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
       final Map<String, _LocalPaymentAgg> payMap = {};
       double totalPayAmount = 0.0;
-      for (var o in filteredOrders) {
+      for (var o in settledOrders) {
         var m = o.paymentMethod.toUpperCase().trim();
         if (m.startsWith('CASH')) {
           m = 'CASH';
@@ -2296,7 +2865,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         ..sort((a, b) => b.amount.compareTo(a.amount));
 
       double totalTax = 0.0;
-      for (var o in filteredOrders) {
+      for (var o in settledOrders) {
         totalTax += o.taxAmount;
       }
 
@@ -2317,7 +2886,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       final Map<String, CustomerInsightItem> custMap = {};
       final dbCusts = DatabaseService().customers;
 
-      for (var o in filteredOrders) {
+      for (var o in settledOrders) {
         if (o.status == OrderStatus.cancelled) continue;
         final name = (o.customerName ?? '').trim();
         final phone = (o.customerPhone ?? '').trim();
@@ -2394,8 +2963,8 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             final oDate = o.createdDateTime.toLocal();
             return o.status == OrderStatus.cancelled && !oDate.isBefore(start) && !oDate.isAfter(end);
           }).length,
-          otherOrders: totalOrders - settledOrders.length,
-          totalOrders: totalOrders,
+          otherOrders: activeOrdersCount,
+          totalOrders: settledOrders.length,
         ),
       );
     } catch (e) {

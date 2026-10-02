@@ -544,7 +544,11 @@ class ReportService {
             categoryWise: finalCatWise,
             staffWise: finalStaffWise,
             outletWise: finalOutletWise,
-            orders: local.orders.isNotEmpty ? local.orders : (serverReport.orders.isNotEmpty ? serverReport.orders : mergedOrders),
+            orders: local.orders.isNotEmpty
+                ? local.orders
+                : (serverReport.orders.isNotEmpty
+                    ? serverReport.orders.where((o) => o.status != OrderStatus.cancelled && (o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid')).toList()
+                    : mergedOrders.where((o) => o.status != OrderStatus.cancelled && (o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid')).toList()),
             startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : (startDate ?? ''),
             endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : (endDate ?? ''),
             period: period ?? 'allTime',
@@ -735,6 +739,26 @@ class ReportService {
 
     List<OrderModel> settled = deduplicated.where((o) {
       if (o.status == OrderStatus.cancelled) return false;
+
+      // Must be completed or marked paid/settled (Exclude KOT running/pending/preparing orders)
+      final ps = o.paymentStatus.toLowerCase().trim();
+      final bool isSettled = o.status == OrderStatus.completed ||
+          o.isPaid ||
+          ps == 'paid' ||
+          ps == 'settled' ||
+          ps == 'success';
+      if (!isSettled) return false;
+
+      final pm = o.paymentMethod.toLowerCase().trim();
+      if ((pm.contains('kot') || o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
+          !o.isPaid &&
+          ps != 'paid' &&
+          ps != 'settled' &&
+          ps != 'success' &&
+          o.status != OrderStatus.completed) {
+        return false;
+      }
+
       final oDate = o.createdDateTime.toLocal();
       if (start != null && oDate.isBefore(start)) return false;
       if (end != null && oDate.isAfter(end)) return false;

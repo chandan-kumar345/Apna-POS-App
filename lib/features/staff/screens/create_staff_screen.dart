@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -751,7 +752,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
           debugPrint('[CreateStaffScreen] Cloudflare R2 upload error: $uploadErr');
         }
         if (remoteAvatarUrl.isEmpty) {
-          remoteAvatarUrl = _avatarImageFile!.path;
+          try {
+            final bytes = await _avatarImageFile!.readAsBytes();
+            if (bytes.isNotEmpty) {
+              remoteAvatarUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+            }
+          } catch (_) {
+            remoteAvatarUrl = _avatarImageFile!.path;
+          }
         }
       }
 

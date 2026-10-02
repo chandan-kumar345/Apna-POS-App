@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -26,8 +27,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
   // Signature Deep Navy Theme Constants (Matching Brand Theme)
   static const Color _primaryNavy = Color(0xFF051C48);
-  static const Color _primaryNavyDark = Color(0xFF071A36);
-  static const Color _primaryNavyLight = Color(0xFF0D2547);
   static const Color _navyTint = Color(0xFFEFF4FA);
   static const Color _navyBorder = Color(0xFFCBDDF7);
 
@@ -35,8 +34,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   String? _selectedCategory;
   bool _isGridView = false; // List vs Grid View Toggle
   bool _mobileSearchExpanded = false; // Mobile top bar inline search toggle
-  bool _mobileCategorySearchExpanded = false; // Mobile categories expandable search
-  bool _mobileProductsSearchExpanded = false; // Mobile products expandable search
   final TextEditingController _categorySearchController = TextEditingController();
   final FocusNode _categorySearchFocus = FocusNode();
   final TextEditingController _productsSearchController = TextEditingController();
@@ -96,13 +93,16 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       animation: animation,
       builder: (BuildContext context, Widget? child) {
         final double animValue = Curves.easeInOut.transform(animation.value);
-        final double elevation = 3.0 + (animValue * 6.0);
-        return Material(
-          elevation: elevation,
-          color: Colors.white,
-          shadowColor: Colors.black.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(12),
-          child: child,
+        final double elevation = 3.0 + (animValue * 5.0);
+        return Transform.scale(
+          scale: 1.0 + (animValue * 0.02),
+          child: Material(
+            elevation: elevation,
+            color: Colors.transparent,
+            shadowColor: const Color(0xFF0F2B48).withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(14),
+            child: child,
+          ),
         );
       },
       child: child,
@@ -241,26 +241,57 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     ).then((_) => setState(() {}));
   }
 
-  // --- High-Contrast Modern Toggle Switch Widget ---
+  // --- High-Contrast Modern Animated Toggle Switch Widget ---
   Widget _buildToggleSwitch({
     required bool value,
     required ValueChanged<bool> onChanged,
-    double scale = 0.72,
-    Color activeColor = _primaryNavy,
+    double scale = 1.0,
+    Color activeColor = const Color(0xFF0F2B48),
   }) {
-    return Transform.scale(
-      scale: scale,
-      child: Switch(
-        value: value,
-        onChanged: onChanged,
-        activeThumbColor: Colors.white,
-        activeTrackColor: activeColor,
-        inactiveThumbColor: Colors.white,
-        inactiveTrackColor: const Color(0xFFCBD5E1),
-        trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+    return GestureDetector(
+      onTap: () => onChanged(!value),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeInOut,
+        width: 44 * scale,
+        height: 24 * scale,
+        padding: EdgeInsets.all(2.5 * scale),
+        decoration: BoxDecoration(
+          color: value ? activeColor : const Color(0xFFCBD5E1),
+          borderRadius: BorderRadius.circular(16 * scale),
+          boxShadow: [
+            BoxShadow(
+              color: (value ? activeColor : const Color(0xFF94A3B8)).withValues(alpha: 0.25),
+              blurRadius: 3,
+              offset: const Offset(0, 1.5),
+            ),
+          ],
+        ),
+        child: AnimatedAlign(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeInOut,
+          alignment: value ? Alignment.centerRight : Alignment.centerLeft,
+          child: Container(
+            width: 19 * scale,
+            height: 19 * scale,
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x33000000),
+                  blurRadius: 3,
+                  offset: Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
+
 
   // --- Dynamic Product Thumbnail Loader (No emojis) ---
   Widget _buildProductImageThumbnail(
@@ -278,34 +309,67 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
     Widget? imageWidget;
     if (rawUrl != null && rawUrl.isNotEmpty) {
-      final resolved = ApiEndpoints.resolveMediaUrl(rawUrl);
-      if (resolved.isNotEmpty) {
-        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
-          imageWidget = Image.network(
-            resolved,
+      final trimmed = rawUrl.trim();
+      if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
+        try {
+          final commaIdx = trimmed.indexOf(',');
+          final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+          final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          imageWidget = Image.memory(
+            bytes,
             width: width,
             height: height,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
           );
-        } else if (resolved.startsWith('assets/')) {
-          imageWidget = Image.asset(
-            resolved,
-            width: width,
-            height: height,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
-          );
-        } else {
-          final file = File(resolved);
-          if (file.existsSync()) {
-            imageWidget = Image.file(
-              file,
+        } catch (_) {}
+      }
+
+      if (imageWidget == null) {
+        final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
+        if (resolved.isNotEmpty) {
+          if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
+            try {
+              final commaIdx = resolved.indexOf(',');
+              final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
+              final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+              imageWidget = Image.memory(
+                bytes,
+                width: width,
+                height: height,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
+              );
+            } catch (_) {}
+          } else if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+            imageWidget = Image.network(
+              resolved,
               width: width,
               height: height,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
             );
+          } else if (resolved.startsWith('assets/')) {
+            imageWidget = Image.asset(
+              resolved,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
+            );
+          } else {
+            final file = File(resolved);
+            if (file.existsSync()) {
+              imageWidget = Image.file(
+                file,
+                width: width,
+                height: height,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
+              );
+            }
           }
         }
       }
@@ -352,34 +416,67 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     Widget? imageWidget;
 
     if (imagePath != null && imagePath.trim().isNotEmpty) {
-      final resolved = ApiEndpoints.resolveMediaUrl(imagePath.trim());
-      if (resolved.isNotEmpty) {
-        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
-          imageWidget = Image.network(
-            resolved,
+      final trimmed = imagePath.trim();
+      if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
+        try {
+          final commaIdx = trimmed.indexOf(',');
+          final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+          final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          imageWidget = Image.memory(
+            bytes,
             width: width,
             height: height,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
           );
-        } else if (resolved.startsWith('assets/')) {
-          imageWidget = Image.asset(
-            resolved,
-            width: width,
-            height: height,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
-          );
-        } else {
-          final file = File(resolved);
-          if (file.existsSync()) {
-            imageWidget = Image.file(
-              file,
+        } catch (_) {}
+      }
+
+      if (imageWidget == null) {
+        final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
+        if (resolved.isNotEmpty) {
+          if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
+            try {
+              final commaIdx = resolved.indexOf(',');
+              final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
+              final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+              imageWidget = Image.memory(
+                bytes,
+                width: width,
+                height: height,
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
+              );
+            } catch (_) {}
+          } else if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+            imageWidget = Image.network(
+              resolved,
               width: width,
               height: height,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
             );
+          } else if (resolved.startsWith('assets/')) {
+            imageWidget = Image.asset(
+              resolved,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
+            );
+          } else {
+            final file = File(resolved);
+            if (file.existsSync()) {
+              imageWidget = Image.file(
+                file,
+                width: width,
+                height: height,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
+              );
+            }
           }
         }
       }
@@ -433,10 +530,24 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     final isDesktop = MediaQuery.of(context).size.width >= 850;
 
     return Scaffold(
-      backgroundColor: isDesktop ? const Color(0xFFF8FAFC) : const Color(0xFF071A36),
+      backgroundColor: isDesktop ? const Color(0xFFF8FAFC) : const Color(0xFFEDF3FA),
       body: SafeArea(
         child: Column(
           children: [
+            // Top drag handle pill for mobile
+            if (!isDesktop)
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4.5,
+                  margin: const EdgeInsets.only(top: 8, bottom: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                ),
+              ),
+
             // 1. Top Header Component (Desktop Top Bar or Mobile Segmented Tabs Bar)
             if (isDesktop)
               _buildTopBar(true)
@@ -643,6 +754,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               // More Menu / CSV
               const SizedBox(width: 4),
               PopupMenuButton<String>(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 6,
                 icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 19),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 padding: EdgeInsets.zero,
@@ -659,7 +773,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       children: [
                         Icon(Icons.upload_file_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
-                        Text('Import CSV Spreadsheet', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Import CSV Spreadsheet', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                       ],
                     ),
                   ),
@@ -669,7 +783,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       children: [
                         Icon(Icons.download_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
-                        Text('Export Menu to CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Export Menu to CSV', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                       ],
                     ),
                   ),
@@ -679,7 +793,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       children: [
                         Icon(Icons.sync_rounded, size: 16, color: _primaryNavy),
                         SizedBox(width: 8),
-                        Text('Sync with Cloud', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                        Text('Sync with Cloud', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                       ],
                     ),
                   ),
@@ -921,6 +1035,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
                 // Category 3-Dots Menu
                 PopupMenuButton<String>(
+                  color: Colors.white,
+                  surfaceTintColor: Colors.transparent,
+                  elevation: 6,
                   icon: const Icon(Icons.more_vert_rounded, size: 16, color: Color(0xFF64748B)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   padding: EdgeInsets.zero,
@@ -938,7 +1055,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         children: [
                           Icon(Icons.edit_outlined, size: 15, color: _primaryNavy),
                           SizedBox(width: 8),
-                          Text('Edit Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          Text('Edit Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                         ],
                       ),
                     ),
@@ -949,7 +1066,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           children: [
                             Icon(Icons.arrow_upward_rounded, size: 15, color: Color(0xFF0F172A)),
                             SizedBox(width: 8),
-                            Text('Move Up', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text('Move Up', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                           ],
                         ),
                       ),
@@ -960,7 +1077,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           children: [
                             Icon(Icons.arrow_downward_rounded, size: 15, color: Color(0xFF0F172A)),
                             SizedBox(width: 8),
-                            Text('Move Down', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                            Text('Move Down', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                           ],
                         ),
                       ),
@@ -1099,6 +1216,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
           // 3-Dots Category Actions
           PopupMenuButton<String>(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+            elevation: 6,
             icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 18),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             padding: EdgeInsets.zero,
@@ -1114,7 +1234,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   children: [
                     Icon(Icons.add_circle_outline_rounded, size: 15, color: _primaryNavy),
                     SizedBox(width: 8),
-                    Text('Add Product to Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    Text('Add Product to Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                   ],
                 ),
               ),
@@ -2023,13 +2143,25 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   // ===========================================================================
   Widget _buildMobileTopSegmentedTabs() {
     return Container(
-      color: _primaryNavyDark,
-      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      color: const Color(0xFFEDF3FA),
+      padding: const EdgeInsets.fromLTRB(14, 4, 14, 8),
       child: Container(
-        padding: const EdgeInsets.all(3.5),
+        padding: const EdgeInsets.all(4),
         decoration: BoxDecoration(
-          color: _primaryNavyLight,
-          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFFEDF3FA),
+          borderRadius: BorderRadius.circular(26),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.95),
+              offset: const Offset(-2, -2),
+              blurRadius: 5,
+            ),
+            BoxShadow(
+              color: const Color(0xFF0F2B48).withValues(alpha: 0.08),
+              offset: const Offset(2, 3),
+              blurRadius: 6,
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -2037,19 +2169,19 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             Expanded(
               child: InkWell(
                 onTap: () => setState(() => _mobileActiveTab = 'categories'),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(22),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _mobileActiveTab == 'categories' ? _primaryNavy : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
+                    color: _mobileActiveTab == 'categories' ? const Color(0xFF0F2B48) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: _mobileActiveTab == 'categories'
                         ? [
                             BoxShadow(
-                              color: _primaryNavy.withValues(alpha: 0.35),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                              color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             )
                           ]
                         : null,
@@ -2058,17 +2190,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.table_rows_rounded,
-                        size: 15,
-                        color: _mobileActiveTab == 'categories' ? Colors.white : const Color(0xFF94A3B8),
+                        Icons.grid_view_rounded,
+                        size: 16,
+                        color: _mobileActiveTab == 'categories' ? Colors.white : const Color(0xFF64748B),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 7),
                       Text(
                         'Categories',
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: _mobileActiveTab == 'categories' ? FontWeight.w800 : FontWeight.w600,
-                          color: _mobileActiveTab == 'categories' ? Colors.white : const Color(0xFF94A3B8),
+                          color: _mobileActiveTab == 'categories' ? Colors.white : const Color(0xFF64748B),
                         ),
                       ),
                     ],
@@ -2076,25 +2208,24 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 ),
               ),
             ),
-            const SizedBox(width: 4),
 
             // Products Tab
             Expanded(
               child: InkWell(
                 onTap: () => setState(() => _mobileActiveTab = 'products'),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(22),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.symmetric(vertical: 9),
                   decoration: BoxDecoration(
-                    color: _mobileActiveTab == 'products' ? _primaryNavy : Colors.transparent,
-                    borderRadius: BorderRadius.circular(10),
+                    color: _mobileActiveTab == 'products' ? const Color(0xFF0F2B48) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: _mobileActiveTab == 'products'
                         ? [
                             BoxShadow(
-                              color: _primaryNavy.withValues(alpha: 0.35),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
+                              color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             )
                           ]
                         : null,
@@ -2103,17 +2234,17 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(
-                        Icons.inventory_2_outlined,
-                        size: 15,
-                        color: _mobileActiveTab == 'products' ? Colors.white : const Color(0xFF94A3B8),
+                        Icons.inventory_2_rounded,
+                        size: 16,
+                        color: _mobileActiveTab == 'products' ? Colors.white : const Color(0xFF64748B),
                       ),
-                      const SizedBox(width: 6),
+                      const SizedBox(width: 7),
                       Text(
                         'Products',
                         style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: _mobileActiveTab == 'products' ? FontWeight.w800 : FontWeight.w600,
-                          color: _mobileActiveTab == 'products' ? Colors.white : const Color(0xFF94A3B8),
+                          color: _mobileActiveTab == 'products' ? Colors.white : const Color(0xFF64748B),
                         ),
                       ),
                     ],
@@ -2129,18 +2260,14 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
   Widget _buildMobileLayout() {
     return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      clipBehavior: Clip.antiAlias,
+      color: const Color(0xFFEDF3FA),
       child: _mobileActiveTab == 'categories'
           ? _buildMobileCategoriesView()
           : _buildMobileProductsView(),
     );
   }
 
-  // --- Mobile Categories View (Clean & Responsive) ---
+  // --- Mobile Categories View (Clean, Compact & Neumorphic) ---
   Widget _buildMobileCategoriesView() {
     final rawCategories = _db.categories;
     final categories = _categorySearchQuery.trim().isEmpty
@@ -2149,136 +2276,120 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
     return Column(
       children: [
-        // 1. Expandable Search + Add Category Row
+        // 1. Inset Search Bar + Add Category Button Row
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-          child: AnimatedCrossFade(
-            duration: const Duration(milliseconds: 220),
-            firstCurve: Curves.easeInOut,
-            secondCurve: Curves.easeInOut,
-            sizeCurve: Curves.easeInOut,
-            crossFadeState: _mobileCategorySearchExpanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            firstChild: Row(
-              children: [
-                // Search Icon Button
-                InkWell(
-                  onTap: () {
-                    setState(() => _mobileCategorySearchExpanded = true);
-                    Future.delayed(const Duration(milliseconds: 120), () {
-                      if (mounted) _categorySearchFocus.requestFocus();
-                    });
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    width: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: const Icon(Icons.search_rounded, size: 20, color: _primaryNavy),
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
+          child: Row(
+            children: [
+              // Inset Neumorphic Search Bar
+              Expanded(
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDF3FA),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        offset: const Offset(-1.5, -2),
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search_rounded, size: 17, color: Color(0xFF64748B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _categorySearchController,
+                          focusNode: _categorySearchFocus,
+                          onChanged: (val) => setState(() => _categorySearchQuery = val),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: 'Search categories...',
+                            hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                      if (_categorySearchQuery.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _categorySearchQuery = '';
+                              _categorySearchController.clear();
+                            });
+                          },
+                          child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF64748B)),
+                        ),
+                    ],
                   ),
                 ),
-                const Spacer(),
+              ),
+              const SizedBox(width: 8),
 
-                // Add Category Button
-                InkWell(
-                  onTap: _showAddCategoryModal,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: _primaryNavy,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryNavy.withValues(alpha: 0.25),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
+              // Deep Navy Add Category Button
+              InkWell(
+                onTap: _showAddCategoryModal,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F2B48),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Add',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_rounded, size: 16, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text('Add', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-            secondChild: Container(
-              height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _primaryNavy, width: 1.5),
               ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 10),
-                  const Icon(Icons.search_rounded, color: _primaryNavy, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _categorySearchController,
-                      focusNode: _categorySearchFocus,
-                      onChanged: (val) => setState(() => _categorySearchQuery = val),
-                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
-                      decoration: const InputDecoration(
-                        hintText: 'Search categories...',
-                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
-                      ),
-                    ),
-                  ),
-                  // Inside field cross icon to close search bar and restore Add button
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _mobileCategorySearchExpanded = false;
-                          _categorySearchQuery = '';
-                          _categorySearchController.clear();
-                        });
-                        _categorySearchFocus.unfocus();
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(5),
-                        margin: const EdgeInsets.only(right: 6),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE2E8F0),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF475569)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
         ),
 
-        // 2. Reorderable Categories List
+        // 2. Reorderable Categories List with Compact Neumorphic Cards
         Expanded(
           child: categories.isEmpty
               ? _buildEmptyCategoriesState()
               : ReorderableListView.builder(
                   proxyDecorator: _reorderProxyDecorator,
                   buildDefaultDragHandles: false,
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
                   itemCount: categories.length,
                   onReorder: (oldIndex, newIndex) {
                     _db.reorderCategories(oldIndex, newIndex);
@@ -2290,40 +2401,46 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
                     return Container(
                       key: ValueKey('mob_cat_$cat'),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        color: const Color(0xFFF9FBFE),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white, width: 1.5),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 3,
-                            offset: const Offset(0, 1),
+                            color: const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                            offset: const Offset(1.5, 3),
+                            blurRadius: 6,
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            offset: const Offset(-1.5, -2),
+                            blurRadius: 5,
                           ),
                         ],
                       ),
                       child: Row(
                         children: [
-                          // 6-dot drag handle
+                          // 6-dot drag handle with generous touch target
                           ReorderableDragStartListener(
                             index: index,
                             child: MouseRegion(
                               cursor: SystemMouseCursors.grab,
                               child: Container(
-                                padding: const EdgeInsets.all(4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                color: Colors.transparent,
                                 child: const Icon(Icons.drag_indicator_rounded, size: 18, color: Color(0xFF94A3B8)),
                               ),
                             ),
                           ),
                           const SizedBox(width: 4),
 
-                          // Dynamic Category Image Thumbnail
-                          _buildCategoryImageThumbnail(cat, width: 44, height: 44, borderRadius: 10),
-                          const SizedBox(width: 10),
+                          // Dynamic Category Image Thumbnail (42x42 with 10px radius)
+                          _buildCategoryImageThumbnail(cat, width: 42, height: 42, borderRadius: 10),
+                          const SizedBox(width: 8),
 
-                          // Category Title & Subtitle (Full name up to 2 lines)
+                          // Category Title & Subtitle
                           Expanded(
                             child: InkWell(
                               onTap: () {
@@ -2339,43 +2456,111 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   Text(
                                     cat,
                                     style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w700,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w800,
                                       color: isDisabled ? const Color(0xFF94A3B8) : const Color(0xFF0F172A),
                                       decoration: isDisabled ? TextDecoration.lineThrough : null,
-                                      height: 1.2,
+                                      height: 1.15,
                                     ),
-                                    maxLines: 2,
+                                    maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '$productCount products',
-                                    style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                  const SizedBox(height: 3.5),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFEFF6FF),
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(color: const Color(0xFFDBEAFE)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.inventory_2_outlined, size: 9.5, color: Color(0xFF1D4ED8)),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          '$productCount products',
+                                          style: const TextStyle(fontSize: 8.5, color: Color(0xFF1D4ED8), fontWeight: FontWeight.w700),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ],
                               ),
                             ),
                           ),
+                          const SizedBox(width: 6),
 
                           // Status Switch
                           _buildToggleSwitch(
                             value: !isDisabled,
                             onChanged: (val) => _toggleCategoryStatus(cat),
-                            scale: 0.70,
+                            scale: 0.82,
                           ),
+                          const SizedBox(width: 2),
 
-                          // Chevron Right Button
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right_rounded, size: 20, color: Color(0xFF64748B)),
-                            onPressed: () {
-                              setState(() {
-                                _selectedCategory = cat;
-                                _mobileActiveTab = 'products';
-                              });
-                            },
+                          // 3-Dots Menu Button
+                          PopupMenuButton<String>(
+                            color: Colors.white,
+                            surfaceTintColor: Colors.transparent,
+                            elevation: 6,
+                            icon: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: const Icon(Icons.more_vert_rounded, size: 15, color: Color(0xFF64748B)),
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
-                            padding: const EdgeInsets.all(4),
+                            onSelected: (val) {
+                              if (val == 'view') {
+                                setState(() {
+                                  _selectedCategory = cat;
+                                  _mobileActiveTab = 'products';
+                                });
+                              } else if (val == 'edit') {
+                                _showEditCategoryModal(cat);
+                              } else if (val == 'delete') {
+                                _confirmDeleteCategory(cat);
+                              }
+                            },
+                            itemBuilder: (_) => [
+                              const PopupMenuItem(
+                                value: 'view',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.inventory_2_outlined, size: 15, color: Color(0xFF0F172A)),
+                                    SizedBox(width: 8),
+                                    Text('View Products', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'edit',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.edit_outlined, size: 15, color: Color(0xFF0F172A)),
+                                    SizedBox(width: 8),
+                                    Text('Edit Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                                  ],
+                                ),
+                              ),
+                              const PopupMenuItem(
+                                value: 'delete',
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFFEF4444)),
+                                    SizedBox(width: 8),
+                                    Text('Delete Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -2387,237 +2572,221 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  // --- Mobile Products View (Clean & Responsive) ---
+  // --- Mobile Products View (Clean, Compact & Neumorphic Matching Image) ---
   Widget _buildMobileProductsView() {
     final categories = _db.categories;
     final products = _getAllProductsFiltered();
 
     return Column(
       children: [
-        // 1. Expandable Search + Action Row (Filter, CSV, Add)
+        // 1. Inset Search Bar + Action Row (Filter, CSV, Add)
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 6),
-          child: AnimatedCrossFade(
-            duration: const Duration(milliseconds: 220),
-            firstCurve: Curves.easeInOut,
-            secondCurve: Curves.easeInOut,
-            sizeCurve: Curves.easeInOut,
-            crossFadeState: _mobileProductsSearchExpanded
-                ? CrossFadeState.showSecond
-                : CrossFadeState.showFirst,
-            firstChild: Row(
-              children: [
-                // Search Icon Button
-                InkWell(
-                  onTap: () {
-                    setState(() => _mobileProductsSearchExpanded = true);
-                    Future.delayed(const Duration(milliseconds: 120), () {
-                      if (mounted) _productsSearchFocus.requestFocus();
-                    });
-                  },
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    width: 38,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                    ),
-                    child: const Icon(
-                      Icons.search_rounded,
-                      size: 20,
-                      color: _primaryNavy,
-                    ),
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 4),
+          child: Row(
+            children: [
+              // Inset Search Field
+              Expanded(
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDF3FA),
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        offset: const Offset(-1.5, -2),
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.search_rounded, size: 17, color: Color(0xFF64748B)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _productsSearchController,
+                          focusNode: _productsSearchFocus,
+                          onChanged: (val) => setState(() => _globalSearch = val),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Color(0xFF0F172A),
+                            fontWeight: FontWeight.w600,
+                          ),
+                          decoration: const InputDecoration(
+                            hintText: 'Search products...',
+                            hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8),
+                          ),
+                        ),
+                      ),
+                      if (_globalSearch.isNotEmpty)
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _globalSearch = '';
+                              _productsSearchController.clear();
+                            });
+                          },
+                          child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF64748B)),
+                        ),
+                    ],
                   ),
                 ),
-                const Spacer(),
+              ),
+              const SizedBox(width: 8),
 
-                // Filter Icon Button
-                InkWell(
-                  onTap: _showMobileFilterModal,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    width: 38,
-                    decoration: BoxDecoration(
-                      color: (_productFilter != 'all' || _productSortMode != 'custom')
-                          ? _navyTint
-                          : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: (_productFilter != 'all' || _productSortMode != 'custom')
-                            ? _primaryNavy
-                            : const Color(0xFFE2E8F0),
+              // Filter Icon Button (Soft Square)
+              InkWell(
+                onTap: _showMobileFilterModal,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: (_productFilter != 'all' || _productSortMode != 'custom')
+                        ? const Color(0xFFE2E8F0)
+                        : const Color(0xFFEDF3FA),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.06),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
                       ),
-                    ),
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          Icons.filter_alt_outlined,
-                          size: 18,
-                          color: (_productFilter != 'all' || _productSortMode != 'custom')
-                              ? _primaryNavy
-                              : const Color(0xFF0F172A),
-                        ),
-                        if (_productFilter != 'all' || _productSortMode != 'custom')
-                          Positioned(
-                            top: 7,
-                            right: 7,
-                            child: Container(
-                              width: 6,
-                              height: 6,
-                              decoration: const BoxDecoration(
-                                color: _primaryNavy,
-                                shape: BoxShape.circle,
-                              ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        offset: const Offset(-1.5, -2),
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      Icon(
+                        Icons.filter_alt_outlined,
+                        size: 18,
+                        color: (_productFilter != 'all' || _productSortMode != 'custom')
+                            ? const Color(0xFF0F2B48)
+                            : const Color(0xFF475569),
+                      ),
+                      if (_productFilter != 'all' || _productSortMode != 'custom')
+                        Positioned(
+                          top: 7,
+                          right: 7,
+                          child: Container(
+                            width: 6,
+                            height: 6,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF0F2B48),
+                              shape: BoxShape.circle,
                             ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
-
-                // + CSV Button (Direct 1-Tap Access)
-                InkWell(
-                  onTap: _showCsvImportModal,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: 11),
-                    decoration: BoxDecoration(
-                      color: _navyTint,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: _navyBorder),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.file_upload_outlined, size: 15, color: _primaryNavy),
-                        SizedBox(width: 4),
-                        Text(
-                          'CSV',
-                          style: TextStyle(
-                            color: _primaryNavy,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-
-                // + Add Button
-                InkWell(
-                  onTap: () => _openAddEditProductScreen(null, _selectedCategory),
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: _primaryNavy,
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: _primaryNavy.withValues(alpha: 0.25),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add_rounded, size: 16, color: Colors.white),
-                        SizedBox(width: 4),
-                        Text(
-                          'Add',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            secondChild: Container(
-              height: 38,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF1F5F9),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _primaryNavy, width: 1.5),
               ),
-              child: Row(
-                children: [
-                  const SizedBox(width: 10),
-                  const Icon(Icons.search_rounded, color: _primaryNavy, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      controller: _productsSearchController,
-                      focusNode: _productsSearchFocus,
-                      onChanged: (val) => setState(() => _globalSearch = val),
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: Color(0xFF0F172A),
-                        fontWeight: FontWeight.w500,
+              const SizedBox(width: 8),
+
+              // CSV Button
+              InkWell(
+                onTap: _showCsvImportModal,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 11),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEDF3FA),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.06),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
                       ),
-                      decoration: const InputDecoration(
-                        hintText: 'Search products...',
-                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        offset: const Offset(-1.5, -2),
+                        blurRadius: 3,
                       ),
-                    ),
+                    ],
                   ),
-                  // Inside field cross icon to close search bar and restore action buttons
-                  Material(
-                    color: Colors.transparent,
-                    child: InkWell(
-                      onTap: () {
-                        setState(() {
-                          _mobileProductsSearchExpanded = false;
-                          _globalSearch = '';
-                          _productsSearchController.clear();
-                        });
-                        _productsSearchFocus.unfocus();
-                      },
-                      borderRadius: BorderRadius.circular(16),
-                      child: Container(
-                        padding: const EdgeInsets.all(5),
-                        margin: const EdgeInsets.only(right: 6),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFFE2E8F0),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.close_rounded,
-                          size: 14,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download_rounded, size: 16, color: Color(0xFF475569)),
+                      SizedBox(width: 4),
+                      Text(
+                        'CSV',
+                        style: TextStyle(
                           color: Color(0xFF475569),
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+
+              // Add Product Button
+              InkWell(
+                onTap: () => _openAddEditProductScreen(null, _selectedCategory),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  height: 40,
+                  padding: const EdgeInsets.symmetric(horizontal: 13),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F2B48),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF0F2B48).withValues(alpha: 0.3),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.add_rounded, size: 16, color: Colors.white),
+                      SizedBox(width: 4),
+                      Text(
+                        'Add',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
 
         // 2. Category Quick Filter Chips
         if (categories.isNotEmpty)
           Container(
-            height: 34,
-            margin: const EdgeInsets.only(bottom: 6),
+            height: 36,
+            margin: const EdgeInsets.only(top: 6, bottom: 8),
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -2626,23 +2795,42 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 if (index == 0) {
                   final isAllSelected = _selectedCategory == null;
                   return Padding(
-                    padding: const EdgeInsets.only(right: 6),
+                    padding: const EdgeInsets.only(right: 8),
                     child: InkWell(
                       onTap: () => setState(() => _selectedCategory = null),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      borderRadius: BorderRadius.circular(18),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                         decoration: BoxDecoration(
-                          color: isAllSelected ? _primaryNavy : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: isAllSelected ? _primaryNavy : const Color(0xFFE2E8F0)),
+                          color: isAllSelected ? const Color(0xFF0F2B48) : const Color(0xFFEDF3FA),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: isAllSelected ? const Color(0xFF0F2B48) : Colors.white,
+                            width: 1.2,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isAllSelected
+                                  ? const Color(0xFF0F2B48).withValues(alpha: 0.25)
+                                  : const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                              offset: const Offset(1, 2),
+                              blurRadius: 3,
+                            ),
+                            if (!isAllSelected)
+                              BoxShadow(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                offset: const Offset(-1, -1),
+                                blurRadius: 3,
+                              ),
+                          ],
                         ),
                         child: Text(
                           'All (${_db.menuItems.length})',
                           style: TextStyle(
                             fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: isAllSelected ? Colors.white : const Color(0xFF0F172A),
+                            fontWeight: FontWeight.w700,
+                            color: isAllSelected ? Colors.white : const Color(0xFF475569),
                           ),
                         ),
                       ),
@@ -2655,28 +2843,47 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 final count = _db.menuItems.where((m) => m.category.trim().toLowerCase() == cat.trim().toLowerCase()).length;
 
                 return Padding(
-                  padding: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.only(right: 8),
                   child: InkWell(
                     onTap: () => setState(() => _selectedCategory = cat),
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    borderRadius: BorderRadius.circular(18),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: isSelected ? _primaryNavy : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isSelected ? _primaryNavy : const Color(0xFFE2E8F0)),
+                        color: isSelected ? const Color(0xFF0F2B48) : const Color(0xFFEDF3FA),
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isSelected ? const Color(0xFF0F2B48) : Colors.white,
+                          width: 1.2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isSelected
+                                ? const Color(0xFF0F2B48).withValues(alpha: 0.25)
+                                : const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                            offset: const Offset(1, 2),
+                            blurRadius: 3,
+                          ),
+                          if (!isSelected)
+                            BoxShadow(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              offset: const Offset(-1, -1),
+                              blurRadius: 3,
+                            ),
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _buildCategoryImageThumbnail(cat, width: 16, height: 16, isSelected: isSelected),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 5),
                           Text(
                             '$cat ($count)',
                             style: TextStyle(
                               fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                              fontWeight: FontWeight.w700,
+                              color: isSelected ? Colors.white : const Color(0xFF475569),
                             ),
                           ),
                         ],
@@ -2688,17 +2895,20 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             ),
           ),
 
-        // 3. Reorderable Products List
+        // 3. Reorderable Products List with Compact Neumorphic Cards
         Expanded(
           child: products.isEmpty
               ? _buildEmptyProductsState(_selectedCategory ?? 'All')
               : ReorderableListView.builder(
                   proxyDecorator: _reorderProxyDecorator,
                   buildDefaultDragHandles: false,
-                  padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                  padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
                   itemCount: products.length,
                   onReorder: (oldIndex, newIndex) {
-                    if (_selectedCategory != null) {
+                    if (_selectedCategory == null || _selectedCategory == 'All') {
+                      _db.reorderAllProducts(oldIndex, newIndex);
+                    } else {
                       _db.reorderCategoryProducts(_selectedCategory!, oldIndex, newIndex);
                     }
                   },
@@ -2708,40 +2918,46 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
                     return Container(
                       key: ValueKey('mob_prod_${product.id}_$index'),
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFE2E8F0)),
+                        color: const Color(0xFFF9FBFE),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(color: Colors.white, width: 1.5),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.02),
-                            blurRadius: 3,
-                            offset: const Offset(0, 1),
+                            color: const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                            offset: const Offset(1.5, 3),
+                            blurRadius: 6,
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            offset: const Offset(-1.5, -2),
+                            blurRadius: 5,
                           ),
                         ],
                       ),
                       child: Row(
                         children: [
-                          // 6-dot drag handle
+                          // 6-dot drag handle with generous touch target
                           ReorderableDragStartListener(
                             index: index,
                             child: MouseRegion(
                               cursor: SystemMouseCursors.grab,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                color: Colors.transparent,
                                 child: const Icon(Icons.drag_indicator_rounded, size: 18, color: Color(0xFF94A3B8)),
                               ),
                             ),
                           ),
                           const SizedBox(width: 4),
 
-                          // Dynamic Product Image Thumbnail
-                          _buildProductImageThumbnail(product, width: 44, height: 44, borderRadius: 10),
+                          // Dynamic Product Image Thumbnail (42x42 with 10px radius)
+                          _buildProductImageThumbnail(product, width: 42, height: 42, borderRadius: 10),
                           const SizedBox(width: 8),
 
-                          // Details Column (Full Name with maxLines: 2 + Price & Stock Row)
+                          // Details Column
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2758,42 +2974,63 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                           fontSize: 11.5,
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF0F172A),
-                                          height: 1.2,
+                                          height: 1.15,
                                         ),
-                                        maxLines: 2,
+                                        maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ],
                                 ),
-                                const SizedBox(height: 3),
+                                const SizedBox(height: 3.5),
                                 Wrap(
                                   spacing: 5,
-                                  runSpacing: 2,
+                                  runSpacing: 3,
                                   crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Text(
-                                      '₹${product.effectivePrice.toStringAsFixed(0)}',
-                                      style: const TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: _primaryNavy,
+                                    // Price capsule
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEFF6FF),
+                                        borderRadius: BorderRadius.circular(6),
+                                        border: Border.all(color: const Color(0xFFDBEAFE)),
+                                      ),
+                                      child: Text(
+                                        '₹${product.effectivePrice.toStringAsFixed(0)}',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF1D4ED8),
+                                        ),
                                       ),
                                     ),
+                                    // Stock capsule
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
                                       decoration: BoxDecoration(
                                         color: inStock ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
                                         borderRadius: BorderRadius.circular(6),
                                         border: Border.all(color: inStock ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
                                       ),
-                                      child: Text(
-                                        inStock ? '${product.stockQuantity} in stock' : 'Out of stock',
-                                        style: TextStyle(
-                                          fontSize: 8.5,
-                                          fontWeight: FontWeight.bold,
-                                          color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                                        ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.inventory_2_outlined,
+                                            size: 9.5,
+                                            color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                          ),
+                                          const SizedBox(width: 3),
+                                          Text(
+                                            inStock ? '${product.stockQuantity} in stock' : 'Out of stock',
+                                            style: TextStyle(
+                                              fontSize: 8.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                   ],
@@ -2801,22 +3038,35 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               ],
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
 
-                          // Status Switch
+                          // High-contrast custom toggle switch
                           _buildToggleSwitch(
                             value: product.isAvailable,
                             onChanged: (val) {
                               _db.saveMenuItem(product.copyWith(isAvailable: val));
                               setState(() {});
                             },
-                            scale: 0.68,
+                            scale: 0.82,
                           ),
+                          const SizedBox(width: 2),
 
-                          // 3-Dots Menu Button
+                          // 3-Dots Button with soft circular background
                           PopupMenuButton<String>(
-                            icon: const Icon(Icons.more_vert_rounded, size: 18, color: Color(0xFF64748B)),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            color: Colors.white,
+                            surfaceTintColor: Colors.transparent,
+                            elevation: 6,
+                            icon: Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF1F5F9),
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFE2E8F0)),
+                              ),
+                              child: const Icon(Icons.more_vert_rounded, size: 15, color: Color(0xFF64748B)),
+                            ),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                             padding: EdgeInsets.zero,
                             constraints: const BoxConstraints(),
                             onSelected: (val) {
@@ -2830,7 +3080,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   children: [
                                     Icon(Icons.edit_outlined, size: 15, color: Color(0xFF0F172A)),
                                     SizedBox(width: 8),
-                                    Text('Edit Product', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    Text('Edit Product', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
                                   ],
                                 ),
                               ),
@@ -3374,7 +3624,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  pickedImagePath!.startsWith('http') ? 'Cloudflare R2 Image' : pickedImagePath!.split(Platform.pathSeparator).last,
+                                  pickedImagePath!.startsWith('http') ? 'Cloudflare R2 Image' : pickedImagePath!.split(RegExp(r'[\\/]')).last,
                                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -3627,7 +3877,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  pickedImagePath!.startsWith('http') ? 'Cloudflare R2 Image' : pickedImagePath!.split(Platform.pathSeparator).last,
+                                  pickedImagePath!.startsWith('http') ? 'Cloudflare R2 Image' : pickedImagePath!.split(RegExp(r'[\\/]')).last,
                                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
@@ -4218,7 +4468,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       final file = File('${dir.path}/Apna_POS_Menu_Export_${DateTime.now().millisecondsSinceEpoch}.csv');
       await file.writeAsString(buffer.toString());
 
-      if (Platform.isWindows) {
+      if (!kIsWeb && Platform.isWindows) {
         try {
           await Process.run('cmd', ['/c', 'start', '', file.path]);
         } catch (_) {}

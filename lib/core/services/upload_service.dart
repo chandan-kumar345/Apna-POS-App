@@ -13,7 +13,7 @@ class UploadService {
   /// Returns the remote public image URL (or null on failure)
   Future<String?> uploadImage(File file, {String folder = 'products'}) async {
     try {
-      final fileName = file.path.split(Platform.pathSeparator).last;
+      final fileName = file.path.split(RegExp(r'[\\/]')).last;
       final formData = FormData.fromMap({
         'image': await MultipartFile.fromFile(
           file.path,
@@ -81,7 +81,7 @@ class UploadService {
   /// Returns the remote public video URL (or null on failure)
   Future<String?> uploadVideo(File file, {String folder = 'products/videos'}) async {
     try {
-      final fileName = file.path.split(Platform.pathSeparator).last;
+      final fileName = file.path.split(RegExp(r'[\\/]')).last;
       final formData = FormData.fromMap({
         'video': await MultipartFile.fromFile(
           file.path,

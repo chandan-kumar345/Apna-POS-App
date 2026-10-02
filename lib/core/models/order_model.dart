@@ -322,6 +322,21 @@ class OrderModel {
       }
     }
 
+    final itemsList = (json['items'] as List<dynamic>?)
+            ?.map((i) {
+              if (i is Map) {
+                try {
+                  return CartItemModel.fromJson(i);
+                } catch (_) {
+                  return null;
+                }
+              }
+              return null;
+            })
+            .whereType<CartItemModel>()
+            .toList() ??
+        [];
+
     final double subtotalVal = _toDoubleSafe(json['subtotal']);
     final double taxVal = _toDoubleSafe(json['taxAmount'] ?? json['tax']);
     final double discVal = _toDoubleSafe(json['discountAmount'] ?? json['discount']);
@@ -329,6 +344,13 @@ class OrderModel {
     final double delVal = _toDoubleSafe(json['deliveryCharge'] ?? json['delivery_charge']);
     final double roundVal = _toDoubleSafe(json['roundOff'] ?? json['round_off']);
     final double totalVal = _toDoubleSafe(json['totalAmount'] ?? json['amount'] ?? json['total']);
+
+    final double computedItemsSub = itemsList.fold<double>(0.0, (sum, i) => sum + i.totalPrice);
+    final double finalSubtotal = subtotalVal > 0 ? subtotalVal : (computedItemsSub > 0 ? computedItemsSub : (totalVal > 0 ? totalVal : 0.0));
+    final double calculatedTotal = (finalSubtotal - discVal + taxVal + tipVal + delVal + roundVal).clamp(0.0, double.infinity);
+    final double finalTotal = (itemsList.isNotEmpty && finalSubtotal > 0 && (totalVal - calculatedTotal).abs() > 0.05)
+        ? calculatedTotal
+        : (totalVal > 0 ? totalVal : calculatedTotal);
 
     final String resolvedCreatedAt = json['createdAt']?.toString() ??
         json['created_at']?.toString() ??
@@ -344,27 +366,14 @@ class OrderModel {
       tableNumber: json['tableNumber']?.toString() ?? json['table']?.toString(),
       orderType: parsedType,
       status: parsedStatus,
-      items: (json['items'] as List<dynamic>?)
-              ?.map((i) {
-                if (i is Map) {
-                  try {
-                    return CartItemModel.fromJson(i);
-                  } catch (_) {
-                    return null;
-                  }
-                }
-                return null;
-              })
-              .whereType<CartItemModel>()
-              .toList() ??
-          [],
-      subtotal: subtotalVal > 0 ? subtotalVal : (totalVal > 0 ? totalVal : 0.0),
+      items: itemsList,
+      subtotal: finalSubtotal,
       taxAmount: taxVal,
       discountAmount: discVal,
       tipAmount: tipVal,
       deliveryCharge: delVal,
       roundOff: roundVal,
-      totalAmount: totalVal > 0 ? totalVal : (subtotalVal + taxVal - discVal),
+      totalAmount: finalTotal,
       paymentMethod: rawPm,
       paymentStatus: rawPs.isNotEmpty ? rawPs : (rawIsPaid ? 'paid' : 'pending'),
       isPaid: rawIsPaid,
@@ -382,6 +391,23 @@ class OrderModel {
       staffName: json['staffName']?.toString() ?? json['waiterName']?.toString() ?? json['userName']?.toString() ?? json['servedBy']?.toString() ?? json['cashierName']?.toString() ?? json['staff']?.toString(),
       staffRole: json['staffRole']?.toString() ?? json['role']?.toString(),
     );
+  }
+
+  /// Effective items subtotal calculated dynamically from line items
+  double get computedItemsSubtotal => items.fold<double>(0.0, (sum, i) => sum + i.totalPrice);
+
+  /// Effective subtotal (uses subtotal if > 0, otherwise falls back to line items sum)
+  double get effectiveSubtotal => subtotal > 0 ? subtotal : computedItemsSubtotal;
+
+  /// Effective grand total reconciling subtotal, discounts, taxes, tips, delivery charge, and roundOff
+  double get effectiveTotalAmount {
+    final double calc = (effectiveSubtotal - discountAmount + taxAmount + tipAmount + deliveryCharge + roundOff).clamp(0.0, double.infinity);
+    if (items.isNotEmpty && effectiveSubtotal > 0) {
+      if ((totalAmount - calc).abs() > 0.05) {
+        return calc;
+      }
+    }
+    return totalAmount > 0 ? totalAmount : calc;
   }
 
   /// Helper to safely resolve the exact DateTime of this order in local timezone

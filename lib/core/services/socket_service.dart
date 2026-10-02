@@ -12,6 +12,7 @@ typedef TableDeleteCallback = void Function(String tableId);
 typedef SocketReconnectCallback = void Function();
 typedef OrderSettledCallback = void Function(Map<String, dynamic> data);
 typedef OrderUpdatedCallback = void Function(Map<String, dynamic> data);
+typedef OrderDeletedCallback = void Function(Map<String, dynamic> data);
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -33,6 +34,7 @@ class SocketService {
   SocketReconnectCallback? onReconnected;
   OrderSettledCallback? onOrderSettled;
   OrderUpdatedCallback? onOrderUpdated;
+  OrderDeletedCallback? onOrderDeleted;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -151,6 +153,8 @@ class SocketService {
       socket.on('order_settled', (data) => _handleOrderSettled(data));
       socket.on('order:updated', (data) => _handleOrderUpdated(data));
       socket.on('order_updated', (data) => _handleOrderUpdated(data));
+      socket.on('order:deleted', (data) => _handleOrderDeleted(data));
+      socket.on('order_deleted', (data) => _handleOrderDeleted(data));
 
       socket.connect();
     } catch (e) {
@@ -266,6 +270,17 @@ class SocketService {
       onOrderUpdated?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing order:updated event: $e');
+    }
+  }
+
+  void _handleOrderDeleted(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] Received order:deleted event for: ${rawMap['orderNumber'] ?? rawMap['orderId']}');
+      onOrderDeleted?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing order:deleted event: $e');
     }
   }
 

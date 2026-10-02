@@ -1612,6 +1612,112 @@ class OrderService {
 
     return order;
   }
+
+  /**
+   * Permanently delete an order across MongoDB Order, Sale, and PrintLog collections,
+   * freeing any associated table and broadcasting real-time socket events.
+   */
+  async deleteOrder(businessId, orderId) {
+    const bId = businessId && mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
+    const rawLookup = (orderId || '').toString().trim();
+    const cleanNum = rawLookup.replace(/^#/, '');
+
+    // Find order by _id, orderNumber, localOrderId, or clientSyncId
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(rawLookup)) {
+      order = await Order.findOne(bId ? { _id: rawLookup, businessId: bId } : { _id: rawLookup });
+    }
+    if (!order && cleanNum) {
+      const orConditions = [
+        { orderNumber: rawLookup },
+        { orderNumber: `#${cleanNum}` },
+        { orderNumber: cleanNum },
+        { localOrderId: rawLookup },
+        { clientSyncId: rawLookup },
+      ];
+      order = await Order.findOne(bId ? { businessId: bId, $or: orConditions } : { $or: orConditions });
+    }
+
+    if (!order && cleanNum) {
+      // Direct global fallback lookup without business filter if superadmin or cross-business call
+      order = await Order.findOne({
+        $or: [
+          { orderNumber: rawLookup },
+          { orderNumber: `#${cleanNum}` },
+          { orderNumber: cleanNum },
+        ],
+      });
+    }
+
+    if (!order) {
+      throw new ApiError(404, `Order '${rawLookup}' not found in database`);
+    }
+
+    const orderNumber = order.orderNumber;
+    const targetBusinessId = order.businessId;
+
+    // 1. Delete associated Sale record(s) so sales reports and dashboard update cleanly
+    await Sale.deleteMany({
+      $or: [
+        { orderId: order._id },
+        { orderNumber: orderNumber },
+        { 'order.orderNumber': orderNumber },
+        { orderNumber: cleanNum },
+        { orderNumber: `#${cleanNum}` },
+      ],
+    });
+
+    // 2. Delete associated PrintLog record(s)
+    await PrintLog.deleteMany({
+      $or: [
+        { orderId: order._id },
+        { orderNumber: orderNumber },
+        { orderNumber: cleanNum },
+        { orderNumber: `#${cleanNum}` },
+      ],
+    });
+
+    // 3. Free table if order was active on table
+    if (order.tableNumber) {
+      const tableQuery = this._getTableQuery(targetBusinessId, order.tableNumber);
+      const table = await Table.findOne(tableQuery);
+      if (table && (table.activeOrderNumber === orderNumber || (table.currentOrderId && table.currentOrderId.toString() === order._id.toString()))) {
+        table.status = 'available';
+        table.currentOrderId = null;
+        table.activeOrderNumber = null;
+        table.activeOrderTotal = 0;
+        table.activeItemCount = 0;
+        table.occupiedSince = null;
+        await table.save();
+
+        try {
+          socketService.emitTableUpdated(targetBusinessId, table);
+        } catch (_) {}
+      }
+    }
+
+    // 4. Delete the order document itself
+    await Order.deleteOne({ _id: order._id });
+
+    // 5. Broadcast real-time deletion to all connected clients
+    try {
+      socketService.emitOrderDeleted(targetBusinessId, {
+        orderId: order._id.toString(),
+        orderNumber: orderNumber,
+        businessId: targetBusinessId.toString(),
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      deletedOrderId: order._id.toString(),
+      deletedOrderNumber: orderNumber,
+    };
+  }
+
+  async deleteOrderByNumber(businessId, orderNumber) {
+    return this.deleteOrder(businessId, orderNumber);
+  }
 }
 
 module.exports = new OrderService();

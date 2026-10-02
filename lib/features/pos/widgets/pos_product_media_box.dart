@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -766,11 +768,49 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       );
     }
 
-    // 2. Resolve via ApiEndpoints
+    // 2. Base64 Data URI or raw Base64 bytes
+    if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
+      try {
+        final commaIdx = trimmed.indexOf(',');
+        final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+        final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+        return Image.memory(
+          bytes,
+          key: key,
+          fit: widget.fit,
+          width: double.infinity,
+          height: double.infinity,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) => fallback,
+        );
+      } catch (e) {
+        debugPrint('[PosProductMediaBox] Base64 image decode error: $e');
+      }
+    }
+
+    // 3. Resolve via ApiEndpoints
     final resolved = ApiEndpoints.resolveMediaUrl(trimmed);
     if (resolved.isEmpty) return fallback;
 
-    // 3. Network URL
+    // 4. Base64 after resolve
+    if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
+      try {
+        final commaIdx = resolved.indexOf(',');
+        final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
+        final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+        return Image.memory(
+          bytes,
+          key: key,
+          fit: widget.fit,
+          width: double.infinity,
+          height: double.infinity,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) => fallback,
+        );
+      } catch (_) {}
+    }
+
+    // 5. Network URL
     if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
       return Image.network(
         resolved,
@@ -805,7 +845,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         },
       );
     } else if (!kIsWeb) {
-      // 4. Local File
+      // 6. Local File
       try {
         final file = File(resolved);
         if (file.existsSync()) {

@@ -280,6 +280,16 @@
           <span>Leads & Inquiries</span>
           <span id="navLeadsCountBadge" class="ml-auto text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-bold border border-amber-500/30">0</span>
         </button>
+
+        <button
+          onclick="switchTab('orders')"
+          id="nav-orders"
+          class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800 group"
+        >
+          <i class="fa-solid fa-trash-can w-5 text-center text-rose-400 group-hover:scale-110 transition-transform"></i>
+          <span class="text-rose-300 font-semibold">Delete Orders</span>
+          <span class="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 font-extrabold border border-rose-500/30 tracking-wider">PURGE</span>
+        </button>
       </nav>
 
       <!-- User Profile & Logout -->
@@ -801,6 +811,111 @@
             </div>
           </div>
 
+        </section>
+
+        <!-- ================= TAB 6: DELETE ORDERS (SUPERADMIN) ================= -->
+        <section id="tab-orders" class="hidden space-y-6">
+          <div class="glass-card p-6 rounded-2xl border border-rose-500/30 bg-rose-950/10 shadow-xl relative overflow-hidden">
+            <div class="absolute -right-10 -bottom-10 w-48 h-48 bg-rose-600/10 rounded-full blur-3xl pointer-events-none"></div>
+
+            <div class="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 mb-6 pb-6 border-b border-slate-800">
+              <div class="flex items-center gap-3.5">
+                <div class="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 text-xl shadow-inner">
+                  <i class="fa-solid fa-trash-can"></i>
+                </div>
+                <div>
+                  <h2 class="text-lg font-bold text-white flex items-center gap-2.5">
+                    Order Deletion & Database Purge
+                    <span class="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 font-extrabold uppercase tracking-wider border border-rose-500/30">Super Admin</span>
+                  </h2>
+                  <p class="text-xs text-slate-400">Permanently remove unwanted or test orders by Order Number across DB, Sales Analytics, and Invoices</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Search & Delete Form -->
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+              <div class="md:col-span-8 space-y-1.5">
+                <label class="block text-xs font-semibold text-slate-300">
+                  Enter 10-Digit Numeric Order Number:
+                </label>
+                <div class="relative">
+                  <i class="fa-solid fa-receipt absolute left-3.5 top-3.5 text-slate-500 text-sm"></i>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="10"
+                    id="adminOrderQueryInput"
+                    placeholder="e.g. 1000001001"
+                    oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 10)"
+                    class="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-700 rounded-xl text-white text-sm focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all font-mono"
+                    onkeydown="if(event.key==='Enter') searchOrderByAdmin()"
+                  />
+                </div>
+              </div>
+              <div class="md:col-span-4 flex gap-2.5">
+                <button
+                  type="button"
+                  onclick="searchOrderByAdmin()"
+                  id="adminSearchOrderBtn"
+                  class="flex-1 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-xl border border-slate-600 transition-all flex items-center justify-center gap-2"
+                >
+                  <i class="fa-solid fa-magnifying-glass"></i>
+                  <span>Find Order</span>
+                </button>
+                <button
+                  type="button"
+                  onclick="deleteOrderByAdmin()"
+                  id="adminDeleteOrderBtn"
+                  class="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl border border-rose-500 transition-all shadow-lg shadow-rose-950/50 flex items-center justify-center gap-2"
+                >
+                  <i class="fa-solid fa-trash-can"></i>
+                  <span>Delete Order</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Order Lookup / Preview Card (Dynamic) -->
+            <div id="adminOrderPreviewContainer" class="mt-6 hidden"></div>
+
+            <!-- Info Notice -->
+            <div class="mt-6 p-4 rounded-xl bg-slate-900/60 border border-slate-800 text-xs text-slate-400 space-y-1">
+              <div class="font-bold text-amber-400 flex items-center gap-2">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <span>Database Sync & Sales Ledger Notice:</span>
+              </div>
+              <p>Deleting an order permanently purges it from MongoDB, updates sales calculations, reverts stock deductions, and sends a live sync update to all active POS terminals.</p>
+            </div>
+          </div>
+
+          <!-- Recently Purged Orders Log in Admin Session -->
+          <div class="glass-card rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+            <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-slate-400"></i>
+                <h3 class="font-bold text-white text-sm">Recent Purge Actions (This Session)</h3>
+              </div>
+              <span id="adminPurgeLogCount" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-bold">0 deleted</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead class="bg-slate-800/80 text-slate-300 uppercase tracking-wider text-[11px] border-b border-slate-700/80">
+                  <tr>
+                    <th class="py-3 px-4 font-bold">Order #</th>
+                    <th class="py-3 px-4 font-bold">Amount</th>
+                    <th class="py-3 px-4 font-bold">Merchant / Store</th>
+                    <th class="py-3 px-4 font-bold">Deleted Timestamp</th>
+                    <th class="py-3 px-4 font-bold">Status</th>
+                  </tr>
+                </thead>
+                <tbody id="adminPurgeLogTableBody" class="divide-y divide-slate-800 text-slate-300">
+                  <tr>
+                    <td colspan="5" class="text-center py-6 text-slate-500">No orders deleted in current session</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
         </section>
 
       </div>
@@ -1410,7 +1525,7 @@
     // Tab Navigation
     function switchTab(tabId) {
       activeTab = tabId;
-      const tabs = ['overview', 'users', 'subscriptions', 'database', 'leads'];
+      const tabs = ['overview', 'users', 'subscriptions', 'database', 'leads', 'orders'];
       
       tabs.forEach(t => {
         const el = document.getElementById(`tab-${t}`);
@@ -1432,6 +1547,7 @@
         subscriptions: { title: 'Subscriptions & Plan Tiers', sub: 'Manage tier pricing, feature limits, and active merchant plans' },
         database: { title: 'Database Activity & Collections', sub: 'Direct inspection of MongoDB collections and live documents' },
         leads: { title: 'App Subscription Inquiries & Leads', sub: 'Review merchants interested in Growth & Enterprise plans' },
+        orders: { title: 'Order Deletion & Database Purge', sub: 'Permanently remove orders by Order Number across DB, Sales Analytics, and Invoices' },
       };
 
       document.getElementById('pageHeaderTitle').innerText = titles[tabId]?.title || 'Owner Portal';
@@ -1455,6 +1571,8 @@
         fetchDatabaseOverview();
       } else if (activeTab === 'leads') {
         fetchLeads(1);
+      } else if (activeTab === 'orders') {
+        renderPurgedOrdersLog();
       }
 
       setTimeout(() => {
@@ -1466,6 +1584,9 @@
       fetchStats();
       fetchUsers(1);
       fetchLeads(1);
+      if (window.location.hash === '#orders' || window.location.search.includes('tab=orders')) {
+        switchTab('orders');
+      }
     }
 
     // ================= STATS & OVERVIEW API =================
@@ -2526,6 +2647,241 @@
           `;
         }).join('');
       }
+    }
+
+    // ================= TAB 6: ORDER DELETION & PURGE LOGIC =================
+    let purgedOrdersLog = [];
+
+    async function searchOrderByAdmin() {
+      const input = document.getElementById('adminOrderQueryInput');
+      const rawQuery = (input?.value || '').trim();
+      const cleanNum = rawQuery.replace(/[^0-9]/g, '');
+      const container = document.getElementById('adminOrderPreviewContainer');
+      const searchBtn = document.getElementById('adminSearchOrderBtn');
+
+      if (!cleanNum && !rawQuery) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Enter 10-Digit Order Number',
+          text: 'Please enter a 10-digit numeric order number (e.g. 1000001001) to find.',
+          background: '#0f172a',
+          color: '#fff'
+        });
+        return;
+      }
+
+      searchBtn.disabled = true;
+      searchBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Finding...';
+      container.classList.remove('hidden');
+      container.innerHTML = '<div class="p-6 text-center text-slate-400"><i class="fa-solid fa-circle-notch fa-spin text-rose-400 mr-2"></i> Querying order database...</div>';
+
+      try {
+        const res = await fetch(`${API_BASE}/database/collection/orders?limit=150`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const json = await res.json();
+        
+        let found = null;
+        if (json.success && Array.isArray(json.data)) {
+          found = json.data.find(o => 
+            (o._id && o._id.toString() === rawQuery) ||
+            (o.orderNumber && (
+              o.orderNumber.toString() === rawQuery ||
+              o.orderNumber.toString().replace(/[^0-9]/g, '') === cleanNum ||
+              o.orderNumber.toString().replace(/[^0-9]/g, '').includes(cleanNum)
+            )) ||
+            (o.invoiceNumber && o.invoiceNumber.toString().replace(/[^0-9]/g, '').includes(cleanNum))
+          );
+        }
+
+        if (!found) {
+          container.innerHTML = `
+            <div class="p-5 rounded-xl bg-slate-900/80 border border-slate-800 text-center text-slate-400">
+              <i class="fa-solid fa-receipt text-2xl text-slate-500 mb-2"></i>
+              <div class="font-bold text-white text-sm">Order "${query}" Not Found in Recent Documents</div>
+              <p class="text-xs mt-1 text-slate-400">You can still proceed with a direct database purge by clicking "Delete Order" below.</p>
+            </div>
+          `;
+        } else {
+          const dateStr = found.createdAt ? new Date(found.createdAt).toLocaleString('en-IN') : 'N/A';
+          const itemsList = (found.items || []).map(i => `${i.name || 'Item'} (x${i.quantity || 1})`).join(', ') || 'No item details';
+          
+          container.innerHTML = `
+            <div class="p-5 rounded-xl bg-slate-900 border border-rose-500/40 shadow-xl space-y-4">
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-2.5 py-1 rounded-md bg-rose-500/20 text-rose-300 font-mono font-bold text-sm border border-rose-500/30">
+                      ${found.orderNumber || found._id}
+                    </span>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${found.status === 'completed' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'}">
+                      ${found.status || 'Active'}
+                    </span>
+                  </div>
+                  <div class="text-xs text-slate-400 mt-2">
+                    Created: <span class="text-slate-200 font-medium">${dateStr}</span> &bull; Payment: <span class="text-slate-200 capitalize font-medium">${found.paymentMethod || 'Cash'}</span>
+                  </div>
+                </div>
+                <div class="text-right">
+                  <div class="text-lg font-black text-emerald-400 font-mono">₹${(found.totalAmount || 0).toLocaleString('en-IN')}</div>
+                  <div class="text-[11px] text-slate-400">${(found.items || []).length} item(s)</div>
+                </div>
+              </div>
+
+              <div class="p-3 bg-slate-950/70 rounded-lg border border-slate-800 text-xs text-slate-300">
+                <span class="text-slate-500 font-semibold">Items: </span> ${itemsList}
+              </div>
+
+              <div class="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
+                <div class="text-slate-400 font-mono text-[11px]">DB ID: ${found._id}</div>
+                <button
+                  type="button"
+                  onclick="executeDirectDeleteOrder('${found.orderNumber || found._id}', '${found.totalAmount || 0}')"
+                  class="py-1.5 px-3.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg transition-all flex items-center gap-1.5 shadow"
+                >
+                  <i class="fa-solid fa-trash-can"></i>
+                  <span>Confirm Delete</span>
+                </button>
+              </div>
+            </div>
+          `;
+        }
+      } catch (err) {
+        container.innerHTML = `<div class="p-4 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs">Error querying order: ${err.message}</div>`;
+      } finally {
+        searchBtn.disabled = false;
+        searchBtn.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> <span>Find Order</span>';
+      }
+    }
+
+    async function deleteOrderByAdmin() {
+      const input = document.getElementById('adminOrderQueryInput');
+      const query = (input?.value || '').trim();
+      if (!query) {
+        Swal.fire({
+          icon: 'warning',
+          title: 'Enter Order Number',
+          text: 'Please specify the Order Number or ID to delete.',
+          background: '#0f172a',
+          color: '#fff'
+        });
+        return;
+      }
+      executeDirectDeleteOrder(query, null);
+    }
+
+    async function executeDirectDeleteOrder(orderIdOrNumber, knownAmount) {
+      const confirmResult = await Swal.fire({
+        title: `Delete Order #${orderIdOrNumber}?`,
+        text: 'This will permanently delete this order from the database and remove it from sales totals and invoices.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#334155',
+        confirmButtonText: 'Yes, permanently delete',
+        background: '#0f172a',
+        color: '#fff'
+      });
+
+      if (!confirmResult.isConfirmed) return;
+
+      const deleteBtn = document.getElementById('adminDeleteOrderBtn');
+      if (deleteBtn) {
+        deleteBtn.disabled = true;
+        deleteBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Deleting...';
+      }
+
+      try {
+        const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(orderIdOrNumber)}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        const json = await res.json();
+
+        if (json.success) {
+          Swal.fire({
+            icon: 'success',
+            title: 'Order Deleted Successfully',
+            text: json.message || `Order #${orderIdOrNumber} has been permanently purged from the database.`,
+            background: '#0f172a',
+            color: '#fff',
+            timer: 2500,
+            showConfirmButton: false
+          });
+
+          // Log in session
+          purgedOrdersLog.unshift({
+            orderNumber: orderIdOrNumber,
+            amount: knownAmount ? `₹${Number(knownAmount).toLocaleString('en-IN')}` : 'Purged',
+            merchant: currentUser?.name || 'Store Merchant',
+            timestamp: new Date().toLocaleTimeString('en-IN'),
+            status: 'Deleted & Purged'
+          });
+          renderPurgedOrdersLog();
+
+          // Reset input & preview
+          const input = document.getElementById('adminOrderQueryInput');
+          if (input) input.value = '';
+          const container = document.getElementById('adminOrderPreviewContainer');
+          if (container) {
+            container.classList.add('hidden');
+            container.innerHTML = '';
+          }
+
+          // Refresh stats
+          fetchStats();
+        } else {
+          Swal.fire({
+            icon: 'error',
+            title: 'Deletion Failed',
+            text: json.message || 'Could not delete order.',
+            background: '#0f172a',
+            color: '#fff'
+          });
+        }
+      } catch (err) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Network / Server Error',
+          text: err.message,
+          background: '#0f172a',
+          color: '#fff'
+        });
+      } finally {
+        if (deleteBtn) {
+          deleteBtn.disabled = false;
+          deleteBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i> <span>Delete Order</span>';
+        }
+      }
+    }
+
+    function renderPurgedOrdersLog() {
+      const tbody = document.getElementById('adminPurgeLogTableBody');
+      const countBadge = document.getElementById('adminPurgeLogCount');
+      if (countBadge) countBadge.innerText = `${purgedOrdersLog.length} deleted`;
+      if (!tbody) return;
+
+      if (purgedOrdersLog.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center py-6 text-slate-500">No orders deleted in current session</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = purgedOrdersLog.map(item => `
+        <tr class="hover:bg-slate-800/40 transition-colors">
+          <td class="py-2.5 px-4 font-mono font-bold text-rose-300">${item.orderNumber}</td>
+          <td class="py-2.5 px-4 font-bold text-emerald-400">${item.amount}</td>
+          <td class="py-2.5 px-4 text-slate-300">${item.merchant}</td>
+          <td class="py-2.5 px-4 text-slate-400 text-[11px]">${item.timestamp}</td>
+          <td class="py-2.5 px-4">
+            <span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-bold uppercase">
+              ${item.status}
+            </span>
+          </td>
+        </tr>
+      `).join('');
     }
   </script>
 </body>

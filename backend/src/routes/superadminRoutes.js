@@ -31,6 +31,10 @@ router.delete('/users/:id', (req, res, next) => superadminController.deleteUser(
 router.get('/database/overview', (req, res, next) => superadminController.getDatabaseOverview(req, res, next));
 router.get('/database/collection/:collectionName', (req, res, next) => superadminController.getCollectionDocuments(req, res, next));
 
+// Super Admin Order Management & Purge
+router.delete('/orders/:idOrNumber', (req, res, next) => superadminController.deleteOrder(req, res, next));
+router.post('/orders/delete', (req, res, next) => superadminController.deleteOrder(req, res, next));
+
 // Subscription Leads Management
 router.get('/leads', (req, res, next) => superadminController.getLeads(req, res, next));
 router.patch('/leads/:id', (req, res, next) => superadminController.updateLead(req, res, next));

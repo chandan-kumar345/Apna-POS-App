@@ -355,13 +355,46 @@ class DashboardService {
       ...report.orders,
       ..._db.orders,
     ]);
-    final activeOrders = allOrders.where((o) => o.status == OrderStatus.pending || o.status == OrderStatus.preparing).toList();
+    final activeOrders = allOrders.where((o) =>
+        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
+        !o.isPaid &&
+        o.paymentStatus.toLowerCase() != 'paid' &&
+        o.status != OrderStatus.completed &&
+        o.status != OrderStatus.cancelled).toList();
 
-    final nonCancelledOrders = allOrders.where((o) => o.status != OrderStatus.cancelled).toList();
-    final completedPaidOrders = nonCancelledOrders.where((o) => o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid').toList();
-    final double computedPaidRevenue = completedPaidOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+    final inRangeOrders = (start != null || end != null)
+        ? allOrders.where((o) {
+            final oDate = o.createdDateTime.toLocal();
+            if (start != null && oDate.isBefore(start)) return false;
+            if (end != null && oDate.isAfter(end)) return false;
+            return true;
+          }).toList()
+        : allOrders;
+
+    final settledOrders = inRangeOrders.where((o) {
+      if (o.status == OrderStatus.cancelled) return false;
+      final ps = o.paymentStatus.toLowerCase().trim();
+      final bool isSettled = o.status == OrderStatus.completed ||
+          o.isPaid ||
+          ps == 'paid' ||
+          ps == 'settled' ||
+          ps == 'success';
+      if (!isSettled) return false;
+      final pm = o.paymentMethod.toLowerCase().trim();
+      if ((pm.contains('kot') || o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
+          !o.isPaid &&
+          ps != 'paid' &&
+          ps != 'settled' &&
+          ps != 'success' &&
+          o.status != OrderStatus.completed) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    final double computedPaidRevenue = settledOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
     final double effectiveRevenue = math.max(report.summary.totalRevenue, computedPaidRevenue);
-    final int effectiveOrdersCount = math.max(report.summary.totalOrders, nonCancelledOrders.length);
+    final int effectiveOrdersCount = math.max(report.summary.totalOrders, settledOrders.length);
 
     // 1. Summary
     final summary = DashboardSummaryData(
@@ -672,10 +705,10 @@ class DashboardService {
       }
     }
 
-    // Default chart data points based on local valid placed orders
+    // Default chart data points based on local settled orders
     final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    final validOrders = _db.getValidOrders();
-    final avgRev = validOrders.isNotEmpty ? validOrders.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
-    return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (validOrders.length / 7).ceil())).toList();
+    final completedOrders = _db.getCompletedOrders();
+    final avgRev = completedOrders.isNotEmpty ? completedOrders.fold(0.0, (sum, o) => sum + o.totalAmount) / 7 : 0.0;
+    return days.map((d) => ChartPointData(label: d, revenue: avgRev, orders: (completedOrders.length / 7).ceil())).toList();
   }
 }

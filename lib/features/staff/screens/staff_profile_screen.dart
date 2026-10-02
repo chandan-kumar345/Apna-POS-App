@@ -8,6 +8,8 @@ import '../../../core/database/database_service.dart';
 import '../../../core/models/staff_model.dart';
 import '../widgets/staff_id_card_dialog.dart';
 
+/// Redesigned Neumorphic Staff Profile Screen with Wrapped Responsive Layout
+/// Cleaned of redundant action buttons & hint chips for a polished, modern Soft UI.
 class StaffProfileScreen extends StatefulWidget {
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onNavigateToDashboard;
@@ -103,11 +105,83 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('$label copied to clipboard!'),
-        backgroundColor: const Color(0xFF1E3A8A),
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+            const SizedBox(width: 8),
+            Text('$label copied to clipboard!'),
+          ],
+        ),
+        backgroundColor: const Color(0xFF0F172A),
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         duration: const Duration(seconds: 2),
       ),
+    );
+  }
+
+  // --- Neumorphic Style Builders ---
+
+  Widget _buildNeumorphicCard({
+    required Widget child,
+    Color? color,
+    Color? borderColor,
+    EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
+    double elevation = 4.0,
+  }) {
+    return Container(
+      padding: padding ?? const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color ?? const Color(0xFFF4F6FB),
+        borderRadius: borderRadius ?? BorderRadius.circular(20),
+        border: Border.all(
+          color: borderColor ?? const Color(0xFFE2E8F0),
+          width: 1.1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-elevation, -elevation),
+            blurRadius: elevation * 2,
+          ),
+          BoxShadow(
+            color: const Color(0x140F172A),
+            offset: Offset(elevation, elevation),
+            blurRadius: elevation * 2,
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildNeumorphicInset({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+    BorderRadius? borderRadius,
+    Color? color,
+  }) {
+    return Container(
+      padding: padding ?? const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color ?? const Color(0xFFEFF3F9),
+        borderRadius: borderRadius ?? BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0E0F172A),
+            offset: Offset(1.5, 1.5),
+            blurRadius: 3,
+          ),
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+        ],
+      ),
+      child: child,
     );
   }
 
@@ -138,47 +212,40 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     final qrPayload = 'STAFF-ID:$empId|NAME:${staff.name}|ROLE:${staff.role}|DEPT:$department|ORG:$restaurantName';
 
     return Container(
-      color: const Color(0xFFF8FAFC),
+      color: const Color(0xFFEFF3F9), // Soft Neumorphic Backdrop
       child: SingleChildScrollView(
         physics: const BouncingScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 36),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 1000),
+            constraints: const BoxConstraints(maxWidth: 1040),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final isWide = constraints.maxWidth >= 740;
+                final isWide = constraints.maxWidth >= 760;
 
                 if (isWide) {
-                  // Desktop / Tablet Two-Column Layout
                   return Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Left: Physical ID Card (Tap to view full card)
+                      // Left: Physical ID Card in Neumorphic Vessel
                       SizedBox(
-                        width: 320,
-                        child: Center(
-                          child: InkWell(
-                            onTap: () => StaffIdCardDialog.show(context, staff),
-                            borderRadius: BorderRadius.circular(16),
-                            child: _buildIdCardSection(
-                              staff: staff,
-                              restaurantName: restaurantName,
-                              tagline: restaurantTagline,
-                              companyLogoPath: companyLogoPath,
-                              department: department,
-                              empId: empId,
-                              phone: phone,
-                              email: email,
-                              joinDateStr: joinDateStr,
-                              qrPayload: qrPayload,
-                            ),
-                          ),
+                        width: 340,
+                        child: _buildIdCardWrapper(
+                          staff: staff,
+                          restaurantName: restaurantName,
+                          tagline: restaurantTagline,
+                          companyLogoPath: companyLogoPath,
+                          department: department,
+                          empId: empId,
+                          phone: phone,
+                          email: email,
+                          joinDateStr: joinDateStr,
+                          qrPayload: qrPayload,
                         ),
                       ),
-                      const SizedBox(width: 24),
+                      const SizedBox(width: 20),
 
-                      // Right: Detailed Wrapped Information Cards
+                      // Right: Wrapped Neumorphic Information Cards
                       Expanded(
                         child: _buildWrappedDetailsSection(
                           staff: staff,
@@ -194,30 +261,25 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     ],
                   );
                 } else {
-                  // Mobile Single-Column Layout: ID Card on Top, Details Below
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      // Top Section: Physical ID Card (Tap to view full card)
-                      InkWell(
-                        onTap: () => StaffIdCardDialog.show(context, staff),
-                        borderRadius: BorderRadius.circular(16),
-                        child: _buildIdCardSection(
-                          staff: staff,
-                          restaurantName: restaurantName,
-                          tagline: restaurantTagline,
-                          companyLogoPath: companyLogoPath,
-                          department: department,
-                          empId: empId,
-                          phone: phone,
-                          email: email,
-                          joinDateStr: joinDateStr,
-                          qrPayload: qrPayload,
-                        ),
+                      // Mobile: Physical ID Card on Top
+                      _buildIdCardWrapper(
+                        staff: staff,
+                        restaurantName: restaurantName,
+                        tagline: restaurantTagline,
+                        companyLogoPath: companyLogoPath,
+                        department: department,
+                        empId: empId,
+                        phone: phone,
+                        email: email,
+                        joinDateStr: joinDateStr,
+                        qrPayload: qrPayload,
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 18),
 
-                      // Details Section (Wrapped Cards)
+                      // Mobile: Wrapped Details Cards Below
                       _buildWrappedDetailsSection(
                         staff: staff,
                         department: department,
@@ -239,7 +301,104 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     );
   }
 
-  // Top Section: Physical ID Card Widget
+  // --- Active Status Badge Helper ---
+  Widget _buildActiveStatusBadge(String status, {bool compact = false}) {
+    final isActive = status.toLowerCase() != 'inactive' && status.toLowerCase() != 'disabled';
+    final color = isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+    final bgColor = isActive ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2);
+    final borderColor = isActive ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5);
+    final text = isActive ? 'Active' : 'Inactive';
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 2.5 : 4,
+      ),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: borderColor, width: 1.1),
+        boxShadow: [
+          BoxShadow(
+            color: color.withValues(alpha: 0.15),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: compact ? 6 : 7,
+            height: compact ? 6 : 7,
+            decoration: BoxDecoration(
+              color: color,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.5),
+                  blurRadius: 3,
+                  spreadRadius: 0.8,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(width: compact ? 4 : 5),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: compact ? 10 : 11,
+              fontWeight: FontWeight.w800,
+              color: color,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- ID Card Wrapper (Neumorphic Card enclosing the Badge) ---
+  Widget _buildIdCardWrapper({
+    required StaffModel staff,
+    required String restaurantName,
+    required String tagline,
+    required String? companyLogoPath,
+    required String department,
+    required String empId,
+    required String phone,
+    required String email,
+    required String joinDateStr,
+    required String qrPayload,
+  }) {
+    return _buildNeumorphicCard(
+      padding: const EdgeInsets.all(10),
+      borderRadius: BorderRadius.circular(22),
+      elevation: 5.0,
+      child: InkWell(
+        onTap: () => StaffIdCardDialog.show(context, staff),
+        borderRadius: BorderRadius.circular(16),
+        splashColor: const Color(0x1A2563EB),
+        highlightColor: const Color(0x0D2563EB),
+        child: _buildIdCardSection(
+          staff: staff,
+          restaurantName: restaurantName,
+          tagline: tagline,
+          companyLogoPath: companyLogoPath,
+          department: department,
+          empId: empId,
+          phone: phone,
+          email: email,
+          joinDateStr: joinDateStr,
+          qrPayload: qrPayload,
+        ),
+      ),
+    );
+  }
+
+  // --- Physical ID Card Component ---
   Widget _buildIdCardSection({
     required StaffModel staff,
     required String restaurantName,
@@ -258,9 +417,9 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
         // Lanyard Ribbon Strap & Metallic Clip Graphic
         _buildLanyardClip(),
 
-        // Physical ID Card Body
+        // Physical ID Card Body (Sized to match the full outer box)
         Container(
-          width: 310,
+          width: double.infinity,
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
@@ -299,7 +458,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     // Top Punch Slot
                     const SizedBox(height: 5),
                     Container(
-                      width: 30,
+                      width: 28,
                       height: 4,
                       decoration: BoxDecoration(
                         color: const Color(0xFFCBD5E1),
@@ -313,14 +472,14 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     const SizedBox(height: 8),
 
                     // Staff Photo Avatar
-                    _buildStaffAvatar(staff),
+                    _buildStaffAvatar(staff, size: 72),
                     const SizedBox(height: 6),
 
                     // Staff Name (Bold & Title Case)
                     Text(
                       _toTitleCase(staff.name),
                       style: const TextStyle(
-                        fontSize: 16,
+                        fontSize: 15.5,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF0F172A),
                         letterSpacing: 0.1,
@@ -333,7 +492,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
                     // Role Badge Pill
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2.5),
                       decoration: BoxDecoration(
                         color: staff.roleBgColor,
                         borderRadius: BorderRadius.circular(5),
@@ -353,19 +512,12 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
                     // Centered 2-Column Details Box (Like Real ID Cards)
                     Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 14),
-                      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                      margin: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFC).withValues(alpha: 0.88),
+                        color: const Color(0xFFF8FAFC).withValues(alpha: 0.92),
                         borderRadius: BorderRadius.circular(10),
                         border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x0A000000),
-                            blurRadius: 4,
-                            offset: Offset(0, 1),
-                          ),
-                        ],
                       ),
                       child: Column(
                         children: [
@@ -412,55 +564,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     ),
                   ],
                 ),
-
-                // Top Right Corner: Active / Inactive Status Badge (Only shown in Staff Profile Screen)
-                Positioned(
-                  top: 7,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                    decoration: BoxDecoration(
-                      color: staff.isActive
-                          ? const Color(0xFFDCFCE7).withValues(alpha: 0.95)
-                          : const Color(0xFFFEE2E2).withValues(alpha: 0.95),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: staff.isActive ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
-                        width: 0.9,
-                      ),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Color(0x12000000),
-                          blurRadius: 3,
-                          offset: Offset(0, 1),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 5,
-                          height: 5,
-                          decoration: BoxDecoration(
-                            color: staff.isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          staff.isActive ? 'Active' : 'Inactive',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            color: staff.isActive ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
-                            letterSpacing: 0.2,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -469,7 +572,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     );
   }
 
-  // Wrapped Details Section (Cards for Personal Details, Permissions, and Store Details)
+  // --- Wrapped Details Section (Neumorphic Cards) ---
   Widget _buildWrappedDetailsSection({
     required StaffModel staff,
     required String department,
@@ -483,70 +586,166 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 1. Personal & Employment Information Card
+        // Card 1: Personal & Job Information (Wrapped Grid / Tiles)
         _buildSectionCard(
           title: 'Personal & Job Information',
           icon: Icons.person_rounded,
           iconColor: const Color(0xFF2563EB),
           iconBgColor: const Color(0xFFEFF6FF),
-          child: Column(
-            children: [
-              _buildDetailItem(
-                label: 'Full Name',
-                value: _toTitleCase(staff.name),
-                icon: Icons.badge_outlined,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Employee ID',
-                value: empId,
-                icon: Icons.pin_outlined,
-                onCopy: () => _copyToClipboard(empId, 'Employee ID'),
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Department',
-                value: department,
-                icon: Icons.apartment_rounded,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Designation / Role',
-                value: _toTitleCase(staff.role),
-                icon: Icons.work_outline_rounded,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Contact Number',
-                value: phone,
-                icon: Icons.phone_outlined,
-                onCopy: () => _copyToClipboard(phone, 'Phone Number'),
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Email Address',
-                value: email,
-                icon: Icons.mail_outline_rounded,
-                onCopy: () => _copyToClipboard(email, 'Email Address'),
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Date of Joining',
-                value: joinDateStr,
-                icon: Icons.calendar_today_outlined,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Working Shift',
-                value: staff.shift.isNotEmpty ? staff.shift : 'General Shift (09:00 AM - 06:00 PM)',
-                icon: Icons.schedule_rounded,
-              ),
-            ],
+          trailing: _buildActiveStatusBadge(staff.status),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isTwoCol = constraints.maxWidth >= 420;
+
+              if (isTwoCol) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Full Name',
+                            value: _toTitleCase(staff.name),
+                            icon: Icons.badge_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Employee ID',
+                            value: empId,
+                            icon: Icons.pin_outlined,
+                            onCopy: () => _copyToClipboard(empId, 'Employee ID'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Department',
+                            value: department,
+                            icon: Icons.apartment_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Designation / Role',
+                            value: _toTitleCase(staff.role),
+                            icon: Icons.work_outline_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Contact Number',
+                            value: phone,
+                            icon: Icons.phone_outlined,
+                            onCopy: () => _copyToClipboard(phone, 'Phone Number'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Email Address',
+                            value: email,
+                            icon: Icons.mail_outline_rounded,
+                            onCopy: () => _copyToClipboard(email, 'Email Address'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Date of Joining',
+                            value: joinDateStr,
+                            icon: Icons.calendar_today_outlined,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Working Shift',
+                            value: staff.shift.isNotEmpty ? staff.shift : 'General Shift (09:00 AM - 06:00 PM)',
+                            icon: Icons.schedule_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              } else {
+                return Column(
+                  children: [
+                    _buildNeumorphicInfoTile(
+                      label: 'Full Name',
+                      value: _toTitleCase(staff.name),
+                      icon: Icons.badge_outlined,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Employee ID',
+                      value: empId,
+                      icon: Icons.pin_outlined,
+                      onCopy: () => _copyToClipboard(empId, 'Employee ID'),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Department',
+                      value: department,
+                      icon: Icons.apartment_rounded,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Designation / Role',
+                      value: _toTitleCase(staff.role),
+                      icon: Icons.work_outline_rounded,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Contact Number',
+                      value: phone,
+                      icon: Icons.phone_outlined,
+                      onCopy: () => _copyToClipboard(phone, 'Phone Number'),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Email Address',
+                      value: email,
+                      icon: Icons.mail_outline_rounded,
+                      onCopy: () => _copyToClipboard(email, 'Email Address'),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Date of Joining',
+                      value: joinDateStr,
+                      icon: Icons.calendar_today_outlined,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Working Shift',
+                      value: staff.shift.isNotEmpty ? staff.shift : 'General Shift (09:00 AM - 06:00 PM)',
+                      icon: Icons.schedule_rounded,
+                    ),
+                  ],
+                );
+              }
+            },
           ),
         ),
         const SizedBox(height: 16),
 
-        // 2. Role & Access Permissions Card
+        // Card 2: Role & Access Permissions (Wrapped Neumorphic Chips)
         _buildSectionCard(
           title: 'Assigned Role Permissions',
           icon: Icons.verified_user_rounded,
@@ -556,8 +755,8 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Modules and capabilities currently authorized for this staff profile:',
-                style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), height: 1.4),
+                'Modules and capabilities authorized for this staff profile:',
+                style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -570,91 +769,143 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
         ),
         const SizedBox(height: 16),
 
-        // 3. Organization & Security Overview Card
+        // Card 3: Store & Security Details (Neumorphic Inset Tiles)
         _buildSectionCard(
           title: 'Store & Security Details',
           icon: Icons.storefront_rounded,
           iconColor: const Color(0xFF7C3AED),
           iconBgColor: const Color(0xFFF3E8FF),
-          child: Column(
-            children: [
-              _buildDetailItem(
-                label: 'Store Name',
-                value: restaurantName,
-                icon: Icons.store_rounded,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Store Address',
-                value: restaurantAddress,
-                icon: Icons.location_on_outlined,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Quick Login PIN',
-                value: staff.pin.isNotEmpty ? '•••• (PIN Configured)' : '1234 (Default PIN)',
-                icon: Icons.lock_outline_rounded,
-              ),
-              const Divider(color: Color(0xFFF1F5F9), height: 16),
-              _buildDetailItem(
-                label: 'Biometric Access',
-                value: staff.enableBiometric ? 'Enabled (Fingerprint / Face ID)' : 'Disabled',
-                icon: Icons.fingerprint_rounded,
-              ),
-            ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final isTwoCol = constraints.maxWidth >= 420;
+
+              if (isTwoCol) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Store Name',
+                            value: restaurantName,
+                            icon: Icons.store_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Store Address',
+                            value: restaurantAddress,
+                            icon: Icons.location_on_outlined,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Quick Login PIN',
+                            value: staff.pin.isNotEmpty ? '•••• (PIN Configured)' : '1234 (Default PIN)',
+                            icon: Icons.lock_outline_rounded,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildNeumorphicInfoTile(
+                            label: 'Biometric Access',
+                            value: staff.enableBiometric ? 'Enabled (Fingerprint / Face ID)' : 'Disabled',
+                            icon: Icons.fingerprint_rounded,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              } else {
+                return Column(
+                  children: [
+                    _buildNeumorphicInfoTile(
+                      label: 'Store Name',
+                      value: restaurantName,
+                      icon: Icons.store_rounded,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Store Address',
+                      value: restaurantAddress,
+                      icon: Icons.location_on_outlined,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Quick Login PIN',
+                      value: staff.pin.isNotEmpty ? '•••• (PIN Configured)' : '1234 (Default PIN)',
+                      icon: Icons.lock_outline_rounded,
+                    ),
+                    const SizedBox(height: 8),
+                    _buildNeumorphicInfoTile(
+                      label: 'Biometric Access',
+                      value: staff.enableBiometric ? 'Enabled (Fingerprint / Face ID)' : 'Disabled',
+                      icon: Icons.fingerprint_rounded,
+                    ),
+                  ],
+                );
+              }
+            },
           ),
         ),
       ],
     );
   }
 
-  // Section Card Wrapper
+  // --- Reusable Neumorphic Section Card ---
   Widget _buildSectionCard({
     required String title,
     required IconData icon,
     required Color iconColor,
     required Color iconBgColor,
+    Widget? trailing,
     required Widget child,
   }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
+    return _buildNeumorphicCard(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(20),
+      elevation: 4.0,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header with Soft Embossed Icon
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(7),
                   decoration: BoxDecoration(
                     color: iconBgColor,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: iconColor.withValues(alpha: 0.2)),
+                    boxShadow: const [
+                      BoxShadow(color: Colors.white, offset: Offset(-1, -1), blurRadius: 2),
+                      BoxShadow(color: Color(0x10000000), offset: Offset(1, 1), blurRadius: 2),
+                    ],
                   ),
-                  child: Icon(icon, color: iconColor, size: 18),
+                  child: Icon(icon, color: iconColor, size: 17),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0F172A),
-                    letterSpacing: -0.1,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                      letterSpacing: -0.1,
+                    ),
                   ),
                 ),
+                ?trailing,
               ],
             ),
           ),
@@ -662,7 +913,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
           // Body
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(14),
             child: child,
           ),
         ],
@@ -670,62 +921,72 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     );
   }
 
-  // Detail Item Row
-  Widget _buildDetailItem({
+  // --- Neumorphic Inset Info Tile (Recessed Tile for Data Fields) ---
+  Widget _buildNeumorphicInfoTile({
     required String label,
     required String value,
     required IconData icon,
     VoidCallback? onCopy,
   }) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Icon(icon, size: 16, color: const Color(0xFF64748B)),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 120,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF64748B),
+    return _buildNeumorphicInset(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF64748B)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF64748B),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-        ),
-        const Text(
-          ': ',
-          style: TextStyle(
-            fontSize: 12.5,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF94A3B8),
-          ),
-        ),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F172A),
+          if (onCopy != null)
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: onCopy,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEFF6FF),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFBFDBFE)),
+                  ),
+                  child: const Icon(Icons.copy_rounded, size: 13, color: Color(0xFF2563EB)),
+                ),
+              ),
             ),
-          ),
-        ),
-        if (onCopy != null)
-          InkWell(
-            onTap: onCopy,
-            borderRadius: BorderRadius.circular(6),
-            child: const Padding(
-              padding: EdgeInsets.all(4.0),
-              child: Icon(Icons.copy_rounded, size: 15, color: Color(0xFF2563EB)),
-            ),
-          ),
-      ],
+        ],
+      ),
     );
   }
 
-  // Permission Badges List
+  // --- Permission Chips (Wrapped Neumorphic Chips) ---
   List<Widget> _buildPermissionChips(StaffModel staff) {
     final permissions = staff.permissions;
     final bool hasAll = permissions.contains('*') || permissions.contains('all');
@@ -744,28 +1005,35 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
       final isPermitted = hasAll || permissions.contains(mod['id']) || staff.role.toLowerCase() == 'manager';
 
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6.5),
         decoration: BoxDecoration(
           color: isPermitted ? const Color(0xFFEFF6FF) : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isPermitted ? const Color(0xFFBFDBFE) : const Color(0xFFE2E8F0),
             width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: isPermitted ? const Color(0x102563EB) : Colors.transparent,
+              offset: const Offset(0, 1.5),
+              blurRadius: 3,
+            ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               isPermitted ? Icons.check_circle_rounded : Icons.lock_outline_rounded,
-              size: 14,
+              size: 13.5,
               color: isPermitted ? const Color(0xFF2563EB) : const Color(0xFF94A3B8),
             ),
             const SizedBox(width: 6),
             Text(
               mod['label'] as String,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11.5,
                 fontWeight: isPermitted ? FontWeight.w800 : FontWeight.w600,
                 color: isPermitted ? const Color(0xFF1E40AF) : const Color(0xFF94A3B8),
               ),
@@ -776,7 +1044,8 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     }).toList();
   }
 
-  // ID Card Graphic Helper Components
+  // --- ID Card Graphic Helpers ---
+
   Widget _buildLanyardClip() {
     return Column(
       children: [
@@ -839,28 +1108,28 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
   Widget _buildBrandHeader(String restaurantName, String? logoPath) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Container(
-            width: 68,
-            height: 68,
-            padding: const EdgeInsets.all(4),
+            width: 62,
+            height: 62,
+            padding: const EdgeInsets.all(3.5),
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.white,
               border: Border.all(color: const Color(0xFFCBD5E1), width: 1.8),
               boxShadow: const [
-                BoxShadow(color: Color(0x1E000000), blurRadius: 8, offset: Offset(0, 3)),
+                BoxShadow(color: Color(0x1E000000), blurRadius: 6, offset: Offset(0, 2)),
               ],
             ),
             child: ClipOval(
-              child: _buildCompanyLogoImage(logoPath, 60, fit: BoxFit.cover),
+              child: _buildCompanyLogoImage(logoPath, 55, fit: BoxFit.cover),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -869,7 +1138,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                 Text(
                   restaurantName.toUpperCase(),
                   style: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.w900,
                     color: Color(0xFF991B1B),
                     letterSpacing: 0.8,
@@ -883,10 +1152,10 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                 const Text(
                   'R E S T A U R A N T',
                   style: TextStyle(
-                    fontSize: 8,
+                    fontSize: 7.5,
                     fontWeight: FontWeight.w800,
                     color: Color(0xFF475569),
-                    letterSpacing: 2.2,
+                    letterSpacing: 2.0,
                   ),
                   textAlign: TextAlign.right,
                 ),
@@ -898,8 +1167,7 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     );
   }
 
-  Widget _buildStaffAvatar(StaffModel staff) {
-    const double size = 72;
+  Widget _buildStaffAvatar(StaffModel staff, {double size = 72}) {
     final db = DatabaseService();
     final bool isOwnerStaff = staff.role.toLowerCase() == 'owner' ||
         staff.role.toLowerCase() == 'admin' ||
@@ -918,30 +1186,33 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
     Widget avatarContent;
     if (effectivePhoto.isNotEmpty) {
-      if (effectivePhoto.startsWith('http://') || effectivePhoto.startsWith('https://')) {
-        avatarContent = Image.network(
-          effectivePhoto,
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
-        );
-      } else if (effectivePhoto.startsWith('data:image') || (effectivePhoto.length > 50 && !effectivePhoto.startsWith('/'))) {
+      if (effectivePhoto.startsWith('data:image') || effectivePhoto.startsWith('data:') || (effectivePhoto.length > 80 && !effectivePhoto.contains('/') && !effectivePhoto.contains('\\'))) {
         try {
-          final cleanBase64 = effectivePhoto.contains(',') ? effectivePhoto.split(',').last : effectivePhoto;
-          final bytes = base64Decode(cleanBase64.trim());
+          final commaIdx = effectivePhoto.indexOf(',');
+          final cleanBase64 = commaIdx != -1 ? effectivePhoto.substring(commaIdx + 1) : effectivePhoto;
+          final bytes = base64Decode(cleanBase64.replaceAll('\n', '').replaceAll('\r', '').trim());
           avatarContent = Image.memory(
             bytes,
             width: size,
             height: size,
             fit: BoxFit.cover,
+            gaplessPlayback: true,
             errorBuilder: (context, error, stackTrace) =>
                 isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
           );
         } catch (_) {
           avatarContent = isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size);
         }
+      } else if (effectivePhoto.startsWith('http://') || effectivePhoto.startsWith('https://')) {
+        avatarContent = Image.network(
+          effectivePhoto,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) =>
+              isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
+        );
       } else if (effectivePhoto.startsWith('assets/')) {
         avatarContent = Image.asset(
           effectivePhoto,
@@ -967,22 +1238,52 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
       avatarContent = isOwnerStaff ? _buildCompanyLogoImage(db.companyLogoPath, size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size);
     }
 
-    return Container(
+    final isActive = staff.status.toLowerCase() != 'inactive' && staff.status.toLowerCase() != 'disabled';
+    final statusColor = isActive ? const Color(0xFF16A34A) : const Color(0xFFDC2626);
+
+    final avatarCircle = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: Colors.white,
-        border: Border.all(color: Colors.white, width: 3.0),
+        border: Border.all(color: Colors.white, width: 2.5),
         boxShadow: const [
           BoxShadow(
             color: Color(0x220F172A),
-            blurRadius: 8,
+            blurRadius: 7,
             offset: Offset(0, 3),
           ),
         ],
       ),
       child: ClipOval(child: avatarContent),
+    );
+
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        avatarCircle,
+        Positioned(
+          bottom: 2,
+          right: 2,
+          child: Container(
+            width: size * 0.22,
+            height: size * 0.22,
+            decoration: BoxDecoration(
+              color: statusColor,
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: statusColor.withValues(alpha: 0.4),
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1036,18 +1337,18 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     required String value,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2.2),
+      padding: const EdgeInsets.symmetric(vertical: 2.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 13, color: const Color(0xFF2563EB)),
-          const SizedBox(width: 6),
+          Icon(icon, size: 12.5, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 5),
           SizedBox(
-            width: 86,
+            width: 82,
             child: Text(
               label,
               style: const TextStyle(
-                fontSize: 10.5,
+                fontSize: 10,
                 fontWeight: FontWeight.w600,
                 color: Color(0xFF64748B),
                 letterSpacing: 0.1,
@@ -1057,17 +1358,17 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           const Text(
             ': ',
             style: TextStyle(
-              fontSize: 10.5,
+              fontSize: 10,
               fontWeight: FontWeight.w700,
               color: Color(0xFF94A3B8),
             ),
           ),
-          const SizedBox(width: 4),
+          const SizedBox(width: 3),
           Expanded(
             child: Text(
               value,
               style: const TextStyle(
-                fontSize: 11,
+                fontSize: 10.5,
                 fontWeight: FontWeight.w800,
                 color: Color(0xFF0F172A),
                 letterSpacing: 0.1,
@@ -1087,9 +1388,9 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
         child: Opacity(
           opacity: 0.075,
           child: SizedBox(
-            width: 200,
-            height: 200,
-            child: _buildCompanyLogoImage(photoPath, 200, fit: BoxFit.contain),
+            width: 180,
+            height: 180,
+            child: _buildCompanyLogoImage(photoPath, 180, fit: BoxFit.contain),
           ),
         ),
       ),
@@ -1098,12 +1399,27 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
 
   Widget _buildCompanyLogoImage(String? photoPath, double size, {BoxFit fit = BoxFit.contain}) {
     if (photoPath != null && photoPath.isNotEmpty) {
-      if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
+      if (photoPath.startsWith('data:image') || photoPath.startsWith('data:') || (photoPath.length > 80 && !photoPath.contains('/') && !photoPath.contains('\\'))) {
+        try {
+          final commaIdx = photoPath.indexOf(',');
+          final cleanBase64 = commaIdx != -1 ? photoPath.substring(commaIdx + 1) : photoPath;
+          final bytes = base64Decode(cleanBase64.replaceAll('\n', '').replaceAll('\r', '').trim());
+          return Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: fit,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
+          );
+        } catch (_) {}
+      } else if (photoPath.startsWith('http://') || photoPath.startsWith('https://')) {
         return Image.network(
           photoPath,
           width: size,
           height: size,
           fit: fit,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
         );
       } else if (photoPath.startsWith('assets/')) {
@@ -1122,18 +1438,6 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           fit: fit,
           errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
         );
-      } else if (photoPath.startsWith('data:image') || (photoPath.length > 50 && !photoPath.startsWith('/'))) {
-        try {
-          final cleanBase64 = photoPath.contains(',') ? photoPath.split(',').last : photoPath;
-          final bytes = base64Decode(cleanBase64.trim());
-          return Image.memory(
-            bytes,
-            width: size,
-            height: size,
-            fit: fit,
-            errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit),
-          );
-        } catch (_) {}
       }
     }
 
@@ -1200,13 +1504,13 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(14, 22, 14, 9),
+          padding: const EdgeInsets.fromLTRB(12, 20, 12, 8),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                padding: const EdgeInsets.all(3.0),
+                padding: const EdgeInsets.all(2.5),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(5),
@@ -1217,18 +1521,18 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                 child: QrImageView(
                   data: qrData,
                   version: QrVersions.auto,
-                  size: 40.0,
+                  size: 38.0,
                   padding: EdgeInsets.zero,
                   backgroundColor: Colors.white,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Container(
                 width: 1,
-                height: 36,
+                height: 34,
                 color: const Color(0x33FFFFFF),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1237,10 +1541,10 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     Text(
                       restaurantName.toUpperCase(),
                       style: const TextStyle(
-                        fontSize: 10.5,
+                        fontSize: 10,
                         fontWeight: FontWeight.w900,
                         color: Colors.white,
-                        letterSpacing: 1.0,
+                        letterSpacing: 0.9,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1248,20 +1552,20 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
                     const Text(
                       'R E S T A U R A N T',
                       style: TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 6,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF94A3B8),
-                        letterSpacing: 1.6,
+                        letterSpacing: 1.5,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       tagline,
                       style: const TextStyle(
-                        fontSize: 6.5,
+                        fontSize: 6,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF60A5FA),
-                        letterSpacing: 1.1,
+                        letterSpacing: 1.0,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,

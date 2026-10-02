@@ -110,6 +110,24 @@ class OrderController {
       next(error);
     }
   }
+
+  async deleteOrder(req, res, next) {
+    try {
+      const result = await orderService.deleteOrder(req.businessId, req.params.id);
+      return ApiResponse.success(res, result, 'Order deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteOrderByNumber(req, res, next) {
+    try {
+      const result = await orderService.deleteOrderByNumber(req.businessId, req.params.orderNumber);
+      return ApiResponse.success(res, result, 'Order deleted successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new OrderController();

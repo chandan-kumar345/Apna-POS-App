@@ -68,6 +68,12 @@ class TableModel {
         (json['activeItemCount'] as num?)?.toInt() ??
         0;
 
+    final String? rawOccupiedSince = json['occupiedSince']?.toString();
+    final String? activeOrderCreatedAt = activeOrder?['createdAt']?.toString() ?? json['createdAt']?.toString();
+    final String? effectiveOccupiedSince = (mappedStatus == TableStatus.occupied || mappedStatus == TableStatus.runningKot)
+        ? (rawOccupiedSince ?? activeOrderCreatedAt ?? DateTime.now().toIso8601String())
+        : rawOccupiedSince;
+
     return TableModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       tableNumber: (json['tableNumber'] as num?)?.toInt() ?? 1,
@@ -76,7 +82,7 @@ class TableModel {
       capacity: (json['capacity'] as num?)?.toInt() ?? 4,
       status: mappedStatus,
       currentOrderId: activeOrder?['id']?.toString() ?? json['currentOrderId']?.toString(),
-      occupiedSince: json['occupiedSince']?.toString(),
+      occupiedSince: effectiveOccupiedSince,
       activeOrderNumber: orderNum,
       activeOrderTotal: ordTotal,
       activeItemCount: itmCount,
@@ -84,6 +90,10 @@ class TableModel {
   }
 
   TableModel copyWith({
+    String? name,
+    String? floor,
+    int? capacity,
+    int? tableNumber,
     TableStatus? status,
     String? currentOrderId,
     String? occupiedSince,
@@ -97,10 +107,10 @@ class TableModel {
 
     return TableModel(
       id: id,
-      tableNumber: tableNumber,
-      name: name,
-      floor: floor,
-      capacity: capacity,
+      tableNumber: tableNumber ?? this.tableNumber,
+      name: name ?? this.name,
+      floor: floor ?? this.floor,
+      capacity: capacity ?? this.capacity,
       status: effectiveStatus,
       currentOrderId: (clearOrderId || isNowFree) ? null : (currentOrderId ?? this.currentOrderId),
       occupiedSince: isNowFree ? null : (occupiedSince ?? this.occupiedSince),
@@ -115,12 +125,16 @@ class TableModel {
     if (status == TableStatus.free) return null;
     final startA = parseTableOccupiedSince(occupiedSince);
     final startB = activeOrderCreatedAt != null ? parseTableOccupiedSince(activeOrderCreatedAt) : null;
-    final DateTime? start;
+    DateTime? start;
     if (startA != null && startB != null) {
       // Pick the earlier timestamp (when items were first added or session began)
       start = startA.isBefore(startB) ? startA : startB;
     } else {
       start = startA ?? startB;
+    }
+    // If still null but status is active (occupied or runningKot), initialize start to now
+    if (start == null && (status == TableStatus.occupied || status == TableStatus.runningKot)) {
+      start = now ?? DateTime.now();
     }
     if (start == null) return null;
     final current = now ?? DateTime.now();
@@ -129,27 +143,51 @@ class TableModel {
   }
 }
 
-/// Robustly parses occupiedSince timestamps supporting ISO-8601 and HH:mm formats
-DateTime? parseTableOccupiedSince(String? val) {
-  if (val == null || val.trim().isEmpty) return null;
-  final clean = val.trim();
-  final parsed = DateTime.tryParse(clean);
-  if (parsed != null) return parsed;
+/// Robustly parses occupiedSince timestamps supporting ISO-8601, numeric epoch millis/seconds, and HH:mm/AM/PM formats
+DateTime? parseTableOccupiedSince(dynamic val) {
+  if (val == null) return null;
+  if (val is DateTime) return val;
+  final str = val.toString().trim();
+  if (str.isEmpty || str == 'null') return null;
 
-  final parts = clean.split(':');
-  if (parts.length >= 2) {
-    final h = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    final s = parts.length >= 3 ? (int.tryParse(parts[2]) ?? 0) : 0;
-    if (h != null && m != null) {
-      final now = DateTime.now();
-      var dt = DateTime(now.year, now.month, now.day, h, m, s);
-      if (dt.isAfter(now)) {
-        dt = dt.subtract(const Duration(days: 1));
-      }
-      return dt;
+  // 1. Try numeric epoch timestamp (millis or seconds)
+  final numVal = int.tryParse(str);
+  if (numVal != null && numVal > 1000000000) {
+    if (numVal > 1000000000000) {
+      return DateTime.fromMillisecondsSinceEpoch(numVal);
+    } else {
+      return DateTime.fromMillisecondsSinceEpoch(numVal * 1000);
     }
   }
+
+  // 2. Try standard ISO-8601 parsing
+  final parsed = DateTime.tryParse(str);
+  if (parsed != null) return parsed;
+
+  // 3. Try HH:mm or HH:mm:ss with optional AM/PM
+  try {
+    final lower = str.toLowerCase();
+    final isPm = lower.contains('pm');
+    final isAm = lower.contains('am');
+    final cleanTime = str.replaceAll(RegExp(r'[a-zA-Z]'), '').trim();
+    final parts = cleanTime.split(':');
+    if (parts.length >= 2) {
+      var h = int.tryParse(parts[0].trim());
+      final m = int.tryParse(parts[1].trim());
+      final s = parts.length >= 3 ? (int.tryParse(parts[2].trim()) ?? 0) : 0;
+      if (h != null && m != null) {
+        if (isPm && h < 12) h += 12;
+        if (isAm && h == 12) h = 0;
+        final now = DateTime.now();
+        var dt = DateTime(now.year, now.month, now.day, h, m, s);
+        if (dt.isAfter(now)) {
+          dt = dt.subtract(const Duration(days: 1));
+        }
+        return dt;
+      }
+    }
+  } catch (_) {}
+
   return null;
 }
 

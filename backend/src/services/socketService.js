@@ -235,6 +235,21 @@ class SocketService {
     this.broadcastToBusiness(businessId, 'order_created', payload);
   }
 
+  /**
+   * Emit order deleted event across all connected clients in the business
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} orderData
+   */
+  emitOrderDeleted(businessId, orderData) {
+    if (!businessId || !orderData) return;
+    const payload = {
+      ...orderData,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'order:deleted', payload);
+    this.broadcastToBusiness(businessId, 'order_deleted', payload);
+  }
+
   getIO() {
     return this.io;
   }

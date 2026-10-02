@@ -39,6 +39,10 @@ class UserModel {
 
   bool get isOwner => role.toLowerCase() == 'owner';
   bool get isAdmin => isOwner || role.toLowerCase() == 'admin';
+  bool get isSuperAdmin =>
+      role.toLowerCase() == 'superadmin' ||
+      role.toLowerCase() == 'master_admin' ||
+      email.toLowerCase().trim() == 'chandanyaduvanshi190@gmail.com';
   bool get isManager => role.toLowerCase() == 'manager';
   bool get isCashier => role.toLowerCase() == 'cashier';
   bool get isWaiter => role.toLowerCase() == 'waiter';

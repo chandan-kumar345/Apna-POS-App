@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -889,39 +890,45 @@ class _AddProductScreenState extends State<AddProductScreen> {
         if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
           finalImageUrls.add(ApiEndpoints.resolveMediaUrl(img.remoteUrl!));
         } else if (img.bytes != null && img.bytes!.isNotEmpty) {
+          String? uploadedUrl;
           try {
-            final uploadedUrl = await UploadService().uploadImageBytes(
+            uploadedUrl = await UploadService().uploadImageBytes(
               img.bytes!,
               fileName: (img.name != null && img.name!.isNotEmpty) ? img.name! : 'product_${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
             );
-            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-              finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
-            } else if (img.path != null && img.path!.isNotEmpty) {
-              finalImageUrls.add(img.path!);
-            }
           } catch (e) {
-            debugPrint('[AddProductScreen] image bytes upload fallback: $e');
-            if (img.path != null && img.path!.isNotEmpty) {
-              finalImageUrls.add(img.path!);
-            }
+            debugPrint('[AddProductScreen] image bytes upload error: $e');
+          }
+          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+            finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
+          } else {
+            // Encode as Base64 Data URI so other devices can load it directly over MongoDB / sync
+            final base64Data = 'data:image/jpeg;base64,${base64Encode(img.bytes!)}';
+            finalImageUrls.add(base64Data);
           }
         } else if (img.path != null && img.path!.isNotEmpty) {
-          if (img.path!.startsWith('http://') || img.path!.startsWith('https://')) {
+          if (img.path!.startsWith('http://') || img.path!.startsWith('https://') || img.path!.startsWith('data:')) {
             finalImageUrls.add(img.path!);
           } else {
+            String? uploadedUrl;
+            Uint8List? localBytes;
             try {
               final file = File(img.path!);
               if (file.existsSync()) {
-                final uploadedUrl = await UploadService().uploadImage(file);
-                if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-                  finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
-                } else {
-                  finalImageUrls.add(img.path!);
-                }
-              } else {
-                finalImageUrls.add(img.path!);
+                localBytes = await file.readAsBytes();
+                uploadedUrl = await UploadService().uploadImage(file);
               }
             } catch (e) {
+              debugPrint('[AddProductScreen] image file upload error: $e');
+            }
+
+            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+              finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
+            } else if (localBytes != null && localBytes.isNotEmpty) {
+              // Encode as Base64 Data URI so other devices can load it directly over MongoDB / sync
+              final base64Data = 'data:image/jpeg;base64,${base64Encode(localBytes)}';
+              finalImageUrls.add(base64Data);
+            } else {
               finalImageUrls.add(img.path!);
             }
           }

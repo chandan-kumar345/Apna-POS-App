@@ -250,16 +250,39 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                 width: 36,
                 height: 36,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isOnline
-                        ? const Color(0xFF22C55E).withOpacity(0.4)
-                        : const Color(0xFFEF4444).withOpacity(0.4),
-                    width: 1.2,
-                  ),
-                ),
+                decoration: widget.isDarkTheme
+                    ? BoxDecoration(
+                        color: Colors.white.withOpacity(0.12),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isOnline
+                              ? const Color(0xFF22C55E).withOpacity(0.4)
+                              : const Color(0xFFEF4444).withOpacity(0.4),
+                          width: 1.2,
+                        ),
+                      )
+                    : BoxDecoration(
+                        color: const Color(0xFFF7FAFD),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white,
+                          width: 1.5,
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.white,
+                            offset: Offset(-2.5, -2.5),
+                            blurRadius: 5,
+                            spreadRadius: 1,
+                          ),
+                          BoxShadow(
+                            color: Color(0xFFC0D2E6),
+                            offset: Offset(2.5, 2.5),
+                            blurRadius: 5,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
                 child: Stack(
                   alignment: Alignment.center,
                   children: [

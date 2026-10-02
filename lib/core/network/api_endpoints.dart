@@ -82,9 +82,39 @@ class ApiEndpoints {
       }
     } catch (_) {}
 
-    // 3. Web platform
+    // 3. Web platform dynamic auto-discovery
     if (kIsWeb) {
-      _resolvedBaseUrl = productionApiUrl;
+      final webCandidates = <String>[
+        'http://127.0.0.1:$defaultPort/api/v1',
+        'http://localhost:$defaultPort/api/v1',
+        'http://$defaultLanIp:$defaultPort/api/v1',
+        'http://172.16.2.2:$defaultPort/api/v1',
+        'http://172.16.2.3:$defaultPort/api/v1',
+        if (Uri.base.host.isNotEmpty && Uri.base.host != 'localhost' && Uri.base.host != '127.0.0.1')
+          'http://${Uri.base.host}:$defaultPort/api/v1',
+        productionApiUrl,
+        cloudflareTunnelUrl,
+        publicTunnelUrl,
+      ];
+
+      final activeWeb = await _scanCandidatesParallel(webCandidates, timeoutMs: 1200);
+      if (activeWeb != null) {
+        _resolvedBaseUrl = activeWeb;
+        debugPrint('[ApiEndpoints] Web auto-discovered active backend at: $activeWeb');
+        return;
+      }
+
+      // Default Web Fallback
+      if (Uri.base.host.isNotEmpty &&
+          (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1')) {
+        _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
+      } else if (Uri.base.host.isNotEmpty &&
+          (Uri.base.host.startsWith('192.168.') || Uri.base.host.startsWith('172.'))) {
+        _resolvedBaseUrl = 'http://${Uri.base.host}:$defaultPort/api/v1';
+      } else {
+        _resolvedBaseUrl = productionApiUrl;
+      }
+      debugPrint('[ApiEndpoints] Web fallback base URL: $_resolvedBaseUrl');
       return;
     }
 
@@ -96,7 +126,7 @@ class ApiEndpoints {
       'http://172.16.2.4:$defaultPort/api/v1',
       if (isDesktop) 'http://127.0.0.1:$defaultPort/api/v1',
       if (isDesktop) 'http://localhost:$defaultPort/api/v1',
-      if (Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
+      if (!kIsWeb && Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
       'http://127.0.0.1:$defaultPort/api/v1',
       'http://localhost:$defaultPort/api/v1',
       productionApiUrl,
@@ -124,7 +154,7 @@ class ApiEndpoints {
     }
 
     // 6. Default fallback: Default LAN IP on Android, localhost on Desktop
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       _resolvedBaseUrl = 'http://$defaultLanIp:$defaultPort/api/v1';
     } else if (isDesktop) {
       _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
@@ -226,9 +256,17 @@ class ApiEndpoints {
       return _resolvedBaseUrl!;
     }
     if (kIsWeb) {
-      return 'http://127.0.0.1:$defaultPort/api/v1';
+      if (Uri.base.host.isNotEmpty &&
+          (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1')) {
+        return 'http://127.0.0.1:$defaultPort/api/v1';
+      }
+      if (Uri.base.host.isNotEmpty &&
+          (Uri.base.host.startsWith('192.168.') || Uri.base.host.startsWith('172.'))) {
+        return 'http://${Uri.base.host}:$defaultPort/api/v1';
+      }
+      return productionApiUrl;
     }
-    if (Platform.isAndroid) {
+    if (!kIsWeb && Platform.isAndroid) {
       return 'http://$defaultLanIp:$defaultPort/api/v1';
     }
     return 'http://127.0.0.1:$defaultPort/api/v1';
@@ -238,6 +276,11 @@ class ApiEndpoints {
   static String resolveMediaUrl(String? url) {
     if (url == null || url.trim().isEmpty) return '';
     var trimmed = url.trim();
+
+    // 0. Base64 Data URI or raw Base64 string
+    if (trimmed.startsWith('data:') || trimmed.startsWith('data:image')) {
+      return trimmed;
+    }
 
     // 1. Asset path
     if (trimmed.startsWith('assets/')) {

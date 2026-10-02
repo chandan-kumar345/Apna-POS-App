@@ -43,7 +43,7 @@ class ChotuTtsService extends ChangeNotifier {
     _isSpeaking = true;
     notifyListeners();
 
-    if (Platform.environment.containsKey('FLUTTER_TEST')) {
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
       _isSpeaking = false;
       notifyListeners();
       return;

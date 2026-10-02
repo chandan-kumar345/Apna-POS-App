@@ -82,6 +82,21 @@ class DatabaseService extends ChangeNotifier {
   List<String> categories = [];
   Map<String, String> categoryImages = {};
   List<TableModel> tables = [];
+  List<String> _customFloors = ['Ground Floor', '1st Floor'];
+  List<String> get customFloors => List.unmodifiable(_customFloors);
+  List<String> get allFloors {
+    final set = <String>{};
+    for (final f in _customFloors) {
+      if (f.trim().isNotEmpty) set.add(f.trim());
+    }
+    for (final t in tables) {
+      if (t.floor.trim().isNotEmpty) set.add(t.floor.trim());
+    }
+    if (set.isEmpty) {
+      set.addAll(['Ground Floor', '1st Floor']);
+    }
+    return set.toList();
+  }
   List<OrderModel> orders = [];
   List<InventoryItemModel> inventoryItems = [];
   List<CustomerModel> customers = [];
@@ -453,12 +468,12 @@ class DatabaseService extends ChangeNotifier {
     for (int i = 0; i < tables.length; i++) {
       final tbl = tables[i];
       final activeOrder = orders.where((o) =>
-        isSameTable(o.tableNumber, tbl.name) &&
-        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        (isSameTable(o.tableNumber, tbl.name) || (tbl.currentOrderId != null && o.id == tbl.currentOrderId)) &&
+        (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)
       ).firstOrNull;
 
       if (activeOrder != null) {
-        final mappedStatus = (activeOrder.status == OrderStatus.preparing)
+        final mappedStatus = (activeOrder.status == OrderStatus.preparing || tbl.status == TableStatus.runningKot)
             ? TableStatus.runningKot
             : TableStatus.occupied;
         final startA = parseTableOccupiedSince(tbl.occupiedSince);
@@ -478,7 +493,7 @@ class DatabaseService extends ChangeNotifier {
         _liveCartTotals[tbl.name] = activeOrder.totalAmount;
         _liveTableCarts[tbl.name] = activeOrder.items.map((i) => i.clone()).toList();
       } else {
-        // No active pending/preparing order exists for this table
+        // No active pending/preparing/ready order exists for this table
         final hasDraftCart = (_liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty) ||
             (_liveTableCarts.containsKey('T-${tbl.tableNumber}') && _liveTableCarts['T-${tbl.tableNumber}']!.isNotEmpty);
         if (hasDraftCart) {
@@ -499,6 +514,16 @@ class DatabaseService extends ChangeNotifier {
           }
           tables[i] = tbl.copyWith(
             status: TableStatus.occupied,
+            occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
+          );
+        } else if (tbl.status == TableStatus.runningKot) {
+          // Table was marked Running KOT remotely (KOT punched on peer device / server)
+          // Preserve running KOT state, active totals, and timer!
+          if (tbl.activeOrderTotal > 0) {
+            _liveCartTotals[tbl.name] = tbl.activeOrderTotal;
+          }
+          tables[i] = tbl.copyWith(
+            status: TableStatus.runningKot,
             occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String(),
           );
         } else if (tbl.status == TableStatus.reserved) {
@@ -646,6 +671,14 @@ class DatabaseService extends ChangeNotifier {
       _seedCleanTables(restaurant?.tableCount ?? 12);
     }
 
+    // 4b. Load Custom Floors (Strictly User-scoped)
+    final savedFloors = _prefs?.getStringList('apna_pos_${userId}_custom_floors');
+    if (savedFloors != null && savedFloors.isNotEmpty) {
+      _customFloors = List<String>.from(savedFloors);
+    } else {
+      _customFloors = ['Ground Floor', '1st Floor'];
+    }
+
     // 5. Load Orders (Strictly User-scoped)
     final List<OrderModel> loadedOrders = [];
     final Set<String> loadedKeys = {};
@@ -778,17 +811,31 @@ class DatabaseService extends ChangeNotifier {
     if (!hasAdmin) {
       registeredUsers.add(
         UserModel(
-          id: 'usr_demo_admin',
-          name: 'Demo Admin',
+          id: 'usr_admin',
+          name: 'Chandan Kumar',
           email: 'admin@apnapos.com',
           phone: '9876543210',
           role: 'Owner',
           pin: '1234',
           restaurantId: 'rest_001',
-          companyName: 'Apna POS Diner',
+          companyName: 'Shri Sai Cafe',
         ),
       );
       _saveRegisteredUsers();
+    } else {
+      bool changed = false;
+      for (int i = 0; i < registeredUsers.length; i++) {
+        if (registeredUsers[i].name.toLowerCase().contains('demo') || registeredUsers[i].name.trim().isEmpty) {
+          registeredUsers[i] = registeredUsers[i].copyWith(name: 'Chandan Kumar');
+          changed = true;
+        }
+      }
+      if (changed) _saveRegisteredUsers();
+    }
+
+    if (currentUser != null && (currentUser!.name.toLowerCase().contains('demo') || currentUser!.name.trim().isEmpty)) {
+      currentUser = currentUser!.copyWith(name: 'Chandan Kumar');
+      _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     }
 
     // 3. Load active user's dataset if logged in, otherwise clean state
@@ -912,6 +959,15 @@ class DatabaseService extends ChangeNotifier {
           }
         }
         notifyListeners();
+      }
+    };
+
+    _socketService.onOrderDeleted = (data) {
+      final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
+      final orderNumber = data['orderNumber']?.toString() ?? '';
+      final target = orderNumber.isNotEmpty ? orderNumber : orderId;
+      if (target.isNotEmpty) {
+        deleteOrderByOrderNumber(orderNumber: target);
       }
     };
 
@@ -2094,6 +2150,90 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  UserModel? _cachedOwnerUser;
+
+  UserModel? get cachedOwnerUser {
+    if (_cachedOwnerUser != null && !_cachedOwnerUser!.name.toLowerCase().contains('demo') && _cachedOwnerUser!.name.isNotEmpty) {
+      return _cachedOwnerUser;
+    }
+
+    // 1. If currently logged in user is the owner or admin
+    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner' || currentUser!.isAdmin)) {
+      final validName = currentUser!.name.toLowerCase().contains('demo') ? 'Chandan Kumar' : currentUser!.name;
+      _cachedOwnerUser = currentUser!.copyWith(name: validName);
+      return _cachedOwnerUser;
+    }
+
+    // 2. From saved owner backup
+    final backupJson = _prefs?.getString('apna_pos_owner_backup');
+    if (backupJson != null) {
+      try {
+        final parsed = UserModel.fromJson(jsonDecode(backupJson));
+        final validName = (parsed.name.isEmpty || parsed.name.toLowerCase().contains('demo')) ? 'Chandan Kumar' : parsed.name;
+        _cachedOwnerUser = parsed.copyWith(name: validName);
+        return _cachedOwnerUser;
+      } catch (_) {}
+    }
+
+    // 3. From registered users list
+    final fromRegistered = registeredUsers.where((u) => u.isOwner || u.role.toLowerCase() == 'owner').firstOrNull;
+    if (fromRegistered != null) {
+      final validName = (fromRegistered.name.isEmpty || fromRegistered.name.toLowerCase().contains('demo')) ? 'Chandan Kumar' : fromRegistered.name;
+      _cachedOwnerUser = fromRegistered.copyWith(name: validName);
+      return _cachedOwnerUser;
+    }
+
+    return null;
+  }
+
+  void cacheOwnerUser(UserModel user) {
+    if (user.isOwner || user.role.toLowerCase() == 'owner') {
+      _cachedOwnerUser = user;
+      _prefs?.setString('apna_pos_owner_backup', jsonEncode(user.toJson()));
+    }
+  }
+
+  Future<void> switchToStaff(StaffModel staff) async {
+    if (currentUser != null && (currentUser!.isOwner || currentUser!.role.toLowerCase() == 'owner')) {
+      cacheOwnerUser(currentUser!);
+    }
+
+    final staffUser = UserModel(
+      id: staff.id,
+      name: staff.name,
+      email: staff.email.isNotEmpty ? staff.email : 'staff_${staff.id}@apnapos.com',
+      role: staff.role,
+      pin: staff.pin,
+      restaurantId: restaurant?.id ?? 'rest_001',
+      phone: staff.phone,
+      employeeId: staff.employeeId,
+      profilePhotoPath: staff.avatarUrl,
+      permissions: staff.permissions,
+      jobTitle: staff.role,
+      companyName: restaurant?.name,
+      onboardingCompleted: true,
+      onboardingStep: 4,
+    );
+
+    currentUser = staffUser;
+    await _prefs?.setString('apna_pos_user', jsonEncode(staffUser.toJson()));
+    notifyListeners();
+  }
+
+  Future<void> switchToOwner() async {
+    final owner = cachedOwnerUser;
+    if (owner != null) {
+      currentUser = owner;
+      await _prefs?.setString('apna_pos_user', jsonEncode(owner.toJson()));
+      notifyListeners();
+    }
+  }
+
+  bool get isLoggedInAsStaff =>
+      currentUser != null &&
+      !currentUser!.isOwner &&
+      currentUser!.role.toLowerCase() != 'owner';
+
   Future<bool> loginWithPin(String pin) async {
     if (currentUser != null && currentUser!.pin == pin) {
       notifyListeners();
@@ -2102,23 +2242,7 @@ class DatabaseService extends ChangeNotifier {
     // Check dynamic staff list for active staff member matching PIN
     final matchedStaff = staffList.where((s) => s.pin == pin && s.isActive).firstOrNull;
     if (matchedStaff != null) {
-      currentUser = UserModel(
-        id: matchedStaff.id,
-        name: matchedStaff.name,
-        email: matchedStaff.email.isNotEmpty ? matchedStaff.email : 'staff_${matchedStaff.id}@apnapos.com',
-        role: matchedStaff.role,
-        pin: matchedStaff.pin,
-        restaurantId: restaurant?.id ?? 'rest_001',
-        phone: matchedStaff.phone,
-        employeeId: matchedStaff.employeeId,
-        profilePhotoPath: matchedStaff.avatarUrl,
-        permissions: matchedStaff.permissions,
-        jobTitle: matchedStaff.role,
-        companyName: restaurant?.name,
-        onboardingCompleted: true,
-        onboardingStep: 4,
-      );
-      notifyListeners();
+      await switchToStaff(matchedStaff);
       return true;
     }
     return false;
@@ -2674,6 +2798,20 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Reorder all products globally
+  Future<void> reorderAllProducts(int oldIndex, int newIndex) async {
+    if (oldIndex < 0 || oldIndex >= menuItems.length) return;
+    if (newIndex > menuItems.length) newIndex = menuItems.length;
+    if (oldIndex < newIndex) {
+      newIndex -= 1;
+    }
+    final movedItem = menuItems.removeAt(oldIndex);
+    menuItems.insert(newIndex, movedItem);
+
+    await _saveMenuToPrefs();
+    notifyListeners();
+  }
+
   /// Reorder products inside a specific category
   Future<void> reorderCategoryProducts(String categoryName, int oldIndex, int newIndex) async {
     final catLower = categoryName.trim().toLowerCase();
@@ -2859,6 +2997,68 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  void resetCustomFloors([List<String>? floors]) {
+    _customFloors = floors != null ? List.from(floors) : ['Ground Floor', '1st Floor'];
+    notifyListeners();
+  }
+
+  Future<void> addCustomFloor(String floorName) async {
+    final clean = floorName.trim();
+    if (clean.isEmpty) return;
+    if (!_customFloors.any((f) => f.toLowerCase() == clean.toLowerCase())) {
+      _customFloors.add(clean);
+      await _prefs?.setStringList(_userKey('custom_floors'), _customFloors);
+      notifyListeners();
+    }
+  }
+
+  Future<void> renameFloor(String oldName, String newName) async {
+    final cleanOld = oldName.trim();
+    final cleanNew = newName.trim();
+    if (cleanOld.isEmpty || cleanNew.isEmpty || cleanOld.toLowerCase() == cleanNew.toLowerCase()) return;
+
+    // 1. Update in _customFloors list
+    final idx = _customFloors.indexWhere((f) => f.toLowerCase() == cleanOld.toLowerCase());
+    if (idx >= 0) {
+      _customFloors[idx] = cleanNew;
+    } else {
+      _customFloors.add(cleanNew);
+    }
+    await _prefs?.setStringList(_userKey('custom_floors'), _customFloors);
+
+    // 2. Update floor on all tables belonging to old floor
+    bool anyTableUpdated = false;
+    final List<TableModel> updatedTablesToSync = [];
+    for (int i = 0; i < tables.length; i++) {
+      if (tables[i].floor.trim().toLowerCase() == cleanOld.toLowerCase()) {
+        tables[i] = tables[i].copyWith(floor: cleanNew);
+        updatedTablesToSync.add(tables[i]);
+        anyTableUpdated = true;
+      }
+    }
+
+    if (anyTableUpdated) {
+      await _saveTablesToPrefs();
+    }
+    notifyListeners();
+
+    // 3. Sync floor rename to backend API for multi-device sync
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth && updatedTablesToSync.isNotEmpty) {
+          for (final t in updatedTablesToSync) {
+            if (t.id.isNotEmpty && !t.id.startsWith('TBL-')) {
+              await _tableService.updateTable(t);
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.renameFloor] Backend sync error: $e');
+      }
+    }());
+  }
+
   Future<void> addTable(String name, String floor, int capacity, {int count = 1}) async {
     final qty = count > 0 ? count : 1;
     final List<TableModel> newTablesToAdd = [];
@@ -2867,6 +3067,12 @@ class DatabaseService extends ChangeNotifier {
     final baseName = name.trim().isEmpty ? 'T' : name.trim();
     final flr = floor.trim().isEmpty ? 'Ground Floor' : floor.trim();
     final cap = capacity > 0 ? capacity : 4;
+
+    // Ensure customFloors includes this floor
+    if (!_customFloors.any((f) => f.toLowerCase() == flr.toLowerCase())) {
+      _customFloors.add(flr);
+      await _prefs?.setStringList(_userKey('custom_floors'), _customFloors);
+    }
 
     for (int i = 1; i <= qty; i++) {
       maxNum++;
@@ -2896,10 +3102,11 @@ class DatabaseService extends ChangeNotifier {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
         final remoteCreated = await _tableService.createBulkTables(
-          name: baseName,
+          name: qty == 1 ? newTablesToAdd.first.name : baseName,
           floor: flr,
           capacity: cap,
           count: qty,
+          tableNumber: qty == 1 ? newTablesToAdd.first.tableNumber : null,
         );
         if (remoteCreated.isNotEmpty) {
           // Replace locally generated IDs with real MongoDB IDs
@@ -3446,6 +3653,11 @@ class DatabaseService extends ChangeNotifier {
     final resolvedCustPhone = customerPhone ?? baseOrder.customerPhone;
     final resolvedDelivAddr = deliveryAddress ?? baseOrder.deliveryAddress;
 
+    final double computedBill = (baseOrder.effectiveSubtotal - baseOrder.discountAmount + baseOrder.taxAmount + baseOrder.tipAmount + baseOrder.deliveryCharge + roundOff).clamp(0.0, double.infinity);
+    final double safeTotalAmount = (baseOrder.items.isNotEmpty && baseOrder.effectiveSubtotal > 0 && (totalAmount - computedBill).abs() > 0.05)
+        ? computedBill
+        : (totalAmount > 0 ? totalAmount : computedBill);
+
     final completedOrder = baseOrder.copyWith(
       status: OrderStatus.completed,
       paymentStatus: 'paid',
@@ -3453,7 +3665,7 @@ class DatabaseService extends ChangeNotifier {
       isSynced: false,
       paymentMethod: paymentMethod,
       roundOff: roundOff,
-      totalAmount: totalAmount,
+      totalAmount: safeTotalAmount,
       staffId: resolvedStaffId,
       staffName: resolvedStaffName,
       staffRole: resolvedStaffRole,
@@ -3642,6 +3854,94 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Permanently delete an order from the database by its order number or order ID.
+  /// This purges the order across in-memory lists, local user/restaurant storage,
+  /// print logs, and syncs deletion to backend cloud MongoDB, removing it permanently from sales reports.
+  Future<bool> deleteOrderByOrderNumber({
+    required String orderNumber,
+    String? targetUserId,
+    String? targetRestaurantId,
+  }) async {
+    final cleanNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+    if (cleanNum.isEmpty) return false;
+
+    // 1. Locate and remove matching order from in-memory orders list
+    OrderModel? removedOrder;
+    final index = orders.indexWhere((o) {
+      final oNum = o.orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+      final oId = o.id.toLowerCase().trim();
+      return oNum == cleanNum || oId == cleanNum || o.orderNumber.toLowerCase() == cleanNum;
+    });
+
+    if (index >= 0) {
+      removedOrder = orders.removeAt(index);
+    } else {
+      orders.removeWhere((o) {
+        final oNum = o.orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+        final oId = o.id.toLowerCase().trim();
+        final match = oNum == cleanNum || oId == cleanNum || o.orderNumber.toLowerCase() == cleanNum;
+        if (match) removedOrder = o;
+        return match;
+      });
+    }
+
+    // 2. Free associated table if this order was occupying one
+    if (removedOrder != null && removedOrder!.tableNumber != null && removedOrder!.tableNumber!.isNotEmpty) {
+      clearTableCartAndFree(removedOrder!.tableNumber);
+    }
+
+    // 3. Save updated orders list for active user and all associated target profile keys in SharedPreferences
+    await _saveOrdersToPrefs();
+
+    if (_prefs != null) {
+      final profileKeys = <String>{
+        if (currentUser?.id != null && currentUser!.id.isNotEmpty) currentUser!.id,
+        if (restaurant?.id != null && restaurant!.id.isNotEmpty) restaurant!.id,
+        if (targetUserId != null && targetUserId.isNotEmpty) targetUserId,
+        if (targetRestaurantId != null && targetRestaurantId.isNotEmpty) targetRestaurantId,
+        'guest',
+      };
+
+      for (final uid in profileKeys) {
+        final key = 'apna_pos_${uid}_orders';
+        final rawStr = _prefs!.getString(key);
+        if (rawStr != null && rawStr.isNotEmpty) {
+          try {
+            final List raw = jsonDecode(rawStr);
+            final filtered = raw.where((item) {
+              if (item is Map) {
+                final on = (item['orderNumber'] ?? item['orderNo'] ?? '').toString().replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+                final oid = (item['id'] ?? item['_id'] ?? '').toString().toLowerCase().trim();
+                return on != cleanNum && oid != cleanNum;
+              }
+              return true;
+            }).toList();
+            await _prefs!.setString(key, jsonEncode(filtered));
+          } catch (_) {}
+        }
+      }
+    }
+
+    // 5. Delete on backend API for web and cloud database synchronization
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        if (removedOrder != null && removedOrder!.id.isNotEmpty) {
+          await _orderService.deleteOrder(removedOrder!.id);
+        }
+        final rawNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim();
+        if (rawNum.isNotEmpty && (removedOrder == null || removedOrder!.id != rawNum)) {
+          await _orderService.deleteOrder(rawNum);
+        }
+      }
+    } catch (err) {
+      debugPrint('[DatabaseService.deleteOrderByOrderNumber] API delete error: $err');
+    }
+
+    notifyListeners();
+    return removedOrder != null || index >= 0;
+  }
+
   /// Generate Dynamic UPI QR (Razorpay Gateway or offline standard UPI)
   Future<PaymentQrResult> generateUpiPaymentQr({
     required String orderId,
@@ -3777,15 +4077,23 @@ class DatabaseService extends ChangeNotifier {
       // Exclude cancelled / void orders
       if (o.status == OrderStatus.cancelled) return false;
 
-      // Must be completed or marked paid
+      // Must be completed or marked paid/settled
+      final ps = o.paymentStatus.toLowerCase().trim();
       final bool isSettled = o.status == OrderStatus.completed ||
           o.isPaid ||
-          o.paymentStatus.toLowerCase() == 'paid';
+          ps == 'paid' ||
+          ps == 'settled' ||
+          ps == 'success';
       if (!isSettled) return false;
 
-      // Exclude unpaid KOT drafts that aren't settled
+      // Exclude unpaid KOT drafts / running orders that aren't settled
       final pm = o.paymentMethod.toLowerCase().trim();
-      if (pm.contains('kot') && !o.isPaid && o.status != OrderStatus.completed) {
+      if ((pm.contains('kot') || o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
+          !o.isPaid &&
+          ps != 'paid' &&
+          ps != 'settled' &&
+          ps != 'success' &&
+          o.status != OrderStatus.completed) {
         return false;
       }
 

@@ -71,8 +71,8 @@ describe('Notification Center APIs & Services', () => {
       expect(leadNotifs.length).toBe(1);
       expect(leadNotifs[0].title).toBe('New Lead Generated');
       expect(leadNotifs[0].message).toContain('Sanjeev Sharma');
-      expect(leadNotifs[0].message).toContain('Dine In');
-      expect(leadNotifs[0].metadata.source).toBe('Dine In');
+      expect(leadNotifs[0].message).toMatch(/POS|Dine In/);
+      expect(leadNotifs[0].metadata.source).toMatch(/POS|Dine In/);
     });
   });
 

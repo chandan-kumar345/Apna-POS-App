@@ -304,4 +304,15 @@ class OrderService {
       return false;
     }
   }
+
+  /// Delete an order permanently from backend database
+  Future<bool> deleteOrder(String orderId) async {
+    try {
+      final response = await _apiClient.delete('${ApiEndpoints.orders}/$orderId');
+      return response != null && (response['success'] == true || response['status'] == 'success');
+    } catch (e) {
+      debugPrint('[OrderService.deleteOrder] error: $e');
+      return false;
+    }
+  }
 }

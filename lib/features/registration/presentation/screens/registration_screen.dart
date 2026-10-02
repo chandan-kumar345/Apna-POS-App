@@ -117,8 +117,8 @@ class _ProductionRegistrationScreenState
       appVersion: '1.0.0',
       deviceId: 'DEV_${DateTime.now().millisecondsSinceEpoch}',
       deviceModel: 'Android/iOS Device',
-      operatingSystem: Platform.isAndroid ? 'Android' : 'iOS',
-      registrationSource: Platform.isAndroid ? 'ANDROID' : 'IOS',
+      operatingSystem: kIsWeb ? 'Web' : (Platform.isAndroid ? 'Android' : 'iOS'),
+      registrationSource: kIsWeb ? 'WEB' : (Platform.isAndroid ? 'ANDROID' : 'IOS'),
     );
 
     ref.read(registrationNotifierProvider.notifier).registerUser(entity);

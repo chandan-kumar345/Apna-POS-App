@@ -1062,6 +1062,23 @@ class SuperadminService {
       endDate: reportData.endDate,
     };
   }
+
+  /**
+   * Super Admin Order Purge: deletes an order globally or for a specific user store
+   */
+  async deleteOrder(orderIdOrNumber, targetUserId) {
+    let businessId = null;
+    if (targetUserId) {
+      const user = await User.findById(targetUserId);
+      if (user) {
+        const business = await Business.findOne({ ownerId: user._id });
+        if (business) businessId = business._id;
+      }
+    }
+
+    const orderService = require('./orderService');
+    return await orderService.deleteOrder(businessId, orderIdOrNumber);
+  }
 }
 
 module.exports = new SuperadminService();
