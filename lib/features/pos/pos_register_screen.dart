@@ -8931,12 +8931,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final bool showImages = (db.restaurant?.posViewMode ?? 'with_image') != 'without_image' &&
         (db.restaurant?.showItemImages ?? true);
 
-    // ANDROID / MOBILE: Grid layout for Without Images mode (Fully virtualized & recycled)
+    // ANDROID / MOBILE / TABLET: Grid layout for Without Images mode (Fully virtualized & recycled)
     if (!isDesktop && !showImages) {
       return LayoutBuilder(
         builder: (context, constraints) {
           final double availableWidth = constraints.maxWidth;
-          final int cols = availableWidth >= 680 ? 4 : (availableWidth >= 460 ? 3 : 2);
+          final int cols = ResponsiveLayoutHelper.getPosGridColumnCount(availableWidth, showImages: false);
+          final double aspectRatio = ResponsiveLayoutHelper.getPosChildAspectRatio(availableWidth, false, false);
 
           return GridView.builder(
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
@@ -8948,7 +8949,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               crossAxisCount: cols,
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
-              childAspectRatio: 1.55,
+              childAspectRatio: aspectRatio,
             ),
             itemCount: filteredItems.length,
             itemBuilder: (context, index) {
@@ -8970,12 +8971,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final int columnCount = isDesktop
-            ? ResponsiveLayoutHelper.getPosGridColumnCount(constraints.maxWidth, showImages: showImages)
-            : (showImages ? 3 : (constraints.maxWidth >= 500 ? 4 : (constraints.maxWidth >= 360 ? 3 : 2)));
-        final double aspectRatio = isDesktop
-            ? ResponsiveLayoutHelper.getPosChildAspectRatio(constraints.maxWidth, showImages)
-            : (showImages ? 0.54 : 1.55);
+        final int columnCount = ResponsiveLayoutHelper.getPosGridColumnCount(constraints.maxWidth, showImages: showImages);
+        final double aspectRatio = ResponsiveLayoutHelper.getPosChildAspectRatio(constraints.maxWidth, showImages, isDesktop);
 
         return GridView.builder(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),

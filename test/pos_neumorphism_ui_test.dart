@@ -180,4 +180,26 @@ void main() {
     expect(find.text('All'), findsWidgets);
     expect(find.text('Free'), findsWidgets);
   });
+
+  testWidgets('POS Register Screen renders 6 products per row in tablet view and 3 in mobile view', (WidgetTester tester) async {
+    // 1. Tablet View (768 x 1024) -> 6 columns in one row
+    tester.view.physicalSize = const Size(768, 1024);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(createWidgetUnderTest());
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final tabletGrid = tester.widget<GridView>(find.byType(GridView).first);
+    final tabletDelegate = tabletGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(tabletDelegate.crossAxisCount, equals(6));
+
+    // 2. Mobile Phone View (400 x 850) -> 3 columns in one row
+    tester.view.physicalSize = const Size(400, 850);
+    await tester.pump(const Duration(milliseconds: 300));
+
+    final mobileGrid = tester.widget<GridView>(find.byType(GridView).first);
+    final mobileDelegate = mobileGrid.gridDelegate as SliverGridDelegateWithFixedCrossAxisCount;
+    expect(mobileDelegate.crossAxisCount, equals(3));
+  });
 }
