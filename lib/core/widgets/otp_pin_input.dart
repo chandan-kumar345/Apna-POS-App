@@ -58,56 +58,89 @@ class _OtpPinInputState extends State<OtpPinInput> {
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // 4 Styled Semi-Circle Pill Boxes
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(widget.length, (index) {
-              final isFilled = index < text.length;
-              final isCurrent = isFocused && (index == text.length || (index == widget.length - 1 && text.length == widget.length));
-              final char = isFilled ? text[index] : '';
+          // 4 Neumorphic Rounded Squircle Boxes (Wrapped & Auto-scaled)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.length, (index) {
+                final isFilled = index < text.length;
+                final isCurrent = isFocused && index == text.length;
+                final char = isFilled ? text[index] : '';
 
-              return Container(
-                width: 56,
-                height: 56,
-                margin: const EdgeInsets.symmetric(horizontal: 4),
-                decoration: BoxDecoration(
-                  color: isCurrent
-                      ? const Color(0xFFF0F9FF)
-                      : isFilled
-                          ? const Color(0xFFF8FAFC)
-                          : const Color(0xFFF8FAFC),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
+                return Container(
+                  width: 58,
+                  height: 58,
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  decoration: BoxDecoration(
                     color: isCurrent
-                        ? const Color(0xFF0052FF)
+                        ? Colors.white
                         : isFilled
-                            ? const Color(0xFF00C2FF)
-                            : const Color(0xFFE2E8F0),
-                    width: isCurrent ? 2.0 : 1.5,
-                  ),
-                  boxShadow: isCurrent
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF0052FF).withValues(alpha: 0.18),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    char,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                      letterSpacing: -0.5,
+                            ? Colors.white
+                            : const Color(0xFFF4F8FD),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                      color: isCurrent
+                          ? const Color(0xFF0066FF)
+                          : isFilled
+                              ? const Color(0xFFCCE0FF)
+                              : const Color(0xFFE2EAF4),
+                      width: isCurrent ? 2.0 : 1.5,
                     ),
+                    boxShadow: isCurrent
+                        ? const [
+                            BoxShadow(
+                              color: Color(0x350066FF),
+                              blurRadius: 10,
+                              offset: Offset(0, 3),
+                            ),
+                          ]
+                        : isFilled
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x10002870),
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                              ]
+                            : const [
+                                BoxShadow(
+                                  color: Color(0x0C002870),
+                                  blurRadius: 6,
+                                  offset: Offset(0, 2),
+                                ),
+                                BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 4,
+                                  offset: Offset(0, -2),
+                                ),
+                              ],
                   ),
-                ),
-              );
-            }),
+                  child: Center(
+                    child: isFilled
+                        ? Text(
+                            char,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0F172A),
+                              letterSpacing: -0.5,
+                            ),
+                          )
+                        : (isCurrent
+                            ? const Text(
+                                '|',
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w300,
+                                  color: Color(0xFF0066FF),
+                                ),
+                              )
+                            : const SizedBox.shrink()),
+                  ),
+                );
+              }),
+            ),
           ),
 
           // Invisible Full-Width TextField capturing all keystrokes, paste events, and backspaces

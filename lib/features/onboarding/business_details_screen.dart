@@ -1,11 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
-import '../../core/widgets/glass_company_name_badge.dart';
-import '../dashboard/main_layout.dart';
 import 'choose_business_category_screen.dart';
-import 'add_business_address_screen.dart';
 
 class CurrencyItem {
   final String symbol;
@@ -20,7 +16,7 @@ class CurrencyItem {
     required this.flag,
   });
 
-  String get displayName => '$code($symbol) - $name';
+  String get displayName => '$code ($symbol) - $name';
 }
 
 const List<CurrencyItem> allWorldCurrencies = [
@@ -118,12 +114,14 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
   @override
   void initState() {
     super.initState();
-    final phone = db.currentUser?.phone ?? '9899636369';
+    db.saveOnboardingProgress(route: 'business_details', step: 3);
+    final phone = db.currentUser?.phone ?? '9899636418';
     final cleanPhone = phone.replaceAll(RegExp(r'^\+\d+\s*'), '');
 
     _countryController = TextEditingController(text: 'India');
     _phoneController = TextEditingController(
-        text: cleanPhone.isNotEmpty ? cleanPhone : '9899636369');
+      text: cleanPhone.isNotEmpty ? cleanPhone : '9899636418',
+    );
   }
 
   @override
@@ -133,15 +131,12 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
     super.dispose();
   }
 
-  // Currency Selection Search Popup Modal
+  // Neumorphic Currency Selection Search Modal (60% screen height, compact, no cross icon)
   void _showCurrencySelectionPopup() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         String query = '';
         return StatefulBuilder(
@@ -153,93 +148,223 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                   c.name.toLowerCase().contains(q);
             }).toList();
 
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.75,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Column(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Container(
+                  height: MediaQuery.of(context).size.height * 0.60,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x33001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -8),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Select Currency',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Search Field
-                  Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                    child: Row(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    child: Column(
                       children: [
-                        const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            onChanged: (val) => setModalState(() => query = val),
-                            style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
-                            decoration: const InputDecoration(
-                              hintText: 'Search currency or country...',
-                              hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
+                        // Top Handle Bar
+                        const SizedBox(height: 10),
+                        Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCBD5E1),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Title Header (Cross icon removed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Select Currency',
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                              SizedBox(height: 1.5),
+                              Text(
+                                'Choose the operating currency for billing',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Compact Neumorphic Search Bar
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Container(
+                            height: 38,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF2F6),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white, width: 1.2),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x08002870),
+                                  blurRadius: 4,
+                                  offset: Offset(1, 2),
+                                ),
+                                BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 4,
+                                  offset: Offset(-1, -1),
+                                ),
+                              ],
                             ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    onChanged: (val) => setModalState(() => query = val),
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Search currency or country...',
+                                      hintStyle: TextStyle(
+                                        fontSize: 11.5,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Compact Currency List
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final item = filtered[index];
+                              final isSelected = _selectedCurrency.code == item.code;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFFEEF4FF) : Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? const Color(0xFF0066FF) : const Color(0xFFE2E8F0),
+                                    width: isSelected ? 1.2 : 1,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x04002870),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() => _selectedCurrency = item);
+                                    Navigator.pop(context);
+                                  },
+                                  child: Row(
+                                    children: [
+                                      Text(item.flag, style: const TextStyle(fontSize: 18)),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  item.code,
+                                                  style: TextStyle(
+                                                    fontSize: 13,
+                                                    fontWeight: FontWeight.w800,
+                                                    color: isSelected ? const Color(0xFF021B54) : const Color(0xFF0F172A),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? const Color(0xFF0066FF).withValues(alpha: 0.12)
+                                                        : const Color(0xFFF1F5F9),
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Text(
+                                                    item.symbol,
+                                                    style: TextStyle(
+                                                      fontSize: 10.5,
+                                                      fontWeight: FontWeight.w800,
+                                                      color: isSelected ? const Color(0xFF0066FF) : const Color(0xFF475569),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 1),
+                                            Text(
+                                              item.name,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF64748B),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        const Icon(
+                                          Icons.check_circle_rounded,
+                                          color: Color(0xFF021B54),
+                                          size: 17,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                      itemBuilder: (context, index) {
-                        final item = filtered[index];
-                        final isSelected = _selectedCurrency.code == item.code;
-                        return ListTile(
-                          leading: Text(item.flag, style: const TextStyle(fontSize: 24)),
-                          title: Text(
-                            '${item.code} (${item.symbol})',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          subtitle: Text(
-                            item.name,
-                            style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 22)
-                              : null,
-                          onTap: () {
-                            setState(() => _selectedCurrency = item);
-                            Navigator.pop(context);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
             );
           },
@@ -248,15 +373,12 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
     );
   }
 
-  // Country Time Zone Selection Search Popup Modal
+  // Neumorphic Country Time Zone Selection Search Modal (60% screen height, compact, no cross icon)
   void _showTimeZoneSelectionPopup() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         String query = '';
         return StatefulBuilder(
@@ -268,89 +390,211 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                   tz.region.toLowerCase().contains(q);
             }).toList();
 
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.75,
-              padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-              child: Column(
-                children: [
-                  Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFCBD5E1),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
+            return Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Container(
+                  height: MediaQuery.of(context).size.height * 0.60,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x33001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -8),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Select Country Time Zone',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-
-                  // Search Field
-                  Container(
-                    height: 46,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(23),
-                    ),
-                    child: Row(
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    child: Column(
                       children: [
-                        const Icon(Icons.search_rounded, color: Color(0xFF94A3B8), size: 20),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            onChanged: (val) => setModalState(() => query = val),
-                            style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
-                            decoration: const InputDecoration(
-                              hintText: 'Search time zone or country...',
-                              hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                              border: InputBorder.none,
-                              isDense: true,
-                              contentPadding: EdgeInsets.zero,
+                        // Top Handle Bar
+                        const SizedBox(height: 10),
+                        Container(
+                          width: 36,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFCBD5E1),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Title Header (Cross icon removed)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'Select Country Time Zone',
+                                style: TextStyle(
+                                  fontSize: 15.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                              SizedBox(height: 1.5),
+                              Text(
+                                'Choose your primary business time zone',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Compact Neumorphic Search Bar
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Container(
+                            height: 38,
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEEF2F6),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.white, width: 1.2),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x08002870),
+                                  blurRadius: 4,
+                                  offset: Offset(1, 2),
+                                ),
+                                BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 4,
+                                  offset: Offset(-1, -1),
+                                ),
+                              ],
                             ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.search_rounded, color: Color(0xFF64748B), size: 16),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    onChanged: (val) => setModalState(() => query = val),
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: 'Search time zone or country...',
+                                      hintStyle: TextStyle(
+                                        fontSize: 11.5,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.zero,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Compact Time Zone List
+                        Expanded(
+                          child: ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(20, 2, 20, 16),
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: filtered.length,
+                            itemBuilder: (context, index) {
+                              final item = filtered[index];
+                              final isSelected = _selectedTimeZone.displayName == item.displayName;
+
+                              return Container(
+                                margin: const EdgeInsets.only(bottom: 6),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFFEEF4FF) : Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? const Color(0xFF0066FF) : const Color(0xFFE2E8F0),
+                                    width: isSelected ? 1.2 : 1,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x04002870),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() => _selectedTimeZone = item);
+                                    Navigator.pop(context);
+                                  },
+                                  child: Row(
+                                    children: [
+                                      Text(item.flag, style: const TextStyle(fontSize: 18)),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                              decoration: BoxDecoration(
+                                                color: isSelected
+                                                    ? const Color(0xFF0066FF).withValues(alpha: 0.12)
+                                                    : const Color(0xFFF1F5F9),
+                                                borderRadius: BorderRadius.circular(5),
+                                              ),
+                                              child: Text(
+                                                item.offset,
+                                                style: TextStyle(
+                                                  fontSize: 10.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: isSelected ? const Color(0xFF0066FF) : const Color(0xFF475569),
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              item.region,
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w600,
+                                                color: isSelected ? const Color(0xFF021B54) : const Color(0xFF334155),
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      if (isSelected)
+                                        const Icon(
+                                          Icons.check_circle_rounded,
+                                          color: Color(0xFF021B54),
+                                          size: 17,
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ],
                     ),
                   ),
-                  const SizedBox(height: 12),
-
-                  Expanded(
-                    child: ListView.separated(
-                      itemCount: filtered.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                      itemBuilder: (context, index) {
-                        final item = filtered[index];
-                        final isSelected = _selectedTimeZone.displayName == item.displayName;
-                        return ListTile(
-                          leading: Text(item.flag, style: const TextStyle(fontSize: 24)),
-                          title: Text(
-                            item.displayName,
-                            style: const TextStyle(
-                              fontSize: 13.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF0F172A),
-                            ),
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 22)
-                              : null,
-                          onTap: () {
-                            setState(() => _selectedTimeZone = item);
-                            Navigator.pop(context);
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
+                ),
               ),
             );
           },
@@ -368,7 +612,7 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
     try {
       final businessName = db.restaurant?.name ??
           db.currentUser?.companyName ??
-          'Tea Coffee';
+          'The Sky High';
 
       final updated = RestaurantModel(
         id: db.restaurant?.id ?? 'rest_001',
@@ -389,12 +633,12 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: const Color(0xFF021B54),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -402,7 +646,7 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 13.5,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -411,6 +655,10 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+
+      await db.saveOnboardingProgress(route: 'choose_category', step: 4);
+
+      if (!mounted) return;
 
       // Open Choose Business Category Screen
       Navigator.push(
@@ -426,154 +674,60 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final businessTitle = db.restaurant?.name ??
+    final dynamicCompanyName = db.restaurant?.name ??
         db.currentUser?.companyName ??
-        'Tea Coffee';
+        'The Sky High';
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient with Glass Ambient Glows
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy (Company Icon Removed)
+              _buildTopHeader(dynamicCompanyName),
 
-          // 2. Glassmorphism Orbs / Ambient Light Orbs
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 160,
-            left: -80,
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4F46E5).withOpacity(0.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.2),
-                    blurRadius: 90,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Screen Layout
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Glass Header with Back Button and Business Name Title
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassCompanyNameBadge(name: businessTitle),
-                        ),
+              // 2. Curved White Neumorphic Body Sheet with Sticky Next Button
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x25001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. White Bottom Curved Card Container matching Auth Theme
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                     child: Column(
                       children: [
+                        // Scrollable Content
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                            padding: const EdgeInsets.fromLTRB(20, 22, 20, 16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Error Banner
+                                // Error Banner if validation fails
                                 if (_errorMessage != null) ...[
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    margin: const EdgeInsets.only(bottom: 14),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: const Color(0xFFFCA5A5)),
                                     ),
                                     child: Row(
                                       children: [
-                                        const Icon(Icons.error_outline_rounded,
-                                            color: Color(0xFFEF4444), size: 18),
+                                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
@@ -581,64 +735,74 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                                             style: const TextStyle(
                                               color: Color(0xFFB91C1C),
                                               fontSize: 12,
-                                              fontWeight: FontWeight.w500,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
                                 ],
 
-                                // 1. Country Name Field
+                                // FIELD 1: Country Name
                                 const Text(
                                   'Country name',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
-
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Enter or verify your operating country',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
 
+                                // Compact Neumorphic Country Box
                                 Container(
-                                  height: 52,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  height: 48,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(26), // Stadium Semi-Circle Pill Shape
-                                    border: Border.all(
-                                      color: const Color(0xFF00C2FF), // Highlighted Cyan border
-                                      width: 1.5,
-                                    ),
+                                    color: const Color(0xFFF6F9FD),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: Colors.white, width: 1.5),
                                     boxShadow: const [
                                       BoxShadow(
-                                        color: Color(0x1400C2FF),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
+                                        color: Color(0x0A002870),
+                                        blurRadius: 6,
+                                        offset: Offset(2, 3),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.white,
+                                        blurRadius: 6,
+                                        offset: Offset(-2, -2),
                                       ),
                                     ],
                                   ),
                                   child: Row(
                                     children: [
-                                      const Text('🇮🇳', style: TextStyle(fontSize: 20)),
+                                      const Text('🇮🇳', style: TextStyle(fontSize: 19)),
                                       const SizedBox(width: 10),
                                       Expanded(
                                         child: TextField(
                                           controller: _countryController,
                                           style: const TextStyle(
-                                            fontSize: 15,
+                                            fontSize: 13.5,
                                             fontWeight: FontWeight.w800,
-                                            color: Color(0xFF0F172A), // Crisp High-Contrast Black
+                                            color: Color(0xFF0F172A),
                                           ),
                                           decoration: const InputDecoration(
                                             hintText: 'India',
                                             hintStyle: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w400,
-                                              color: Color(0xFFCBD5E1),
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF94A3B8),
                                             ),
                                             border: InputBorder.none,
                                             isDense: true,
@@ -650,71 +814,83 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                                   ),
                                 ),
 
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 16),
 
-                                // 2. Business Mobile Number Field
+                                // FIELD 2: Business Mobile Number
                                 const Text(
                                   'Business mobile number',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
-
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Mobile number for customer invoices and orders',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
 
+                                // Compact Neumorphic Phone Box
                                 Container(
-                                  height: 52,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  height: 48,
+                                  padding: const EdgeInsets.symmetric(horizontal: 14),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(26), // Stadium Semi-Circle Pill Shape
-                                    border: Border.all(
-                                      color: const Color(0xFF00C2FF), // Highlighted Cyan border
-                                      width: 1.5,
-                                    ),
+                                    color: const Color(0xFFF6F9FD),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: Colors.white, width: 1.5),
                                     boxShadow: const [
                                       BoxShadow(
-                                        color: Color(0x1400C2FF),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
+                                        color: Color(0x0A002870),
+                                        blurRadius: 6,
+                                        offset: Offset(2, 3),
+                                      ),
+                                      BoxShadow(
+                                        color: Colors.white,
+                                        blurRadius: 6,
+                                        offset: Offset(-2, -2),
                                       ),
                                     ],
                                   ),
                                   child: Row(
                                     children: [
-                                      const Text('🇮🇳', style: TextStyle(fontSize: 20)),
-                                      const SizedBox(width: 6),
+                                      const Text('🇮🇳', style: TextStyle(fontSize: 19)),
+                                      const SizedBox(width: 8),
                                       const Text(
                                         'IN +91',
                                         style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
                                           color: Color(0xFF0F172A),
                                         ),
                                       ),
                                       Container(
-                                        height: 20,
-                                        width: 1,
+                                        height: 16,
+                                        width: 1.2,
                                         margin: const EdgeInsets.symmetric(horizontal: 10),
-                                        color: const Color(0xFFE2E8F0),
+                                        color: const Color(0xFFCBD5E1),
                                       ),
                                       Expanded(
                                         child: TextField(
                                           controller: _phoneController,
                                           keyboardType: TextInputType.phone,
                                           style: const TextStyle(
-                                            fontSize: 15,
+                                            fontSize: 13.5,
                                             fontWeight: FontWeight.w800,
-                                            color: Color(0xFF0F172A), // Crisp High-Contrast Black
+                                            color: Color(0xFF0F172A),
+                                            letterSpacing: 0.3,
                                           ),
                                           decoration: const InputDecoration(
-                                            hintText: '9899636369',
+                                            hintText: '9899636418',
                                             hintStyle: TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w400,
-                                              color: Color(0xFFCBD5E1),
+                                              fontSize: 13,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF94A3B8),
                                             ),
                                             border: InputBorder.none,
                                             isDense: true,
@@ -726,74 +902,111 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                                   ),
                                 ),
 
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 16),
 
-                                // 3. Currency Type Field (Opens Currency Popup Search Modal)
+                                // FIELD 3: Currency Type
                                 const Text(
                                   'Currency Type',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
-
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Selected currency for billing and items pricing',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
 
+                                // Compact Neumorphic Currency Selector Box
                                 InkWell(
                                   onTap: _showCurrencySelectionPopup,
-                                  borderRadius: BorderRadius.circular(26),
+                                  borderRadius: BorderRadius.circular(14),
                                   child: Container(
-                                    height: 52,
-                                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                                    height: 48,
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(26), // Stadium Semi-Circle Pill Shape
-                                      border: Border.all(
-                                        color: const Color(0xFF00C2FF), // Highlighted Cyan border
-                                        width: 1.5,
-                                      ),
+                                      color: const Color(0xFFF6F9FD),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.white, width: 1.5),
                                       boxShadow: const [
                                         BoxShadow(
-                                          color: Color(0x1400C2FF),
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
+                                          color: Color(0x0A002870),
+                                          blurRadius: 6,
+                                          offset: Offset(2, 3),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.white,
+                                          blurRadius: 6,
+                                          offset: Offset(-2, -2),
                                         ),
                                       ],
                                     ),
                                     child: Row(
                                       children: [
-                                        // Selected Currency Single Chip with High Contrast Black Text
+                                        // Selected Currency Chip
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                                           decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(12),
-                                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                                            color: Colors.white,
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x06002870),
+                                                blurRadius: 3,
+                                                offset: Offset(0, 1),
+                                              ),
+                                            ],
                                           ),
-                                          child: Text(
-                                            _selectedCurrency.displayName,
-                                            style: const TextStyle(
-                                              fontSize: 13.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F172A), // Crisp High Contrast Black
-                                            ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(_selectedCurrency.flag, style: const TextStyle(fontSize: 13.5)),
+                                              const SizedBox(width: 5),
+                                              Text(
+                                                '${_selectedCurrency.code} (${_selectedCurrency.symbol}) - ${_selectedCurrency.name}',
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Color(0xFF0F172A),
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
 
                                         const Spacer(),
 
-                                        // Blue Plus Add Icon matching screenshot
+                                        // Blue Add/Change Icon Button
                                         Container(
-                                          padding: const EdgeInsets.all(4),
-                                          decoration: const BoxDecoration(
-                                            color: Color(0xFF0088FF),
+                                          width: 28,
+                                          height: 28,
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(
+                                              colors: [Color(0xFF0066FF), Color(0xFF0052E0)],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ),
                                             shape: BoxShape.circle,
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: const Color(0xFF0066FF).withValues(alpha: 0.3),
+                                                blurRadius: 5,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
                                           child: const Icon(
                                             Icons.add_rounded,
                                             color: Colors.white,
-                                            size: 20,
+                                            size: 16,
                                           ),
                                         ),
                                       ],
@@ -801,123 +1014,293 @@ class _BusinessDetailsScreenState extends State<BusinessDetailsScreen> {
                                   ),
                                 ),
 
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 16),
 
-                                // 4. Country Time Zone Field (Opens TimeZone Popup Search Modal)
+                                // FIELD 4: Country Time Zone
                                 const Text(
                                   'Country time zone',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
-
+                                const SizedBox(height: 2),
+                                const Text(
+                                  'Regional timezone for orders and register shifts',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
                                 const SizedBox(height: 6),
 
+                                // Compact Neumorphic Timezone Selector Box
                                 InkWell(
                                   onTap: _showTimeZoneSelectionPopup,
-                                  borderRadius: BorderRadius.circular(26),
+                                  borderRadius: BorderRadius.circular(14),
                                   child: Container(
-                                    height: 52,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    constraints: const BoxConstraints(minHeight: 48),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(26), // Stadium Semi-Circle Pill Shape
-                                      border: Border.all(
-                                        color: const Color(0xFF00C2FF), // Highlighted Cyan border
-                                        width: 1.5,
-                                      ),
+                                      color: const Color(0xFFF6F9FD),
+                                      borderRadius: BorderRadius.circular(14),
+                                      border: Border.all(color: Colors.white, width: 1.5),
                                       boxShadow: const [
                                         BoxShadow(
-                                          color: Color(0x1400C2FF),
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
+                                          color: Color(0x0A002870),
+                                          blurRadius: 6,
+                                          offset: Offset(2, 3),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.white,
+                                          blurRadius: 6,
+                                          offset: Offset(-2, -2),
                                         ),
                                       ],
                                     ),
                                     child: Row(
                                       children: [
+                                        Text(_selectedTimeZone.flag, style: const TextStyle(fontSize: 17)),
+                                        const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
                                             _selectedTimeZone.displayName,
                                             style: const TextStyle(
-                                              fontSize: 13.5,
+                                              fontSize: 12,
                                               fontWeight: FontWeight.w800,
-                                              color: Color(0xFF0F172A), // Crisp High Contrast Black
+                                              color: Color(0xFF0F172A),
+                                              height: 1.25,
                                             ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
-                                        const Icon(
-                                          Icons.arrow_drop_down_rounded,
-                                          color: Color(0xFF00C2FF),
-                                          size: 26,
+                                        const SizedBox(width: 4),
+                                        Container(
+                                          padding: const EdgeInsets.all(3),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF0066FF).withValues(alpha: 0.08),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.keyboard_arrow_down_rounded,
+                                            color: Color(0xFF0066FF),
+                                            size: 18,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                 ),
+
+                                const SizedBox(height: 14),
                               ],
                             ),
                           ),
                         ),
 
-                        // 5. Primary Action Button ("Next")
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                          child: Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x3300C2FF),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveAndComplete,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Next',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                        // Sticky Bottom Action Button ("Next" - Centered, Midnight Navy, Background Removed)
+                        _buildStickyBottomBar(),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  // Top Midnight Navy Header with Circular Back Button and Company Name Badge (Icon Removed)
+  Widget _buildTopHeader(String companyName) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF021B54),
+            Color(0xFF03266B),
+            Color(0xFF021B54),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Top Bar with Back Button and Company Name Pill Badge (Icon Removed)
+              Row(
+                children: [
+                  // Neumorphic Frosted Circular Back Button
+                  InkWell(
+                    onTap: () {
+                      if (Navigator.canPop(context)) {
+                        Navigator.pop(context);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE2E8F0).withValues(alpha: 0.88),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(
+                          Icons.chevron_left_rounded,
+                          color: Color(0xFF0F172A),
+                          size: 24,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(width: 12),
+
+                  // Neumorphic Frosted Company Name Badge (Icon Removed)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.25),
+                        width: 1,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.15),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 200),
+                      child: Text(
+                        companyName,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.2,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 16),
+
+              // Title
+              const Text(
+                'Business details',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1.15,
+                  letterSpacing: -0.4,
+                ),
+              ),
+
+              const SizedBox(height: 5),
+
+              // Subtitle
+              const Text(
+                'Set up your country, phone number, and billing currency',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Color(0xFF94A3B8),
+                  height: 1.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Centered Midnight Navy "Next" Button (Background Removed)
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30021B54),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSaveAndComplete,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.2,
+                    ),
+                  )
+                : const Center(
+                    child: Text(
+                      'Next',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

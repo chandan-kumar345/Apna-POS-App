@@ -266,7 +266,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   int _selectedTab = 0; // 0 = Login, 1 = Register
   bool _isEmailLogin = true; // Default true: Login with Email & Password first preference!
-  bool _rememberMe = true;
+  bool _rememberMe = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
   String? _errorMessage;
@@ -286,13 +286,19 @@ class _LoginScreenState extends State<LoginScreen> {
       final savedPhone = prefs.getString(_prefKeySavedPhone) ?? '';
       final savedMode = prefs.getString(_prefKeyLoginMode) ?? 'email';
 
-      if (remember && mounted) {
+      if (mounted) {
         setState(() {
-          _rememberMe = true;
-          if (savedEmail.isNotEmpty) _emailController.text = savedEmail;
-          if (savedPassword.isNotEmpty) _passwordController.text = savedPassword;
-          if (savedPhone.isNotEmpty) _phoneController.text = savedPhone;
-          _isEmailLogin = (savedMode == 'email');
+          _rememberMe = remember;
+          if (remember) {
+            if (savedEmail.isNotEmpty) _emailController.text = savedEmail;
+            if (savedPassword.isNotEmpty) _passwordController.text = savedPassword;
+            if (savedPhone.isNotEmpty) _phoneController.text = savedPhone;
+            _isEmailLogin = (savedMode == 'email');
+          } else {
+            _emailController.clear();
+            _passwordController.clear();
+            _phoneController.clear();
+          }
         });
       }
     } catch (e) {
@@ -314,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> {
           await prefs.setString(_prefKeyLoginMode, 'phone');
         }
       } else {
-        await prefs.remove(_prefKeyRememberMe);
+        await prefs.setBool(_prefKeyRememberMe, false);
         await prefs.remove(_prefKeySavedEmail);
         await prefs.remove(_prefKeySavedPassword);
         await prefs.remove(_prefKeySavedPhone);
@@ -323,112 +329,6 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       debugPrint('Error saving/clearing credentials: $e');
     }
-  }
-
-  Future<void> _promptSaveCredentialsIfRequested({
-    required String identifier,
-    required VoidCallback onProceed,
-  }) async {
-    if (_rememberMe) {
-      await _saveOrClearCredentials(true);
-      onProceed();
-      return;
-    }
-
-    final prefs = await SharedPreferences.getInstance();
-    final alreadySaved = prefs.getBool(_prefKeyRememberMe) ?? false;
-    if (alreadySaved) {
-      onProceed();
-      return;
-    }
-
-    if (!mounted) {
-      onProceed();
-      return;
-    }
-
-    // Prompt user with option to save credentials on this device
-    await showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0066FF).withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.vpn_key_rounded, color: Color(0xFF0066FF), size: 22),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Save Credentials?',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Would you like Apna POS to save your login credentials on this device for faster sign-in next time?',
-              style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B), height: 1.4),
-            ),
-            const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF8FAFC),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.account_circle_outlined, size: 20, color: Color(0xFF64748B)),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      identifier,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Color(0xFF0F172A)),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _saveOrClearCredentials(false);
-              onProceed();
-            },
-            child: const Text('Not Now', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.pop(ctx);
-              await _saveOrClearCredentials(true);
-              onProceed();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0066FF),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
-            child: const Text('Save Credentials', style: TextStyle(fontWeight: FontWeight.w700)),
-          ),
-        ],
-      ),
-    );
   }
 
   void _openForgotPassword() {
@@ -561,6 +461,7 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     await authRepo.sendOtp(firebaseRecipient);
+    if (!mounted) return;
 
     final otpController = TextEditingController();
     final otpFocusNode = FocusNode();
@@ -571,252 +472,293 @@ class _LoginScreenState extends State<LoginScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogCtx) {
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder: (builderCtx, setDialogState) {
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               child: Center(
                 child: SingleChildScrollView(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
-                    child: Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(28),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.black26,
-                            blurRadius: 25,
-                            offset: Offset(0, 10),
-                          ),
-                        ],
-                        border: Border.all(
-                          color: const Color(0xFF00C2FF),
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Icon Header
-                          Container(
-                            width: 60,
-                            height: 60,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: const Color(0xFF0052FF).withValues(alpha: 0.1),
-                              border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
-                            ),
-                            child: const Center(
-                              child: Icon(
-                                Icons.phone_android_rounded,
-                                color: GlassTheme.primaryBlue,
-                                size: 30,
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    child: Stack(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(32),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x22002870),
+                                blurRadius: 36,
+                                offset: Offset(0, 14),
                               ),
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          const Text(
-                            'OTP Verification',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-
-                          const SizedBox(height: 8),
-
-                          RichText(
-                            textAlign: TextAlign.center,
-                            text: TextSpan(
-                              text: 'Enter the 4-digit verification code sent to\n',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF64748B),
-                                height: 1.4,
+                              BoxShadow(
+                                color: Color(0x0A000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
                               ),
-                              children: [
-                                TextSpan(
-                                  text: displayPhone,
+                            ],
+                            border: Border.all(
+                              color: const Color(0xFFE2E8F0),
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // // Icon Header with dual halo and badge
+                              // Container(
+                              //   width: 76,
+                              //   height: 76,
+                              //   decoration: const BoxDecoration(
+                              //     shape: BoxShape.circle,
+                              //     color: Color(0xFFEBF3FF),
+                              //   ),
+                              //   child: Center(
+                              //     child: Container(
+                              //       width: 56,
+                              //       height: 56,
+                              //       decoration: const BoxDecoration(
+                              //         shape: BoxShape.circle,
+                              //         color: Color(0xFFD6E6FF),
+                              //       ),
+                              //       child: Center(
+                              //         child: Stack(
+                              //           clipBehavior: Clip.none,
+                              //           children: [
+                              //             const Icon(
+                              //               Icons.phone_iphone_rounded,
+                              //               color: Color(0xFF0066FF),
+                              //               size: 28,
+                              //             ),
+                              //             Positioned(
+                              //               right: -2,
+                              //               bottom: -2,
+                              //               child: Container(
+                              //                 padding: const EdgeInsets.all(2),
+                              //                 decoration: const BoxDecoration(
+                              //                   color: Color(0xFF0066FF),
+                              //                   shape: BoxShape.circle,
+                              //                 ),
+                              //                 child: const Icon(
+                              //                   Icons.check_rounded,
+                              //                   color: Colors.white,
+                              //                   size: 10,
+                              //                 ),
+                              //               ),
+                              //             ),
+                              //           ],
+                              //         ),
+                              //       ),
+                              //     ),
+                              //   ),
+                              // ),
+
+                              const SizedBox(height: 18),
+
+                              // Title
+                              const Text(
+                                'OTP Verification',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.3,
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              RichText(
+                                textAlign: TextAlign.center,
+                                text: TextSpan(
+                                  text: 'Enter the 4-digit verification code sent to\n',
                                   style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0F172A),
+                                    fontSize: 13,
+                                    color: Color(0xFF64748B),
+                                    height: 1.4,
+                                  ),
+                                  children: [
+                                    TextSpan(
+                                      text: displayPhone,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 22),
+
+                              if (otpError != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  margin: const EdgeInsets.only(bottom: 14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded,
+                                          color: Color(0xFFEF4444), size: 16),
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          otpError!,
+                                          style: const TextStyle(
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
 
-                          const SizedBox(height: 20),
-
-                          if (otpError != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              margin: const EdgeInsets.only(bottom: 14),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEF2F2),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFFCA5A5)),
+                              // 4 Neumorphic PIN boxes
+                              OtpPinInput(
+                                controller: otpController,
+                                focusNode: otpFocusNode,
+                                length: 4,
+                                onChanged: (_) {
+                                  if (otpError != null) {
+                                    setDialogState(() => otpError = null);
+                                  }
+                                },
                               ),
-                              child: Row(
+
+                              const SizedBox(height: 18),
+
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  const Icon(Icons.error_outline_rounded,
-                                      color: Color(0xFFEF4444), size: 16),
-                                  const SizedBox(width: 6),
-                                  Expanded(
-                                    child: Text(
-                                      otpError!,
-                                      style: const TextStyle(
-                                        color: Color(0xFFB91C1C),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
+                                  const Text(
+                                    "Didn't receive code? ",
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      // Re-send OTP via Firebase
+                                      String firebaseRecipient = rawPhone;
+                                      if (!firebaseRecipient.startsWith('+')) {
+                                        firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
+                                      }
+                                      await authRepo.sendOtp(firebaseRecipient);
+                                      
+                                      if (!mounted) return;
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          backgroundColor: GlassTheme.primaryNavy,
+                                          content: Text(
+                                            'New OTP verification code sent via SMS to $displayPhone',
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    style: TextButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text(
+                                      'Resend OTP',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0066FF),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
 
-                          OtpPinInput(
-                            controller: otpController,
-                            focusNode: otpFocusNode,
-                            length: 4,
-                            onChanged: (_) {
-                              if (otpError != null) {
-                                setDialogState(() => otpError = null);
-                              }
-                            },
-                          ),
+                              const SizedBox(height: 22),
 
-                          const SizedBox(height: 20),
-
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Text(
-                                "Didn't receive code? ",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: Color(0xFF64748B),
-                                ),
-                              ),
-                              TextButton(
-                                onPressed: () async {
-                                  // Re-send OTP via Firebase
-                                  String firebaseRecipient = rawPhone;
-                                  if (!firebaseRecipient.startsWith('+')) {
-                                    firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
-                                  }
-                                  await authRepo.sendOtp(firebaseRecipient);
-                                  
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      backgroundColor: GlassTheme.primaryNavy,
-                                      content: Text(
-                                        'New OTP verification code sent via SMS to $displayPhone',
-                                        style: const TextStyle(color: Colors.white),
-                                      ),
-                                    ),
-                                  );
-                                },
-                                style: TextButton.styleFrom(
-                                  padding: EdgeInsets.zero,
-                                  minimumSize: Size.zero,
-                                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                child: const Text(
-                                  'Resend OTP',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF00C2FF),
+                              Container(
+                                width: double.infinity,
+                                height: 52,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(26),
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF0066FF), Color(0xFF0052E0)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
                                   ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x350066FF),
+                                      blurRadius: 16,
+                                      offset: Offset(0, 6),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 20),
-
-                          Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: GlassTheme.primaryBlue.withValues(alpha: 0.35),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: isVerifying
-                                  ? null
-                                  : () async {
-                                      if (failedOtpAttempts >= 5) {
-                                        setDialogState(() {
-                                          otpError = 'Too many incorrect attempts. Please try again later.';
-                                        });
-                                        return;
-                                      }
-
-                                      final enteredOtp = otpController.text
-                                          .trim()
-                                          .replaceAll(RegExp(r'[^0-9]'), '');
-                                      if (enteredOtp.length < 4) {
-                                        setDialogState(() {
-                                          otpError = 'Please enter the complete 4-digit OTP.';
-                                        });
-                                        return;
-                                      }
-
-                                      setDialogState(() {
-                                        isVerifying = true;
-                                        otpError = null;
-                                      });
-
-                                      try {
-                                        String firebaseRecipient = rawPhone;
-                                        if (!firebaseRecipient.startsWith('+')) {
-                                          firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
-                                        }
-
-                                        final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
-
-                                        if (userEntity != null) {
-                                          // Authenticate with backend API
-                                          try {
-                                            final phoneEmail = '${rawPhone.replaceAll(RegExp(r'[^0-9]'), '')}@apnapos.com';
-                                            await AuthService().login(firebaseRecipient, 'PhoneAuth@123').catchError((_) {
-                                              return AuthService().register(phoneEmail, 'PhoneAuth@123', phone: firebaseRecipient);
+                                child: ElevatedButton(
+                                  onPressed: isVerifying
+                                      ? null
+                                      : () async {
+                                          if (failedOtpAttempts >= 5) {
+                                            setDialogState(() {
+                                              otpError = 'Too many incorrect attempts. Please try again later.';
                                             });
-                                          } catch (e) {
-                                            debugPrint('Backend phone auth note: $e');
+                                            return;
                                           }
 
-                                          // OTP is correct - Log in or create user account
-                                          bool success = await db.loginWithOtpPhone(firebaseRecipient);
-                                          
-                                          if (!mounted) return;
+                                          final enteredOtp = otpController.text
+                                              .trim()
+                                              .replaceAll(RegExp(r'[^0-9]'), '');
+                                          if (enteredOtp.length < 4) {
+                                            setDialogState(() {
+                                              otpError = 'Please enter the complete 4-digit OTP.';
+                                            });
+                                            return;
+                                          }
 
+                                          setDialogState(() {
+                                            isVerifying = true;
+                                            otpError = null;
+                                          });
 
-                                          if (success) {
-                                            Navigator.pop(context);
-                                            await _promptSaveCredentialsIfRequested(
-                                              identifier: firebaseRecipient,
-                                              onProceed: () {
+                                          try {
+                                            String firebaseRecipient = rawPhone;
+                                            if (!firebaseRecipient.startsWith('+')) {
+                                              firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
+                                            }
+
+                                            final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
+
+                                            if (userEntity != null) {
+                                              // Authenticate with backend API
+                                              try {
+                                                final phoneEmail = '${rawPhone.replaceAll(RegExp(r'[^0-9]'), '')}@apnapos.com';
+                                                await AuthService().login(firebaseRecipient, 'PhoneAuth@123').catchError((_) {
+                                                  return AuthService().register(phoneEmail, 'PhoneAuth@123', phone: firebaseRecipient);
+                                                });
+                                              } catch (e) {
+                                                debugPrint('Backend phone auth note: $e');
+                                              }
+
+                                              // OTP is correct - Log in or create user account
+                                              bool success = await db.loginWithOtpPhone(firebaseRecipient);
+                                              
+                                              if (!mounted || !dialogCtx.mounted) return;
+
+                                              if (success) {
+                                                Navigator.pop(dialogCtx);
+                                                await _saveOrClearCredentials(_rememberMe);
+                                                if (!mounted) return;
                                                 final rest = db.restaurant;
                                                 if (rest != null && rest.isOnboarded) {
                                                   Navigator.pushAndRemoveUntil(
@@ -831,59 +773,84 @@ class _LoginScreenState extends State<LoginScreen> {
                                                     (route) => false,
                                                   );
                                                 }
-                                              },
-                                            );
-                                          } else {
+                                              } else {
+                                                setDialogState(() {
+                                                  isVerifying = false;
+                                                  otpError = 'Failed to create or verify user session. Please try again.';
+                                                });
+                                              }
+                                            } else {
+                                              failedOtpAttempts++;
+                                              setDialogState(() {
+                                                isVerifying = false;
+                                                otpError = 'The OTP you entered is incorrect.';
+                                              });
+                                            }
+                                          } catch (e) {
+                                            failedOtpAttempts++;
                                             setDialogState(() {
                                               isVerifying = false;
-                                              otpError = 'Failed to create or verify user session. Please try again.';
+                                              otpError = e.toString().contains('incorrect') 
+                                                  ? 'The OTP you entered is incorrect.' 
+                                                  : 'Verification failed: $e';
                                             });
                                           }
-                                        } else {
-                                          failedOtpAttempts++;
-                                          setDialogState(() {
-                                            isVerifying = false;
-                                            otpError = 'The OTP you entered is incorrect.';
-                                          });
-                                        }
-                                      } catch (e) {
-                                        failedOtpAttempts++;
-                                        setDialogState(() {
-                                          isVerifying = false;
-                                          otpError = e.toString().contains('incorrect') 
-                                              ? 'The OTP you entered is incorrect.' 
-                                              : 'Verification failed: $e';
-                                        });
-                                      }
-                                    },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(26),
+                                    ),
+                                  ),
+                                  child: isVerifying
+                                      ? const SizedBox(
+                                          width: 22,
+                                          height: 22,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      : const Text(
+                                          'Verify & Login',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                          ),
+                                        ),
                                 ),
                               ),
-                              child: isVerifying
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Verify & Login',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
+                            ],
+                          ),
+                        ),
+                        // Top-Right Close Button
+                        Positioned(
+                          top: 14,
+                          right: 14,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  color: Color(0xFF64748B),
+                                  size: 18,
+                                ),
+                              ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -1009,6 +976,7 @@ class _LoginScreenState extends State<LoginScreen> {
             onboardingStep: 4,
           );
           await db.saveActiveUser(staffUser);
+          await _saveOrClearCredentials(_rememberMe);
           if (!mounted) return;
           Navigator.pushAndRemoveUntil(
             context,
@@ -1053,44 +1021,40 @@ class _LoginScreenState extends State<LoginScreen> {
 
         if (!mounted) return;
 
-        void navigateToNext() {
-          if (onboardingCompleted || isStaff) {
-            Navigator.pushAndRemoveUntil(
-              context,
-              SlideUpPageRoute(page: const MainLayout()),
-              (route) => false,
-            );
-          } else {
-            Widget targetStepScreen = const CreateProfileScreen();
-            switch (currentStep) {
-              case 0:
-                targetStepScreen = const CreateProfileScreen();
-                break;
-              case 1:
-                targetStepScreen = const RestaurantOnboardingScreen();
-                break;
-              case 2:
-                targetStepScreen = const AddBusinessAddressScreen();
-                break;
-              case 3:
-              case 4:
-                targetStepScreen = const BusinessSettingsScreen();
-                break;
-              default:
-                targetStepScreen = const CreateProfileScreen();
-            }
-            Navigator.pushAndRemoveUntil(
-              context,
-              SlideUpPageRoute(page: targetStepScreen),
-              (route) => false,
-            );
-          }
-        }
+        await _saveOrClearCredentials(_rememberMe);
+        if (!mounted) return;
 
-        await _promptSaveCredentialsIfRequested(
-          identifier: rawIdentifier,
-          onProceed: navigateToNext,
-        );
+        if (onboardingCompleted || isStaff) {
+          Navigator.pushAndRemoveUntil(
+            context,
+            SlideUpPageRoute(page: const MainLayout()),
+            (route) => false,
+          );
+        } else {
+          Widget targetStepScreen = const CreateProfileScreen();
+          switch (currentStep) {
+            case 0:
+              targetStepScreen = const CreateProfileScreen();
+              break;
+            case 1:
+              targetStepScreen = const RestaurantOnboardingScreen();
+              break;
+            case 2:
+              targetStepScreen = const AddBusinessAddressScreen();
+              break;
+            case 3:
+            case 4:
+              targetStepScreen = const BusinessSettingsScreen();
+              break;
+            default:
+              targetStepScreen = const CreateProfileScreen();
+          }
+          Navigator.pushAndRemoveUntil(
+            context,
+            SlideUpPageRoute(page: targetStepScreen),
+            (route) => false,
+          );
+        }
         return;
       }
     } catch (e) {
@@ -1128,6 +1092,7 @@ class _LoginScreenState extends State<LoginScreen> {
           onboardingStep: 4,
         );
         await db.saveActiveUser(staffUser);
+        await _saveOrClearCredentials(_rememberMe);
         if (!mounted) return;
         Navigator.pushAndRemoveUntil(
           context,
@@ -1988,7 +1953,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                                     // Email & Password Fields
                                                     _buildDesktopInputCard(
                                                       label: 'Email, Staff ID or Phone',
-                                                      hint: 'e.g. EMP001, phone or email',
+                                                      hint: 'Enter Email or Staff ID',
                                                       icon: Icons.badge_outlined,
                                                       controller: _emailController,
                                                       keyboardType: TextInputType.text,
@@ -2016,38 +1981,43 @@ class _LoginScreenState extends State<LoginScreen> {
                                                     Row(
                                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                                       children: [
-                                                        Row(
-                                                          children: [
-                                                            SizedBox(
-                                                              width: 20,
-                                                              height: 20,
-                                                              child: Checkbox(
-                                                                value: _rememberMe,
-                                                                activeColor: const Color(0xFF0066FF),
-                                                                shape: RoundedRectangleBorder(
-                                                                  borderRadius: BorderRadius.circular(4),
+                                                        GestureDetector(
+                                                          behavior: HitTestBehavior.opaque,
+                                                          onTap: () => setState(() => _rememberMe = !_rememberMe),
+                                                          child: Row(
+                                                            mainAxisSize: MainAxisSize.min,
+                                                            children: [
+                                                              SizedBox(
+                                                                width: 20,
+                                                                height: 20,
+                                                                child: Checkbox(
+                                                                  value: _rememberMe,
+                                                                  activeColor: const Color(0xFF0066FF),
+                                                                  shape: RoundedRectangleBorder(
+                                                                    borderRadius: BorderRadius.circular(4),
+                                                                  ),
+                                                                  side: const BorderSide(
+                                                                    color: Color(0xFFCBD5E1),
+                                                                    width: 1.2,
+                                                                  ),
+                                                                  onChanged: (val) {
+                                                                    if (val != null) {
+                                                                      setState(() => _rememberMe = val);
+                                                                    }
+                                                                  },
                                                                 ),
-                                                                side: const BorderSide(
-                                                                  color: Color(0xFFCBD5E1),
-                                                                  width: 1.2,
+                                                              ),
+                                                              const SizedBox(width: 6),
+                                                              const Text(
+                                                                'Remember me',
+                                                                style: TextStyle(
+                                                                  fontSize: 12,
+                                                                  fontWeight: FontWeight.w500,
+                                                                  color: Color(0xFF475569),
                                                                 ),
-                                                                onChanged: (val) {
-                                                                  if (val != null) {
-                                                                    setState(() => _rememberMe = val);
-                                                                  }
-                                                                },
                                                               ),
-                                                            ),
-                                                            const SizedBox(width: 6),
-                                                            const Text(
-                                                              'Remember me',
-                                                              style: TextStyle(
-                                                                fontSize: 12,
-                                                                fontWeight: FontWeight.w500,
-                                                                color: Color(0xFF475569),
-                                                              ),
-                                                            ),
-                                                          ],
+                                                            ],
+                                                          ),
                                                         ),
                                                         TextButton(
                                                           onPressed: _openForgotPassword,
@@ -2178,141 +2148,137 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // Mobile / Android Login UI
   Widget _buildMobileLogin(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final fullHeaderHeight = (screenHeight * 0.28 - topPadding).clamp(130.0, 220.0);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF040814),
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient matching Theme
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
+      backgroundColor: const Color(0xFF001444),
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Stack(
+          children: [
+            // 1. Deep Midnight & Royal Navy Background Gradient matching Reference
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF001444), // Deep Navy Blue
+                      Color(0xFF00277A), // Royal Blue
+                      Color(0xFF003D9E), // Vibrant Blue
+                    ],
+                    stops: [0.0, 0.45, 1.0],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // 2. Main Layout (Sliding up from bottom)
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Circular Back Button
-                Padding(
-                  padding: const EdgeInsets.only(left: 20, top: 16),
-                  child: InkWell(
-                    onTap: () => Navigator.pop(context),
-                    borderRadius: BorderRadius.circular(24),
-                    child: Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.12),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1,
+            // 2. Main Layout
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // Top Header Text - Fixed Height (Does not collapse or slide upside on keyboard open)
+                  SizedBox(
+                    height: fullHeaderHeight,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onLongPress: () => ApiEndpoints.showServerConfigSheet(
+                            context,
+                            onUrlChanged: () {
+                              setState(() {
+                                _errorMessage = null;
+                              });
+                            },
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                _selectedTab == 0
+                                    ? "Go ahead and set up\nyour account"
+                                    : "Create your new\nPOS account",
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 23,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                  height: 1.18,
+                                  letterSpacing: -0.4,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _selectedTab == 0
+                                    ? "Sign in to enjoy the best managing experience"
+                                    : "Join Apna POS to manage your restaurant effortlessly",
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontStyle: FontStyle.italic,
+                                  fontWeight: FontWeight.w400,
+                                  color: Colors.white.withValues(alpha: 0.85),
+                                  letterSpacing: 0.1,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      child: const Icon(
-                        Icons.arrow_back_rounded,
-                        color: Colors.white,
-                        size: 20,
                       ),
                     ),
                   ),
-                ),
 
-                const SizedBox(height: 24),
-
-                // Top Header Text (Centered) - Long press to open Server Connection Settings
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Center(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onLongPress: () => ApiEndpoints.showServerConfigSheet(
-                        context,
-                        onUrlChanged: () {
-                          setState(() {
-                            _errorMessage = null;
-                          });
-                        },
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Text(
-                            _selectedTab == 0
-                                ? "Go ahead and set up\nyour account"
-                                : "Create your new\nPOS account",
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              height: 1.2,
-                              letterSpacing: -0.4,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _selectedTab == 0
-                                ? "Sign in-up to enjoy the best managing experience"
-                                : "Join Apna POS to manage your restaurant effortlessly",
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                              color: Colors.white.withOpacity(0.75),
-                            ),
+                  // 3. Bottom Rounded White Card Container (Anchored at fixed position)
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(30),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x35001C60),
+                            blurRadius: 30,
+                            offset: Offset(0, -8),
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // 3. Bottom Rounded White Card Container
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
                         ),
-                      ],
-                    ),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Segmented Tab Pill (Login / Register)
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          18,
+                          16,
+                          18,
+                          20 + MediaQuery.of(context).viewInsets.bottom,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                          // Segmented Pill Tab Switcher (Login / Register)
                           Container(
-                            height: 50,
+                            height: 46,
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFF1F5F9),
-                              borderRadius: BorderRadius.circular(25),
+                              color: const Color(0xFFEBF1FA),
+                              borderRadius: BorderRadius.circular(23),
+                              border: Border.all(
+                                color: const Color(0xFFDFE8F6),
+                                width: 1.2,
+                              ),
                             ),
                             child: Row(
                               children: [
@@ -2320,7 +2286,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   child: GestureDetector(
                                     onTap: () => setState(() {
                                       _selectedTab = 0;
-                                      _errorMessage = null; // Clear error
+                                      _errorMessage = null;
                                     }),
                                     child: AnimatedContainer(
                                       duration: const Duration(milliseconds: 200),
@@ -2328,26 +2294,34 @@ class _LoginScreenState extends State<LoginScreen> {
                                         color: _selectedTab == 0
                                             ? Colors.white
                                             : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(21),
+                                        borderRadius: BorderRadius.circular(19),
                                         boxShadow: _selectedTab == 0
-                                            ? [
-                                                const BoxShadow(
-                                                  color: Colors.black12,
-                                                  blurRadius: 6,
-                                                  offset: Offset(0, 2),
+                                            ? const [
+                                                BoxShadow(
+                                                  color: Color(0x18002D80),
+                                                  blurRadius: 8,
+                                                  offset: Offset(0, 3),
+                                                  spreadRadius: 1,
+                                                ),
+                                                BoxShadow(
+                                                  color: Colors.white,
+                                                  blurRadius: 4,
+                                                  offset: Offset(0, -1),
                                                 ),
                                               ]
-                                            : [],
+                                            : null,
                                       ),
                                       child: Center(
                                         child: Text(
                                           'Login',
                                           style: TextStyle(
                                             fontSize: 14,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: _selectedTab == 0
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
                                             color: _selectedTab == 0
-                                                ? const Color(0xFF0F172A)
-                                                : const Color(0xFF94A3B8),
+                                                ? const Color(0xFF0052CC)
+                                                : const Color(0xFF6B7C96),
                                           ),
                                         ),
                                       ),
@@ -2359,7 +2333,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     onTap: () {
                                       setState(() {
                                         _selectedTab = 1;
-                                        _errorMessage = null; // Clear error
+                                        _errorMessage = null;
                                       });
                                     },
                                     child: AnimatedContainer(
@@ -2368,26 +2342,34 @@ class _LoginScreenState extends State<LoginScreen> {
                                         color: _selectedTab == 1
                                             ? Colors.white
                                             : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(21),
+                                        borderRadius: BorderRadius.circular(19),
                                         boxShadow: _selectedTab == 1
-                                            ? [
-                                                const BoxShadow(
-                                                  color: Colors.black12,
-                                                  blurRadius: 6,
-                                                  offset: Offset(0, 2),
+                                            ? const [
+                                                BoxShadow(
+                                                  color: Color(0x18002D80),
+                                                  blurRadius: 8,
+                                                  offset: Offset(0, 3),
+                                                  spreadRadius: 1,
+                                                ),
+                                                BoxShadow(
+                                                  color: Colors.white,
+                                                  blurRadius: 4,
+                                                  offset: Offset(0, -1),
                                                 ),
                                               ]
-                                            : [],
+                                            : null,
                                       ),
                                       child: Center(
                                         child: Text(
                                           'Register',
                                           style: TextStyle(
                                             fontSize: 14,
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: _selectedTab == 1
+                                                ? FontWeight.w800
+                                                : FontWeight.w600,
                                             color: _selectedTab == 1
-                                                ? const Color(0xFF0F172A)
-                                                : const Color(0xFF94A3B8),
+                                                ? const Color(0xFF0052CC)
+                                                : const Color(0xFF6B7C96),
                                           ),
                                         ),
                                       ),
@@ -2398,36 +2380,43 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           ),
 
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 14),
 
-                          // Dynamic View: Switch between Login Form and Register Form Widget seamlessly in-place!
+                          // Dynamic View: Switch between Login Form and Register Form
                           if (_selectedTab == 1) ...[
                             RegisterFormWidget(
                               initialEmail: _emailController.text.trim(),
                               initialPassword: _passwordController.text.trim(),
                               initialPhone: _phoneController.text.trim(),
+                              onSwitchToLogin: () {
+                                setState(() {
+                                  _selectedTab = 0;
+                                  _errorMessage = null;
+                                });
+                              },
                             ),
                           ] else ...[
                             // Error Banner
                             if (_errorMessage != null) ...[
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                margin: const EdgeInsets.only(bottom: 10),
                                 decoration: BoxDecoration(
                                   color: const Color(0xFFFEF2F2),
-                                  borderRadius: BorderRadius.circular(14),
+                                  borderRadius: BorderRadius.circular(12),
                                   border: Border.all(color: const Color(0xFFFCA5A5)),
                                 ),
                                 child: Row(
                                   children: [
                                     const Icon(Icons.error_outline_rounded,
-                                        color: Color(0xFFEF4444), size: 18),
+                                        color: Color(0xFFEF4444), size: 16),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: Text(
                                         _errorMessage!,
                                         style: const TextStyle(
                                           color: Color(0xFFB91C1C),
-                                          fontSize: 12,
+                                          fontSize: 11.5,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -2438,14 +2427,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                       const SizedBox(width: 8),
                                       InkWell(
                                         onTap: () async {
+                                          final messenger = ScaffoldMessenger.of(context);
                                           setState(() => _isLoading = true);
                                           await ApiEndpoints.initialize(forceRecheck: true);
-                                          setState(() {
-                                            _isLoading = false;
-                                            _errorMessage = null;
-                                          });
                                           if (mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
+                                            setState(() {
+                                              _isLoading = false;
+                                              _errorMessage = null;
+                                            });
+                                            messenger.showSnackBar(
                                               SnackBar(
                                                 content: Text('Server connected: ${ApiEndpoints.baseUrl}'),
                                                 backgroundColor: const Color(0xFF051C48),
@@ -2472,12 +2462,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ],
                                 ),
                               ),
-                              const SizedBox(height: 12),
                             ],
 
-                            // 4. Form Input Fields with Smooth Fade Transition (AnimatedCrossFade)
+                            // 4. Form Input Fields with Smooth AnimatedCrossFade
                             AnimatedCrossFade(
-                              duration: const Duration(milliseconds: 300),
+                              duration: const Duration(milliseconds: 250),
                               crossFadeState: !_isEmailLogin
                                   ? CrossFadeState.showFirst
                                   : CrossFadeState.showSecond,
@@ -2488,70 +2477,80 @@ class _LoginScreenState extends State<LoginScreen> {
                                   const Text(
                                     'Mobile Number',
                                     style: TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w600,
-                                      color: Color(0xFF334155),
+                                      color: Color(0xFF3E4D69),
                                     ),
                                   ),
-                                  const SizedBox(height: 6),
-                                  // Phone Number Input Semi-Circle Pill
+                                  const SizedBox(height: 4),
+                                  // Phone Number Neumorphic Input Pill
                                   Container(
-                                    height: 52,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    height: 48,
+                                    padding: const EdgeInsets.symmetric(horizontal: 8),
                                     decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(26),
+                                      color: const Color(0xFFEEF4FB),
+                                      borderRadius: BorderRadius.circular(24),
                                       border: Border.all(
-                                        color: const Color(0xFF00C2FF), // Highlighted Cyan border
+                                        color: const Color(0xFFDEE7F5),
                                         width: 1.5,
                                       ),
-                                      boxShadow: const [
+                                      boxShadow: [
+                                        const BoxShadow(
+                                          color: Color(0x0C002870),
+                                          blurRadius: 6,
+                                          offset: Offset(0, 2),
+                                        ),
                                         BoxShadow(
-                                          color: Color(0x1400C2FF),
-                                          blurRadius: 10,
-                                          offset: Offset(0, 4),
+                                          color: Colors.white.withValues(alpha: 0.9),
+                                          blurRadius: 4,
+                                          offset: const Offset(0, -2),
                                         ),
                                       ],
                                     ),
                                     child: Row(
                                       children: [
-                                        // Clickable Country Selector (Flag + Code + DialCode + Dropdown)
+                                        // Clickable Country Selector Box
                                         InkWell(
                                           onTap: _showCountryCodePicker,
-                                          borderRadius: BorderRadius.circular(20),
-                                          child: Padding(
-                                            padding:
-                                                const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                                              child: Row(
+                                          borderRadius: BorderRadius.circular(11),
+                                          child: Container(
+                                            height: 34,
+                                            padding: const EdgeInsets.symmetric(horizontal: 6),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(11),
+                                              border: Border.all(
+                                                color: const Color(0xFFE5EEF9),
+                                                width: 1.2,
+                                              ),
+                                              boxShadow: const [
+                                                BoxShadow(
+                                                  color: Color(0x100038A8),
+                                                  blurRadius: 5,
+                                                  offset: Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
                                                 Text(
                                                   _selectedCountry.flag,
-                                                  style: const TextStyle(fontSize: 20),
+                                                  style: const TextStyle(fontSize: 16),
                                                 ),
-                                                const SizedBox(width: 8),
-                                                Text(
-                                                  _selectedCountry.code,
-                                                  style: const TextStyle(
-                                                    fontSize: 14,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: Color(0xFF475569),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 6),
+                                                const SizedBox(width: 4),
                                                 Text(
                                                   _selectedCountry.dialCode,
                                                   style: const TextStyle(
-                                                    fontSize: 14,
+                                                    fontSize: 13,
                                                     fontWeight: FontWeight.w700,
                                                     color: Color(0xFF0F172A),
                                                   ),
                                                 ),
-                                                const SizedBox(width: 4),
                                                 const Icon(
                                                   Icons.keyboard_arrow_down_rounded,
                                                   color: Color(0xFF94A3B8),
-                                                  size: 18,
+                                                  size: 15,
                                                 ),
                                               ],
                                             ),
@@ -2560,10 +2559,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                                         // Vertical Separator Line
                                         Container(
-                                          height: 22,
-                                          width: 1,
-                                          margin: const EdgeInsets.symmetric(horizontal: 10),
-                                          color: const Color(0xFFE2E8F0),
+                                          height: 18,
+                                          width: 1.2,
+                                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                                          color: const Color(0xFFD4E0F0),
                                         ),
 
                                         // Phone Input Field
@@ -2573,16 +2572,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                             scrollPadding: const EdgeInsets.only(bottom: 90),
                                             keyboardType: TextInputType.phone,
                                             style: const TextStyle(
-                                              fontSize: 15,
-                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13.5,
+                                              fontWeight: FontWeight.w600,
                                               color: Color(0xFF0F172A),
                                             ),
                                             decoration: const InputDecoration(
-                                              hintText: 'Mobile',
+                                              hintText: 'Enter mobile number',
                                               hintStyle: TextStyle(
-                                                fontSize: 14,
+                                                fontSize: 12.5,
                                                 fontWeight: FontWeight.w400,
-                                                color: Color(0xFFCBD5E1),
+                                                color: Color(0xFF90A1B8),
                                               ),
                                               border: InputBorder.none,
                                               isDense: true,
@@ -2599,16 +2598,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                 key: const ValueKey('email_login_form'),
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                   // Email / Staff ID / Phone Field
-                                   _buildInputCard(
-                                     label: 'Email, Staff ID or Phone',
-                                     hint: 'e.g. EMP001, phone or email',
-                                     icon: Icons.badge_outlined,
-                                     controller: _emailController,
-                                     keyboardType: TextInputType.text,
-                                   ),
+                                  // Email / Staff ID / Phone Field
+                                  _buildInputCard(
+                                    label: 'Email Address',
+                                    hint: 'Enter email address',
+                                    icon: Icons.mail_outline_rounded,
+                                    controller: _emailController,
+                                    keyboardType: TextInputType.text,
+                                  ),
 
-                                  const SizedBox(height: 12),
+                                  const SizedBox(height: 10),
 
                                   // Password Field
                                   _buildInputCard(
@@ -2622,12 +2621,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                         _obscurePassword
                                             ? Icons.visibility_outlined
                                             : Icons.visibility_off_outlined,
-                                        color: const Color(0xFF94A3B8),
-                                        size: 20,
+                                        color: const Color(0xFF8B9CB8),
+                                        size: 18,
                                       ),
                                       onPressed: () {
-                                        setState(
-                                            () => _obscurePassword = !_obscurePassword);
+                                        setState(() => _obscurePassword = !_obscurePassword);
                                       },
                                     ),
                                   ),
@@ -2635,49 +2633,53 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
 
-                            // LOGICAL UX RULE: Only show "Remember me" & "Forgot Password?" when in Email & Password mode!
+                            // Remember Me & Forgot Password Row
                             if (_isEmailLogin) ...[
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 6),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: Checkbox(
-                                          value: _rememberMe,
-                                          activeColor: GlassTheme.primaryBlue,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(4),
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => setState(() => _rememberMe = !_rememberMe),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 18,
+                                          height: 18,
+                                          child: Checkbox(
+                                            value: _rememberMe,
+                                            activeColor: const Color(0xFF0066FF),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            side: const BorderSide(
+                                              color: Color(0xFFB0C4DE),
+                                              width: 1.5,
+                                            ),
+                                            onChanged: (val) {
+                                              if (val != null) {
+                                                setState(() => _rememberMe = val);
+                                              }
+                                            },
                                           ),
-                                          side: const BorderSide(
-                                            color: Color(0xFFCBD5E1),
-                                            width: 1.5,
+                                        ),
+                                        const SizedBox(width: 6),
+                                        const Text(
+                                          'Remember me',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                            color: Color(0xFF2D3B55),
                                           ),
-                                          onChanged: (val) {
-                                            if (val != null) {
-                                              setState(() => _rememberMe = val);
-                                            }
-                                          },
                                         ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      const Text(
-                                        'Remember me',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: Color(0xFF334155),
-                                        ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                   TextButton(
                                     onPressed: _openForgotPassword,
                                     style: TextButton.styleFrom(
-
                                       padding: EdgeInsets.zero,
                                       minimumSize: Size.zero,
                                       tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -2685,9 +2687,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                     child: const Text(
                                       'Forgot Password?',
                                       style: TextStyle(
-                                        fontSize: 13,
+                                        fontSize: 12,
                                         fontWeight: FontWeight.w600,
-                                        color: GlassTheme.primaryBlue,
+                                        color: Color(0xFF0066FF),
                                       ),
                                     ),
                                   ),
@@ -2695,20 +2697,33 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ],
 
-                            SizedBox(height: !_isEmailLogin ? 24 : 18),
+                            SizedBox(height: !_isEmailLogin ? 14 : 10),
 
-                            // Primary Action Button ("Continue" for Phone mode / "Login" for Email mode)
+                            // Primary Action Glowing Blue Pill Button ("Login" / "Continue")
                             Container(
                               width: double.infinity,
-                              height: 52,
+                              height: 48,
                               decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(26),
-                                gradient: GlassTheme.primaryButtonGradient,
-                                boxShadow: [
+                                borderRadius: BorderRadius.circular(24),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Color(0xFF0066FF),
+                                    Color(0xFF0052E0),
+                                  ],
+                                ),
+                                boxShadow: const [
                                   BoxShadow(
-                                    color: GlassTheme.primaryBlue.withOpacity(0.35),
-                                    blurRadius: 14,
-                                    offset: const Offset(0, 6),
+                                    color: Color(0x600062FF),
+                                    blurRadius: 18,
+                                    offset: Offset(0, 6),
+                                    spreadRadius: 1,
+                                  ),
+                                  BoxShadow(
+                                    color: Color(0x250062FF),
+                                    blurRadius: 24,
+                                    offset: Offset(0, 10),
                                   ),
                                 ],
                               ),
@@ -2720,15 +2735,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                   disabledBackgroundColor: Colors.transparent,
                                   disabledForegroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(26),
+                                    borderRadius: BorderRadius.circular(24),
                                   ),
                                 ),
                                 child: _isLoading
                                     ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
+                                        width: 20,
+                                        height: 20,
                                         child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
+                                          strokeWidth: 2.2,
                                           valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
                                       )
@@ -2736,118 +2751,199 @@ class _LoginScreenState extends State<LoginScreen> {
                                         !_isEmailLogin ? 'Continue' : 'Login',
                                         style: const TextStyle(
                                           fontSize: 16,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w800,
                                           color: Colors.white,
+                                          letterSpacing: 0.2,
                                         ),
                                       ),
                               ),
                             ),
 
-                            SizedBox(height: !_isEmailLogin ? 22 : 16),
+                            const SizedBox(height: 12),
 
-                            const SizedBox(height: 16),
-// "Or login with" Divider
+                            // "Or login with" Divider
                             Row(
                               children: const [
                                 Expanded(
-                                    child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                                  child: Divider(color: Color(0xFFDEE7F5), thickness: 1.2),
+                                ),
                                 Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 14),
+                                  padding: EdgeInsets.symmetric(horizontal: 12),
                                   child: Text(
                                     'Or login with',
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: FontWeight.w500,
-                                      color: Color(0xFF94A3B8),
+                                      color: Color(0xFF8697B0),
                                     ),
                                   ),
                                 ),
                                 Expanded(
-                                    child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                                  child: Divider(color: Color(0xFFDEE7F5), thickness: 1.2),
+                                ),
                               ],
                             ),
 
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
 
-                            // Login as OTP / Login with Email option button
-                            OutlinedButton(
-                              onPressed: () {
+                            // Secondary Option Button (Login as OTP / Login with Email)
+                            InkWell(
+                              onTap: () {
                                 setState(() {
                                   _isEmailLogin = !_isEmailLogin;
-                                  _errorMessage = null; // Clear error message on mode switch!
+                                  _errorMessage = null;
                                 });
                               },
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF00C2FF),
-                                side: const BorderSide(
-                                    color: Color(0xFF00C2FF), width: 1.5),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                minimumSize: const Size(double.infinity, 50),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    _isEmailLogin
-                                        ? Icons.phone_android_rounded
-                                        : Icons.email_outlined,
-                                    color: const Color(0xFF00C2FF),
-                                    size: 19,
+                              borderRadius: BorderRadius.circular(24),
+                              child: Container(
+                                height: 48,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEEF4FB),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: const Color(0xFFDEE7F5),
+                                    width: 1.5,
                                   ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    _isEmailLogin ? 'Login as OTP' : 'Login with Email',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF00C2FF),
+                                  boxShadow: [
+                                    const BoxShadow(
+                                      color: Color(0x0A002870),
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
                                     ),
-                                  ),
-                                ],
+                                    BoxShadow(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, -1),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(11),
+                                        border: Border.all(
+                                          color: const Color(0xFFE5EEF9),
+                                          width: 1.2,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x100038A8),
+                                            blurRadius: 5,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Icon(
+                                          _isEmailLogin
+                                              ? Icons.phone_android_rounded
+                                              : Icons.mail_outline_rounded,
+                                          color: const Color(0xFF0066FF),
+                                          size: 18,
+                                        ),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Center(
+                                        child: Text(
+                                          _isEmailLogin ? 'Login as OTP' : 'Login with Email',
+                                          style: const TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF0052CC),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 34),
+                                  ],
+                                ),
                               ),
                             ),
 
-                            const SizedBox(height: 16),
-                            
-                            
-                            // Google Login Button styled like Login with Email
-                            OutlinedButton(
-                              onPressed: _isLoading ? null : _handleGoogleSignIn,
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: const Color(0xFF00C2FF),
-                                side: const BorderSide(
-                                    color: Color(0xFF00C2FF), width: 1.5),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
-                                minimumSize: const Size(double.infinity, 50),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
+                            const SizedBox(height: 10),
+
+                            // Google Sign-In Button (Neumorphic Inset Style)
+                            InkWell(
+                              onTap: _isLoading ? null : _handleGoogleSignIn,
+                              borderRadius: BorderRadius.circular(24),
+                              child: Container(
+                                height: 48,
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEEF4FB),
+                                  borderRadius: BorderRadius.circular(24),
+                                  border: Border.all(
+                                    color: const Color(0xFFDEE7F5),
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: [
+                                    const BoxShadow(
+                                      color: Color(0x0A002870),
+                                      blurRadius: 6,
+                                      offset: Offset(0, 2),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white.withValues(alpha: 0.9),
+                                      blurRadius: 4,
+                                      offset: const Offset(0, -1),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 34,
+                                      height: 34,
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(11),
+                                        border: Border.all(
+                                          color: const Color(0xFFE5EEF9),
+                                          width: 1.2,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x100038A8),
+                                            blurRadius: 5,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: _buildGoogleColoredIcon(size: 18),
+                                      ),
+                                    ),
+                                    const Expanded(
+                                      child: Center(
+                                        child: Text(
+                                          'Continue with Google',
+                                          style: TextStyle(
+                                            fontSize: 14.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF0052CC),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 34),
+                                  ],
                                 ),
                               ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  _buildGoogleColoredIcon(size: 20),
-                                  const SizedBox(width: 8),
-                                  const Text(
-                                    'Continue with Google',
-                                    style: TextStyle(
-                                      fontSize: 15,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF00C2FF),
-                                    ),
-                                  ),
-                                ],
-                              ),
                             ),
-                            const SizedBox(height: 20),
+
+                            const SizedBox(height: 12),
+
                             const Center(
                               child: Text(
                                 'Powered by Sooftcode',
                                 style: TextStyle(
-                                  fontSize: 12,
+                                  fontSize: 11.5,
                                   fontWeight: FontWeight.w600,
                                   color: Color(0xFF94A3B8),
                                   letterSpacing: 0.3,
@@ -2865,9 +2961,9 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ],
       ),
-    );
-  }
-  
+    ),
+  );
+}
 
   // Helper Widget for Desktop Input Field Cards (Clean modern rect with 10px rounded corners)
   Widget _buildDesktopInputCard({
@@ -2927,7 +3023,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              if (suffixWidget != null) suffixWidget,
+              ?suffixWidget,
             ],
           ),
         ),
@@ -2935,7 +3031,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // Helper Widget for Input Field Cards (Semi-Circle Pill Shape)
+  // Helper Widget for Input Field Cards (Neumorphic Pill with Left Icon Bevel Box)
   Widget _buildInputCard({
     required String label,
     required String hint,
@@ -2955,33 +3051,70 @@ class _LoginScreenState extends State<LoginScreen> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF334155),
+            color: Color(0xFF3E4D69),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26), // Semi-circle pill shape!
+            color: const Color(0xFFEEF4FB),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: const Color(0xFF00C2FF), // Highlighted Cyan/Teal border
+              color: const Color(0xFFDEE7F5),
               width: 1.5,
             ),
-            boxShadow: const [
+            boxShadow: [
+              const BoxShadow(
+                color: Color(0x0C002870),
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
               BoxShadow(
-                color: Color(0x1400C2FF),
-                blurRadius: 10,
-                offset: Offset(0, 4),
+                color: Colors.white.withValues(alpha: 0.9),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
           child: Row(
             children: [
-              Icon(icon, color: GlassTheme.primaryBlue, size: 20),
-              const SizedBox(width: 10),
-              if (prefixWidget != null) prefixWidget,
+              if (prefixWidget != null)
+                prefixWidget
+              else
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: const Color(0xFFE5EEF9),
+                      width: 1.2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x100038A8),
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      icon,
+                      color: const Color(0xFF0066FF),
+                      size: 18,
+                    ),
+                  ),
+                ),
+              Container(
+                height: 18,
+                width: 1.2,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: const Color(0xFFD4E0F0),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
@@ -2989,16 +3122,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   obscureText: obscureText,
                   keyboardType: keyboardType,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w400,
-                      color: Color(0xFFCBD5E1),
+                      color: Color(0xFF90A1B8),
                     ),
                     border: InputBorder.none,
                     isDense: true,
@@ -3006,7 +3139,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-              if (suffixWidget != null) suffixWidget,
+              ?suffixWidget,
             ],
           ),
         ),

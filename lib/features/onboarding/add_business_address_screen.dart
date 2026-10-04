@@ -1,12 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/location_service.dart';
-import '../../core/widgets/glass_company_name_badge.dart';
-import '../dashboard/main_layout.dart';
-import 'choose_business_category_screen.dart';
 import 'confirm_business_address_screen.dart';
 
 class AddressSuggestion {
@@ -101,17 +96,18 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
   @override
   void initState() {
     super.initState();
+    db.saveOnboardingProgress(route: 'add_address', step: 5);
     final user = db.currentUser;
     final rest = db.restaurant;
 
-    final initialName = rest?.name ?? user?.companyName ?? user?.name ?? 'Tea Coffee';
-    final initialPhone = user?.phone ?? rest?.phone ?? '9899636369';
+    final initialName = rest?.name ?? user?.companyName ?? user?.name ?? 'The Sky High';
+    final initialPhone = user?.phone ?? rest?.phone ?? '9899636418';
     final cleanPhone = initialPhone.replaceAll(RegExp(r'^\+\d+\s*'), '');
 
     _searchController = TextEditingController();
     _fullNameController = TextEditingController(text: initialName);
-    _phoneController = TextEditingController(text: cleanPhone);
-    _addressController = TextEditingController(text: rest?.address ?? '');
+    _phoneController = TextEditingController(text: cleanPhone.isNotEmpty ? cleanPhone : '9899636418');
+    _addressController = TextEditingController(text: rest?.address ?? '12-A Connaught Place, New Delhi');
     _houseNoController = TextEditingController();
     _landmarkController = TextEditingController();
     _pincodeController = TextEditingController();
@@ -198,9 +194,9 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          backgroundColor: Color(0xFF0F172A),
+          backgroundColor: Color(0xFF021B54),
           content: Text(
-            'GPS Location permission granted & location loaded successfully!',
+            'GPS Location loaded successfully!',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
           duration: Duration(seconds: 2),
@@ -241,10 +237,16 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
     try {
       final businessName = _fullNameController.text.trim().isNotEmpty
           ? _fullNameController.text.trim()
-          : (db.restaurant?.name ?? 'Tea Coffee');
+          : (db.restaurant?.name ?? 'The Sky High');
 
-      final fullFormattedAddress =
-          '${_houseNoController.text.trim()}, $address, ${_landmarkController.text.trim()} - ${_pincodeController.text.trim()}';
+      final houseNo = _houseNoController.text.trim();
+      final landmark = _landmarkController.text.trim();
+      final pincode = _pincodeController.text.trim();
+
+      String fullFormattedAddress = address;
+      if (houseNo.isNotEmpty) fullFormattedAddress = '$houseNo, $fullFormattedAddress';
+      if (landmark.isNotEmpty) fullFormattedAddress = '$fullFormattedAddress, $landmark';
+      if (pincode.isNotEmpty) fullFormattedAddress = '$fullFormattedAddress - $pincode';
 
       final updated = RestaurantModel(
         id: db.restaurant?.id ?? 'rest_001',
@@ -266,20 +268,20 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xFF0F172A),
+          backgroundColor: const Color(0xFF021B54),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF38BDF8), size: 20),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Welcome to Apna POS! Setup for "$businessName" completed.',
+                  'Address for "$businessName" saved successfully!',
                   style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-                    fontSize: 13.5,
+                    fontSize: 13,
                   ),
                 ),
               ),
@@ -288,6 +290,10 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
           duration: const Duration(seconds: 2),
         ),
       );
+
+      await db.saveOnboardingProgress(route: 'confirm_address', step: 6);
+
+      if (!mounted) return;
 
       // Open Confirm Business Address Screen with filled address
       Navigator.push(
@@ -308,133 +314,60 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final dynamicCompanyName = db.restaurant?.name ??
+        db.currentUser?.companyName ??
+        'The Sky High';
+
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient with Glass Ambient Glows
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy (Company Badge Icon Removed)
+              _buildTopHeader(dynamicCompanyName),
 
-          // 2. Glassmorphism Ambient Glow Orbs
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Layout
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header with Back Button and Address Title
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassCompanyNameBadge(
-                            name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
-                          ),
-                        ),
+              // 2. Curved Soft Neumorphic Body Sheet with Sticky Save & Continue Button
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0F4F8),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x25001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. Curved White Card Container matching Auth Theme
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                     child: Column(
                       children: [
+                        // Scrollable Content
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 // Error Banner
                                 if (_errorMessage != null) ...[
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    margin: const EdgeInsets.only(bottom: 12),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: const Color(0xFFFCA5A5)),
                                     ),
                                     child: Row(
                                       children: [
-                                        const Icon(Icons.error_outline_rounded,
-                                            color: Color(0xFFEF4444), size: 18),
+                                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18),
                                         const SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
@@ -442,36 +375,37 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                             style: const TextStyle(
                                               color: Color(0xFFB91C1C),
                                               fontSize: 12,
-                                              fontWeight: FontWeight.w500,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
                                 ],
 
-                                // Top Location Search Bar & Map Pin Action Row matching Screenshot
+                                // Top Location Search Bar & GPS Locate Button Row
                                 Row(
                                   children: [
-                                    // Search Location Input Field with Autocomplete
+                                    // Search Location Input Field
                                     Expanded(
                                       child: Container(
-                                        height: 50,
+                                        height: 48,
                                         padding: const EdgeInsets.symmetric(horizontal: 14),
                                         decoration: BoxDecoration(
                                           color: Colors.white,
-                                          borderRadius: BorderRadius.circular(14),
-                                          border: Border.all(
-                                            color: const Color(0xFFCBD5E1),
-                                            width: 1.2,
-                                          ),
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(color: Colors.white, width: 1.5),
                                           boxShadow: const [
                                             BoxShadow(
-                                              color: Color(0x0F000000),
+                                              color: Color(0x0C002870),
                                               blurRadius: 6,
-                                              offset: Offset(0, 2),
+                                              offset: Offset(2, 3),
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.white,
+                                              blurRadius: 5,
+                                              offset: Offset(-2, -2),
                                             ),
                                           ],
                                         ),
@@ -480,21 +414,21 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                             const Icon(
                                               Icons.search_rounded,
                                               color: Color(0xFF94A3B8),
-                                              size: 22,
+                                              size: 20,
                                             ),
                                             const SizedBox(width: 10),
                                             Expanded(
                                               child: TextField(
                                                 controller: _searchController,
                                                 style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.w600,
+                                                  fontSize: 13.5,
+                                                  fontWeight: FontWeight.w700,
                                                   color: Color(0xFF0F172A),
                                                 ),
                                                 decoration: const InputDecoration(
                                                   hintText: 'Search Location',
                                                   hintStyle: TextStyle(
-                                                    fontSize: 14,
+                                                    fontSize: 13,
                                                     fontWeight: FontWeight.w400,
                                                     color: Color(0xFF94A3B8),
                                                   ),
@@ -509,30 +443,42 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                       ),
                                     ),
 
-                                    const SizedBox(width: 12),
+                                    const SizedBox(width: 10),
 
-                                    // Emerald/Cyan Location Pin Action Button matching screenshot
+                                    // Neumorphic GPS Target Location Pin Button
                                     InkWell(
                                       onTap: _isFetchingLocation ? null : _fetchCurrentLocationWithPermission,
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(16),
                                       child: Container(
-                                        width: 50,
-                                        height: 50,
+                                        width: 48,
+                                        height: 48,
                                         decoration: BoxDecoration(
                                           color: const Color(0xFFE6FFFA),
-                                          borderRadius: BorderRadius.circular(14),
+                                          borderRadius: BorderRadius.circular(16),
                                           border: Border.all(
-                                            color: const Color(0xFF10B981),
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.6),
                                             width: 1.5,
                                           ),
+                                          boxShadow: const [
+                                            BoxShadow(
+                                              color: Color(0x1810B981),
+                                              blurRadius: 8,
+                                              offset: Offset(0, 3),
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.white,
+                                              blurRadius: 5,
+                                              offset: Offset(-2, -2),
+                                            ),
+                                          ],
                                         ),
                                         child: _isFetchingLocation
                                             ? const Center(
                                                 child: SizedBox(
-                                                  width: 20,
-                                                  height: 20,
+                                                  width: 18,
+                                                  height: 18,
                                                   child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
+                                                    strokeWidth: 2.2,
                                                     color: Color(0xFF10B981),
                                                   ),
                                                 ),
@@ -541,7 +487,7 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                                 child: Icon(
                                                   Icons.my_location_rounded,
                                                   color: Color(0xFF10B981),
-                                                  size: 26,
+                                                  size: 22,
                                                 ),
                                               ),
                                       ),
@@ -549,19 +495,19 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                   ],
                                 ),
 
-                                // Address Autocomplete Suggestions Dropdown List Overlay
+                                // Address Autocomplete Suggestions Dropdown
                                 if (_showSuggestions && _filteredSuggestions.isNotEmpty) ...[
                                   const SizedBox(height: 8),
                                   Container(
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
+                                      border: Border.all(color: const Color(0xFF0066FF), width: 1.2),
                                       boxShadow: const [
                                         BoxShadow(
-                                          color: Color(0x1F000000),
-                                          blurRadius: 16,
-                                          offset: Offset(0, 6),
+                                          color: Color(0x14002870),
+                                          blurRadius: 12,
+                                          offset: Offset(0, 4),
                                         ),
                                       ],
                                     ),
@@ -569,58 +515,57 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                       shrinkWrap: true,
                                       physics: const NeverScrollableScrollPhysics(),
                                       itemCount: _filteredSuggestions.length,
-                                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                                      separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
                                       itemBuilder: (context, index) {
                                         final item = _filteredSuggestions[index];
-                                        return Material(
-                                          color: Colors.transparent,
-                                          child: ListTile(
-                                            dense: true,
-                                            leading: const Icon(Icons.location_on_rounded, color: Color(0xFF00C2FF), size: 20),
-                                            title: Text(item.mainText, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5, color: Color(0xFF0F172A))),
-                                            subtitle: Text(item.secondaryText, style: const TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
-                                            onTap: () => _applySuggestion(item),
-                                          ),
+                                        return ListTile(
+                                          dense: true,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                                          leading: const Icon(Icons.location_on_rounded, color: Color(0xFF0066FF), size: 18),
+                                          title: Text(item.mainText, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: Color(0xFF0F172A))),
+                                          subtitle: Text(item.secondaryText, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                          onTap: () => _applySuggestion(item),
                                         );
                                       },
                                     ),
                                   ),
                                 ],
 
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 14),
 
-                                // OR Divider matching Screenshot
+                                // OR Divider
                                 Row(
                                   children: const [
-                                    Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                                    Expanded(child: Divider(color: Color(0xFFCBD5E1), thickness: 0.8)),
                                     Padding(
-                                      padding: EdgeInsets.symmetric(horizontal: 12),
+                                      padding: EdgeInsets.symmetric(horizontal: 10),
                                       child: Text(
                                         'OR',
                                         style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w600,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
                                           color: Color(0xFF94A3B8),
                                         ),
                                       ),
                                     ),
-                                    Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+                                    Expanded(child: Divider(color: Color(0xFFCBD5E1), thickness: 0.8)),
                                   ],
                                 ),
 
-                                const SizedBox(height: 18),
+                                const SizedBox(height: 14),
 
-                                // Save Address As Chips matching Screenshot
+                                // Save Address As Section
                                 const Text(
                                   'Save Address As',
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF475569),
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.2,
                                   ),
                                 ),
 
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 8),
 
                                 Wrap(
                                   spacing: 10,
@@ -632,37 +577,53 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
                                   ],
                                 ),
 
-                                const SizedBox(height: 20),
-
-                                // Full Name Field matching Screenshot
-                                _buildOutlinedField(
-                                  label: 'Full Name',
-                                  controller: _fullNameController,
-                                  hint: 'Tea Coffee',
-                                ),
-
                                 const SizedBox(height: 16),
 
-                                // Phone Number Field Row matching Screenshot
+                                // FIELD 1: Full Name
+                                _buildNeumorphicField(
+                                  label: 'Full Name',
+                                  controller: _fullNameController,
+                                  hint: 'The Sky High',
+                                ),
+
+                                const SizedBox(height: 12),
+
+                                // FIELD 2: Phone Number Row
                                 Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     // Country Code Box
                                     Container(
                                       height: 52,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
                                       decoration: BoxDecoration(
                                         color: Colors.white,
-                                        borderRadius: BorderRadius.circular(14),
-                                        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
-                                      ),
-                                      child: Row(
-                                        children: const [
-                                          Text('🇮🇳', style: TextStyle(fontSize: 18)),
-                                          SizedBox(width: 6),
-                                          Text('IN +91', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF334155))),
-                                          Icon(Icons.arrow_drop_down, size: 18, color: Color(0xFF64748B)),
+                                        borderRadius: BorderRadius.circular(16),
+                                        border: Border.all(color: Colors.white, width: 1.5),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x0A002870),
+                                            blurRadius: 6,
+                                            offset: Offset(2, 3),
+                                          ),
+                                          BoxShadow(
+                                            color: Colors.white,
+                                            blurRadius: 5,
+                                            offset: Offset(-2, -2),
+                                          ),
                                         ],
+                                      ),
+                                      child: Center(
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: const [
+                                            Text('🇮🇳', style: TextStyle(fontSize: 18)),
+                                            SizedBox(width: 4),
+                                            Text('IN +91', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                                            SizedBox(width: 2),
+                                            Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF64748B)),
+                                          ],
+                                        ),
                                       ),
                                     ),
 
@@ -670,190 +631,168 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
 
                                     // Phone Number Field
                                     Expanded(
-                                      child: _buildOutlinedField(
+                                      child: _buildNeumorphicField(
                                         label: 'Phone Number',
                                         controller: _phoneController,
-                                        hint: '9899636369',
+                                        hint: '9899636418',
                                         keyboardType: TextInputType.phone,
                                       ),
                                     ),
                                   ],
                                 ),
 
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12),
 
-                                // Address Field matching Screenshot
-                                _buildOutlinedField(
+                                // FIELD 3: Address
+                                _buildNeumorphicField(
                                   label: 'Address',
                                   controller: _addressController,
                                   hint: 'Street Address',
                                 ),
 
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12),
 
-                                // House No./Flat/Buildings Field matching Screenshot
-                                _buildOutlinedField(
+                                // FIELD 4: House No./Flat/Buildings
+                                _buildNeumorphicField(
                                   label: 'House No./Flat/Buildings',
                                   controller: _houseNoController,
                                   hint: 'Flat or House Number',
                                 ),
 
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12),
 
-                                // Add Nearby Landmark Field matching Screenshot
-                                _buildOutlinedField(
+                                // FIELD 5: Add Nearby Landmark
+                                _buildNeumorphicField(
                                   label: 'Add Nearby Landmark',
                                   controller: _landmarkController,
                                   hint: 'Landmark',
                                 ),
 
-                                const SizedBox(height: 16),
+                                const SizedBox(height: 12),
 
-                                // Pincode Field matching Screenshot
-                                _buildOutlinedField(
+                                // FIELD 6: Pincode
+                                _buildNeumorphicField(
                                   label: 'Pincode',
                                   controller: _pincodeController,
                                   hint: 'Pincode',
                                   keyboardType: TextInputType.number,
                                 ),
 
-                                const SizedBox(height: 14),
+                                const SizedBox(height: 10),
 
-                                // Additional Details Expandable Button matching Screenshot
+                                // Additional Details Expandable
                                 InkWell(
                                   onTap: () {
                                     setState(() => _showAdditionalDetails = !_showAdditionalDetails);
                                   },
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        'Additional Details',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[700],
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          'Additional Details',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: _showAdditionalDetails ? const Color(0xFF0066FF) : const Color(0xFF64748B),
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        _showAdditionalDetails ? Icons.remove_rounded : Icons.add_rounded,
-                                        color: Colors.black87,
-                                        size: 18,
-                                      ),
-                                    ],
+                                        const SizedBox(width: 4),
+                                        Icon(
+                                          _showAdditionalDetails ? Icons.remove_rounded : Icons.add_rounded,
+                                          color: _showAdditionalDetails ? const Color(0xFF0066FF) : const Color(0xFF64748B),
+                                          size: 16,
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
 
                                 if (_showAdditionalDetails) ...[
-                                  const SizedBox(height: 10),
-                                  _buildOutlinedField(
+                                  const SizedBox(height: 8),
+                                  _buildNeumorphicField(
                                     label: 'Additional Delivery Notes',
                                     controller: _additionalController,
                                     hint: 'Floor number, gate code, etc.',
                                     maxLines: 2,
                                   ),
                                 ],
+
+                                const SizedBox(height: 14),
                               ],
                             ),
                           ),
                         ),
 
-                        // 5. Primary Action Button ("Save & Continue")
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                          child: Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x3300C2FF),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveAddressAndNext,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Save & Continue',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                        // Sticky Bottom Action Bar with "Save & Continue" Button (Background Removed)
+                        _buildStickyBottomBar(),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
+  // Address Type Neumorphic Chips (Home, Work, Other)
   Widget _buildAddressTypeChip(String label, IconData icon) {
     final isSelected = _selectedAddressType == label;
 
     return InkWell(
       onTap: () => setState(() => _selectedAddressType = label),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00C2FF) : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(20),
+          color: isSelected ? const Color(0xFF0066FF) : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? const Color(0xFF0066FF) : Colors.white,
+            width: 1.5,
+          ),
           boxShadow: isSelected
               ? const [
                   BoxShadow(
-                    color: Color(0x3300C2FF),
+                    color: Color(0x350066FF),
                     blurRadius: 8,
                     offset: Offset(0, 3),
                   ),
                 ]
-              : null,
+              : const [
+                  BoxShadow(
+                    color: Color(0x0A002870),
+                    blurRadius: 6,
+                    offset: Offset(2, 3),
+                  ),
+                  BoxShadow(
+                    color: Colors.white,
+                    blurRadius: 5,
+                    offset: Offset(-2, -2),
+                  ),
+                ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               icon,
-              size: 16,
+              size: 15,
               color: isSelected ? Colors.white : const Color(0xFF475569),
             ),
-            const SizedBox(width: 6),
+            const SizedBox(width: 5),
             Text(
               label,
               style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: isSelected ? Colors.white : const Color(0xFF475569),
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.white : const Color(0xFF0F172A),
               ),
             ),
           ],
@@ -862,62 +801,230 @@ class _AddBusinessAddressScreenState extends State<AddBusinessAddressScreen> {
     );
   }
 
-  Widget _buildOutlinedField({
+  // Compact Neumorphic Input Field
+  Widget _buildNeumorphicField({
     required String label,
     required TextEditingController controller,
     required String hint,
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
   }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          decoration: BoxDecoration(
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A002870),
+            blurRadius: 6,
+            offset: Offset(2, 3),
+          ),
+          BoxShadow(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: const Color(0xFFCBD5E1),
-              width: 1.2,
+            blurRadius: 5,
+            offset: Offset(-2, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF64748B),
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 1),
+          TextField(
+            controller: controller,
+            keyboardType: keyboardType,
+            maxLines: maxLines,
+            style: const TextStyle(
+              fontSize: 13.5,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w400,
+                color: Color(0xFFCBD5E1),
+              ),
+              border: InputBorder.none,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(vertical: 2),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Top Midnight Navy Header with Circular Back Button and Company Name Badge (Icon Removed)
+  Widget _buildTopHeader(String companyName) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF021B54),
+            Color(0xFF03266B),
+            Color(0xFF021B54),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
+          child: Row(
             children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF64748B),
+              // Neumorphic Frosted Circular Back Button
+              InkWell(
+                onTap: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.88),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chevron_left_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
+                    ),
+                  ),
                 ),
               ),
-              TextField(
-                controller: controller,
-                keyboardType: keyboardType,
-                maxLines: maxLines,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
-                ),
-                decoration: InputDecoration(
-                  hintText: hint,
-                  hintStyle: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w400,
-                    color: Color(0xFFCBD5E1),
+
+              const SizedBox(width: 14),
+
+              // Neumorphic Frosted Company Name Badge (Icon Removed)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    width: 1,
                   ),
-                  border: InputBorder.none,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    companyName,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ],
           ),
         ),
-      ],
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Midnight Navy "Save & Continue" Button (Background Removed)
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30021B54),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSaveAddressAndNext,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.2,
+                    ),
+                  )
+                : const Center(
+                    child: Text(
+                      'Save & Continue',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
+      ),
     );
   }
 }

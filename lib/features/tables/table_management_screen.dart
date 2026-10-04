@@ -313,6 +313,295 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
     );
   }
 
+  void _showAllTablesDropdownDialog(
+    BuildContext parentCtx,
+    StateSetter setParentState,
+    Function(TableModel) onSelectTable,
+  ) {
+    showDialog(
+      context: parentCtx,
+      builder: (tablesCtx) {
+        return StatefulBuilder(
+          builder: (context, setListState) {
+            final allTables = db.tables;
+            final screenWidth = MediaQuery.of(context).size.width;
+
+            return Dialog(
+              backgroundColor: const Color(0xFFEFF4FA),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              elevation: 16,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 440 : screenWidth * 0.92,
+                  minWidth: 280,
+                  maxHeight: MediaQuery.of(context).size.height * 0.75,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2EDFB),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                                  blurRadius: 4,
+                                  offset: const Offset(1.5, 2),
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 4,
+                                  offset: Offset(-1.5, -1.5),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 18),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'All Dining Tables',
+                                  style: TextStyle(
+                                    color: Color(0xFF0F172A),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                Text(
+                                  '${allTables.length} tables registered',
+                                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => Navigator.pop(tablesCtx),
+                            borderRadius: BorderRadius.circular(16),
+                            child: Container(
+                              width: 30,
+                              height: 30,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0xFFEFF4FA),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                                    blurRadius: 4,
+                                    offset: const Offset(1.5, 2),
+                                  ),
+                                  const BoxShadow(
+                                    color: Colors.white,
+                                    blurRadius: 4,
+                                    offset: Offset(-1.5, -1.5),
+                                  ),
+                                ],
+                              ),
+                              child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 16),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Tables List
+                      if (allTables.isEmpty)
+                        Container(
+                          padding: const EdgeInsets.symmetric(vertical: 36),
+                          alignment: Alignment.center,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.table_restaurant_outlined, size: 38, color: Color(0xFF94A3B8)),
+                              SizedBox(height: 8),
+                              Text('No dining tables available', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600, fontSize: 12.5)),
+                            ],
+                          ),
+                        )
+                      else
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: allTables.length,
+                            separatorBuilder: (_, _) => const SizedBox(height: 8),
+                            itemBuilder: (context, idx) {
+                              final tbl = allTables[idx];
+                              return Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.5),
+                                      blurRadius: 4,
+                                      offset: const Offset(1.5, 2),
+                                    ),
+                                    const BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 4,
+                                      offset: Offset(-1.5, -1.5),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                                  onTap: () {
+                                    onSelectTable(tbl);
+                                    Navigator.pop(tablesCtx);
+                                  },
+                                  leading: Container(
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE2EDFB),
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '#${tbl.tableNumber > 0 ? tbl.tableNumber : (idx + 1)}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF0B2253),
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  title: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          tbl.name,
+                                          style: const TextStyle(
+                                            color: Color(0xFF0F172A),
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  subtitle: Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFE2EDFB),
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(
+                                          tbl.floor,
+                                          style: const TextStyle(
+                                            color: Color(0xFF0B2253),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 10,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        'Cap: ${tbl.capacity}',
+                                        style: const TextStyle(
+                                          color: Color(0xFF64748B),
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: InkWell(
+                                    key: ValueKey('delete_table_${tbl.id}'),
+                                    onTap: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (confirmCtx) {
+                                          return AlertDialog(
+                                            backgroundColor: const Color(0xFFEFF4FA),
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                            title: const Text('Delete Table?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                                            content: Text('Are you sure you want to delete table "${tbl.name}"?', style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569))),
+                                            actions: [
+                                              TextButton(
+                                                onPressed: () => Navigator.pop(confirmCtx, false),
+                                                child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                                              ),
+                                              ElevatedButton(
+                                                onPressed: () => Navigator.pop(confirmCtx, true),
+                                                style: ElevatedButton.styleFrom(
+                                                  backgroundColor: const Color(0xFFEF4444),
+                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                ),
+                                                child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                              ),
+                                            ],
+                                          );
+                                        },
+                                      );
+
+                                      if (confirm == true) {
+                                        final deletedName = tbl.name;
+                                        await db.deleteTable(tbl.id);
+                                        setListState(() {});
+                                        setParentState(() {});
+                                        if (parentCtx.mounted) {
+                                          ScaffoldMessenger.of(parentCtx).showSnackBar(
+                                            SnackBar(
+                                              content: Text('Table "$deletedName" deleted successfully'),
+                                              backgroundColor: const Color(0xFF0B2253),
+                                              behavior: SnackBarBehavior.floating,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    borderRadius: BorderRadius.circular(10),
+                                    child: Container(
+                                      width: 32,
+                                      height: 32,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFEE2E2),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: const Color(0xFFFECACA)),
+                                      ),
+                                      child: const Icon(
+                                        Icons.delete_outline_rounded,
+                                        color: Color(0xFFEF4444),
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showAddTableDialog() {
     final nextNum = db.tables.isEmpty
         ? 1
@@ -331,6 +620,10 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           builder: (context, setDialogState) {
             final screenWidth = MediaQuery.of(context).size.width;
             final availableFloors = db.allFloors;
+            if (!availableFloors.contains(selectedFloor) && availableFloors.isNotEmpty) {
+              selectedFloor = availableFloors.first;
+              editFloorCtrl.text = selectedFloor;
+            }
 
             return Dialog(
               backgroundColor: const Color(0xFFEFF4FA),
@@ -394,31 +687,6 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                               ],
                             ),
                           ),
-                          InkWell(
-                            onTap: () => Navigator.pop(dialogCtx),
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              width: 30,
-                              height: 30,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0xFFEFF4FA),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
-                                    blurRadius: 4,
-                                    offset: const Offset(1.5, 2),
-                                  ),
-                                  const BoxShadow(
-                                    color: Colors.white,
-                                    blurRadius: 4,
-                                    offset: Offset(-1.5, -1.5),
-                                  ),
-                                ],
-                              ),
-                              child: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 16),
-                            ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 14),
@@ -430,7 +698,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 1. Table Name / Number Field
+                              // 1. Table Name / Number Field + All Tables Dropdown
                               Row(
                                 children: const [
                                   Text(
@@ -444,45 +712,96 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                 ],
                               ),
                               const SizedBox(height: 6),
-                              Container(
-                                height: 44,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
-                                      blurRadius: 4,
-                                      offset: const Offset(1, 2),
-                                    ),
-                                    const BoxShadow(
-                                      color: Colors.white,
-                                      blurRadius: 4,
-                                      offset: Offset(-1, -1),
-                                    ),
-                                  ],
-                                ),
-                                child: TextField(
-                                  controller: nameCtrl,
-                                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w700),
-                                  decoration: InputDecoration(
-                                    border: InputBorder.none,
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                    prefixIcon: Container(
-                                      margin: const EdgeInsets.only(left: 6, right: 8, top: 6, bottom: 6),
-                                      padding: const EdgeInsets.all(4),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 44,
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFE2EDFB),
-                                        borderRadius: BorderRadius.circular(8),
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                                            blurRadius: 4,
+                                            offset: const Offset(1, 2),
+                                          ),
+                                          const BoxShadow(
+                                            color: Colors.white,
+                                            blurRadius: 4,
+                                            offset: Offset(-1, -1),
+                                          ),
+                                        ],
                                       ),
-                                      child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 15),
+                                      child: TextField(
+                                        controller: nameCtrl,
+                                        style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w700),
+                                        decoration: InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                          prefixIcon: Container(
+                                            margin: const EdgeInsets.only(left: 6, right: 8, top: 6, bottom: 6),
+                                            padding: const EdgeInsets.all(4),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFE2EDFB),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 15),
+                                          ),
+                                          prefixIconConstraints: const BoxConstraints(minWidth: 38, maxHeight: 36),
+                                          hintText: 'e.g. T-21',
+                                          hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
+                                        ),
+                                      ),
                                     ),
-                                    prefixIconConstraints: const BoxConstraints(minWidth: 38, maxHeight: 36),
-                                    hintText: 'e.g. T-21',
-                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12.5),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    key: const ValueKey('tables_dropdown_btn'),
+                                    onTap: () => _showAllTablesDropdownDialog(
+                                      dialogCtx,
+                                      setDialogState,
+                                      (selectedTbl) {
+                                        nameCtrl.text = selectedTbl.name;
+                                        setDialogState(() {
+                                          selectedFloor = selectedTbl.floor;
+                                          editFloorCtrl.text = selectedTbl.floor;
+                                        });
+                                      },
+                                    ),
+                                    borderRadius: BorderRadius.circular(14),
+                                    child: Container(
+                                      height: 44,
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                                            blurRadius: 4,
+                                            offset: const Offset(1, 2),
+                                          ),
+                                          const BoxShadow(
+                                            color: Colors.white,
+                                            blurRadius: 4,
+                                            offset: Offset(-1, -1),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 16),
+                                          SizedBox(width: 2),
+                                          Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF0B2253), size: 18),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 14),
 
@@ -490,7 +809,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                               Row(
                                 children: const [
                                   Text(
-                                    'Floor / Dining Area',
+                                    'Floor Area',
                                     style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                   ),
                                   Text(
@@ -568,7 +887,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                                 ),
                                                 if (isSel) ...[
                                                   const SizedBox(width: 6),
-                                                  const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
+                                                  //const Icon(Icons.check_circle_rounded, color: Colors.white, size: 14),
                                                 ],
                                               ],
                                             ),
@@ -626,58 +945,139 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                 ],
                               ),
                               const SizedBox(height: 5),
-                              Container(
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.5),
-                                      blurRadius: 3,
-                                      offset: const Offset(1, 1.5),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFF1F5F9),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFFD6E2F0).withValues(alpha: 0.5),
+                                            blurRadius: 3,
+                                            offset: const Offset(1, 1.5),
+                                          ),
+                                          const BoxShadow(
+                                            color: Colors.white,
+                                            blurRadius: 3,
+                                            offset: Offset(-1, -1),
+                                          ),
+                                        ],
+                                      ),
+                                      child: TextField(
+                                        key: const ValueKey('edit_floor_name_field'),
+                                        controller: editFloorCtrl,
+                                        style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w700),
+                                        onSubmitted: (newName) async {
+                                          final clean = newName.trim();
+                                          if (clean.isNotEmpty && clean.toLowerCase() != selectedFloor.trim().toLowerCase()) {
+                                            final oldName = selectedFloor;
+                                            await db.renameFloor(oldName, clean);
+                                            if (_selectedFloor == oldName) {
+                                              setState(() => _selectedFloor = clean);
+                                            }
+                                            setDialogState(() {
+                                              selectedFloor = clean;
+                                              editFloorCtrl.text = clean;
+                                            });
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Floor "$oldName" updated to "$clean"'),
+                                                  backgroundColor: const Color(0xFF0B2253),
+                                                  behavior: SnackBarBehavior.floating,
+                                                  duration: const Duration(seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        decoration: const InputDecoration(
+                                          border: InputBorder.none,
+                                          contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 11),
+                                          prefixIcon: Icon(Icons.edit_rounded, size: 14, color: Color(0xFF64748B)),
+                                          prefixIconConstraints: BoxConstraints(minWidth: 32, maxHeight: 36),
+                                          hintText: 'Edit floor name',
+                                          hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                        ),
+                                      ),
                                     ),
-                                    const BoxShadow(
-                                      color: Colors.white,
-                                      blurRadius: 3,
-                                      offset: Offset(-1, -1),
-                                    ),
-                                  ],
-                                ),
-                                child: TextField(
-                                  key: const ValueKey('edit_floor_name_field'),
-                                  controller: editFloorCtrl,
-                                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w700),
-                                  onChanged: (newName) async {
-                                    final clean = newName.trim();
-                                    if (clean.isNotEmpty && clean != selectedFloor) {
-                                      final oldName = selectedFloor;
-                                      await db.renameFloor(oldName, clean);
-                                      setDialogState(() {
-                                        selectedFloor = clean;
-                                      });
-                                    }
-                                  },
-                                  onSubmitted: (newName) async {
-                                    final clean = newName.trim();
-                                    if (clean.isNotEmpty && clean != selectedFloor) {
-                                      final oldName = selectedFloor;
-                                      await db.renameFloor(oldName, clean);
-                                      setDialogState(() {
-                                        selectedFloor = clean;
-                                      });
-                                    }
-                                  },
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 11),
-                                    prefixIcon: Icon(Icons.edit_rounded, size: 14, color: Color(0xFF64748B)),
-                                    prefixIconConstraints: BoxConstraints(minWidth: 32, maxHeight: 36),
-                                    hintText: 'Edit floor name',
-                                    hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
                                   ),
-                                ),
+                                  const SizedBox(width: 8),
+                                  InkWell(
+                                    key: const ValueKey('update_floor_name_btn'),
+                                    onTap: () async {
+                                      final clean = editFloorCtrl.text.trim();
+                                      if (clean.isEmpty) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Floor name cannot be empty'),
+                                            backgroundColor: Colors.redAccent,
+                                            behavior: SnackBarBehavior.floating,
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                        return;
+                                      }
+                                      if (clean.toLowerCase() == selectedFloor.trim().toLowerCase()) {
+                                        return;
+                                      }
+                                      final oldName = selectedFloor;
+                                      await db.renameFloor(oldName, clean);
+                                      if (_selectedFloor == oldName) {
+                                        setState(() => _selectedFloor = clean);
+                                      }
+                                      setDialogState(() {
+                                        selectedFloor = clean;
+                                        editFloorCtrl.text = clean;
+                                      });
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Floor "$oldName" updated to "$clean"'),
+                                            backgroundColor: const Color(0xFF0B2253),
+                                            behavior: SnackBarBehavior.floating,
+                                            duration: const Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Container(
+                                      height: 40,
+                                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFF0B2253),
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0xFF0B2253).withValues(alpha: 0.35),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(Icons.check_rounded, color: Colors.white, size: 15),
+                                          SizedBox(width: 4),
+                                          Text(
+                                            'Update',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
@@ -749,7 +1149,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: const [
-                                    Icon(Icons.check_circle_rounded, color: Colors.white, size: 15),
+                                    //Icon(Icons.check_circle_rounded, color: Colors.white, size: 15),
                                     SizedBox(width: 4),
                                     Text(
                                       'Create Table',
@@ -962,7 +1362,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
           ...floors.map((flr) {
             final isSel = _selectedFloor == flr;
             final isAll = flr == 'All Floors';
-            return Padding(
+            final tabWidget = Padding(
               padding: const EdgeInsets.only(right: 6),
               child: InkWell(
                 onTap: () => setState(() => _selectedFloor = flr),
@@ -1009,6 +1409,18 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                   ),
                 ),
               ),
+            );
+
+            if (isAll) {
+              return tabWidget;
+            }
+
+            return DragTarget<TableModel>(
+              onWillAcceptWithDetails: (details) => details.data.floor.trim().toLowerCase() != flr.trim().toLowerCase(),
+              onAcceptWithDetails: (details) async {
+                await db.moveTableToFloor(details.data.id, flr);
+              },
+              builder: (context, candidateData, rejectedData) => tabWidget,
             );
           }),
           // + Add Table button (Preserves ElevatedButton semantic compatibility for testing)
@@ -1179,7 +1591,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
   }
 
   Widget _buildFloorSectionHeader(String floorName, int tableCount, bool isCollapsed) {
-    return Padding(
+    final headerWidget = Padding(
       padding: const EdgeInsets.only(left: 2, right: 2, bottom: 6, top: 8),
       child: Row(
         children: [
@@ -1285,6 +1697,14 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
         ],
       ),
     );
+
+    return DragTarget<TableModel>(
+      onWillAcceptWithDetails: (details) => details.data.floor.trim().toLowerCase() != floorName.trim().toLowerCase(),
+      onAcceptWithDetails: (details) async {
+        await db.moveTableToFloor(details.data.id, floorName);
+      },
+      builder: (context, candidateData, rejectedData) => headerWidget,
+    );
   }
 
   PopupMenuItem<TableStatus> _buildStatusPopupItem(TableStatus status, TableStatus currentStatus, {bool isEnabled = true}) {
@@ -1322,6 +1742,405 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
             Icon(Icons.check_rounded, color: color, size: 14),
         ],
       ),
+    );
+  }
+
+  Widget _buildTableCard(TableModel table, bool isMobileGrid, {bool isFeedback = false}) {
+    final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
+    final isRunningKot = validStatus == TableStatus.runningKot;
+    final statusColor = _getStatusColor(validStatus);
+    final statusBg = _getStatusBg(validStatus);
+    final statusBorder = _getStatusBorder(validStatus);
+    final statusIcon = _getStatusIcon(validStatus);
+    final statusLabel = _getStatusLabel(validStatus);
+
+    // Cart value calculation
+    final activeOrder = validStatus == TableStatus.free
+        ? null
+        : db.orders.where((o) =>
+            (isSameTable(o.tableNumber, table.name) || (table.currentOrderId != null && o.id == table.currentOrderId)) &&
+            (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)).firstOrNull;
+    final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
+    final liveAmount = db.getLiveCartTotal(table.name);
+    final activeAmount = confirmedAmount > 0 ? confirmedAmount : (liveAmount > 0 ? liveAmount : table.activeOrderTotal);
+    final hasCartValue = activeAmount > 0;
+
+    final cardContent = Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: validStatus == TableStatus.free
+              ? const Color(0xFFE2E8F0)
+              : statusColor.withValues(alpha: 0.75),
+          width: validStatus == TableStatus.free ? 1.0 : 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: validStatus == TableStatus.free
+                ? const Color(0xFFD6E2F0).withValues(alpha: 0.7)
+                : statusColor.withValues(alpha: 0.18),
+            blurRadius: 8,
+            offset: const Offset(1.5, 3),
+          ),
+          const BoxShadow(
+            color: Colors.white,
+            blurRadius: 6,
+            offset: Offset(-1.5, -1.5),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top: Status Selection / Dropdown Section (Full width matching table box)
+          SizedBox(
+            width: double.infinity,
+            child: isFeedback
+                ? Container(
+                    height: 25,
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: statusBg,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: statusBorder, width: 0.9),
+                    ),
+                    alignment: Alignment.center,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(statusIcon, color: statusColor, size: 11),
+                        const SizedBox(width: 3.5),
+                        Text(
+                          statusLabel,
+                          style: TextStyle(
+                            color: statusColor,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : PopupMenuButton<TableStatus>(
+                    enabled: !isRunningKot,
+                    tooltip: 'Change Status',
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    color: Colors.white,
+                    elevation: 8,
+                    onSelected: (newStatus) {
+                      if (newStatus != TableStatus.runningKot) {
+                        db.updateTableStatus(table.id, newStatus);
+                        setState(() {});
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      _buildStatusPopupItem(TableStatus.free, validStatus),
+                      _buildStatusPopupItem(TableStatus.occupied, validStatus),
+                      _buildStatusPopupItem(TableStatus.runningKot, validStatus, isEnabled: false),
+                      _buildStatusPopupItem(TableStatus.reserved, validStatus),
+                    ],
+                    child: Container(
+                      height: 25,
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: statusBg,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: statusBorder, width: 0.9),
+                      ),
+                      alignment: Alignment.center,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(statusIcon, color: statusColor, size: 11),
+                            const SizedBox(width: 3.5),
+                            Text(
+                              statusLabel,
+                              style: TextStyle(
+                                color: statusColor,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(width: 1.5),
+                            Icon(Icons.keyboard_arrow_down_rounded, color: statusColor, size: 12),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+          ),
+          const Spacer(),
+
+          // Middle: Stylized Chair & Table Info + Cart Value
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(9),
+                  boxShadow: [
+                    BoxShadow(
+                      color: statusColor.withValues(alpha: 0.12),
+                      blurRadius: 3,
+                      offset: const Offset(0, 1.5),
+                    ),
+                  ],
+                ),
+                child: Icon(Icons.chair_rounded, color: statusColor, size: 15),
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      table.name,
+                      style: const TextStyle(
+                        color: Color(0xFF0F172A),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Text(
+                      table.floor,
+                      style: const TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (hasCartValue) ...[
+                      const SizedBox(height: 1.5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: statusBg,
+                          borderRadius: BorderRadius.circular(5),
+                          border: Border.all(color: statusBorder, width: 0.7),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.shopping_bag_outlined, size: 8, color: statusColor),
+                            const SizedBox(width: 2),
+                            Flexible(
+                              child: Text(
+                                '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
+                                style: TextStyle(
+                                  color: statusColor,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const Spacer(),
+
+          // Bottom: Actions per status & Reserved Box
+          if (validStatus == TableStatus.free)
+            Center(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  key: ValueKey('add_to_cart_${table.name}'),
+                  onTap: isFeedback ? null : () => _openPosForTable(table.name),
+                  customBorder: const CircleBorder(),
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFFEFFDF5),
+                      border: Border.all(color: const Color(0xFFC7F3E2), width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
+                        const BoxShadow(
+                          color: Colors.white,
+                          blurRadius: 3,
+                          offset: Offset(-1, -1),
+                        ),
+                      ],
+                    ),
+                    padding: const EdgeInsets.all(2.5),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          colors: [Color(0xFF10B981), Color(0xFF059669)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                      ),
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.shopping_cart_rounded,
+                        color: Colors.white,
+                        size: 14.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else if (validStatus == TableStatus.occupied)
+            Row(
+              children: [
+                Expanded(
+                  child: LiveTableDurationBadge(
+                    table: table,
+                    activeOrderCreatedAt: activeOrder?.createdAt,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                InkWell(
+                  onTap: isFeedback ? null : () => _openPosForTable(table.name),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 22,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.receipt_long_outlined, color: Color(0xFF0F172A), size: 10),
+                          SizedBox(width: 2),
+                          Text(
+                            'View',
+                            style: TextStyle(
+                              color: Color(0xFF0F172A),
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (validStatus == TableStatus.runningKot)
+            Row(
+              children: [
+                Expanded(
+                  child: LiveTableDurationBadge(
+                    table: table,
+                    activeOrderCreatedAt: activeOrder?.createdAt,
+                  ),
+                ),
+                const SizedBox(width: 3),
+                InkWell(
+                  onTap: isFeedback ? null : () => _openPosForTable(table.name),
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 22,
+                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF1F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFFECDD3)),
+                    ),
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.receipt_long_outlined, color: Color(0xFFEF4444), size: 10),
+                          SizedBox(width: 2),
+                          Text(
+                            'View',
+                            style: TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else // Reserved Box
+            InkWell(
+              onTap: isFeedback ? null : () => _openPosForTable(table.name),
+              borderRadius: BorderRadius.circular(8),
+              child: Container(
+                height: 22,
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFAF5FF),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFE9D5FF)),
+                ),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Icon(Icons.visibility_outlined, color: Color(0xFF8B5CF6), size: 10),
+                      SizedBox(width: 2.5),
+                      Text(
+                        'View',
+                        style: TextStyle(
+                          color: Color(0xFF8B5CF6),
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    if (isFeedback) {
+      return cardContent;
+    }
+
+    return InkWell(
+      onTap: () => _openPosForTable(table.name),
+      borderRadius: BorderRadius.circular(16),
+      child: cardContent,
     );
   }
 
@@ -1370,410 +2189,74 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                         final floorTables = tablesByFloor[floorName]!;
                         final isCollapsed = _collapsedFloors.contains(floorName);
 
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Floor Header
-                            _buildFloorSectionHeader(floorName, floorTables.length, isCollapsed),
+                        return DragTarget<TableModel>(
+                          onWillAcceptWithDetails: (details) => details.data.floor.trim().toLowerCase() != floorName.trim().toLowerCase(),
+                          onAcceptWithDetails: (details) async {
+                            await db.moveTableToFloor(details.data.id, floorName);
+                          },
+                          builder: (context, candidateData, rejectedData) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Floor Header
+                                _buildFloorSectionHeader(floorName, floorTables.length, isCollapsed),
 
-                            if (!isCollapsed)
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  final width = constraints.maxWidth;
-                                  // In mobile view (width < 600), show exactly 3 tables in one row
-                                  final cols = width >= 1400
-                                      ? 8
-                                      : width >= 1100
-                                          ? 6
-                                          : width >= 800
-                                              ? 5
-                                              : width >= 600
-                                                  ? 4
-                                                  : 3;
+                                if (!isCollapsed)
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      final width = constraints.maxWidth;
+                                      // In mobile view (width < 600), show exactly 3 tables in one row
+                                      final cols = width >= 1400
+                                          ? 8
+                                          : width >= 1100
+                                              ? 6
+                                              : width >= 800
+                                                  ? 5
+                                                  : width >= 600
+                                                      ? 4
+                                                      : 3;
 
-                                  final isMobileGrid = width < 600;
+                                      final isMobileGrid = width < 600;
 
-                                  return GridView.builder(
-                                    shrinkWrap: true,
-                                    physics: const NeverScrollableScrollPhysics(),
-                                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                      crossAxisCount: cols,
-                                      childAspectRatio: isMobileGrid ? 0.80 : (width < 900 ? 0.90 : 0.98),
-                                      crossAxisSpacing: isMobileGrid ? 6 : 8,
-                                      mainAxisSpacing: isMobileGrid ? 6 : 8,
-                                    ),
-                                    itemCount: floorTables.length,
-                                    itemBuilder: (context, idx) {
-                                      final table = floorTables[idx];
-                                      final validStatus = TableStatus.values.contains(table.status) ? table.status : TableStatus.free;
-                                      final isRunningKot = validStatus == TableStatus.runningKot;
-                                      final statusColor = _getStatusColor(validStatus);
-                                      final statusBg = _getStatusBg(validStatus);
-                                      final statusBorder = _getStatusBorder(validStatus);
-                                      final statusIcon = _getStatusIcon(validStatus);
-                                      final statusLabel = _getStatusLabel(validStatus);
-
-                                      // Cart value calculation
-                                       // Cart value calculation
-                                       final activeOrder = validStatus == TableStatus.free
-                                           ? null
-                                           : db.orders.where((o) =>
-                                               (isSameTable(o.tableNumber, table.name) || (table.currentOrderId != null && o.id == table.currentOrderId)) &&
-                                               (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)).firstOrNull;
-                                       final confirmedAmount = activeOrder?.totalAmount ?? 0.0;
-                                       final liveAmount = db.getLiveCartTotal(table.name);
-                                       final activeAmount = confirmedAmount > 0 ? confirmedAmount : (liveAmount > 0 ? liveAmount : table.activeOrderTotal);
-                                       final hasCartValue = activeAmount > 0;
-
-                                       return InkWell(
-                                         onTap: () => _openPosForTable(table.name),
-                                         borderRadius: BorderRadius.circular(16),
-                                         child: Container(
-                                           decoration: BoxDecoration(
-                                             color: Colors.white,
-                                             borderRadius: BorderRadius.circular(16),
-                                             border: Border.all(
-                                               color: validStatus == TableStatus.free
-                                                   ? const Color(0xFFE2E8F0)
-                                                   : statusColor.withValues(alpha: 0.75),
-                                               width: validStatus == TableStatus.free ? 1.0 : 1.5,
-                                             ),
-                                             boxShadow: [
-                                               BoxShadow(
-                                                 color: validStatus == TableStatus.free
-                                                     ? const Color(0xFFD6E2F0).withValues(alpha: 0.7)
-                                                     : statusColor.withValues(alpha: 0.18),
-                                                 blurRadius: 8,
-                                                 offset: const Offset(1.5, 3),
-                                               ),
-                                               const BoxShadow(
-                                                 color: Colors.white,
-                                                 blurRadius: 6,
-                                                 offset: Offset(-1.5, -1.5),
-                                               ),
-                                             ],
-                                           ),
-                                           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-                                           child: Column(
-                                             crossAxisAlignment: CrossAxisAlignment.start,
-                                             children: [
-                                               // Top: Status Selection / Dropdown Section (Full width matching table box)
-                                               SizedBox(
-                                                 width: double.infinity,
-                                                 child: PopupMenuButton<TableStatus>(
-                                                   enabled: !isRunningKot,
-                                                   tooltip: 'Change Status',
-                                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                                   color: Colors.white,
-                                                   elevation: 8,
-                                                   onSelected: (newStatus) {
-                                                     if (newStatus != TableStatus.runningKot) {
-                                                       db.updateTableStatus(table.id, newStatus);
-                                                       setState(() {});
-                                                     }
-                                                   },
-                                                   itemBuilder: (ctx) => [
-                                                     _buildStatusPopupItem(TableStatus.free, validStatus),
-                                                     _buildStatusPopupItem(TableStatus.occupied, validStatus),
-                                                     _buildStatusPopupItem(TableStatus.runningKot, validStatus, isEnabled: false),
-                                                     _buildStatusPopupItem(TableStatus.reserved, validStatus),
-                                                   ],
-                                                   child: Container(
-                                                     height: 25,
-                                                     width: double.infinity,
-                                                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                                                     decoration: BoxDecoration(
-                                                       color: statusBg,
-                                                       borderRadius: BorderRadius.circular(8),
-                                                       border: Border.all(color: statusBorder, width: 0.9),
-                                                     ),
-                                                     alignment: Alignment.center,
-                                                     child: FittedBox(
-                                                       fit: BoxFit.scaleDown,
-                                                       child: Row(
-                                                         mainAxisAlignment: MainAxisAlignment.center,
-                                                         mainAxisSize: MainAxisSize.min,
-                                                         children: [
-                                                           Icon(statusIcon, color: statusColor, size: 11),
-                                                           const SizedBox(width: 3.5),
-                                                           Text(
-                                                             statusLabel,
-                                                             style: TextStyle(
-                                                               color: statusColor,
-                                                               fontSize: 9.5,
-                                                               fontWeight: FontWeight.w800,
-                                                             ),
-                                                           ),
-                                                           const SizedBox(width: 1.5),
-                                                           Icon(Icons.keyboard_arrow_down_rounded, color: statusColor, size: 12),
-                                                         ],
-                                                       ),
-                                                     ),
-                                                   ),
-                                                 ),
-                                               ),
-                                              const Spacer(),
-
-                                              // Middle: Stylized Chair & Table Info + Cart Value
-                                              Row(
-                                                children: [
-                                                  Container(
-                                                    width: 28,
-                                                    height: 28,
-                                                    decoration: BoxDecoration(
-                                                      color: statusBg,
-                                                      borderRadius: BorderRadius.circular(9),
-                                                      boxShadow: [
-                                                        BoxShadow(
-                                                          color: statusColor.withValues(alpha: 0.12),
-                                                          blurRadius: 3,
-                                                          offset: const Offset(0, 1.5),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                    child: Icon(Icons.chair_rounded, color: statusColor, size: 15),
-                                                  ),
-                                                  const SizedBox(width: 6),
-                                                  Expanded(
-                                                    child: Column(
-                                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                                      mainAxisSize: MainAxisSize.min,
-                                                      children: [
-                                                        Text(
-                                                          table.name,
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF0F172A),
-                                                            fontSize: 11.5,
-                                                            fontWeight: FontWeight.w900,
-                                                          ),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                        Text(
-                                                          table.floor,
-                                                          style: const TextStyle(
-                                                            color: Color(0xFF94A3B8),
-                                                            fontSize: 8,
-                                                            fontWeight: FontWeight.w600,
-                                                          ),
-                                                          maxLines: 1,
-                                                          overflow: TextOverflow.ellipsis,
-                                                        ),
-                                                        if (hasCartValue) ...[
-                                                          const SizedBox(height: 1.5),
-                                                          Container(
-                                                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                                            decoration: BoxDecoration(
-                                                              color: statusBg,
-                                                              borderRadius: BorderRadius.circular(5),
-                                                              border: Border.all(color: statusBorder, width: 0.7),
-                                                            ),
-                                                            child: Row(
-                                                              mainAxisSize: MainAxisSize.min,
-                                                              children: [
-                                                                Icon(Icons.shopping_bag_outlined, size: 8, color: statusColor),
-                                                                const SizedBox(width: 2),
-                                                                Flexible(
-                                                                  child: Text(
-                                                                    '${db.restaurant?.currencySymbol ?? "₹"}${activeAmount.toStringAsFixed(0)}',
-                                                                    style: TextStyle(
-                                                                      color: statusColor,
-                                                                      fontSize: 9,
-                                                                      fontWeight: FontWeight.w900,
-                                                                    ),
-                                                                    maxLines: 1,
-                                                                    overflow: TextOverflow.ellipsis,
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                              const Spacer(),
-
-                                              // Bottom: Actions per status & Reserved Box
-                                               if (validStatus == TableStatus.free)
-                                                 Center(
-                                                   child: Material(
-                                                     color: Colors.transparent,
-                                                     child: InkWell(
-                                                       key: ValueKey('add_to_cart_${table.name}'),
-                                                       onTap: () => _openPosForTable(table.name),
-                                                       customBorder: const CircleBorder(),
-                                                       child: Container(
-                                                         width: 32,
-                                                         height: 32,
-                                                         decoration: BoxDecoration(
-                                                           shape: BoxShape.circle,
-                                                           color: const Color(0xFFEFFDF5),
-                                                           border: Border.all(color: const Color(0xFFC7F3E2), width: 1.2),
-                                                           boxShadow: [
-                                                             BoxShadow(
-                                                               color: const Color(0xFF10B981).withValues(alpha: 0.25),
-                                                               blurRadius: 5,
-                                                               offset: const Offset(0, 2),
-                                                             ),
-                                                             const BoxShadow(
-                                                               color: Colors.white,
-                                                               blurRadius: 3,
-                                                               offset: Offset(-1, -1),
-                                                             ),
-                                                           ],
-                                                         ),
-                                                         padding: const EdgeInsets.all(2.5),
-                                                         child: Container(
-                                                           decoration: const BoxDecoration(
-                                                             shape: BoxShape.circle,
-                                                             gradient: LinearGradient(
-                                                               colors: [Color(0xFF10B981), Color(0xFF059669)],
-                                                               begin: Alignment.topCenter,
-                                                               end: Alignment.bottomCenter,
-                                                             ),
-                                                           ),
-                                                           alignment: Alignment.center,
-                                                           child: const Icon(
-                                                             Icons.shopping_cart_rounded,
-                                                             color: Colors.white,
-                                                             size: 14.5,
-                                                           ),
-                                                         ),
-                                                       ),
-                                                     ),
-                                                   ),
-                                                 )
-                                              else if (validStatus == TableStatus.occupied)
-                                                Row(
-                                                  children: [
-                                                    Expanded(
-                                                      child: LiveTableDurationBadge(
-                                                        table: table,
-                                                        activeOrderCreatedAt: activeOrder?.createdAt,
-                                                      ),
-                                                    ),
-                                                    const SizedBox(width: 3),
-                                                    InkWell(
-                                                      onTap: () => _openPosForTable(table.name),
-                                                      borderRadius: BorderRadius.circular(8),
-                                                      child: Container(
-                                                        height: 22,
-                                                        padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                        decoration: BoxDecoration(
-                                                          color: const Color(0xFFF1F5F9),
-                                                          borderRadius: BorderRadius.circular(8),
-                                                          border: Border.all(color: const Color(0xFFE2E8F0)),
-                                                        ),
-                                                        child: FittedBox(
-                                                          fit: BoxFit.scaleDown,
-                                                          child: Row(
-                                                            mainAxisSize: MainAxisSize.min,
-                                                            children: const [
-                                                              Icon(Icons.receipt_long_outlined, color: Color(0xFF0F172A), size: 10),
-                                                              SizedBox(width: 2),
-                                                              Text(
-                                                                'View',
-                                                                style: TextStyle(
-                                                                  color: Color(0xFF0F172A),
-                                                                  fontSize: 9,
-                                                                  fontWeight: FontWeight.bold,
-                                                                ),
-                                                              ),
-                                                            ],
-                                                          ),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                  ],
-                                                )
-                                               else if (validStatus == TableStatus.runningKot)
-                                                 Row(
-                                                   children: [
-                                                     Expanded(
-                                                       child: LiveTableDurationBadge(
-                                                         table: table,
-                                                         activeOrderCreatedAt: activeOrder?.createdAt,
-                                                       ),
-                                                     ),
-                                                     const SizedBox(width: 3),
-                                                     InkWell(
-                                                       onTap: () => _openPosForTable(table.name),
-                                                       borderRadius: BorderRadius.circular(8),
-                                                       child: Container(
-                                                         height: 22,
-                                                         padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                         decoration: BoxDecoration(
-                                                           color: const Color(0xFFFFF1F2),
-                                                           borderRadius: BorderRadius.circular(8),
-                                                           border: Border.all(color: const Color(0xFFFECDD3)),
-                                                         ),
-                                                         child: FittedBox(
-                                                           fit: BoxFit.scaleDown,
-                                                           child: Row(
-                                                             mainAxisAlignment: MainAxisAlignment.center,
-                                                             children: const [
-                                                               Icon(Icons.receipt_long_outlined, color: Color(0xFFEF4444), size: 10),
-                                                               SizedBox(width: 2),
-                                                               Text(
-                                                                 'View',
-                                                                 style: TextStyle(
-                                                                   color: Color(0xFFEF4444),
-                                                                   fontSize: 9,
-                                                                   fontWeight: FontWeight.bold,
-                                                                 ),
-                                                               ),
-                                                             ],
-                                                           ),
-                                                         ),
-                                                       ),
-                                                     ),
-                                                   ],
-                                                 )
-                                              else // Reserved Box
-                                                InkWell(
-                                                  onTap: () => _openPosForTable(table.name),
-                                                  borderRadius: BorderRadius.circular(8),
-                                                  child: Container(
-                                                    height: 22,
-                                                    padding: const EdgeInsets.symmetric(horizontal: 5),
-                                                    decoration: BoxDecoration(
-                                                      color: const Color(0xFFFAF5FF),
-                                                      borderRadius: BorderRadius.circular(8),
-                                                      border: Border.all(color: const Color(0xFFE9D5FF)),
-                                                    ),
-                                                    child: FittedBox(
-                                                      fit: BoxFit.scaleDown,
-                                                      child: Row(
-                                                        mainAxisAlignment: MainAxisAlignment.center,
-                                                        children: const [
-                                                          Icon(Icons.visibility_outlined, color: Color(0xFF8B5CF6), size: 10),
-                                                          SizedBox(width: 2.5),
-                                                          Text(
-                                                            'View',
-                                                            style: TextStyle(
-                                                              color: Color(0xFF8B5CF6),
-                                                              fontSize: 9,
-                                                              fontWeight: FontWeight.bold,
-                                                            ),
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
+                                      return GridView.builder(
+                                        shrinkWrap: true,
+                                        physics: const NeverScrollableScrollPhysics(),
+                                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                                          crossAxisCount: cols,
+                                          childAspectRatio: isMobileGrid ? 0.80 : (width < 900 ? 0.90 : 0.98),
+                                          crossAxisSpacing: isMobileGrid ? 6 : 8,
+                                          mainAxisSpacing: isMobileGrid ? 6 : 8,
                                         ),
+                                        itemCount: floorTables.length,
+                                        itemBuilder: (context, idx) {
+                                          final table = floorTables[idx];
+                                          return LongPressDraggable<TableModel>(
+                                            data: table,
+                                            delay: const Duration(milliseconds: 180),
+                                            feedback: Material(
+                                              color: Colors.transparent,
+                                              elevation: 8,
+                                              borderRadius: BorderRadius.circular(16),
+                                              child: SizedBox(
+                                                width: isMobileGrid ? 110 : 130,
+                                                height: isMobileGrid ? 130 : 145,
+                                                child: _buildTableCard(table, isMobileGrid, isFeedback: true),
+                                              ),
+                                            ),
+                                            childWhenDragging: Opacity(
+                                              opacity: 0.35,
+                                              child: _buildTableCard(table, isMobileGrid),
+                                            ),
+                                            child: _buildTableCard(table, isMobileGrid),
+                                          );
+                                        },
                                       );
                                     },
-                                  );
-                                },
-                              ),
-                            const SizedBox(height: 8),
-                          ],
+                                  ),
+                                const SizedBox(height: 8),
+                              ],
+                            );
+                          },
                         );
                       },
                     ),

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../core/theme/glass_theme.dart';
@@ -19,12 +18,14 @@ class RegisterFormWidget extends StatefulWidget {
   final String? initialEmail;
   final String? initialPassword;
   final String? initialPhone;
+  final VoidCallback? onSwitchToLogin;
 
   const RegisterFormWidget({
     super.key,
     this.initialEmail,
     this.initialPassword,
     this.initialPhone,
+    this.onSwitchToLogin,
   });
 
   @override
@@ -162,7 +163,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
         SnackBar(
           backgroundColor: GlassTheme.primaryNavy,
           content: Text(
-            'OTP verification code has been sent to $emailText from ${EmailService.senderEmail}',
+            'OTP verification code has been sent to $emailText',
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),
           duration: const Duration(seconds: 4),
@@ -193,54 +194,39 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
               child: Center(
                 child: SingleChildScrollView(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 440),
+                    constraints: const BoxConstraints(maxWidth: 400),
                     child: Stack(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(24),
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(28),
+                            borderRadius: BorderRadius.circular(32),
                             boxShadow: const [
                               BoxShadow(
-                                color: Colors.black26,
-                                blurRadius: 25,
-                                offset: Offset(0, 10),
+                                color: Color(0x22002870),
+                                blurRadius: 36,
+                                offset: Offset(0, 14),
+                              ),
+                              BoxShadow(
+                                color: Color(0x0A000000),
+                                blurRadius: 10,
+                                offset: Offset(0, 4),
                               ),
                             ],
                             border: Border.all(
-                              color: const Color(0xFF00C2FF), // Theme Cyan Highlight Border
-                              width: 1.5,
+                              color: const Color(0xFFE2E8F0),
+                              width: 1.0,
                             ),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Icon Header
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: const Color(0xFF0052FF).withValues(alpha: 0.1),
-                                  border: Border.all(color: const Color(0xFF00C2FF), width: 1.5),
-                                ),
-                                child: const Center(
-                                  child: Icon(
-                                    Icons.mark_email_read_rounded,
-                                    color: GlassTheme.primaryBlue,
-                                    size: 30,
-                                  ),
-                                ),
-                              ),
-
-                              const SizedBox(height: 16),
-
                               // Popup Title
                               const Text(
                                 'OTP Verification',
                                 style: TextStyle(
-                                  fontSize: 20,
+                                  fontSize: 22,
                                   fontWeight: FontWeight.w800,
                                   color: Color(0xFF0F172A),
                                   letterSpacing: -0.3,
@@ -267,26 +253,11 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                         color: Color(0xFF0F172A),
                                       ),
                                     ),
-                                    const TextSpan(
-                                      text: '\nby ',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Color(0xFF64748B),
-                                      ),
-                                    ),
-                                    const TextSpan(
-                                      text: EmailService.senderEmail,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF0052FF),
-                                      ),
-                                    ),
                                   ],
                                 ),
                               ),
 
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 22),
 
                               // Error Message inside Dialog
                               if (otpError != null) ...[
@@ -318,7 +289,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                 ),
                               ],
 
-                              // 4 Semi-Circle / Pill OTP Input Fields
+                              // 4 Neumorphic Rounded OTP Input Boxes
                               OtpPinInput(
                                 controller: otpController,
                                 focusNode: otpFocusNode,
@@ -330,7 +301,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                 },
                               ),
 
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 18),
 
                               // Resend OTP Option
                               Row(
@@ -355,7 +326,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                           SnackBar(
                                             backgroundColor: GlassTheme.primaryNavy,
                                             content: Text(
-                                              'OTP verification code resent to $emailText from ${EmailService.senderEmail}',
+                                              'OTP verification code resent to $emailText',
                                               style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                             ),
                                             duration: const Duration(seconds: 4),
@@ -373,14 +344,14 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                       style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w700,
-                                        color: Color(0xFF00C2FF),
+                                        color: Color(0xFF0066FF),
                                       ),
                                     ),
                                   ),
                                 ],
                               ),
 
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 22),
 
                               // Verify Action Button
                               Container(
@@ -388,12 +359,16 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                 height: 52,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(26),
-                                  gradient: GlassTheme.primaryButtonGradient,
-                                  boxShadow: [
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF0066FF), Color(0xFF0052E0)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  boxShadow: const [
                                     BoxShadow(
-                                      color: GlassTheme.primaryBlue.withValues(alpha: 0.35),
-                                      blurRadius: 14,
-                                      offset: const Offset(0, 6),
+                                      color: Color(0x350066FF),
+                                      blurRadius: 16,
+                                      offset: Offset(0, 6),
                                     ),
                                   ],
                                 ),
@@ -547,16 +522,27 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                         ),
                         // Top-Right Close Button
                         Positioned(
-                          top: 8,
-                          right: 8,
-                          child: IconButton(
-                            onPressed: () => Navigator.of(context).pop(),
-                            icon: const Icon(
-                              Icons.close_rounded,
-                              color: Color(0xFF94A3B8),
-                              size: 22,
+                          top: 14,
+                          right: 14,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => Navigator.of(context).pop(),
+                              borderRadius: BorderRadius.circular(20),
+                              child: Container(
+                                width: 34,
+                                height: 34,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close_rounded,
+                                  color: Color(0xFF64748B),
+                                  size: 18,
+                                ),
+                              ),
                             ),
-                            tooltip: 'Close OTP Verification',
                           ),
                         ),
                       ],
@@ -575,27 +561,29 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
       children: [
         // Error Banner
         if (_errorMessage != null) ...[
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            margin: const EdgeInsets.only(bottom: 10),
             decoration: BoxDecoration(
               color: const Color(0xFFFEF2F2),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFFCA5A5)),
             ),
             child: Row(
               children: [
                 const Icon(Icons.error_outline_rounded,
-                    color: Color(0xFFEF4444), size: 18),
+                    color: Color(0xFFEF4444), size: 16),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _errorMessage!,
                     style: const TextStyle(
                       color: Color(0xFFB91C1C),
-                      fontSize: 12,
+                      fontSize: 11.5,
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -603,7 +591,6 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
               ],
             ),
           ),
-          const SizedBox(height: 12),
         ],
 
         // Form Input Fields (Email Address & Password)
@@ -615,7 +602,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           keyboardType: TextInputType.emailAddress,
         ),
 
-        const SizedBox(height: 12),
+        const SizedBox(height: 10),
 
         _buildInputCard(
           label: 'Password',
@@ -628,42 +615,55 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
               _obscurePassword
                   ? Icons.visibility_outlined
                   : Icons.visibility_off_outlined,
-              color: const Color(0xFF94A3B8),
-              size: 20,
+              color: const Color(0xFF8B9CB8),
+              size: 18,
             ),
             onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
           ),
         ),
 
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
 
         // Password Requirements Hint
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 6),
-          child: Text(
-            'Must be 8+ chars with uppercase, lowercase, number & symbol (e.g. Apna@123)',
-            style: TextStyle(
-              fontSize: 11,
-              color: Color(0xFF64748B),
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        ),
+        // const Padding(
+        //   padding: EdgeInsets.symmetric(horizontal: 4),
+        //   child: Text(
+        //     'Must be 8+ chars (e.g. Apna@123)',
+        //     style: TextStyle(
+        //       fontSize: 11,
+        //       color: Color(0xFF64748B),
+        //       fontWeight: FontWeight.w500,
+        //     ),
+        //   ),
+        // ),
 
-        const SizedBox(height: 16),
+         const SizedBox(height: 12),
 
-        // Primary Action Button ("Continue")
+        // Primary Action Button ("Create Account")
         Container(
           width: double.infinity,
-          height: 52,
+          height: 48,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
-            gradient: GlassTheme.primaryButtonGradient,
-            boxShadow: [
+            borderRadius: BorderRadius.circular(24),
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Color(0xFF0066FF),
+                Color(0xFF0052E0),
+              ],
+            ),
+            boxShadow: const [
               BoxShadow(
-                color: GlassTheme.primaryBlue.withOpacity(0.35),
-                blurRadius: 14,
-                offset: const Offset(0, 6),
+                color: Color(0x600062FF),
+                blurRadius: 18,
+                offset: Offset(0, 6),
+                spreadRadius: 1,
+              ),
+              BoxShadow(
+                color: Color(0x250062FF),
+                blurRadius: 24,
+                offset: Offset(0, 10),
               ),
             ],
           ),
@@ -675,86 +675,163 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
               disabledBackgroundColor: Colors.transparent,
               disabledForegroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(26),
+                borderRadius: BorderRadius.circular(24),
               ),
             ),
             child: _isLoading
                 ? const SizedBox(
-                    width: 22,
-                    height: 22,
+                    width: 20,
+                    height: 20,
                     child: CircularProgressIndicator(
                       color: Colors.white,
-                      strokeWidth: 2.5,
+                      strokeWidth: 2.2,
                     ),
                   )
                 : const Text(
-                    'Continue',
+                    'Create Account',
                     style: TextStyle(
                       fontSize: 16,
-                      fontWeight: FontWeight.w700,
+                      fontWeight: FontWeight.w800,
                       color: Colors.white,
+                      letterSpacing: 0.2,
                     ),
                   ),
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // "Or register with" Divider
         Row(
           children: const [
-            Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+            Expanded(
+              child: Divider(color: Color(0xFFDEE7F5), thickness: 1.2),
+            ),
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: 14),
+              padding: EdgeInsets.symmetric(horizontal: 12),
               child: Text(
                 'Or register with',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
-                  color: Color(0xFF94A3B8),
+                  color: Color(0xFF8697B0),
                 ),
               ),
             ),
-            Expanded(child: Divider(color: Color(0xFFE2E8F0), thickness: 1)),
+            Expanded(
+              child: Divider(color: Color(0xFFDEE7F5), thickness: 1.2),
+            ),
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
-        // Google Signup Button styled like Login with Email
-        OutlinedButton(
-          onPressed: _isLoading ? null : _handleGoogleSignup,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: const Color(0xFF00C2FF),
-            side: const BorderSide(color: Color(0xFF00C2FF), width: 1.5),
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            minimumSize: const Size(double.infinity, 50),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(25),
+        // Google Sign-In Button (Neumorphic Inset Style)
+        InkWell(
+          onTap: _isLoading ? null : _handleGoogleSignup,
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            height: 48,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEEF4FB),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: const Color(0xFFDEE7F5),
+                width: 1.5,
+              ),
+              boxShadow: [
+                const BoxShadow(
+                  color: Color(0x0A002870),
+                  blurRadius: 6,
+                  offset: Offset(0, 2),
+                ),
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  blurRadius: 4,
+                  offset: const Offset(0, -1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFFE5EEF9),
+                      width: 1.2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x100038A8),
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: _buildGoogleColoredIcon(size: 19),
+                  ),
+                ),
+                const Expanded(
+                  child: Center(
+                    child: Text(
+                      'Continue with Google',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0052CC),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 36),
+              ],
             ),
           ),
+        ),
+
+        const SizedBox(height: 12),
+
+        // Already have an account? Sign In Link
+        Center(
           child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              _buildGoogleColoredIcon(size: 20),
-              const SizedBox(width: 8),
               const Text(
-                'Continue with Google',
+                'Already have an account? ',
                 style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF00C2FF),
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+              GestureDetector(
+                onTap: widget.onSwitchToLogin ?? () => Navigator.maybePop(context),
+                child: const Text(
+                  'Sign In',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0066FF),
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        const SizedBox(height: 20),
+
+        const SizedBox(height: 12),
+
         const Center(
           child: Text(
             'Powered by Sooftcode',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11.5,
               fontWeight: FontWeight.w600,
               color: Color(0xFF94A3B8),
               letterSpacing: 0.3,
@@ -765,7 +842,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
     );
   }
 
-  // Helper Widget for Input Field Cards (Semi-Circle Pill Shape)
+  // Helper Widget for Input Field Cards (Neumorphic Pill with Left Icon Bevel Box)
   Widget _buildInputCard({
     required String label,
     required String hint,
@@ -785,49 +862,87 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF334155),
+            color: Color(0xFF3E4D69),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Container(
-          height: 52,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          height: 48,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26), // Semi-circle pill shape
+            color: const Color(0xFFEEF4FB),
+            borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: const Color(0xFF00C2FF), // Highlighted Cyan border
+              color: const Color(0xFFDEE7F5),
               width: 1.5,
             ),
-            boxShadow: const [
+            boxShadow: [
+              const BoxShadow(
+                color: Color(0x0C002870),
+                blurRadius: 6,
+                offset: Offset(0, 2),
+              ),
               BoxShadow(
-                color: Color(0x1400C2FF),
-                blurRadius: 10,
-                offset: Offset(0, 4),
+                color: Colors.white.withValues(alpha: 0.9),
+                blurRadius: 4,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
           child: Row(
             children: [
-              Icon(icon, color: GlassTheme.primaryBlue, size: 20),
-              const SizedBox(width: 10),
-              if (prefixWidget != null) prefixWidget,
+              if (prefixWidget != null)
+                prefixWidget
+              else
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(
+                      color: const Color(0xFFE5EEF9),
+                      width: 1.2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x100038A8),
+                        blurRadius: 5,
+                        offset: Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      icon,
+                      color: const Color(0xFF0066FF),
+                      size: 18,
+                    ),
+                  ),
+                ),
+              Container(
+                height: 18,
+                width: 1.2,
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                color: const Color(0xFFD4E0F0),
+              ),
               Expanded(
                 child: TextField(
                   controller: controller,
+                  scrollPadding: const EdgeInsets.only(bottom: 90),
                   obscureText: obscureText,
                   keyboardType: keyboardType,
                   style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
                     color: Color(0xFF0F172A),
                   ),
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w400,
-                      color: Color(0xFFCBD5E1),
+                      color: Color(0xFF90A1B8),
                     ),
                     border: InputBorder.none,
                     isDense: true,
@@ -835,7 +950,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                   ),
                 ),
               ),
-              if (suffixWidget != null) suffixWidget,
+              ?suffixWidget,
             ],
           ),
         ),
@@ -919,5 +1034,219 @@ class _GoogleLogoPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-// Backward compatibility alias for SignupScreen
-typedef SignupScreen = RegisterFormWidget;
+// Full Standalone SignupScreen with Matching Royal Navy Neumorphic Header & Curved White Sheet
+class SignupScreen extends StatefulWidget {
+  final String? initialEmail;
+  final String? initialPassword;
+  final String? initialPhone;
+
+  const SignupScreen({
+    super.key,
+    this.initialEmail,
+    this.initialPassword,
+    this.initialPhone,
+  });
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  @override
+  Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
+    final topPadding = MediaQuery.of(context).padding.top;
+    final fullHeaderHeight = (screenHeight * 0.28 - topPadding).clamp(130.0, 220.0);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFF03102B),
+      resizeToAvoidBottomInset: false,
+      body: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: () => FocusScope.of(context).unfocus(),
+        child: Stack(
+          children: [
+            // Background Gradient (Deep Royal Navy)
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0xFF03102B),
+                      Color(0xFF051C48),
+                      Color(0xFF072663),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // Main Layout
+            SafeArea(
+              bottom: false,
+              child: Column(
+                children: [
+                  // Top Header Text - Fixed Height (Does not collapse or slide upside on keyboard open)
+                  SizedBox(
+                    height: fullHeaderHeight,
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Text(
+                              "Create your new\nPOS account",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 23,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                                height: 1.18,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "Join Apna POS to manage your restaurant effortlessly",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.white.withValues(alpha: 0.85),
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  // Bottom Rounded White Card Container (Anchored at fixed position)
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(30),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Color(0x35001C60),
+                            blurRadius: 30,
+                            offset: Offset(0, -8),
+                          ),
+                        ],
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
+                        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: EdgeInsets.fromLTRB(
+                          18,
+                          16,
+                          18,
+                          20 + MediaQuery.of(context).viewInsets.bottom,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Segmented Pill Tab Switcher (Login / Register)
+                            Container(
+                              height: 46,
+                              padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEBF1FA),
+                              borderRadius: BorderRadius.circular(23),
+                              border: Border.all(
+                                color: const Color(0xFFDFE8F6),
+                                width: 1.2,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: GestureDetector(
+                                    onTap: () => Navigator.pop(context),
+                                    child: Container(
+                                      decoration: BoxDecoration(
+                                        color: Colors.transparent,
+                                        borderRadius: BorderRadius.circular(19),
+                                      ),
+                                      child: const Center(
+                                        child: Text(
+                                          'Login',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: Color(0xFF6B7C96),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(19),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x18002D80),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 3),
+                                          spreadRadius: 1,
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.white,
+                                          blurRadius: 4,
+                                          offset: Offset(0, -1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Text(
+                                        'Register',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0052CC),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          RegisterFormWidget(
+                            initialEmail: widget.initialEmail,
+                            initialPassword: widget.initialPassword,
+                            initialPhone: widget.initialPhone,
+                            onSwitchToLogin: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+}

@@ -167,9 +167,19 @@ class DatabaseService extends ChangeNotifier {
   }
 
   double getLiveCartTotal(String tableName) {
+    final tbl = tables.where((t) =>
+      isSameTable(t.name, tableName) ||
+      isSameTable(t.tableNumber.toString(), tableName) ||
+      isSameTable('T-${t.tableNumber}', tableName)
+    ).firstOrNull;
+
     final activeOrder = orders.where((o) =>
-      isSameTable(o.tableNumber, tableName) &&
-      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+      (isSameTable(o.tableNumber, tableName) ||
+       (tbl != null && (isSameTable(o.tableNumber, tbl.name) ||
+                        isSameTable(o.tableNumber, tbl.tableNumber.toString()) ||
+                        isSameTable(o.tableNumber, 'T-${tbl.tableNumber}') ||
+                        (tbl.currentOrderId != null && (o.id == tbl.currentOrderId || o.orderNumber == tbl.currentOrderId))))) &&
+      (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)
     ).firstOrNull;
 
     if (activeOrder != null && activeOrder.totalAmount > 0) {
@@ -180,8 +190,12 @@ class DatabaseService extends ChangeNotifier {
       return _liveCartTotals[tableName] ?? 0.0;
     }
 
+    if (tbl != null && _liveCartTotals.containsKey(tbl.name)) {
+      return _liveCartTotals[tbl.name] ?? 0.0;
+    }
+
     for (final entry in _liveCartTotals.entries) {
-      if (isSameTable(entry.key, tableName) && entry.value > 0) {
+      if ((isSameTable(entry.key, tableName) || (tbl != null && isSameTable(entry.key, tbl.name))) && entry.value > 0) {
         return entry.value;
       }
     }
@@ -200,10 +214,20 @@ class DatabaseService extends ChangeNotifier {
   }
 
   List<CartItemModel> getLiveTableCart(String tableName) {
+    final tbl = tables.where((t) =>
+      isSameTable(t.name, tableName) ||
+      isSameTable(t.tableNumber.toString(), tableName) ||
+      isSameTable('T-${t.tableNumber}', tableName)
+    ).firstOrNull;
+
     // 1. First check if there is an active running order in orders list
     final activeOrder = orders.where((o) =>
-      isSameTable(o.tableNumber, tableName) &&
-      (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+      (isSameTable(o.tableNumber, tableName) ||
+       (tbl != null && (isSameTable(o.tableNumber, tbl.name) ||
+                        isSameTable(o.tableNumber, tbl.tableNumber.toString()) ||
+                        isSameTable(o.tableNumber, 'T-${tbl.tableNumber}') ||
+                        (tbl.currentOrderId != null && (o.id == tbl.currentOrderId || o.orderNumber == tbl.currentOrderId))))) &&
+      (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)
     ).firstOrNull;
 
     if (activeOrder != null && activeOrder.items.isNotEmpty) {
@@ -215,8 +239,12 @@ class DatabaseService extends ChangeNotifier {
       return List.from(_liveTableCarts[tableName]!);
     }
 
+    if (tbl != null && _liveTableCarts.containsKey(tbl.name) && _liveTableCarts[tbl.name]!.isNotEmpty) {
+      return List.from(_liveTableCarts[tbl.name]!);
+    }
+
     for (final entry in _liveTableCarts.entries) {
-      if (isSameTable(entry.key, tableName) && entry.value.isNotEmpty) {
+      if ((isSameTable(entry.key, tableName) || (tbl != null && isSameTable(entry.key, tbl.name))) && entry.value.isNotEmpty) {
         return List.from(entry.value);
       }
     }
@@ -2269,9 +2297,36 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- RESTAURANT ONBOARDING SERVICES ---
+  // --- RESTAURANT ONBOARDING SERVICES & PROGRESS TRACKING ---
+  static const String keyOnboardingRoute = 'apna_pos_onboarding_route';
+  static const String keyOnboardingStep = 'apna_pos_onboarding_step';
+
+  Future<void> saveOnboardingProgress({required String route, required int step}) async {
+    await _prefs?.setString(keyOnboardingRoute, route);
+    await _prefs?.setInt(keyOnboardingStep, step);
+    if (currentUser != null) {
+      currentUser = currentUser!.copyWith(onboardingStep: step);
+      await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
+    }
+    notifyListeners();
+  }
+
+  String? getOnboardingRoute() {
+    return _prefs?.getString(keyOnboardingRoute);
+  }
+
+  int getOnboardingStep() {
+    return _prefs?.getInt(keyOnboardingStep) ?? currentUser?.onboardingStep ?? 0;
+  }
+
+  bool get isOnboardingCompleted {
+    return (restaurant != null && restaurant!.isOnboarded) ||
+        (currentUser != null && currentUser!.onboardingCompleted);
+  }
+
   Future<void> saveRestaurantOnboarding(RestaurantModel updated) async {
     restaurant = updated.copyWith(isOnboarded: true);
+    await saveOnboardingProgress(route: 'completed', step: 8);
     await _saveRestaurantToPrefs();
 
     // Sync with Firestore
@@ -3127,24 +3182,253 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  /// Delete a dining table locally and sync deletion to backend API.
+  /// If the table's floor has no remaining tables, the floor is also removed.
+  Future<void> deleteTable(String tableId) async {
+    final idx = tables.indexWhere((t) => t.id == tableId);
+    if (idx < 0) return;
+
+    final tableToDelete = tables[idx];
+    final String floorName = tableToDelete.floor.trim();
+    final String tableDbId = tableToDelete.id;
+    final String tableName = tableToDelete.name.trim();
+    final int tableNum = tableToDelete.tableNumber;
+
+    // 1. Remove table locally
+    tables.removeAt(idx);
+
+    // 2. Check if the floor has any remaining tables. If not, delete that floor from _customFloors
+    final remainingOnFloor = tables.where((t) => t.floor.trim().toLowerCase() == floorName.toLowerCase()).toList();
+    if (remainingOnFloor.isEmpty) {
+      _customFloors.removeWhere((f) => f.trim().toLowerCase() == floorName.toLowerCase());
+      if (_customFloors.isEmpty) {
+        _customFloors.add('Ground Floor');
+      }
+      await _prefs?.setStringList(_userKey('custom_floors'), _customFloors);
+    }
+
+    // 3. Update restaurant table count
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(tableCount: tables.length);
+      await _saveRestaurantToPrefs();
+    }
+
+    // 4. Save tables locally & notify
+    await _saveTablesToPrefs();
+    notifyListeners();
+
+    // 5. Re-sequence remaining tables
+    if (tables.isNotEmpty) {
+      await resequenceTables();
+    }
+
+    // 6. Delete on backend API for multi-device sync
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (isAuth) {
+        if (tableDbId.isNotEmpty && !tableDbId.startsWith('TBL-')) {
+          await _tableService.deleteTable(tableDbId);
+        } else {
+          // Find if there's a remote table matching by tableNumber or name
+          final remoteTables = await _tableService.fetchTables();
+          final matching = remoteTables.firstWhere(
+            (rt) => rt.id == tableDbId || (tableNum > 0 && rt.tableNumber == tableNum) || (tableName.isNotEmpty && rt.name.trim().toLowerCase() == tableName.toLowerCase()),
+            orElse: () => TableModel(id: '', tableNumber: 0, name: '', floor: '', capacity: 0),
+          );
+          if (matching.id.isNotEmpty) {
+            await _tableService.deleteTable(matching.id);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.deleteTable] API delete error: $e');
+    }
+  }
+
+  /// Distributes tables equally across all available floors.
+  /// If table count is even, distributes equal number per floor.
+  /// If table count is odd, distributes evenly with remainder (+1) added to floor.
+  /// Renumbers and sequences all tables cleanly.
+  Future<void> distributeTablesAcrossFloors({List<String>? targetFloors}) async {
+    if (tables.isEmpty) return;
+
+    final floorsList = (targetFloors != null && targetFloors.isNotEmpty)
+        ? targetFloors
+        : allFloors;
+    if (floorsList.isEmpty) return;
+
+    final int totalTables = tables.length;
+    final int numFloors = floorsList.length;
+    final int baseCount = totalTables ~/ numFloors;
+    final int remainder = totalTables % numFloors;
+
+    final List<TableModel> updatedTables = [];
+    int tableIndex = 0;
+    int seqNumber = 1;
+
+    for (int f = 0; f < numFloors; f++) {
+      final floorName = floorsList[f];
+      // Even distribution: baseCount; if odd/remainder, add +1 to first remainder floor(s)
+      final int floorTableCount = baseCount + (f < remainder ? 1 : 0);
+
+      for (int i = 0; i < floorTableCount; i++) {
+        if (tableIndex < totalTables) {
+          final oldTable = tables[tableIndex];
+          final isAutoName = RegExp(r'^(T|Table)[-\s]?\d+$', caseSensitive: false).hasMatch(oldTable.name.trim());
+          final newName = isAutoName ? 'T-$seqNumber' : oldTable.name;
+
+          final updated = oldTable.copyWith(
+            floor: floorName,
+            tableNumber: seqNumber,
+            name: newName,
+          );
+          updatedTables.add(updated);
+          tableIndex++;
+          seqNumber++;
+        }
+      }
+    }
+
+    tables = updatedTables;
+    _sortTablesSequentially();
+    await _saveTablesToPrefs();
+    notifyListeners();
+
+    // Background sync to backend API
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          for (final t in tables) {
+            await _tableService.updateTable(t);
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.distributeTablesAcrossFloors] API sync error: $e');
+      }
+    }());
+  }
+
+  /// Move a table to another floor and re-sequence table numbers
+  Future<void> moveTableToFloor(String tableId, String targetFloor) async {
+    final idx = tables.indexWhere((t) => t.id == tableId);
+    if (idx < 0) return;
+
+    final targetFlr = targetFloor.trim().isEmpty ? 'Ground Floor' : targetFloor.trim();
+
+    // Ensure customFloors includes this floor
+    if (!_customFloors.any((f) => f.toLowerCase() == targetFlr.toLowerCase())) {
+      _customFloors.add(targetFlr);
+      await _prefs?.setStringList(_userKey('custom_floors'), _customFloors);
+    }
+
+    // Update the table's floor
+    tables[idx] = tables[idx].copyWith(floor: targetFlr);
+
+    // Re-sequence all tables cleanly floor-by-floor in natural order
+    await resequenceTables();
+  }
+
+  /// Re-sequences all table numbers and auto-generated names floor-by-floor in natural order
+  Future<void> resequenceTables() async {
+    if (tables.isEmpty) return;
+
+    final floorOrder = allFloors;
+    final List<TableModel> reordered = [];
+
+    // Group tables by floor according to floorOrder
+    for (final floor in floorOrder) {
+      final floorTables = tables
+          .where((t) => t.floor.trim().toLowerCase() == floor.trim().toLowerCase())
+          .toList();
+      floorTables.sort((a, b) {
+        final numA = a.tableNumber > 0
+            ? a.tableNumber
+            : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+        final numB = b.tableNumber > 0
+            ? b.tableNumber
+            : (int.tryParse(b.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
+        if (numA != numB) return numA.compareTo(numB);
+        return a.name.compareTo(b.name);
+      });
+      reordered.addAll(floorTables);
+    }
+
+    // Any remaining tables not matching allFloors
+    for (final t in tables) {
+      if (!reordered.any((r) => r.id == t.id)) {
+        reordered.add(t);
+      }
+    }
+
+    // Reassign sequential numbers 1, 2, 3...
+    int seq = 1;
+    final List<TableModel> finalTables = [];
+    for (final t in reordered) {
+      final isAutoName = RegExp(r'^(T|Table)[-\s]?\d+$', caseSensitive: false).hasMatch(t.name.trim());
+      final newName = isAutoName ? 'T-$seq' : t.name;
+      finalTables.add(t.copyWith(tableNumber: seq, name: newName));
+      seq++;
+    }
+
+    tables = finalTables;
+    _sortTablesSequentially();
+    await _saveTablesToPrefs();
+    notifyListeners();
+
+    // Background sync to backend API
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          for (final t in tables) {
+            await _tableService.updateTable(t);
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.resequenceTables] API sync error: $e');
+      }
+    }());
+  }
+
   /// Synchronize total number of dining tables to target count
   Future<void> syncTableCount(int count) async {
     final target = count > 0 ? count : 1;
+    final floorsList = allFloors;
+
     if (tables.length < target) {
       final toAdd = target - tables.length;
-      await addTable('T', 'Ground Floor', 4, count: toAdd);
+      final List<TableModel> newTablesToAdd = [];
+      int maxNum = tables.isEmpty ? 0 : (tables.map((t) => t.tableNumber).reduce((a, b) => a > b ? a : b));
+
+      for (int i = 1; i <= toAdd; i++) {
+        maxNum++;
+        newTablesToAdd.add(TableModel(
+          id: 'TBL-${DateTime.now().millisecondsSinceEpoch}-$i',
+          tableNumber: maxNum,
+          name: 'T-$maxNum',
+          floor: floorsList.first,
+          capacity: 4,
+          status: TableStatus.free,
+        ));
+      }
+      tables.addAll(newTablesToAdd);
     } else if (tables.length > target) {
       final excess = tables.length - target;
       final freeTables = tables.where((t) => t.status == TableStatus.free).toList();
       final toRemove = freeTables.take(excess).map((t) => t.id).toList();
       tables.removeWhere((t) => toRemove.contains(t.id));
-      if (restaurant != null) {
-        restaurant = restaurant!.copyWith(tableCount: tables.length);
-        await _saveRestaurantToPrefs();
-      }
-      await _saveTablesToPrefs();
-      notifyListeners();
     }
+
+    // Evenly distribute tables floor-wise (even = equal, odd = +1 remainder on first floor(s))
+    await distributeTablesAcrossFloors(targetFloors: floorsList);
+
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(tableCount: tables.length);
+      await _saveRestaurantToPrefs();
+    }
+    await _saveTablesToPrefs();
+    notifyListeners();
   }
 
   void _sortTablesSequentially() {
@@ -4367,20 +4651,33 @@ class DatabaseService extends ChangeNotifier {
   // SEEDERS
   void _seedCleanTables(int count) {
     final validCount = count > 0 ? count : 12;
-    tables = List.generate(validCount, (index) {
-      final num = index + 1;
-      final floor = num <= 8 ? 'Ground Floor' : 'Terrace Garden';
-      final cap = (num % 3 == 0) ? 6 : (num % 2 == 0 ? 4 : 2);
-      return TableModel(
-        id: 'tbl_$num',
-        tableNumber: num,
-        name: 'T-$num',
-        floor: floor,
-        capacity: cap,
-        status: TableStatus.free,
-        occupiedSince: null,
-      );
-    });
+    final floorsList = allFloors.isNotEmpty ? allFloors : ['Ground Floor', '1st Floor'];
+    final numFloors = floorsList.length;
+    final baseCount = validCount ~/ numFloors;
+    final remainder = validCount % numFloors;
+
+    final List<TableModel> generated = [];
+    int seq = 1;
+
+    for (int f = 0; f < numFloors; f++) {
+      final floorName = floorsList[f];
+      final floorCount = baseCount + (f < remainder ? 1 : 0);
+      for (int i = 0; i < floorCount; i++) {
+        final cap = (seq % 3 == 0) ? 6 : (seq % 2 == 0 ? 4 : 2);
+        generated.add(TableModel(
+          id: 'tbl_$seq',
+          tableNumber: seq,
+          name: 'T-$seq',
+          floor: floorName,
+          capacity: cap,
+          status: TableStatus.free,
+          occupiedSince: null,
+        ));
+        seq++;
+      }
+    }
+
+    tables = generated;
     _saveTablesToPrefs();
   }
 
@@ -4409,22 +4706,41 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void _seedDefaultTables(int count) {
-    tables = List.generate(count, (index) {
-      final num = index + 1;
-      final floor = num <= 8 ? 'Ground Floor' : 'Terrace Garden';
-      final cap = (num % 3 == 0) ? 6 : (num % 2 == 0 ? 4 : 2);
-      return TableModel(
-        id: 'tbl_$num',
-        tableNumber: num,
-        name: 'T-$num',
-        floor: floor,
-        capacity: cap,
-        status: (num == 2 || num == 5) ? TableStatus.occupied : (num == 7 ? TableStatus.runningKot : TableStatus.free),
-        occupiedSince: (num == 2 || num == 5 || num == 7)
-            ? DateTime.now().subtract(Duration(minutes: num == 2 ? 14 : (num == 5 ? 52 : 78))).toIso8601String()
-            : null,
-      );
-    });
+    final validCount = count > 0 ? count : 12;
+    final floorsList = allFloors.isNotEmpty ? allFloors : ['Ground Floor', '1st Floor'];
+    final numFloors = floorsList.length;
+    final baseCount = validCount ~/ numFloors;
+    final remainder = validCount % numFloors;
+
+    final List<TableModel> generated = [];
+    int seq = 1;
+
+    for (int f = 0; f < numFloors; f++) {
+      final floorName = floorsList[f];
+      final floorCount = baseCount + (f < remainder ? 1 : 0);
+      for (int i = 0; i < floorCount; i++) {
+        final cap = (seq % 3 == 0) ? 6 : (seq % 2 == 0 ? 4 : 2);
+        final status = (seq == 2 || seq == 5)
+            ? TableStatus.occupied
+            : (seq == 7 ? TableStatus.runningKot : TableStatus.free);
+        final occupiedSince = (seq == 2 || seq == 5 || seq == 7)
+            ? DateTime.now().subtract(Duration(minutes: seq == 2 ? 14 : (seq == 5 ? 52 : 78))).toIso8601String()
+            : null;
+
+        generated.add(TableModel(
+          id: 'tbl_$seq',
+          tableNumber: seq,
+          name: 'T-$seq',
+          floor: floorName,
+          capacity: cap,
+          status: status,
+          occupiedSince: occupiedSince,
+        ));
+        seq++;
+      }
+    }
+
+    tables = generated;
     _saveTablesToPrefs();
   }
 

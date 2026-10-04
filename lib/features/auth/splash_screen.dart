@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/network_service.dart';
 import '../../core/services/auth_service.dart';
-import '../../core/network/api_endpoints.dart';
-import '../../core/utils/responsive_layout_helper.dart';
 import '../notifications/services/notification_permission_helper.dart';
 
 import '../dashboard/main_layout.dart';
@@ -26,45 +24,47 @@ class SplashScreen extends StatefulWidget {
 
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
   late AnimationController _animController;
-  late Animation<double> _scaleInAnim;
+  late Animation<double> _scaleAnim;
   late Animation<double> _fadeAnim;
-  late Animation<double> _scaleOutAnim;
   bool _navigated = false;
-
   Timer? _fallbackTimer;
+
+  // Neumorphic Theme Palette
+  static const Color _neuBg = Color(0xFFEDF3F9);
+  static const Color _neuSurface = Color(0xFFF6FAFE);
+  static const Color _textPrimary = Color(0xFF0F172A);
+  static const Color _textSecondary = Color(0xFF5B6B82);
+  static const Color _neuShadowDark = Color(0xFFB4C8DC);
+  static const Color _primaryBlue = Color(0xFF0052FF);
 
   @override
   void initState() {
     super.initState();
 
-    // Trigger native Android/iOS system permission popups directly on app launch
-    NotificationPermissionHelper.requestAllAppPermissionsOnStartup();
+    try {
+      // Trigger native Android/iOS system permission popups directly on app launch
+      NotificationPermissionHelper.requestAllAppPermissionsOnStartup();
+    } catch (e) {
+      debugPrint('[SplashScreen] Permission helper info: $e');
+    }
 
+    // Fast, snappy entrance animation (~900ms)
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2000),
+      duration: const Duration(milliseconds: 900),
     );
 
-    // Zoom In Entrance Animation (0.0 -> 0.5 timeline)
-    _scaleInAnim = Tween<double>(begin: 0.3, end: 1.0).animate(
+    _scaleAnim = Tween<double>(begin: 0.88, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.0, 0.55, curve: Curves.easeOutBack),
+        curve: Curves.easeOutCubic,
       ),
     );
 
-    _fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
+    _fadeAnim = Tween<double>(begin: 0.1, end: 1.0).animate(
       CurvedAnimation(
         parent: _animController,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeIn),
-      ),
-    );
-
-    // Zoom Out Exit Animation (0.75 -> 1.0 timeline)
-    _scaleOutAnim = Tween<double>(begin: 1.0, end: 1.45).animate(
-      CurvedAnimation(
-        parent: _animController,
-        curve: const Interval(0.75, 1.0, curve: Curves.easeInOutCubic),
+        curve: const Interval(0.0, 0.5, curve: Curves.easeOut),
       ),
     );
 
@@ -76,8 +76,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _animController.forward();
 
-    // Guaranteed fallback timer (proceeds after 2.5s even if animation drops frames)
-    _fallbackTimer = Timer(const Duration(milliseconds: 2500), () {
+    // Guaranteed fallback timer (proceeds after 1400ms max even if animation drops frames)
+    _fallbackTimer = Timer(const Duration(milliseconds: 1400), () {
       if (mounted && !_navigated) {
         _proceedNextScreen();
       }
@@ -98,11 +98,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       // Fast parallel check of Network & Auth
       final results = await Future.wait([
         NetworkService().hasInternet().timeout(
-          const Duration(seconds: 2),
+          const Duration(milliseconds: 1200),
           onTimeout: () => true,
         ),
         AuthService().isAuthenticated().timeout(
-          const Duration(seconds: 2),
+          const Duration(milliseconds: 1200),
           onTimeout: () => false,
         ),
       ]);
@@ -116,7 +116,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         if (hasInternet && isAuth) {
           try {
             final meData = await AuthService().getMe().timeout(
-              const Duration(seconds: 3),
+              const Duration(milliseconds: 1500),
             );
             final user = meData['user'] as Map<String, dynamic>?;
             final bool onboardingCompleted = user?['onboardingCompleted'] == true;
@@ -125,7 +125,6 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
             if (onboardingCompleted) {
               targetScreen = const MainLayout();
             } else {
-              // Route to exact incomplete step
               switch (currentStep) {
                 case 0:
                   targetScreen = const CreateProfileScreen();
@@ -169,12 +168,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       }
     } catch (e) {
       debugPrint('SplashScreen auth verification error/fallback: $e');
-      final db = DatabaseService();
-      if (db.currentUser != null) {
-        targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
-            ? const MainLayout()
-            : const RestaurantOnboardingScreen();
-      } else {
+      try {
+        final db = DatabaseService();
+        if (db.currentUser != null) {
+          targetScreen = (db.restaurant != null && db.restaurant!.isOnboarded)
+              ? const MainLayout()
+              : const RestaurantOnboardingScreen();
+        } else {
+          targetScreen = defaultUnauthScreen;
+        }
+      } catch (_) {
         targetScreen = defaultUnauthScreen;
       }
     }
@@ -183,22 +186,15 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 650),
+        transitionDuration: const Duration(milliseconds: 350),
         pageBuilder: (context, animation, secondaryAnimation) => targetScreen,
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final zoomOutRouteAnim = Tween<double>(begin: 1.25, end: 1.0).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-          );
-          final fadeRouteAnim = Tween<double>(begin: 0.0, end: 1.0).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeInOut),
-          );
-
-          return ScaleTransition(
-            scale: zoomOutRouteAnim,
-            child: FadeTransition(
-              opacity: fadeRouteAnim,
-              child: child,
+          return FadeTransition(
+            opacity: CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeInOut,
             ),
+            child: child,
           );
         },
       ),
@@ -215,108 +211,222 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF040814),
-      body: Stack(
-        children: [
-          // 1. Ambient Deep Glow Radial Background
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.1),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x660052FF), // Deep Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF040814),
-                  ],
-                  stops: [0.0, 0.65, 1.0],
+      backgroundColor: _neuBg,
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFF5F9FD),
+              Color(0xFFEDF3F9),
+              Color(0xFFE5EDF6),
+            ],
+            stops: [0.0, 0.45, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                child: AnimatedBuilder(
+                  animation: _animController,
+                  builder: (context, child) {
+                    return Opacity(
+                      opacity: _fadeAnim.value.clamp(0.0, 1.0),
+                      child: Transform.scale(
+                        scale: _scaleAnim.value,
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: _buildWrappedSplashScreenCard(),
                 ),
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
 
-          // 2. Animated Centered Logo with Zoom In & Zoom Out Transitions
-          Center(
-            child: AnimatedBuilder(
-              animation: _animController,
-              builder: (context, child) {
-                // Combine Zoom In (0.3 -> 1.0) and Zoom Out (1.0 -> 1.45)
-                final currentScale = _animController.value < 0.75
-                    ? _scaleInAnim.value
-                    : _scaleOutAnim.value;
-
-                return Opacity(
-                  opacity: _fadeAnim.value,
-                  child: Transform.scale(
-                    scale: currentScale,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Glass Logo Card Container
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(28),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFF0052FF).withValues(alpha: 0.45),
-                                blurRadius: 36,
-                                spreadRadius: 4,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Image.asset(
-                            'assets/images/apna_pos_brand_logo.png',
-                            height: 140,
-                            width: 140,
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-
-                        // Subtitle Branding Badge
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.08),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: const Color(0xFF0052FF).withValues(alpha: 0.3),
-                            ),
-                          ),
-                          child: const Text(
-                            'SMART RESTAURANT POS',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 2.5,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-
-                        // Sleek Loading Spinner
-                        const SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0052FF)),
-                            strokeWidth: 2.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+  // ==========================================
+  // DOUBLE-WRAPPED NEUMORPHIC CARD
+  // ==========================================
+  Widget _buildWrappedSplashScreenCard() {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        // Ambient soft blue circular glow behind card
+        Container(
+          width: 280,
+          height: 280,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: RadialGradient(
+              colors: [
+                _primaryBlue.withValues(alpha: 0.12),
+                _primaryBlue.withValues(alpha: 0.0),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+
+        // Outer Wrapped Enclosure Card
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(maxWidth: 360),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEAF1F9),
+            borderRadius: BorderRadius.circular(34),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.95),
+              width: 2.0,
+            ),
+            boxShadow: [
+              // Outer White Top-Left Highlight
+              const BoxShadow(
+                color: Colors.white,
+                offset: Offset(-6, -6),
+                blurRadius: 16,
+                spreadRadius: 0,
+              ),
+              // Outer Dark Bottom-Right Shadow
+              BoxShadow(
+                color: _neuShadowDark.withValues(alpha: 0.55),
+                offset: const Offset(6, 10),
+                blurRadius: 18,
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          // Inner Neumorphic Card
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [
+                  Color(0xFFFFFFFF),
+                  Color(0xFFF3F8FE),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.85),
+                width: 1.2,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: _primaryBlue.withValues(alpha: 0.06),
+                  offset: const Offset(0, 4),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 1. Neumorphic Elevated Brand Logo Card
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: [
+                      // Subtle top light
+                      const BoxShadow(
+                        color: Colors.white,
+                        offset: Offset(-3, -3),
+                        blurRadius: 6,
+                      ),
+                      // Soft neumorphic bottom shadow
+                      BoxShadow(
+                        color: _neuShadowDark.withValues(alpha: 0.45),
+                        offset: const Offset(4, 6),
+                        blurRadius: 12,
+                      ),
+                    ],
+                  ),
+                  child: Image.asset(
+                    'assets/images/apna_pos_brand_logo.png',
+                    height: 95,
+                    width: 135,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                // 2. Subtitle Neumorphic Branding Pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _neuSurface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      const BoxShadow(
+                        color: Colors.white,
+                        offset: Offset(-2, -2),
+                        blurRadius: 4,
+                      ),
+                      BoxShadow(
+                        color: _neuShadowDark.withValues(alpha: 0.4),
+                        offset: const Offset(2, 3),
+                        blurRadius: 6,
+                      ),
+                    ],
+                  ),
+                  child: const Text(
+                    'SMART RESTAURANT POS',
+                    style: TextStyle(
+                      color: _textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 2.0,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 22),
+
+                // 3. Fast Sleek Neumorphic Spinner
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(_primaryBlue),
+                    strokeWidth: 2.2,
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                // 4. Compact Tagline
+                const Text(
+                  'Fast • Simple • Reliable',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: _textPrimary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

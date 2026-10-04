@@ -72,6 +72,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   bool _isStaffDropdownOpen = false;
   String? _selectedTableForPos;
   OrderType? _selectedOrderTypeForPos;
+  int _posTableSelectionToken = 0;
   final db = DatabaseService();
 
   bool _canAccessTab(int index) {
@@ -1679,6 +1680,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                             ? PosRegisterScreen(
                                                 initialTable: _selectedTableForPos,
                                                 initialOrderType: _selectedOrderTypeForPos,
+                                                tableSelectionToken: _posTableSelectionToken,
                                                 onOpenDrawer: _toggleSidebar,
                                                 onOpenTablesTab: () => _selectTab(2),
                                                 isFullScreen: _isPosFullScreen,
@@ -1700,6 +1702,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                                   setState(() {
                                                     _selectedTableForPos = tableName;
                                                     _selectedOrderTypeForPos = OrderType.dineIn;
+                                                    _posTableSelectionToken = DateTime.now().millisecondsSinceEpoch;
                                                   });
                                                   _selectTab(1);
                                                 },
@@ -1707,6 +1710,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                                   setState(() {
                                                     _selectedTableForPos = null;
                                                     _selectedOrderTypeForPos = orderType;
+                                                    _posTableSelectionToken = DateTime.now().millisecondsSinceEpoch;
                                                   });
                                                   _selectTab(1);
                                                 },
@@ -1718,6 +1722,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                                   setState(() {
                                                     _selectedTableForPos = tableName;
                                                     _selectedOrderTypeForPos = OrderType.dineIn;
+                                                    _posTableSelectionToken = DateTime.now().millisecondsSinceEpoch;
                                                   });
                                                   _selectTab(1);
                                                 },

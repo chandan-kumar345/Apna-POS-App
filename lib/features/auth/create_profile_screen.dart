@@ -11,8 +11,6 @@ import 'login_screen.dart';
 import '../../core/services/onboarding_service.dart';
 import '../../core/services/auth_service.dart';
 
-
-
 // Custom Motion Slide-Right Page Route Transition
 class SlideRightPageRoute<T> extends PageRouteBuilder<T> {
   final Widget page;
@@ -77,6 +75,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
   @override
   void initState() {
     super.initState();
+    db.saveOnboardingProgress(route: 'create_profile', step: 0);
     if (widget.initialName != null && widget.initialName!.isNotEmpty) {
       _nameController.text = widget.initialName!;
     }
@@ -97,32 +96,38 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       if (!_selectedPhotoPath!.contains('_selected') && File(_selectedPhotoPath!).existsSync()) {
         return Image.file(
           File(_selectedPhotoPath!),
-          width: 90,
-          height: 90,
+          width: 96,
+          height: 96,
           fit: BoxFit.cover,
         );
-      } else if (_selectedPhotoPath!.startsWith('data:image') || (_selectedPhotoPath!.length > 50 && !_selectedPhotoPath!.startsWith('http') && !_selectedPhotoPath!.startsWith('/'))) {
+      } else if (_selectedPhotoPath!.startsWith('data:image') ||
+          (_selectedPhotoPath!.length > 50 &&
+              !_selectedPhotoPath!.startsWith('http') &&
+              !_selectedPhotoPath!.startsWith('/'))) {
         try {
-          final cleanBase64 = _selectedPhotoPath!.contains(',') ? _selectedPhotoPath!.split(',').last : _selectedPhotoPath!;
+          final cleanBase64 = _selectedPhotoPath!.contains(',')
+              ? _selectedPhotoPath!.split(',').last
+              : _selectedPhotoPath!;
           final bytes = base64Decode(cleanBase64);
           return Image.memory(
             bytes,
-            width: 90,
-            height: 90,
+            width: 96,
+            height: 96,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => const Center(
-              child: Icon(Icons.person_rounded, color: Colors.white, size: 48),
+            errorBuilder: (context, error, stackTrace) => const Center(
+              child: Icon(Icons.person_rounded, color: Color(0xFF0066FF), size: 48),
             ),
           );
         } catch (_) {}
-      } else if (_selectedPhotoPath!.startsWith('http://') || _selectedPhotoPath!.startsWith('https://')) {
+      } else if (_selectedPhotoPath!.startsWith('http://') ||
+          _selectedPhotoPath!.startsWith('https://')) {
         return Image.network(
           _selectedPhotoPath!,
-          width: 90,
-          height: 90,
+          width: 96,
+          height: 96,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Center(
-            child: Icon(Icons.person_rounded, color: Colors.white, size: 48),
+          errorBuilder: (context, error, stackTrace) => const Center(
+            child: Icon(Icons.person_rounded, color: Color(0xFF0066FF), size: 48),
           ),
         );
       }
@@ -130,12 +135,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     return const Center(
       child: Icon(
         Icons.camera_alt_rounded,
-        color: Colors.white,
+        color: Color(0xFF0066FF),
         size: 38,
       ),
     );
   }
-
 
   // Country Code Picker Modal Dialog with Search Filter
   void _showCountryCodePicker() {
@@ -144,7 +148,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (context) {
         String searchQuery = '';
@@ -216,18 +220,26 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   Expanded(
                     child: ListView.separated(
                       itemCount: filteredList.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
                       itemBuilder: (context, index) {
                         final item = filteredList[index];
                         return ListTile(
                           leading: Text(item.flag, style: const TextStyle(fontSize: 22)),
                           title: Text(
                             item.name,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF0F172A),
+                            ),
                           ),
                           trailing: Text(
                             item.dialCode,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: GlassTheme.primaryBlue),
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF0066FF),
+                            ),
                           ),
                           onTap: () {
                             setState(() => _selectedCountry = item);
@@ -264,22 +276,24 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
               children: [
                 // Header Icon
                 Container(
-                  width: 54,
-                  height: 54,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00C2FF).withOpacity(0.12),
+                  width: 56,
+                  height: 56,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE8F2FF),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.add_a_photo_rounded,
-                    color: Color(0xFF00C2FF),
-                    size: 26,
+                  child: const Center(
+                    child: Icon(
+                      Icons.add_a_photo_rounded,
+                      color: Color(0xFF0066FF),
+                      size: 26,
+                    ),
                   ),
                 ),
 
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
 
-                // Title - Crisp Bold High-Contrast Text
+                // Title
                 const Text(
                   'Upload Profile Photo',
                   textAlign: TextAlign.center,
@@ -293,14 +307,14 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
 
                 const SizedBox(height: 6),
 
-                // Subtitle - Clear Visible Text
+                // Subtitle
                 const Text(
-                  'Choose a photo from your phone gallery or take a new picture',
+                  'Choose a photo from your gallery or take a new picture',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
-                    color: Color(0xFF475569),
+                    color: Color(0xFF64748B),
                     height: 1.35,
                   ),
                 ),
@@ -351,11 +365,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00C2FF).withOpacity(0.12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE8F2FF),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.photo_library_rounded, color: Color(0xFF00C2FF), size: 22),
+                          child: const Icon(Icons.photo_library_rounded, color: Color(0xFF0066FF), size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -434,11 +448,11 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: GlassTheme.primaryBlue.withOpacity(0.12),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE8F2FF),
                             shape: BoxShape.circle,
                           ),
-                          child: const Icon(Icons.camera_alt_rounded, color: GlassTheme.primaryBlue, size: 22),
+                          child: const Icon(Icons.camera_alt_rounded, color: Color(0xFF0066FF), size: 22),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -543,6 +557,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         profileImage: profileImagePayload,
       );
 
+      await db.saveOnboardingProgress(route: 'upgrade_business', step: 1);
 
       if (!mounted) return;
 
@@ -562,454 +577,485 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
     }
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient matching Previous Auth Screens
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
-
-          // 2. Decorative Glass Background Orbs / Glow Shapes
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 180,
-            left: -80,
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4F46E5).withOpacity(0.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.2),
-                    blurRadius: 90,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Main Layout Content
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Circular Back Button
-                Padding(
-                  padding: const EdgeInsets.only(left: 20, top: 10),
-                  child: InkWell(
-                    onTap: () {
-                      if (Navigator.canPop(context)) {
-                        Navigator.pop(context);
-                      } else {
-                        Navigator.pushReplacement(
-                          context,
-                          SlideUpPageRoute(page: const LoginScreen()),
-                        );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.12),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.2),
-                          width: 1,
-                        ),
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                      ),
+      backgroundColor: const Color(0xFF03266B),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Stack(
+            children: [
+              // 1. Deep Royal Navy Gradient Background
+              Positioned.fill(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFF021B54),
+                        Color(0xFF03318C),
+                        Color(0xFF011848),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
                     ),
                   ),
                 ),
+              ),
 
-                const SizedBox(height: 6),
-
-                // Centered Profile Avatar & Upload Action
-                Center(
-                  child: Column(
-                    children: [
-                      GestureDetector(
-                        onTap: _showGalleryPickerModal,
-                        child: Stack(
-                          children: [
-                            Container(
-                              width: 90,
-                              height: 90,
+              // 2. Main Content
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Top Bar with Back Button
+                    Padding(
+                      padding: const EdgeInsets.only(left: 18, top: 12, right: 18),
+                      child: Row(
+                        children: [
+                          InkWell(
+                            onTap: () {
+                              if (Navigator.canPop(context)) {
+                                Navigator.pop(context);
+                              } else {
+                                Navigator.pushReplacement(
+                                  context,
+                                  SlideUpPageRoute(page: const LoginScreen()),
+                                );
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(22),
+                            child: Container(
+                              width: 42,
+                              height: 42,
                               decoration: BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Colors.white.withOpacity(0.15),
+                                color: Colors.white.withValues(alpha: 0.15),
                                 border: Border.all(
-                                  color: const Color(0xFF00C2FF),
-                                  width: 2,
+                                  color: Colors.white.withValues(alpha: 0.25),
+                                  width: 1,
                                 ),
-                                boxShadow: const [
-                                  BoxShadow(
-                                    color: Color(0x3300C2FF),
-                                    blurRadius: 16,
-                                    offset: Offset(0, 4),
-                                  ),
-                                ],
                               ),
-                              child: ClipOval(
-                                child: _buildAvatarContent(),
-                              ),
-                            ),
-                            Positioned(
-                              right: 2,
-                              bottom: 2,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF00C2FF),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.add_a_photo_rounded,
+                              child: const Center(
+                                child: Icon(
+                                  Icons.chevron_left_rounded,
                                   color: Colors.white,
-                                  size: 14,
+                                  size: 26,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        _selectedPhotoPath != null ? 'Photo Attached' : 'Upload Profile Photo',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white.withOpacity(0.85),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 14),
-
-                // 3. Bottom White Curved Card Container
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
-                    child: SingleChildScrollView(
-                      physics: const BouncingScrollPhysics(),
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 28),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Card Title
-                          const Text(
-                            'Create Profile',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF0F172A),
-                              letterSpacing: -0.3,
-                            ),
-                          ),
-
-                          const SizedBox(height: 16),
-
-                          // Error Banner
-                          if (_errorMessage != null) ...[
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEF2F2),
-                                borderRadius: BorderRadius.circular(14),
-                                border: Border.all(color: const Color(0xFFFCA5A5)),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.error_outline_rounded,
-                                      color: Color(0xFFEF4444), size: 18),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: const TextStyle(
-                                        color: Color(0xFFB91C1C),
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 14),
-                          ],
-
-                          // Form Input Fields (Semi-Circle Pill Box Style matching Auth Screens)
-                          _buildInputCard(
-                            label: 'Full Name',
-                            hint: 'Enter your full name',
-                            icon: Icons.person_outline_rounded,
-                            controller: _nameController,
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          // Phone Number Field with Country Code Picker
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Phone Number',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: Color(0xFF334155),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Container(
-                                height: 52,
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(26), // Semi-circle pill shape
-                                  border: Border.all(
-                                    color: const Color(0xFF00C2FF), // Cyan highlighted border
-                                    width: 1.5,
-                                  ),
-                                  boxShadow: const [
-                                    BoxShadow(
-                                      color: Color(0x1400C2FF),
-                                      blurRadius: 10,
-                                      offset: Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  children: [
-                                    // Country Code Selector
-                                    InkWell(
-                                      onTap: _showCountryCodePicker,
-                                      borderRadius: BorderRadius.circular(20),
-                                      child: Padding(
-                                        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Text(
-                                              _selectedCountry.flag,
-                                              style: const TextStyle(fontSize: 20),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _selectedCountry.code,
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w600,
-                                                color: Color(0xFF475569),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              _selectedCountry.dialCode,
-                                              style: const TextStyle(
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w700,
-                                                color: Color(0xFF0F172A),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 4),
-                                            const Icon(
-                                              Icons.keyboard_arrow_down_rounded,
-                                              color: Color(0xFF94A3B8),
-                                              size: 18,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-
-                                    // Vertical Separator Line
-                                    Container(
-                                      height: 22,
-                                      width: 1,
-                                      margin: const EdgeInsets.symmetric(horizontal: 10),
-                                      color: const Color(0xFFE2E8F0),
-                                    ),
-
-                                    // Phone Number Text Field
-                                    Expanded(
-                                      child: TextField(
-                                        controller: _phoneController,
-                                        keyboardType: TextInputType.phone,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                        decoration: const InputDecoration(
-                                          hintText: 'Enter phone number',
-                                          hintStyle: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w400,
-                                            color: Color(0xFFCBD5E1),
-                                          ),
-                                          border: InputBorder.none,
-                                          isDense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          _buildInputCard(
-                            label: 'Company / Restaurant Name',
-                            hint: 'Enter company name',
-                            icon: Icons.storefront_rounded,
-                            controller: _companyNameController,
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          _buildInputCard(
-                            label: 'Website (Optional)',
-                            hint: 'Enter website URL',
-                            icon: Icons.language_rounded,
-                            controller: _websiteController,
-                            keyboardType: TextInputType.url,
-                          ),
-
-                          const SizedBox(height: 12),
-
-                          _buildInputCard(
-                            label: 'Referral Code (Optional)',
-                            hint: 'Enter referral code',
-                            icon: Icons.card_giftcard_rounded,
-                            controller: _referralController,
-                          ),
-
-                          const SizedBox(height: 24),
-
-                          // Primary Action Button ("Continue")
-                          Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: [
-                                BoxShadow(
-                                  color: GlassTheme.primaryBlue.withOpacity(0.35),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveProfile,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Continue',
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
                             ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+
+                    const SizedBox(height: 8),
+
+                    // Centered Profile Avatar & Upload Action
+                    Center(
+                      child: GestureDetector(
+                        onTap: _showGalleryPickerModal,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Stack(
+                              clipBehavior: Clip.none,
+                              alignment: Alignment.center,
+                              children: [
+                                // Outer Glowing Ring & Avatar Container
+                                Container(
+                                  width: 96,
+                                  height: 96,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFEBF3FF),
+                                        Color(0xFFD6E6FF),
+                                      ],
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                    ),
+                                    border: Border.all(
+                                      color: const Color(0xFF38BDF8),
+                                      width: 2.5,
+                                    ),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Color(0x6600C2FF),
+                                        blurRadius: 20,
+                                        spreadRadius: 2,
+                                      ),
+                                    ],
+                                  ),
+                                  child: ClipOval(
+                                    child: _buildAvatarContent(),
+                                  ),
+                                ),
+                                // Bottom-Right Blue Plus Badge
+                                Positioned(
+                                  right: 0,
+                                  bottom: 2,
+                                  child: Container(
+                                    width: 28,
+                                    height: 28,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF0099FF),
+                                      shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: Colors.white,
+                                        width: 2,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x33000000),
+                                          blurRadius: 4,
+                                          offset: Offset(0, 2),
+                                        ),
+                                      ],
+                                    ),
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.add_rounded,
+                                        color: Colors.white,
+                                        size: 16,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _selectedPhotoPath != null ? 'Photo Attached' : 'Upload Profile Photo',
+                              style: const TextStyle(
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                                letterSpacing: 0.1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // 3. Bottom Neumorphic Curved Sheet Container
+                    Expanded(
+                      child: Container(
+                        width: double.infinity,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.vertical(
+                            top: Radius.circular(36),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0x25001C55),
+                              blurRadius: 30,
+                              offset: Offset(0, -8),
+                            ),
+                          ],
+                        ),
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.fromLTRB(22, 26, 22, 32),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Card Title
+                              const Text(
+                                'Create Profile',
+                                style: TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.4,
+                                ),
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // Error Banner
+                              if (_errorMessage != null) ...[
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  margin: const EdgeInsets.only(bottom: 14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(14),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.error_outline_rounded,
+                                          color: Color(0xFFEF4444), size: 18),
+                                      const SizedBox(width: 8),
+                                      Expanded(
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: const TextStyle(
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
+                              // 1. Full Name
+                              _buildInputCard(
+                                label: 'Full Name',
+                                hint: 'Enter full name',
+                                icon: Icons.person_outline_rounded,
+                                controller: _nameController,
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // 2. Phone Number with Country Selector
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Phone Number',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Container(
+                                    height: 52,
+                                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFD),
+                                      borderRadius: BorderRadius.circular(26),
+                                      border: Border.all(
+                                        color: const Color(0xFF38BDF8),
+                                        width: 1.5,
+                                      ),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x0C0066FF),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 2),
+                                        ),
+                                        BoxShadow(
+                                          color: Colors.white,
+                                          blurRadius: 4,
+                                          offset: Offset(0, -1),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        // Country Selector
+                                        InkWell(
+                                          onTap: _showCountryCodePicker,
+                                          borderRadius: BorderRadius.circular(20),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Text(
+                                                _selectedCountry.flag,
+                                                style: const TextStyle(fontSize: 20),
+                                              ),
+                                              const SizedBox(width: 8),
+                                              Text(
+                                                _selectedCountry.code,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF0F172A),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                _selectedCountry.dialCode,
+                                                style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Color(0xFF0F172A),
+                                                ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              const Icon(
+                                                Icons.keyboard_arrow_down_rounded,
+                                                color: Color(0xFF94A3B8),
+                                                size: 18,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+
+                                        // Vertical Separator
+                                        Container(
+                                          height: 22,
+                                          width: 1,
+                                          margin: const EdgeInsets.symmetric(horizontal: 12),
+                                          color: const Color(0xFFCBD5E1),
+                                        ),
+
+                                        // Phone Text Field
+                                        Expanded(
+                                          child: TextField(
+                                            controller: _phoneController,
+                                            keyboardType: TextInputType.phone,
+                                            style: const TextStyle(
+                                              fontSize: 14.5,
+                                              fontWeight: FontWeight.w700,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                            decoration: const InputDecoration(
+                                              hintText: 'Enter phone number',
+                                              hintStyle: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w400,
+                                                color: Color(0xFF94A3B8),
+                                              ),
+                                              border: InputBorder.none,
+                                              isDense: true,
+                                              contentPadding: EdgeInsets.zero,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // 3. Company / Restaurant Name
+                              _buildInputCard(
+                                label: 'Company / Restaurant Name',
+                                hint: 'Enter company name',
+                                icon: Icons.storefront_rounded,
+                                controller: _companyNameController,
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // 4. Website (Optional)
+                              _buildInputCard(
+                                label: 'Website (Optional)',
+                                hint: 'Enter website URL',
+                                icon: Icons.language_rounded,
+                                controller: _websiteController,
+                                keyboardType: TextInputType.url,
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // 5. Referral Code (Optional)
+                              _buildInputCard(
+                                label: 'Referral Code (Optional)',
+                                hint: 'Enter referral code',
+                                icon: Icons.card_giftcard_rounded,
+                                controller: _referralController,
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // 6. Action Button: "Continue" with trailing circular arrow
+                              Container(
+                                width: double.infinity,
+                                height: 56,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(28),
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF0066FF), Color(0xFF0052E0)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x400066FF),
+                                      blurRadius: 18,
+                                      offset: Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ElevatedButton(
+                                  onPressed: _isLoading ? null : _handleSaveProfile,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(28),
+                                    ),
+                                  ),
+                                  child: _isLoading
+                                      ? const SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 2.5,
+                                          ),
+                                        )
+                                      : Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            const Center(
+                                              child: Text(
+                                                'Continue',
+                                                style: TextStyle(
+                                                  fontSize: 16.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: Colors.white,
+                                                  letterSpacing: 0.2,
+                                                ),
+                                              ),
+                                            ),
+                                            // Positioned(
+                                            //   right: 4,
+                                            //   child: Container(
+                                            //     width: 38,
+                                            //     height: 38,
+                                            //     decoration: BoxDecoration(
+                                            //       shape: BoxShape.circle,
+                                            //       color: Colors.white.withValues(alpha: 0.22),
+                                            //     ),
+                                            //     child: const Center(
+                                            //       child: Icon(
+                                            //         Icons.arrow_forward_rounded,
+                                            //         color: Colors.white,
+                                            //         size: 20,
+                                            //       ),
+                                            //     ),
+                                            //   ),
+                                            // ),
+                                          ],
+                                        ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  // Helper Widget for Input Field Cards (Semi-Circle Pill Shape)
+  // Helper Widget for Neumorphic Input Field Cards (Semi-Circle Pill Shape)
   Widget _buildInputCard({
     required String label,
     required String hint,
@@ -1026,7 +1072,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
         Text(
           label,
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 13,
             fontWeight: FontWeight.w600,
             color: Color(0xFF334155),
           ),
@@ -1036,40 +1082,45 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
           height: 52,
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(26), // Semi-circle pill shape
+            color: const Color(0xFFF8FAFD),
+            borderRadius: BorderRadius.circular(26),
             border: Border.all(
-              color: const Color(0xFF00C2FF), // Highlighted Cyan border
+              color: const Color(0xFF38BDF8),
               width: 1.5,
             ),
             boxShadow: const [
               BoxShadow(
-                color: Color(0x1400C2FF),
-                blurRadius: 10,
-                offset: Offset(0, 4),
+                color: Color(0x0C0066FF),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+              BoxShadow(
+                color: Colors.white,
+                blurRadius: 4,
+                offset: Offset(0, -1),
               ),
             ],
           ),
           child: Row(
             children: [
-              Icon(icon, color: GlassTheme.primaryBlue, size: 20),
-              const SizedBox(width: 10),
+              Icon(icon, color: const Color(0xFF0066FF), size: 20),
+              const SizedBox(width: 12),
               Expanded(
                 child: TextField(
                   controller: controller,
                   obscureText: obscureText,
                   keyboardType: keyboardType,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF0F172A),
                   ),
                   decoration: InputDecoration(
                     hintText: hint,
                     hintStyle: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 13.5,
                       fontWeight: FontWeight.w400,
-                      color: Color(0xFFCBD5E1),
+                      color: Color(0xFF94A3B8),
                     ),
                     border: InputBorder.none,
                     isDense: true,
@@ -1077,7 +1128,7 @@ class _CreateProfileScreenState extends State<CreateProfileScreen> {
                   ),
                 ),
               ),
-              if (suffixWidget != null) suffixWidget,
+              ?suffixWidget,
             ],
           ),
         ),

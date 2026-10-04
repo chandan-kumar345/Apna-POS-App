@@ -78,7 +78,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                       padding: const EdgeInsets.symmetric(horizontal: 20),
                       child: Column(
                         children: [
-                          SizedBox(height: topPadding + 8),
+                          SizedBox(height: topPadding + 50),
 
                           // 1. Interactive Hero Section with Neumorphic Squircle & Floating Badges
                           _buildHeroSection(),
@@ -90,11 +90,11 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                             "Everything You\nNeed, in one App.",
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 32,
+                              fontSize: 24,
                               fontWeight: FontWeight.w900,
                               color: _textPrimary,
                               height: 1.22,
-                              letterSpacing: -0.6,
+                              letterSpacing: -0.5,
                             ),
                           ),
 
@@ -104,7 +104,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                             "Smart Restaurant Billing, KDS & Analytics",
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              fontSize: 15,
+                              fontSize: 13,
                               fontWeight: FontWeight.w500,
                               color: _textSecondary,
                               letterSpacing: -0.1,
@@ -112,12 +112,12 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                           ),
 
                           const Spacer(),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 5),
 
                           // 3. Double-Wrapped Neumorphic Bottom Enclosure ("Grow Without Limits")
                           _buildWrappedBottomCard(),
 
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 25),
 
                           // 4. Vibrant Electric Blue "Get Started" Button
                           _buildGetStartedButton(),
@@ -275,20 +275,20 @@ class _GetStartedScreenState extends State<GetStartedScreen>
   // 1. Fast Billing Icon (Blue receipt with lines)
   Widget _buildFastBillingIcon() {
     return Container(
-      width: 26,
-      height: 26,
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(7.5),
+        borderRadius: BorderRadius.circular(6),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF2563EB).withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
@@ -297,11 +297,11 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 14, height: 2, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
-            const SizedBox(height: 2.5),
-            Container(width: 10, height: 2, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(1))),
-            const SizedBox(height: 2.5),
-            Container(width: 13, height: 2, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(width: 10, height: 1.6, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            const SizedBox(height: 2),
+            Container(width: 7, height: 1.6, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.85), borderRadius: BorderRadius.circular(1))),
+            const SizedBox(height: 2),
+            Container(width: 9, height: 1.6, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
           ],
         ),
       ),
@@ -311,12 +311,12 @@ class _GetStartedScreenState extends State<GetStartedScreen>
   // 2. Loyalty Crown Icon (Golden Crown)
   Widget _buildLoyaltyCrownIcon() {
     return Container(
-      width: 26,
-      height: 26,
+      width: 20,
+      height: 20,
       alignment: Alignment.center,
       child: const Text(
         '👑',
-        style: TextStyle(fontSize: 18),
+        style: TextStyle(fontSize: 13.5),
       ),
     );
   }
@@ -324,27 +324,27 @@ class _GetStartedScreenState extends State<GetStartedScreen>
   // 3. Campaigns Megaphone Icon (Teal/Green 3D Megaphone)
   Widget _buildCampaignsIcon() {
     return Container(
-      width: 26,
-      height: 26,
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF10B981), Color(0xFF059669)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(7.5),
+        borderRadius: BorderRadius.circular(6),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF10B981).withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
       child: const Icon(
         Icons.campaign_rounded,
         color: Colors.white,
-        size: 16,
+        size: 13,
       ),
     );
   }
@@ -352,20 +352,20 @@ class _GetStartedScreenState extends State<GetStartedScreen>
   // 4. Reports Bar Chart Icon (Purple 3D Bar Chart)
   Widget _buildReportsIcon() {
     return Container(
-      width: 26,
-      height: 26,
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(7.5),
+        borderRadius: BorderRadius.circular(6),
         boxShadow: [
           BoxShadow(
             color: const Color(0xFF7C3AED).withValues(alpha: 0.35),
-            blurRadius: 6,
-            offset: const Offset(0, 2),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
           ),
         ],
       ),
@@ -374,11 +374,11 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Container(width: 3, height: 7, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(1))),
-            const SizedBox(width: 2),
-            Container(width: 3, height: 11, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
-            const SizedBox(width: 2),
-            Container(width: 3, height: 15, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            Container(width: 2.2, height: 5.5, decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(1))),
+            const SizedBox(width: 1.5),
+            Container(width: 2.2, height: 8.5, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
+            const SizedBox(width: 1.5),
+            Container(width: 2.2, height: 11.5, decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(1))),
           ],
         ),
       ),
@@ -392,34 +392,34 @@ class _GetStartedScreenState extends State<GetStartedScreen>
     required Color glowColor,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5.5),
       decoration: BoxDecoration(
         color: _neuSurface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: Colors.white.withValues(alpha: 0.95),
-          width: 1.4,
+          width: 1.2,
         ),
         boxShadow: [
           // Light top-left reflection
           const BoxShadow(
             color: Colors.white,
-            offset: Offset(-3.5, -3.5),
-            blurRadius: 8,
+            offset: Offset(-2.5, -2.5),
+            blurRadius: 6,
             spreadRadius: 0,
           ),
           // Dark bottom-right neumorphic shadow
           BoxShadow(
             color: _neuShadowDark.withValues(alpha: 0.55),
-            offset: const Offset(4, 5),
-            blurRadius: 9,
+            offset: const Offset(3, 4),
+            blurRadius: 7,
             spreadRadius: 0,
           ),
           // Ambient soft colored glow
           BoxShadow(
             color: glowColor,
-            offset: const Offset(0, 4),
-            blurRadius: 12,
+            offset: const Offset(0, 3),
+            blurRadius: 9,
             spreadRadius: 0,
           ),
         ],
@@ -428,21 +428,15 @@ class _GetStartedScreenState extends State<GetStartedScreen>
         mainAxisSize: MainAxisSize.min,
         children: [
           icon,
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
           Text(
             label,
             style: const TextStyle(
-              fontSize: 13,
+              fontSize: 11,
               fontWeight: FontWeight.w700,
               color: _textPrimary,
               letterSpacing: -0.2,
             ),
-          ),
-          const SizedBox(width: 4),
-          const Icon(
-            Icons.chevron_right_rounded,
-            size: 18,
-            color: Color(0xFF64748B),
           ),
         ],
       ),
@@ -517,19 +511,19 @@ class _GetStartedScreenState extends State<GetStartedScreen>
                   Text(
                     "Grow Without Limits",
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: _textPrimary,
-                      letterSpacing: -0.3,
+                      letterSpacing: -0.2,
                     ),
                   ),
-                  SizedBox(height: 6),
+                  SizedBox(height: 5),
                   Text(
                     "Everything you need to manage orders, billing, inventory, staff, and customers in one powerful platform.",
                     style: TextStyle(
-                      fontSize: 12.5,
+                      fontSize: 11,
                       color: _textSecondary,
-                      height: 1.45,
+                      height: 1.4,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -688,9 +682,9 @@ class _GetStartedScreenState extends State<GetStartedScreen>
     return Container(
       width: double.infinity,
       constraints: const BoxConstraints(maxWidth: 480),
-      height: 58,
+      height: 52,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
+        borderRadius: BorderRadius.circular(28),
         gradient: const LinearGradient(
           colors: [
             Color(0xFF0066FF),
@@ -703,8 +697,8 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           // Primary Blue Glow Shadow
           BoxShadow(
             color: const Color(0xFF0052FF).withValues(alpha: 0.45),
-            blurRadius: 20,
-            offset: const Offset(0, 9),
+            blurRadius: 18,
+            offset: const Offset(0, 8),
           ),
           // Top Surface Highlight
           BoxShadow(
@@ -727,7 +721,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(32),
+            borderRadius: BorderRadius.circular(28),
           ),
         ),
         child: Row(
@@ -736,17 +730,17 @@ class _GetStartedScreenState extends State<GetStartedScreen>
             Text(
               'Get Started',
               style: TextStyle(
-                fontSize: 18,
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
-                letterSpacing: 0.4,
+                letterSpacing: 0.3,
               ),
             ),
             SizedBox(width: 8),
             Icon(
               Icons.arrow_forward_rounded,
               color: Colors.white,
-              size: 23,
+              size: 20,
             ),
           ],
         ),

@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../../core/widgets/glass_company_name_badge.dart';
 import 'add_business_address_screen.dart';
 import 'business_settings_screen.dart';
 import '../../core/services/onboarding_service.dart';
-
-
 
 class ConfirmBusinessAddressScreen extends StatefulWidget {
   final String? customAddress;
@@ -33,6 +29,7 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
   @override
   void initState() {
     super.initState();
+    db.saveOnboardingProgress(route: 'confirm_address', step: 6);
     _displayAddressType = widget.addressType ?? 'Home';
 
     final savedAddress = db.restaurant?.address;
@@ -41,7 +38,7 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
     } else if (savedAddress != null && savedAddress.isNotEmpty) {
       _displayAddress = savedAddress;
     } else {
-      _displayAddress = '';
+      _displayAddress = '111, Sitapuri, New Delhi, Delhi, 110059';
     }
   }
 
@@ -84,6 +81,8 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
         longitude: 77.2090,
       );
 
+      await db.saveOnboardingProgress(route: 'business_settings', step: 7);
+
       if (!mounted) return;
 
       // Navigate to Business Settings Screen
@@ -98,131 +97,57 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final businessTitle = db.restaurant?.name ??
+    final dynamicCompanyName = db.restaurant?.name ??
         db.currentUser?.companyName ??
-        'Tea Coffee';
+        'The Sky High';
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient with Glass Ambient Glows
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy (Company Badge Icon Removed)
+              _buildTopHeader(dynamicCompanyName),
 
-          // 2. Glassmorphism Ambient Glow Orbs
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Screen Layout
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header with Back Button and Requested Title
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassCompanyNameBadge(name: businessTitle),
-                        ),
+              // 2. Curved Soft Neumorphic Body Sheet with Sticky Continue Button
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0F4F8),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x25001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. Curved White Card Container matching Auth Theme
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                     child: Column(
                       children: [
+                        // Scrollable Content
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
                             child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 // Error Banner
                                 if (_errorMessage != null) ...[
                                   Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    margin: const EdgeInsets.only(bottom: 12),
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius: BorderRadius.circular(12),
                                       border: Border.all(color: const Color(0xFFFCA5A5)),
                                     ),
                                     child: Row(
@@ -236,223 +161,408 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
                                             style: const TextStyle(
                                               color: Color(0xFFB91C1C),
                                               fontSize: 12,
-                                              fontWeight: FontWeight.w500,
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
                                 ],
 
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 6),
 
-                                // 3D Storefront Business Address Graphic Illustration (Transparent PNG)
-                                SizedBox(
-                                  width: 210,
-                                  height: 190,
-                                  child: Image.asset(
-                                    'assets/images/business_address_graphic.png',
-                                    fit: BoxFit.contain,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        width: 200,
-                                        height: 180,
-                                        decoration: BoxDecoration(
-                                          color: const Color(0xFFEFF6FF),
-                                          borderRadius: BorderRadius.circular(24),
-                                        ),
-                                        child: const Center(
-                                          child: Icon(
-                                            Icons.storefront_rounded,
-                                            size: 80,
-                                            color: Color(0xFF0052FF),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                  ),
-                                ),
-
-                                const SizedBox(height: 24),
-
-                                // Rephrased Title Subheading in Professional English
-                                const Text(
-                                  'Your Business Address Has Been Added!',
-                                  style: TextStyle(
-                                    fontSize: 21,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                    letterSpacing: -0.3,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-
-                                const SizedBox(height: 24),
-
-                                // Filled Address Card Container matching Mockup with Red Edit Pencil
-                                Stack(
-                                  clipBehavior: Clip.none,
-                                  children: [
-                                    Container(
-                                      width: double.infinity,
-                                      padding: const EdgeInsets.all(18),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(18),
-                                        border: Border.all(
-                                          color: const Color(0xFF10B981), // Emerald Green Border
-                                          width: 1.8,
-                                        ),
-                                        boxShadow: const [
-                                          BoxShadow(
-                                            color: Color(0x1410B981),
-                                            blurRadius: 14,
-                                            offset: Offset(0, 4),
-                                          ),
-                                        ],
+                                // 3D Storefront Illustration Plate with Dynamic Company Name Signboard Overlay
+                                Container(
+                                  width: 215,
+                                  height: 205,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0xFFF0F5FA),
+                                    boxShadow: [
+                                      const BoxShadow(
+                                        color: Color(0x16002460),
+                                        blurRadius: 18,
+                                        offset: Offset(5, 7),
                                       ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Text(
-                                                _displayAddressType,
-                                                style: const TextStyle(
-                                                  fontSize: 16,
-                                                  fontWeight: FontWeight.w800,
-                                                  color: Color(0xFF0F172A),
-                                                ),
+                                      BoxShadow(
+                                        color: Colors.white.withValues(alpha: 0.95),
+                                        blurRadius: 14,
+                                        offset: const Offset(-5, -5),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Stack(
+                                    alignment: Alignment.center,
+                                    children: [
+                                      Image.asset(
+                                        'assets/images/business_address_graphic.png',
+                                        width: 205,
+                                        height: 195,
+                                        fit: BoxFit.contain,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return Container(
+                                            width: 190,
+                                            height: 175,
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF0F5FA),
+                                              borderRadius: BorderRadius.circular(28),
+                                            ),
+                                            child: const Center(
+                                              child: Icon(
+                                                Icons.storefront_rounded,
+                                                size: 76,
+                                                color: Color(0xFF0052FF),
                                               ),
-                                              const SizedBox(width: 8),
-                                              Icon(
-                                                _displayAddressType == 'Work'
-                                                    ? Icons.business_center_rounded
-                                                    : _displayAddressType == 'Other'
-                                                        ? Icons.location_on_rounded
-                                                        : Icons.home_rounded,
-                                                size: 18,
-                                                color: const Color(0xFF0F172A),
-                                              ),
-                                              const Spacer(),
-
-                                              // Red Edit Pencil Icon Button matching Mockup
-                                              InkWell(
-                                                onTap: _editAddress,
-                                                child: Container(
-                                                  padding: const EdgeInsets.all(6),
-                                                  decoration: BoxDecoration(
-                                                    color: const Color(0xFFFEF2F2),
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.edit_rounded,
-                                                    color: Color(0xFFEF4444), // Red Pencil Icon
-                                                    size: 20,
-                                                  ),
-                                                ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      // Dynamic Company Name Signboard Overlay over "YOUR BUSINESS ADDRESS"
+                                      Positioned(
+                                        top: 48,
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3.5),
+                                          constraints: const BoxConstraints(maxWidth: 125),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF1E293B),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(
+                                              color: const Color(0xFF38BDF8),
+                                              width: 1.2,
+                                            ),
+                                            boxShadow: const [
+                                              BoxShadow(
+                                                color: Color(0x70000000),
+                                                blurRadius: 6,
+                                                offset: Offset(0, 2),
                                               ),
                                             ],
                                           ),
-
-                                          const SizedBox(height: 8),
-
-                                          // Full Saved Address Text
-                                          Text(
-                                            _displayAddress,
+                                          child: Text(
+                                            dynamicCompanyName.toUpperCase(),
+                                            textAlign: TextAlign.center,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
-                                              fontSize: 13.5,
-                                              fontWeight: FontWeight.w500,
-                                              color: Color(0xFF475569),
-                                              height: 1.4,
+                                              fontSize: 9.5,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white,
+                                              letterSpacing: 0.6,
                                             ),
                                           ),
-
-                                          const SizedBox(height: 12),
-                                        ],
-                                      ),
-                                    ),
-
-                                    // Green "Default" Tag Badge matching Mockup
-                                    Positioned(
-                                      bottom: -12,
-                                      left: 0,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFF10B981), // Emerald Green
-                                          borderRadius: BorderRadius.only(
-                                            topRight: Radius.circular(10),
-                                            bottomLeft: Radius.circular(10),
-                                            bottomRight: Radius.circular(10),
-                                          ),
-                                        ),
-                                        child: const Text(
-                                          'Default',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
-                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
+
+                                const SizedBox(height: 20),
+
+                                // Title Text
+                                const Text(
+                                  'Your Business Address\nHas Been Added!',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.4,
+                                    height: 1.24,
+                                  ),
+                                ),
+
+                                const SizedBox(height: 22),
+
+                                // Neumorphic Address Card with Enhanced Tactile Effects
+                                _buildNeumorphicAddressCard(),
+
+                                const SizedBox(height: 16),
                               ],
                             ),
                           ),
                         ),
 
-                        // 5. Primary Action Button ("Continue") as requested
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                          child: Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x3300C2FF),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleFinalContinue,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Continue',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                        // Sticky Continue Button
+                        _buildStickyBottomBar(),
                       ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Top Header with Circular Back Button and Company Name Badge (Icon Removed)
+  Widget _buildTopHeader(String companyName) {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+          child: Row(
+            children: [
+              // Circular Neumorphic Back Button
+              InkWell(
+                onTap: () => Navigator.pop(context),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, -1),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chevron_left_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Neumorphic Frosted Company Name Badge (No Icon)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    companyName,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Enhanced Neumorphic Address Card
+  Widget _buildNeumorphicAddressCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFE2EBF6),
+          width: 1.5,
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x14002870),
+            blurRadius: 18,
+            offset: Offset(5, 7),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 14,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row: Type Icon, Title, Default Badge, Edit Button
+          Row(
+            children: [
+              // Icon Container with Neumorphic Inset Feel
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEEF5FD),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: const Color(0xFFDEE9F7),
+                    width: 1.2,
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x10002870),
+                      blurRadius: 5,
+                      offset: Offset(2, 2),
+                    ),
+                    BoxShadow(
+                      color: Colors.white,
+                      blurRadius: 4,
+                      offset: Offset(-2, -2),
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(
+                    _displayAddressType == 'Work'
+                        ? Icons.business_center_rounded
+                        : _displayAddressType == 'Other'
+                            ? Icons.location_on_rounded
+                            : Icons.home_rounded,
+                    color: const Color(0xFF002D7A),
+                    size: 21,
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 12),
+
+              // Address Type Name
+              Text(
+                _displayAddressType,
+                style: const TextStyle(
+                  fontSize: 16.5,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+
+              const SizedBox(width: 10),
+
+              // Green "Default" Badge with Emerald Glow
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x3510B981),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Text(
+                  'Default',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+
+              const Spacer(),
+
+              // Neumorphic Edit Pencil Action Button
+              InkWell(
+                onTap: _editAddress,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEEF5FD),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFDEE9F7),
+                      width: 1.2,
+                    ),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x16002870),
+                        blurRadius: 6,
+                        offset: Offset(3, 4),
+                      ),
+                      BoxShadow(
+                        color: Colors.white,
+                        blurRadius: 5,
+                        offset: Offset(-3, -3),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.edit_rounded,
+                      color: Color(0xFF002D7A),
+                      size: 19,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Inset Neumorphic Address Details Container
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F6FB),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: const Color(0xFFDEE7F6),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(
+                    Icons.location_on_rounded,
+                    size: 18,
+                    color: Color(0xFF0066FF),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _displayAddress,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF334155),
+                      height: 1.45,
                     ),
                   ),
                 ),
@@ -460,6 +570,69 @@ class _ConfirmBusinessAddressScreenState extends State<ConfirmBusinessAddressScr
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Midnight Navy "Continue" Button
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 52,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(26),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x35021B54),
+                blurRadius: 16,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleFinalContinue,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(26),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Text(
+                    'Continue',
+                    style: TextStyle(
+                      fontSize: 16.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

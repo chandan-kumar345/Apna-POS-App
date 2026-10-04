@@ -78,12 +78,10 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   }
 
   void _initSelectedCategory() {
-    if (_db.categories.isNotEmpty) {
-      if (_selectedCategory == null || !_db.categories.contains(_selectedCategory)) {
-        _selectedCategory = _db.categories.first;
+    if (_selectedCategory != null && _selectedCategory != 'All') {
+      if (!_db.categories.contains(_selectedCategory)) {
+        _selectedCategory = null;
       }
-    } else {
-      _selectedCategory = null;
     }
   }
 
@@ -1105,14 +1103,14 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   // 3. RIGHT DETAIL PANEL: PRODUCTS MANAGEMENT
   // ===========================================================================
   Widget _buildProductsPanel({required bool isDesktop}) {
-    if (_selectedCategory == null) {
-      return _buildNoCategorySelectedState();
-    }
-
-    final category = _selectedCategory!;
-    final products = _getCategoryProducts(category);
-    final activeCount = _getCategoryActiveCount(category);
-    final totalStock = _getCategoryTotalStock(category);
+    final String category = _selectedCategory ?? 'All';
+    final products = _selectedCategory == null ? _getAllProductsFiltered() : _getCategoryProducts(category);
+    final activeCount = _selectedCategory == null
+        ? _db.menuItems.where((m) => m.isAvailable).length
+        : _getCategoryActiveCount(category);
+    final totalStock = _selectedCategory == null
+        ? _db.menuItems.fold(0, (sum, m) => sum + (m.stockQuantity > 0 ? m.stockQuantity : 0))
+        : _getCategoryTotalStock(category);
 
     return Container(
       color: const Color(0xFFF8FAFC),
@@ -1144,6 +1142,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
   // Selected Category Info Header
   Widget _buildSelectedCategoryHeader(String category, int activeCount, int totalStock, {required bool isDesktop}) {
+    final isAll = _selectedCategory == null || _selectedCategory == 'All';
+
     return Container(
       margin: EdgeInsets.fromLTRB(isDesktop ? 16 : 10, isDesktop ? 12 : 8, isDesktop ? 16 : 10, 6),
       padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10, vertical: isDesktop ? 10 : 8),
@@ -1172,7 +1172,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  category,
+                  isAll ? 'All Products' : category,
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
@@ -1197,59 +1197,61 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             ),
           ),
 
-          // Edit Category Button
-          OutlinedButton.icon(
-            onPressed: () => _showEditCategoryModal(category),
-            icon: const Icon(Icons.edit_outlined, size: 13, color: _primaryNavy),
-            label: Text(
-              isDesktop ? 'Edit Category' : 'Edit',
-              style: const TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11),
+          if (!isAll) ...[
+            // Edit Category Button
+            OutlinedButton.icon(
+              onPressed: () => _showEditCategoryModal(category),
+              icon: const Icon(Icons.edit_outlined, size: 13, color: _primaryNavy),
+              label: Text(
+                isDesktop ? 'Edit Category' : 'Edit',
+                style: const TextStyle(color: _primaryNavy, fontWeight: FontWeight.w700, fontSize: 11),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                backgroundColor: Colors.white,
+              ),
             ),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-              backgroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 6),
+            const SizedBox(width: 6),
 
-          // 3-Dots Category Actions
-          PopupMenuButton<String>(
-            color: Colors.white,
-            surfaceTintColor: Colors.transparent,
-            elevation: 6,
-            icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 18),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-            onSelected: (val) {
-              if (val == 'add_product') _openAddEditProductScreen(null, category);
-              if (val == 'delete') _confirmDeleteCategory(category);
-            },
-            itemBuilder: (_) => [
-              const PopupMenuItem(
-                value: 'add_product',
-                child: Row(
-                  children: [
-                    Icon(Icons.add_circle_outline_rounded, size: 15, color: _primaryNavy),
-                    SizedBox(width: 8),
-                    Text('Add Product to Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
-                  ],
+            // 3-Dots Category Actions
+            PopupMenuButton<String>(
+              color: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 6,
+              icon: const Icon(Icons.more_vert_rounded, color: Color(0xFF64748B), size: 18),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onSelected: (val) {
+                if (val == 'add_product') _openAddEditProductScreen(null, category);
+                if (val == 'delete') _confirmDeleteCategory(category);
+              },
+              itemBuilder: (_) => [
+                const PopupMenuItem(
+                  value: 'add_product',
+                  child: Row(
+                    children: [
+                      Icon(Icons.add_circle_outline_rounded, size: 15, color: _primaryNavy),
+                      SizedBox(width: 8),
+                      Text('Add Product to Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A))),
+                    ],
+                  ),
                 ),
-              ),
-              const PopupMenuItem(
-                value: 'delete',
-                child: Row(
-                  children: [
-                    Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFFEF4444)),
-                    SizedBox(width: 8),
-                    Text('Delete Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
-                  ],
+                const PopupMenuItem(
+                  value: 'delete',
+                  child: Row(
+                    children: [
+                      Icon(Icons.delete_outline_rounded, size: 15, color: Color(0xFFEF4444)),
+                      SizedBox(width: 8),
+                      Text('Delete Category', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFFEF4444))),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -1636,16 +1638,49 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           FoodTypeIcon(itemType: product.itemType, size: 10),
                           const SizedBox(width: 5),
                           Expanded(
-                            child: Text(
-                              product.name,
-                              style: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF0F172A),
-                                height: 1.2,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    product.name,
+                                    style: const TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF0F172A),
+                                      height: 1.2,
+                                    ),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (product.variants.isNotEmpty) ...[
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF5F3FF),
+                                      borderRadius: BorderRadius.circular(5),
+                                      border: Border.all(color: const Color(0xFFDDD6FE)),
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.tune_rounded, size: 9, color: Color(0xFF7C3AED)),
+                                        const SizedBox(width: 2.5),
+                                        Text(
+                                          '${product.variants.length} Var',
+                                          style: const TextStyle(
+                                            fontSize: 8.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF7C3AED),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
                         ],
@@ -1874,6 +1909,30 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                             ),
                           ),
                         ),
+                        if (product.variants.isNotEmpty)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF5F3FF),
+                              borderRadius: BorderRadius.circular(5),
+                              border: Border.all(color: const Color(0xFFDDD6FE)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.tune_rounded, size: 9, color: Color(0xFF7C3AED)),
+                                const SizedBox(width: 2.5),
+                                Text(
+                                  '${product.variants.length} Var',
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF7C3AED),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                       ],
                     ),
                   ],
@@ -2044,9 +2103,33 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          '₹${product.effectivePrice.toStringAsFixed(0)}',
-                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _primaryNavy),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '₹${product.effectivePrice.toStringAsFixed(0)}',
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _primaryNavy),
+                            ),
+                            if (product.variants.isNotEmpty) ...[
+                              const SizedBox(width: 5),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF5F3FF),
+                                  borderRadius: BorderRadius.circular(5),
+                                  border: Border.all(color: const Color(0xFFDDD6FE)),
+                                ),
+                                child: Text(
+                                  '${product.variants.length} Var',
+                                  style: const TextStyle(
+                                    fontSize: 8.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF7C3AED),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         _buildToggleSwitch(
                           value: product.isAvailable,
@@ -3033,6 +3116,35 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                         ],
                                       ),
                                     ),
+                                    // Variant capsule
+                                    if (product.variants.isNotEmpty)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF5F3FF),
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(color: const Color(0xFFDDD6FE)),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.tune_rounded,
+                                              size: 9.5,
+                                              color: Color(0xFF7C3AED),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              '${product.variants.length} Variants',
+                                              style: const TextStyle(
+                                                fontSize: 8.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF7C3AED),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ],
@@ -3292,14 +3404,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  Widget _buildNoCategorySelectedState() {
-    return const Center(
-      child: Text(
-        'Select a category to view products',
-        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
-      ),
-    );
-  }
 
   Widget _buildEmptyProductsState(String category) {
     final isSearching = _globalSearch.trim().isNotEmpty;
@@ -4245,133 +4349,832 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
-  // --- CSV Import & Export Utilities ---
+  List<List<String>> _parseCsvContent(String rawText) {
+    final List<List<String>> result = [];
+    final lines = const LineSplitter().convert(rawText.replaceAll('\r\n', '\n'));
+
+    for (final line in lines) {
+      if (line.trim().isEmpty) continue;
+      final List<String> row = [];
+      final StringBuffer current = StringBuffer();
+      bool inQuotes = false;
+
+      for (int i = 0; i < line.length; i++) {
+        final char = line[i];
+        if (char == '"') {
+          inQuotes = !inQuotes;
+        } else if (char == ',' && !inQuotes) {
+          row.add(current.toString().trim());
+          current.clear();
+        } else {
+          current.write(char);
+        }
+      }
+      row.add(current.toString().trim());
+      result.add(row);
+    }
+    return result;
+  }
+
+  List<ProductVariant> _parseVariantsFromCsv(String rawText) {
+    if (rawText.trim().isEmpty) return const [];
+    final List<ProductVariant> variants = [];
+
+    // Delimiters supported: '|', ';', or '\n' or ','
+    final String cleanText = rawText.trim();
+    List<String> chunks = [];
+    if (cleanText.contains('|')) {
+      chunks = cleanText.split('|');
+    } else if (cleanText.contains(';')) {
+      chunks = cleanText.split(';');
+    } else if (cleanText.contains('\n')) {
+      chunks = cleanText.split('\n');
+    } else if (cleanText.contains(',')) {
+      chunks = cleanText.split(',');
+    } else {
+      chunks = [cleanText];
+    }
+
+    for (final chunk in chunks) {
+      final clean = chunk.trim();
+      if (clean.isEmpty) continue;
+
+      String vName = '';
+      double vPrice = 0.0;
+      int vStock = -1;
+
+      if (clean.contains(':')) {
+        final parts = clean.split(':');
+        vName = parts[0].trim();
+        if (parts.length > 1) {
+          final priceStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
+          vPrice = double.tryParse(priceStr) ?? 0.0;
+        }
+        if (parts.length > 2) {
+          final stockStr = parts[2].replaceAll(RegExp(r'[^0-9]'), '');
+          vStock = int.tryParse(stockStr) ?? -1;
+        }
+      } else if (clean.contains('=')) {
+        final parts = clean.split('=');
+        vName = parts[0].trim();
+        if (parts.length > 1) {
+          final priceStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
+          vPrice = double.tryParse(priceStr) ?? 0.0;
+        }
+      } else if (clean.contains('-')) {
+        final parts = clean.split('-');
+        vName = parts[0].trim();
+        if (parts.length > 1) {
+          final priceStr = parts[1].replaceAll(RegExp(r'[^0-9.]'), '');
+          vPrice = double.tryParse(priceStr) ?? 0.0;
+        }
+      } else {
+        vName = clean;
+      }
+
+      if (vName.isNotEmpty) {
+        variants.add(ProductVariant(
+          name: vName,
+          price: vPrice,
+          stock: vStock,
+        ));
+      }
+    }
+
+    return variants;
+  }
+
+  double? _parseGstFromCsv(String rawText) {
+    if (rawText.trim().isEmpty) return null;
+    final clean = rawText.replaceAll('%', '').trim().toLowerCase();
+    if (clean == 'exempt' || clean == 'nil' || clean == 'none' || clean == 'zero' || clean == '0') {
+      return 0.0;
+    }
+    return double.tryParse(clean);
+  }
+
+  // --- Top Left CSV Squircle Icon Widget ---
+  Widget _buildTopLeftCsvIcon() {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F1FC),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Center(
+        child: Container(
+          width: 32,
+          height: 38,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF2E7BFE), Color(0xFF0F5AF2)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(7),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF1D68FE).withValues(alpha: 0.35),
+                blurRadius: 6,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                top: 0,
+                right: 0,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF90BFFE),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(5),
+                      topRight: Radius.circular(7),
+                    ),
+                  ),
+                ),
+              ),
+              const Center(
+                child: Text(
+                  'CSV',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 10,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // --- Top Right 3D Stacked Documents Illustration Widget ---
+  Widget _buildHeader3DIllustration() {
+    return SizedBox(
+      width: 80,
+      height: 72,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          // Background tilted paper 1
+          Transform.rotate(
+            angle: 0.16,
+            child: Container(
+              width: 48,
+              height: 54,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD4E6FA).withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          // Background tilted paper 2
+          Transform.rotate(
+            angle: 0.08,
+            child: Container(
+              width: 50,
+              height: 56,
+              decoration: BoxDecoration(
+                color: const Color(0xFFBDD9FC),
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+          // Foreground white document
+          Container(
+            width: 50,
+            height: 56,
+            padding: const EdgeInsets.only(top: 14, left: 8, right: 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0F5AF2).withValues(alpha: 0.12),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 30,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  width: 22,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  width: 26,
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Green CSV Badge on top left of paper
+          Positioned(
+            top: 4,
+            left: 6,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00C875),
+                borderRadius: BorderRadius.circular(4),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF00C875).withValues(alpha: 0.35),
+                    blurRadius: 4,
+                    offset: const Offset(0, 1.5),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'CSV',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 7.5,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ),
+          // Blue Upload arrow circle on bottom right of paper
+          Positioned(
+            bottom: 2,
+            right: 4,
+            child: Container(
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF2E7BFE), Color(0xFF0F5AF2)],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0F5AF2).withValues(alpha: 0.4),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.arrow_upward_rounded,
+                  color: Colors.white,
+                  size: 13,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Step 1 Illustration Widget ---
+  Widget _buildStep1Illustration() {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: const BoxDecoration(
+        color: Color(0xFFE2F7ED),
+        shape: BoxShape.circle,
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 30,
+            height: 36,
+            padding: const EdgeInsets.only(top: 10, left: 5, right: 5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF00A862).withValues(alpha: 0.12),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 18,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  width: 14,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  width: 16,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCBD5E1),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 6,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00C875),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Text(
+                'CSV',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 6.5,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Step 2 Illustration Widget ---
+  Widget _buildStep2Illustration() {
+    return Container(
+      width: 52,
+      height: 52,
+      decoration: const BoxDecoration(
+        color: Color(0xFFE2EDFD),
+        shape: BoxShape.circle,
+      ),
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 30,
+            height: 36,
+            padding: const EdgeInsets.only(top: 10, left: 5, right: 5),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(6),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0F5AF2).withValues(alpha: 0.12),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 18,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  width: 14,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Container(
+                  width: 16,
+                  height: 2.5,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFCAD7E6),
+                    borderRadius: BorderRadius.circular(1.5),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 6,
+            left: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 3.5, vertical: 1.5),
+              decoration: BoxDecoration(
+                color: const Color(0xFF00C875),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Text(
+                'CSV',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 6.5,
+                  letterSpacing: -0.2,
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 6,
+            right: 8,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: const BoxDecoration(
+                color: Color(0xFF1D68FE),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.arrow_upward_rounded,
+                  color: Colors.white,
+                  size: 10,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- Pixel-Perfect Redesigned CSV Import Modal ---
   void _showCsvImportModal() {
     bool isProcessing = false;
+    bool isImporting = false;
     String? modalError;
-    String? modalSuccess;
+    String? selectedFileName;
+    List<MenuItemModel>? parsedItems;
 
     showDialog(
       context: context,
-      builder: (context) {
+      barrierDismissible: true,
+      builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+
             return Dialog(
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+              elevation: 20,
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 410 : screenWidth * 0.94,
+                  minWidth: 280,
+                ),
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 18),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      // Header Row: Top-Left Squircle CSV Doc + Header Title + Top-Right 3D Illustration
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(7),
-                            decoration: const BoxDecoration(
-                              color: _primaryNavy,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.table_chart_rounded, color: Colors.white, size: 17),
-                          ),
-                          const SizedBox(width: 8),
+                          _buildTopLeftCsvIcon(),
+                          const SizedBox(width: 12),
                           const Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text('Import Products via CSV', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                                Text('Bulk add products using CSV template', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                                Text(
+                                  'Import Products via',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF0F172A),
+                                  ),
+                                ),
+                                Text(
+                                  'CSV',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF1D68FE),
+                                    letterSpacing: -0.5,
+                                    height: 1.1,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(context),
-                            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 18),
-                          ),
+                          _buildHeader3DIllustration(),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 14),
 
-                      if (modalError != null)
+                      // Error message banner if template format is incorrect
+                      if (modalError != null) ...[
                         Container(
                           width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: const Color(0xFFFEE2E2), borderRadius: BorderRadius.circular(8)),
-                          child: Text(modalError!, style: const TextStyle(color: Color(0xFF991B1B), fontSize: 11.5, fontWeight: FontWeight.bold)),
+                          margin: const EdgeInsets.only(bottom: 10),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFECACA), width: 1),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
+                              const SizedBox(width: 6),
+                              Expanded(
+                                child: Text(
+                                  modalError!,
+                                  style: const TextStyle(
+                                    color: Color(0xFF991B1B),
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ],
 
-                      if (modalSuccess != null)
-                        Container(
-                          width: double.infinity,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(color: const Color(0xFFDCFCE7), borderRadius: BorderRadius.circular(8)),
-                          child: Text(modalSuccess!, style: const TextStyle(color: Color(0xFF14532D), fontSize: 11.5, fontWeight: FontWeight.bold)),
-                        ),
-
-                      // Step 1: Download Template
+                      // Step 1: Download Sample Template Card
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7FAFD),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFEEF2F6), width: 1.2),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Step 1: Download Sample Template', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                            const SizedBox(height: 6),
-                            ElevatedButton.icon(
-                              onPressed: () async {
+                            Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE0ECFD),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      '1',
+                                      style: TextStyle(
+                                        color: Color(0xFF1D68FE),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Download Sample Template',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                _buildStep1Illustration(),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            InkWell(
+                              onTap: () async {
                                 try {
                                   Directory? targetDir;
                                   try {
-                                    targetDir = await getDownloadsDirectory();
+                                    if (Platform.isAndroid) {
+                                      final downloadDir = Directory('/storage/emulated/0/Download');
+                                      if (await downloadDir.exists()) {
+                                        targetDir = downloadDir;
+                                      }
+                                    }
                                   } catch (_) {}
+
+                                  targetDir ??= await getDownloadsDirectory();
+                                  targetDir ??= await getExternalStorageDirectory();
                                   targetDir ??= await getApplicationDocumentsDirectory();
 
                                   final filePath = '${targetDir.path}/Apna_POS_Menu_Template.csv';
                                   const sampleCsv =
-                                      'Product Name,Description,Food Type,Price,Variant Name,Variant Price,Category\n'
-                                      'Shahi Paneer,Rich and creamy paneer curry,Veg,230,,0,Main Course\n'
-                                      'Dal Tadka,Classic yellow dal with tadka,Veg,199,,0,Main Course\n'
-                                      'Butter Naan,Crispy clay oven bread,Veg,45,,0,Bread\n';
+                                      'Product Name,Category,Price,Food Type,Stock,GST (%),Custom Variants,Description,Status\n'
+                                      'Shahi Paneer,Main Course,230,Veg,50,5,Half:130 | Full:230,Rich and creamy paneer curry,Active\n'
+                                      'Dal Tadka,Main Course,199,Veg,50,5,Half:110 | Full:199,Classic yellow dal with tadka,Active\n'
+                                      'Butter Naan,Bread,45,Veg,100,5,,Crispy clay oven bread,Active\n'
+                                      'Chicken Biryani,Rice & Biryani,280,Non-Veg,30,5,Half:160 | Full:280,Aromatic spiced rice with tender chicken,Active\n'
+                                      'Cold Coffee,Beverages,120,Beverage,40,18,Small:80 | Regular:120 | Large:160,Chilled creamy coffee shake,Active\n'
+                                      'Margherita Pizza,Pizza,249,Veg,25,12,Regular:199 | Medium:299 | Large:399,Fresh mozzarella and basil pizza,Active\n';
 
                                   final file = File(filePath);
                                   await file.writeAsString(sampleCsv);
-                                  setModalState(() => modalSuccess = 'Sample template saved to:\n$filePath');
+
+                                  if (!kIsWeb && !Platform.isWindows) {
+                                    try {
+                                      await SharePlus.instance.share(
+                                        ShareParams(
+                                          files: [XFile(file.path)],
+                                          text: 'Apna POS Menu Template CSV',
+                                        ),
+                                      );
+                                    } catch (_) {}
+                                  }
+
+                                  setModalState(() {
+                                    modalError = null;
+                                  });
+
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✓ CSV template downloaded successfully!'),
+                                        backgroundColor: Color(0xFF00C774),
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: Duration(seconds: 3),
+                                      ),
+                                    );
+                                  }
                                 } catch (e) {
-                                  setModalState(() => modalError = 'Failed to download template: $e');
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Failed to download template: $e'),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  }
                                 }
                               },
-                              icon: const Icon(Icons.download_rounded, size: 14, color: Colors.white),
-                              label: const Text('Download CSV Template', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6))),
+                              borderRadius: BorderRadius.circular(24),
+                              child: Container(
+                                width: double.infinity,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF00C774), Color(0xFF00A25C)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF00C774).withValues(alpha: 0.35),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.download_rounded, size: 18, color: Colors.white),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Download CSV Template',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ],
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
 
-                      // Step 2: Upload CSV
+                      // Step 2: Upload Filled CSV File Card
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.all(10),
-                        decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF7FAFD),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFEEF2F6), width: 1.2),
+                        ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Step 2: Upload Filled CSV File', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
-                            const SizedBox(height: 6),
-                            ElevatedButton.icon(
-                              onPressed: isProcessing
+                            Row(
+                              children: [
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFE0ECFD),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      '2',
+                                      style: TextStyle(
+                                        color: Color(0xFF1D68FE),
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Upload Filled CSV File',
+                                        style: TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                _buildStep2Illustration(),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            InkWell(
+                              onTap: isProcessing
                                   ? null
                                   : () async {
                                       try {
-                                        setModalState(() => isProcessing = true);
-                                        final result = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['csv']);
+                                        setModalState(() {
+                                          isProcessing = true;
+                                          modalError = null;
+                                        });
+
+                                        final result = await FilePicker.platform.pickFiles(
+                                          type: FileType.custom,
+                                          allowedExtensions: ['csv'],
+                                        );
+
                                         if (result == null || result.files.isEmpty) {
                                           setModalState(() => isProcessing = false);
                                           return;
@@ -4385,61 +5188,281 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                           csvContent = utf8.decode(file.bytes!);
                                         }
 
-                                        final lines = const LineSplitter().convert(csvContent);
-                                        if (lines.length <= 1) {
+                                        if (csvContent.trim().isEmpty) {
                                           setModalState(() {
                                             isProcessing = false;
-                                            modalError = 'CSV file has no data rows.';
+                                            parsedItems = null;
+                                            selectedFileName = null;
+                                            modalError = 'The selected CSV file is completely empty.';
                                           });
                                           return;
                                         }
 
+                                        // Parse CSV
+                                        final rows = _parseCsvContent(csvContent);
+
+                                        if (rows.length < 2) {
+                                          setModalState(() {
+                                            isProcessing = false;
+                                            parsedItems = null;
+                                            selectedFileName = null;
+                                            modalError = 'CSV file has no data rows. Please use the template format.';
+                                          });
+                                          return;
+                                        }
+
+                                        // Validate Headers
+                                        final headers = rows[0].map((e) => e.toString().trim().toLowerCase()).toList();
+                                        final nameIdx = headers.indexWhere((h) => h.contains('product') || h.contains('name') || h == 'item');
+                                        final priceIdx = headers.indexWhere((h) => h.contains('price') || h.contains('rate') || h.contains('mrp') || h == 'amount');
+                                        final catIdx = headers.indexWhere((h) => h.contains('category') || h.contains('cat'));
+                                        final typeIdx = headers.indexWhere((h) => h.contains('food') || h.contains('type'));
+                                        final descIdx = headers.indexWhere((h) => h.contains('desc'));
+                                        final stockIdx = headers.indexWhere((h) => h.contains('stock') || h.contains('quantity') || h.contains('qty'));
+                                        final gstIdx = headers.indexWhere((h) => h.contains('gst') || h.contains('tax'));
+                                        final variantIdx = headers.indexWhere((h) => h.contains('variant') || h.contains('varient') || h.contains('portion') || h.contains('size'));
+                                        final statusIdx = headers.indexWhere((h) => h.contains('status') || h.contains('avail'));
+
+                                        // If header format is incorrect
+                                        if (nameIdx == -1 || priceIdx == -1) {
+                                          setModalState(() {
+                                            isProcessing = false;
+                                            parsedItems = null;
+                                            selectedFileName = null;
+                                            modalError = 'Incorrect template format! Required columns "Product Name" and "Price" were not found in the header. Please download the sample template above.';
+                                          });
+                                          return;
+                                        }
+
+                                        // Parse Rows into MenuItemModel
                                         final List<MenuItemModel> items = [];
-                                        for (int i = 1; i < lines.length; i++) {
-                                          final cols = lines[i].split(',');
-                                          if (cols.isEmpty || cols[0].trim().isEmpty) continue;
-                                          final pName = cols[0].trim();
-                                          final pDesc = cols.length > 1 ? cols[1].trim() : '';
-                                          final pType = cols.length > 2 ? cols[2].trim() : 'Veg';
-                                          final pPrice = cols.length > 3 ? (double.tryParse(cols[3].trim()) ?? 0.0) : 0.0;
-                                          final pCat = cols.length > 6 ? cols[6].trim() : 'General';
+                                        for (int i = 1; i < rows.length; i++) {
+                                          final row = rows[i];
+                                          if (row.isEmpty) continue;
+                                          final pName = (nameIdx < row.length) ? row[nameIdx].toString().trim() : '';
+                                          if (pName.isEmpty) continue;
+
+                                          final rawPriceStr = (priceIdx < row.length) ? row[priceIdx].toString().replaceAll(RegExp(r'[^0-9.]'), '') : '0';
+                                          final pPrice = double.tryParse(rawPriceStr) ?? 0.0;
+                                          final pCat = (catIdx != -1 && catIdx < row.length) ? row[catIdx].toString().trim() : 'General';
+                                          final pTypeRaw = (typeIdx != -1 && typeIdx < row.length) ? row[typeIdx].toString().trim().toLowerCase() : 'veg';
+                                          final pDesc = (descIdx != -1 && descIdx < row.length) ? row[descIdx].toString().trim() : '';
+                                          final pStockRaw = (stockIdx != -1 && stockIdx < row.length) ? row[stockIdx].toString().replaceAll(RegExp(r'[^0-9]'), '') : '50';
+                                          final pStock = int.tryParse(pStockRaw) ?? 50;
+
+                                          final pGstRaw = (gstIdx != -1 && gstIdx < row.length) ? row[gstIdx].toString().trim() : '';
+                                          final pGst = _parseGstFromCsv(pGstRaw);
+
+                                          final pVariantsRaw = (variantIdx != -1 && variantIdx < row.length) ? row[variantIdx].toString().trim() : '';
+                                          final pVariants = _parseVariantsFromCsv(pVariantsRaw);
+
+                                          final pStatusRaw = (statusIdx != -1 && statusIdx < row.length) ? row[statusIdx].toString().trim().toLowerCase() : 'active';
+                                          final pIsAvailable = !pStatusRaw.contains('inactive') && !pStatusRaw.contains('disable') && !pStatusRaw.contains('no');
+
+                                          final foodType = pTypeRaw.contains('non')
+                                              ? 'Non-Veg'
+                                              : (pTypeRaw.contains('egg') ? 'Egg' : (pTypeRaw.contains('bev') ? 'Beverage' : 'Veg'));
+
+                                          final finalBasePrice = (pPrice == 0.0 && pVariants.isNotEmpty) ? pVariants.first.price : pPrice;
 
                                           items.add(MenuItemModel(
                                             id: 'PRD-${DateTime.now().millisecondsSinceEpoch}-$i',
                                             name: pName,
                                             description: pDesc,
                                             category: pCat.isNotEmpty ? pCat : 'General',
-                                            price: pPrice,
-                                            itemType: pType,
-                                            stockQuantity: 50,
-                                            isAvailable: true,
+                                            price: finalBasePrice,
+                                            itemType: foodType,
+                                            stockQuantity: pStock,
+                                            gstPercent: pGst,
+                                            variants: pVariants,
+                                            isAvailable: pIsAvailable,
                                           ));
                                         }
 
-                                        final count = await _db.importProductsFromCsv(items);
-                                        if (!context.mounted) return;
-                                        Navigator.pop(context);
-                                        setState(() {});
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('Successfully imported $count products'),
-                                            backgroundColor: const Color(0xFF15803D),
-                                          ),
-                                        );
+                                        if (items.isEmpty) {
+                                          setModalState(() {
+                                            isProcessing = false;
+                                            parsedItems = null;
+                                            selectedFileName = null;
+                                            modalError = 'No valid products found in CSV. Ensure rows contain product names and prices.';
+                                          });
+                                          return;
+                                        }
+
+                                        // Success: Template is valid!
+                                        setModalState(() {
+                                          isProcessing = false;
+                                          modalError = null;
+                                          selectedFileName = file.name;
+                                          parsedItems = items;
+                                        });
                                       } catch (e) {
                                         setModalState(() {
                                           isProcessing = false;
-                                          modalError = 'Error: $e';
+                                          parsedItems = null;
+                                          selectedFileName = null;
+                                          modalError = 'Error reading CSV file: $e';
                                         });
                                       }
                                     },
-                              icon: isProcessing ? const SizedBox(width: 13, height: 13, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.file_upload_rounded, size: 14, color: Colors.white),
-                              label: Text(isProcessing ? 'Importing...' : 'Choose & Upload CSV File', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
-                              style: ElevatedButton.styleFrom(backgroundColor: _primaryNavy, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)), elevation: 0),
+                              borderRadius: BorderRadius.circular(24),
+                              child: Container(
+                                width: double.infinity,
+                                height: 42,
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFF1D68FE), Color(0xFF0049DB)],
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                  ),
+                                  borderRadius: BorderRadius.circular(24),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF1D68FE).withValues(alpha: 0.35),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 3),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isProcessing) ...[
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      const Text(
+                                        'Verifying File...',
+                                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5),
+                                      ),
+                                    ] else ...[
+                                      const SizedBox(width: 6),
+                                      Expanded(
+                                        child: Text(
+                                          selectedFileName != null ? 'Change File ($selectedFileName)' : 'Choose & Upload CSV File',
+                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12.5),
+                                          textAlign: TextAlign.center,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             ),
+
+                            // If template is validated and products are ready
+                            if (parsedItems != null && parsedItems!.isNotEmpty) ...[
+                              const SizedBox(height: 10),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDCFCE7),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: const Color(0xFFBBF7D0), width: 1),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.check_circle_rounded, color: Color(0xFF15803D), size: 16),
+                                    const SizedBox(width: 6),
+                                    Expanded(
+                                      child: Text(
+                                        '✓ ${parsedItems!.length} products verified from "$selectedFileName"',
+                                        style: const TextStyle(
+                                          color: Color(0xFF14532D),
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),
+
+                      // If template is verified, show DONE BUTTON
+                      if (parsedItems != null && parsedItems!.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        InkWell(
+                          onTap: isImporting
+                              ? null
+                              : () async {
+                                  try {
+                                    setModalState(() => isImporting = true);
+                                    final count = await _db.importProductsFromCsv(parsedItems!);
+                                    if (!dialogCtx.mounted) return;
+                                    Navigator.pop(dialogCtx);
+                                    setState(() {});
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          content: Text('✓ Successfully added $count products into POS!'),
+                                          backgroundColor: const Color(0xFF021B54),
+                                          behavior: SnackBarBehavior.floating,
+                                          duration: const Duration(seconds: 3),
+                                        ),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    setModalState(() {
+                                      isImporting = false;
+                                      modalError = 'Import failed: $e';
+                                    });
+                                  }
+                                },
+                          borderRadius: BorderRadius.circular(24),
+                          child: Container(
+                            width: double.infinity,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF1D68FE), Color(0xFF0049DB)],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF1D68FE).withValues(alpha: 0.4),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Center(
+                              child: isImporting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.2),
+                                    )
+                                  : Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.check_circle_rounded, color: Colors.white, size: 18),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Done - Add ${parsedItems!.length} Products to POS',
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w900,
+                                            fontSize: 13,
+                                            letterSpacing: 0.2,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -4454,9 +5477,13 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   void _exportCsv() async {
     try {
       final buffer = StringBuffer();
-      buffer.writeln('Product Name,Category,Price,Food Type,Stock,Status,Description');
+      buffer.writeln('Product Name,Category,Price,Food Type,Stock,GST (%),Custom Variants,Status,Description');
       for (final item in _db.menuItems) {
-        buffer.writeln('"${item.name}","${item.category}",${item.price},"${item.itemType}",${item.stockQuantity},${item.isAvailable ? "Active" : "Inactive"},"${item.description}"');
+        final variantsStr = item.variants.isNotEmpty
+            ? item.variants.map((v) => '${v.name}:${v.price > 0 ? v.price.toStringAsFixed(0) : "0"}').join(' | ')
+            : '';
+        final gstStr = item.gstPercent != null ? item.gstPercent!.toStringAsFixed(0) : '';
+        buffer.writeln('"${item.name}","${item.category}",${item.price},"${item.itemType}",${item.stockQuantity},"$gstStr","$variantsStr",${item.isAvailable ? "Active" : "Inactive"},"${item.description.replaceAll('"', '""')}"');
       }
 
       Directory? dir;

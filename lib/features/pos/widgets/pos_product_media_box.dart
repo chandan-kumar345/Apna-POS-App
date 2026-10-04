@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -759,11 +758,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         trimmed,
         key: key,
         fit: widget.fit,
+        alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 320,
-        cacheHeight: 320,
-        filterQuality: FilterQuality.medium,
+        cacheWidth: 480,
+        cacheHeight: 480,
+        filterQuality: FilterQuality.high,
         errorBuilder: (context, error, stackTrace) => fallback,
       );
     }
@@ -778,9 +778,11 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
           bytes,
           key: key,
           fit: widget.fit,
+          alignment: Alignment.center,
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
+          filterQuality: FilterQuality.high,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
       } catch (e) {
@@ -802,9 +804,11 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
           bytes,
           key: key,
           fit: widget.fit,
+          alignment: Alignment.center,
           width: double.infinity,
           height: double.infinity,
           gaplessPlayback: true,
+          filterQuality: FilterQuality.high,
           errorBuilder: (context, error, stackTrace) => fallback,
         );
       } catch (_) {}
@@ -816,11 +820,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         resolved,
         key: key,
         fit: widget.fit,
+        alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 320,
-        cacheHeight: 320,
-        filterQuality: FilterQuality.medium,
+        cacheWidth: 480,
+        cacheHeight: 480,
+        filterQuality: FilterQuality.high,
         errorBuilder: (context, error, stackTrace) {
           debugPrint('[PosProductMediaBox] Image network load failed for "$resolved": $error');
           if (!kIsWeb) {
@@ -831,11 +836,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
                   file,
                   key: key,
                   fit: widget.fit,
+                  alignment: Alignment.center,
                   width: double.infinity,
                   height: double.infinity,
-                  cacheWidth: 320,
-                  cacheHeight: 320,
-                  filterQuality: FilterQuality.medium,
+                  cacheWidth: 480,
+                  cacheHeight: 480,
+                  filterQuality: FilterQuality.high,
                   errorBuilder: (context, error, stackTrace) => fallback,
                 );
               }
@@ -853,11 +859,12 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
             file,
             key: key,
             fit: widget.fit,
+            alignment: Alignment.center,
             width: double.infinity,
             height: double.infinity,
-            cacheWidth: 320,
-            cacheHeight: 320,
-            filterQuality: FilterQuality.medium,
+            cacheWidth: 480,
+            cacheHeight: 480,
+            filterQuality: FilterQuality.high,
             errorBuilder: (context, error, stackTrace) => fallback,
           );
         }
@@ -871,22 +878,28 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     return Container(
       width: double.infinity,
       height: double.infinity,
-      color: const Color(0xFFF1F5F9),
-      padding: EdgeInsets.all(widget.isMini ? 3.0 : 6.0),
-      child: Center(
-        child: Image.asset(
-          'assets/images/product_placeholder.png',
-          fit: BoxFit.contain,
-          cacheWidth: 120,
-          cacheHeight: 120,
-          errorBuilder: (context, error, stackTrace) {
-            return Icon(
+      color: const Color(0xFFEDF3FA),
+      padding: EdgeInsets.all(widget.isMini ? 4 : 8),
+      child: Image.asset(
+        'assets/images/product_placeholder.png',
+        fit: BoxFit.contain,
+        alignment: Alignment.center,
+        width: double.infinity,
+        height: double.infinity,
+        cacheWidth: 320,
+        cacheHeight: 320,
+        filterQuality: FilterQuality.medium,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: const Color(0xFFF1F5F9),
+            alignment: Alignment.center,
+            child: Icon(
               Icons.inventory_2_outlined,
               size: widget.isMini ? 18 : 32,
               color: const Color(0xFF94A3B8),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import 'add_business_address_screen.dart';
 import '../../core/services/onboarding_service.dart';
-
-
+import 'add_business_address_screen.dart';
 
 class BusinessGridCategory {
   final String title;
@@ -28,9 +25,9 @@ const List<BusinessGridCategory> gridBusinessCategories = [
   BusinessGridCategory(title: 'Footwear', icon: '👟', bgColor: Color(0xFFF3F4F6)),
   BusinessGridCategory(title: 'Jewelry', icon: '💎', bgColor: Color(0xFFFFF7ED)),
   BusinessGridCategory(title: 'Watches & Accessories', icon: '⌚', bgColor: Color(0xFFEFF6FF)),
-  BusinessGridCategory(title: 'Beauty & Salon', icon: '💄', bgColor: Color(0xFFFFF1F2)),
-  BusinessGridCategory(title: 'Furniture & Decor', icon: '🪑', bgColor: Color(0xFFFEF9C3)),
-  BusinessGridCategory(title: 'Building Material', icon: '🧱', bgColor: Color(0xFFFFF7ED)),
+  BusinessGridCategory(title: 'Beauty & Personal Care', icon: '💄', bgColor: Color(0xFFFFF1F2)),
+  BusinessGridCategory(title: 'Furniture & Home Decor', icon: '🪑', bgColor: Color(0xFFFEF9C3)),
+  BusinessGridCategory(title: 'Building Materials', icon: '🧱', bgColor: Color(0xFFFFF7ED)),
   BusinessGridCategory(title: 'E-Commerce', icon: '🌐', bgColor: Color(0xFFE0F2FE)),
   BusinessGridCategory(title: 'Electronics', icon: '💻', bgColor: Color(0xFFF0F9FF)),
   BusinessGridCategory(title: 'Books & Stationery', icon: '📚', bgColor: Color(0xFFFEF3C7)),
@@ -71,6 +68,7 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
   @override
   void initState() {
     super.initState();
+    db.saveOnboardingProgress(route: 'choose_category', step: 4);
     _searchController = TextEditingController();
     _selectedCategory = db.restaurant?.cuisineType ?? 'Restaurant';
   }
@@ -101,6 +99,8 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
         phone: db.currentUser?.phone,
       );
 
+      await db.saveOnboardingProgress(route: 'add_address', step: 5);
+
       if (!mounted) return;
 
       // Open Add Business Address Screen
@@ -115,12 +115,11 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    final businessTitle = db.restaurant?.name ??
+    final dynamicCompanyName = db.restaurant?.name ??
         db.currentUser?.companyName ??
-        'Tea Coffee';
+        'The Sky High';
 
     final filteredCategories = gridBusinessCategories.where((item) {
       final q = _searchQuery.toLowerCase();
@@ -128,136 +127,54 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
     }).toList();
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient with Glass Ambient Glows
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy (Company Badge Icon Removed)
+              _buildTopHeader(dynamicCompanyName),
 
-          // 2. Glassmorphism Ambient Glow Orbs
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Layout
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header with Back Button and Business Title
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Text(
-                          businessTitle,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                            letterSpacing: -0.3,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+              // 2. Curved Soft Neumorphic Body Sheet with Sticky Continue Button
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0F4F8),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x25001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. Curved White Card Container matching Auth Theme
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        // Static Header Area inside Sheet
                         Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               // Error Banner
                               if (_errorMessage != null) ...[
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  margin: const EdgeInsets.only(bottom: 12),
                                   decoration: BoxDecoration(
                                     color: const Color(0xFFFEF2F2),
-                                    borderRadius: BorderRadius.circular(14),
+                                    borderRadius: BorderRadius.circular(12),
                                     border: Border.all(color: const Color(0xFFFCA5A5)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(Icons.error_outline_rounded,
-                                          color: Color(0xFFEF4444), size: 18),
+                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18),
                                       const SizedBox(width: 8),
                                       Expanded(
                                         child: Text(
@@ -265,56 +182,59 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                           style: const TextStyle(
                                             color: Color(0xFFB91C1C),
                                             fontSize: 12,
-                                            fontWeight: FontWeight.w500,
+                                            fontWeight: FontWeight.w600,
                                           ),
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(height: 12),
                               ],
 
-                              // Title Section matching mockup
+                              // Title Section
                               const Text(
                                 'What Do You Sell?',
                                 style: TextStyle(
                                   fontSize: 22,
-                                  fontWeight: FontWeight.w800,
+                                  fontWeight: FontWeight.w900,
                                   color: Color(0xFF0F172A),
                                   letterSpacing: -0.3,
                                 ),
                               ),
 
-                              const SizedBox(height: 2),
+                              const SizedBox(height: 3),
 
                               const Text(
                                 'Select your business category to continue setup',
                                 style: TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w400,
+                                  fontSize: 12,
                                   color: Color(0xFF64748B),
                                 ),
                               ),
 
                               const SizedBox(height: 12),
 
-                              // Real-Time Search Bar
+                              // Neumorphic Inset Search Bar
                               Container(
-                                height: 48,
+                                height: 42,
                                 padding: const EdgeInsets.symmetric(horizontal: 14),
                                 decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(24),
+                                  color: const Color(0xFFE5ECF4),
+                                  borderRadius: BorderRadius.circular(21),
                                   border: Border.all(
-                                    color: const Color(0xFF00C2FF),
+                                    color: Colors.white.withValues(alpha: 0.9),
                                     width: 1.5,
                                   ),
                                   boxShadow: const [
                                     BoxShadow(
-                                      color: Color(0x1400C2FF),
-                                      blurRadius: 8,
-                                      offset: Offset(0, 3),
+                                      color: Color(0x14002870),
+                                      blurRadius: 5,
+                                      offset: Offset(1, 2),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 5,
+                                      offset: Offset(-1, -1),
                                     ),
                                   ],
                                 ),
@@ -322,25 +242,25 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                   children: [
                                     const Icon(
                                       Icons.search_rounded,
-                                      color: Color(0xFF00C2FF),
-                                      size: 20,
+                                      color: Color(0xFF0066FF),
+                                      size: 18,
                                     ),
-                                    const SizedBox(width: 10),
+                                    const SizedBox(width: 8),
                                     Expanded(
                                       child: TextField(
                                         controller: _searchController,
                                         onChanged: (val) => setState(() => _searchQuery = val),
                                         style: const TextStyle(
-                                          fontSize: 14,
+                                          fontSize: 13,
                                           fontWeight: FontWeight.w700,
                                           color: Color(0xFF0F172A),
                                         ),
                                         decoration: const InputDecoration(
                                           hintText: 'Search Business Category...',
                                           hintStyle: TextStyle(
-                                            fontSize: 13,
+                                            fontSize: 12,
                                             fontWeight: FontWeight.w400,
-                                            color: Color(0xFFCBD5E1),
+                                            color: Color(0xFF94A3B8),
                                           ),
                                           border: InputBorder.none,
                                           isDense: true,
@@ -356,8 +276,8 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                         },
                                         child: const Icon(
                                           Icons.close_rounded,
-                                          color: Color(0xFF94A3B8),
-                                          size: 18,
+                                          color: Color(0xFF64748B),
+                                          size: 16,
                                         ),
                                       ),
                                   ],
@@ -367,17 +287,15 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                           ),
                         ),
 
-                        const SizedBox(height: 14),
-
-                        // 3D Business Category Grid Cards
+                        // Contrastic Neumorphic 3-Column Grid
                         Expanded(
                           child: filteredCategories.isEmpty
                               ? const Center(
                                   child: Text(
                                     'No matching category found',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
+                                      fontSize: 13.5,
+                                      fontWeight: FontWeight.w600,
                                       color: Color(0xFF94A3B8),
                                     ),
                                   ),
@@ -387,9 +305,9 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                     crossAxisCount: 3,
-                                    mainAxisSpacing: 12,
-                                    crossAxisSpacing: 12,
-                                    childAspectRatio: 0.92,
+                                    mainAxisSpacing: 10,
+                                    crossAxisSpacing: 10,
+                                    childAspectRatio: 0.88,
                                   ),
                                   itemCount: filteredCategories.length,
                                   itemBuilder: (context, index) {
@@ -402,84 +320,105 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                       },
                                       borderRadius: BorderRadius.circular(18),
                                       child: AnimatedContainer(
-                                        duration: const Duration(milliseconds: 200),
+                                        duration: const Duration(milliseconds: 180),
                                         decoration: BoxDecoration(
-                                          color: isSelected ? const Color(0xFFFAFAFC) : Colors.white,
+                                          gradient: isSelected
+                                              ? const LinearGradient(
+                                                  colors: [Color(0xFFDCE8FD), Color(0xFFEFF5FF)],
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                )
+                                              : const LinearGradient(
+                                                  colors: [Color(0xFFFFFFFF), Color(0xFFE9F0F8)],
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                ),
                                           borderRadius: BorderRadius.circular(18),
                                           border: Border.all(
                                             color: isSelected
-                                                ? const Color(0xFF00C2FF) // Selected Cyan Border
-                                                : const Color(0xFFF1F5F9),
-                                            width: isSelected ? 2.2 : 1.2,
+                                                ? const Color(0xFF0066FF)
+                                                : Colors.white,
+                                            width: isSelected ? 2.0 : 1.5,
                                           ),
                                           boxShadow: [
                                             BoxShadow(
                                               color: isSelected
-                                                  ? const Color(0x2200C2FF)
-                                                  : const Color(0x0F000000),
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 3),
+                                                  ? const Color(0x350066FF)
+                                                  : const Color(0x14002870),
+                                              blurRadius: isSelected ? 10 : 8,
+                                              offset: isSelected
+                                                  ? const Offset(0, 3)
+                                                  : const Offset(3, 4),
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.white,
+                                              blurRadius: isSelected ? 6 : 6,
+                                              offset: isSelected
+                                                  ? const Offset(-2, -2)
+                                                  : const Offset(-3, -3),
                                             ),
                                           ],
                                         ),
                                         child: Stack(
                                           children: [
                                             Center(
-                                              child: Column(
-                                                mainAxisAlignment: MainAxisAlignment.center,
-                                                children: [
-                                                  // 3D Icon Container
-                                                  Container(
-                                                    width: 48,
-                                                    height: 48,
-                                                    decoration: BoxDecoration(
-                                                      color: item.bgColor,
-                                                      borderRadius: BorderRadius.circular(14),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    // Neumorphic Icon Container
+                                                    Container(
+                                                      width: 44,
+                                                      height: 44,
+                                                      decoration: BoxDecoration(
+                                                        color: isSelected ? Colors.white : item.bgColor,
+                                                        borderRadius: BorderRadius.circular(14),
+                                                        border: Border.all(color: Colors.white, width: 1.2),
+                                                        boxShadow: const [
+                                                          BoxShadow(
+                                                            color: Color(0x0C002870),
+                                                            blurRadius: 4,
+                                                            offset: Offset(1, 2),
+                                                          ),
+                                                          BoxShadow(
+                                                            color: Colors.white,
+                                                            blurRadius: 3,
+                                                            offset: Offset(-1, -1),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                      child: Center(
+                                                        child: Text(
+                                                          item.icon,
+                                                          style: const TextStyle(fontSize: 22),
+                                                        ),
+                                                      ),
                                                     ),
-                                                     child: Center(
-                                                       child: item.title == 'Restaurant'
-                                                           ? Image.asset(
-                                                               'assets/images/restaurant_icon.png',
-                                                               width: 32,
-                                                               height: 32,
-                                                               fit: BoxFit.contain,
-                                                               errorBuilder: (_, __, ___) => Text(
-                                                                 item.icon,
-                                                                 style: const TextStyle(fontSize: 26),
-                                                               ),
-                                                             )
-                                                           : Text(
-                                                               item.icon,
-                                                               style: const TextStyle(fontSize: 26),
-                                                             ),
-                                                     ),
-                                                  ),
 
-                                                  const SizedBox(height: 8),
+                                                    const SizedBox(height: 6),
 
-                                                  // Category Label
-                                                  Padding(
-                                                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                                                    child: Text(
+                                                    // Category Title Label
+                                                    Text(
                                                       item.title,
                                                       style: TextStyle(
                                                         fontSize: 11.5,
                                                         fontWeight: isSelected ? FontWeight.w800 : FontWeight.w700,
                                                         color: isSelected
-                                                            ? const Color(0xFF00C2FF)
-                                                            : const Color(0xFF1E293B),
+                                                            ? const Color(0xFF021B54)
+                                                            : const Color(0xFF0F172A),
                                                         height: 1.15,
                                                       ),
                                                       textAlign: TextAlign.center,
                                                       maxLines: 2,
                                                       overflow: TextOverflow.ellipsis,
                                                     ),
-                                                  ),
-                                                ],
+                                                  ],
+                                                ),
                                               ),
                                             ),
 
-                                            // Green Selected Checkmark Badge
+                                            // Brand Blue Selected Checkmark Badge
                                             if (isSelected)
                                               Positioned(
                                                 top: 6,
@@ -487,13 +426,20 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                                 child: Container(
                                                   padding: const EdgeInsets.all(3),
                                                   decoration: const BoxDecoration(
-                                                    color: Color(0xFF10B981),
+                                                    color: Color(0xFF0066FF),
                                                     shape: BoxShape.circle,
+                                                    boxShadow: [
+                                                      BoxShadow(
+                                                        color: Color(0x400066FF),
+                                                        blurRadius: 4,
+                                                        offset: Offset(0, 1),
+                                                      ),
+                                                    ],
                                                   ),
                                                   child: const Icon(
                                                     Icons.check_rounded,
                                                     color: Colors.white,
-                                                    size: 12,
+                                                    size: 11,
                                                   ),
                                                 ),
                                               ),
@@ -505,60 +451,176 @@ class _ChooseBusinessCategoryScreenState extends State<ChooseBusinessCategoryScr
                                 ),
                         ),
 
-                        // 5. Primary Action Button ("Continue")
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                          child: Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x3300C2FF),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveCategoryAndNext,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.5,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'Continue',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                            ),
-                          ),
-                        ),
+                        // Sticky Bottom Action Bar with "Continue" Button (Background Box Removed)
+                        _buildStickyBottomBar(),
                       ],
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  // Top Midnight Navy Header with Circular Back Button and Company Name Badge (Icon Removed)
+  Widget _buildTopHeader(String companyName) {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF021B54),
+            Color(0xFF03266B),
+            Color(0xFF021B54),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
+          child: Row(
+            children: [
+              // Neumorphic Frosted Circular Back Button
+              InkWell(
+                onTap: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.88),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chevron_left_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Neumorphic Frosted Company Name Badge (Icon Removed)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    companyName,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Midnight Navy "Continue" Button (Background Removed)
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30021B54),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSaveCategoryAndNext,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.2,
+                    ),
+                  )
+                : const Center(
+                    child: Text(
+                      'Continue',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

@@ -29,6 +29,7 @@ enum ManualItemPersistenceMode { temporary, permanent }
 class PosRegisterScreen extends StatefulWidget {
   final String? initialTable;
   final OrderType? initialOrderType;
+  final int? tableSelectionToken;
   final VoidCallback? onOpenDrawer;
   final VoidCallback? onOpenTablesTab;
   final bool isFullScreen;
@@ -39,6 +40,7 @@ class PosRegisterScreen extends StatefulWidget {
     super.key,
     this.initialTable,
     this.initialOrderType,
+    this.tableSelectionToken,
     this.onOpenDrawer,
     this.onOpenTablesTab,
     this.isFullScreen = false,
@@ -321,16 +323,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void didUpdateWidget(PosRegisterScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialOrderType != null && widget.initialOrderType != oldWidget.initialOrderType) {
+    if (widget.initialOrderType != null &&
+        (widget.initialOrderType != oldWidget.initialOrderType ||
+         widget.tableSelectionToken != oldWidget.tableSelectionToken)) {
       _switchOrderType(widget.initialOrderType!);
-    } else if (widget.initialTable != null && widget.initialTable != oldWidget.initialTable) {
+    } else if (widget.initialTable != null &&
+        (widget.initialTable != oldWidget.initialTable ||
+         widget.tableSelectionToken != oldWidget.tableSelectionToken ||
+         _selectedTable != widget.initialTable ||
+         _cartItems.isEmpty)) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
     }
   }
 
   void _loadCartForTable(String tableName, {bool openCartModal = false}) {
-    // Save draft of current active table/context if switching
-    if (_selectedTable != tableName || _selectedOrderType != OrderType.dineIn) {
+    // Save draft of current active table/context if switching to a different table
+    if ((_selectedTable != null && !isSameTable(_selectedTable, tableName)) || _selectedOrderType != OrderType.dineIn) {
       _saveCurrentDraft();
     }
 
@@ -344,9 +352,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _customerName = '';
       _customerPhone = '';
 
+      final tbl = db.tables.where((t) =>
+        isSameTable(t.name, tableName) ||
+        isSameTable(t.tableNumber.toString(), tableName) ||
+        isSameTable('T-${t.tableNumber}', tableName)
+      ).firstOrNull;
+
       final activeOrder = db.orders.where((o) =>
-        isSameTable(o.tableNumber, tableName) &&
-        (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        (isSameTable(o.tableNumber, tableName) ||
+         (tbl != null && (isSameTable(o.tableNumber, tbl.name) ||
+                          isSameTable(o.tableNumber, tbl.tableNumber.toString()) ||
+                          isSameTable(o.tableNumber, 'T-${tbl.tableNumber}') ||
+                          (tbl.currentOrderId != null && (o.id == tbl.currentOrderId || o.orderNumber == tbl.currentOrderId))))) &&
+        (o.status != OrderStatus.completed && o.status != OrderStatus.cancelled)
       ).firstOrNull;
 
       if (activeOrder != null && activeOrder.items.isNotEmpty) {
@@ -359,10 +377,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         final savedCart = db.getLiveTableCart(tableName);
         if (savedCart.isNotEmpty) {
           _cartItems.addAll(savedCart.map((i) => i.clone()));
+        } else if (tbl != null) {
+          final savedCartByName = db.getLiveTableCart(tbl.name);
+          if (savedCartByName.isNotEmpty) {
+            _cartItems.addAll(savedCartByName.map((i) => i.clone()));
+          }
         }
       }
 
-      final savedDiscount = db.getLiveTableDiscount(tableName);
+      final savedDiscount = db.getLiveTableDiscount(tableName) ??
+          (tbl != null ? db.getLiveTableDiscount(tbl.name) : null);
       if (savedDiscount != null) {
         _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
         _promoCodeController.text = _appliedCoupon;
@@ -847,7 +871,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         margin: const EdgeInsets.symmetric(vertical: 5),
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                         decoration: BoxDecoration(
-                          color: vQty > 0 ? const Color(0xFF051C48).withOpacity(0.04) : const Color(0xFFF8FAFC),
+                          color: vQty > 0 ? const Color(0xFF051C48).withValues(alpha: 0.04) : const Color(0xFFF8FAFC),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
                             color: vQty > 0 ? const Color(0xFF051C48) : const Color(0xFFE2E8F0),
@@ -1117,7 +1141,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         decoration: BoxDecoration(
-          color: const Color(0xFF00A3FF).withOpacity(0.15),
+          color: const Color(0xFF00A3FF).withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: const Color(0xFF00A3FF), width: 1),
         ),
@@ -1190,6 +1214,66 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final stateCtrl = TextEditingController(text: _deliveryState);
     final pincodeCtrl = TextEditingController(text: _deliveryPincode);
 
+    InputDecoration buildInputDecoration({
+      required String hintText,
+      required IconData icon,
+    }) {
+      return InputDecoration(
+        hintText: hintText,
+        hintStyle: const TextStyle(
+          fontSize: 11.5,
+          color: Color(0xFF94A3B8),
+          fontWeight: FontWeight.w500,
+        ),
+        filled: true,
+        fillColor: const Color(0xFFE5EDF6),
+        prefixIcon: Container(
+          margin: const EdgeInsets.fromLTRB(8, 5, 8, 5),
+          padding: const EdgeInsets.all(5.5),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.8),
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x12002870),
+                blurRadius: 3,
+                offset: Offset(1, 1),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            size: 15,
+            color: const Color(0xFF0F2B48),
+          ),
+        ),
+        prefixIconConstraints: const BoxConstraints(minWidth: 38, minHeight: 30),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.9), width: 1.2),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFF0F2B48), width: 1.5),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.0),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFEF4444), width: 1.5),
+        ),
+        errorStyle: const TextStyle(fontSize: 10.0, height: 1.1),
+      );
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -1199,73 +1283,91 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: Dialog(
             backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x1F000000),
-                    blurRadius: 20,
-                    offset: Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Dialog Header
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [
-                            Color(0xFF051C48),
-                            Color(0xFF0A2B66),
-                          ],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
-                        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 20),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF5FB),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x240F2B48),
+                      blurRadius: 22,
+                      offset: Offset(0, 8),
+                    ),
+                    BoxShadow(
+                      color: Colors.white,
+                      blurRadius: 10,
+                      offset: Offset(-3, -3),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Dialog Header (Compact, sleek gradient, with location badge and NO cross icon)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0xFF0F2B48),
+                              Color(0xFF1E3A8A),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
-                          const SizedBox(width: 10),
-                          const Expanded(
-                            child: Text(
-                              'Delivery Address',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 16,
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(21)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(6.5),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(9),
+                                border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1),
+                              ),
+                              child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 17),
+                            ),
+                            const SizedBox(width: 10),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Delivery Address',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14.0,
+                                      letterSpacing: 0.2,
+                                    ),
+                                  ),
+                                  SizedBox(height: 1),
+                                  Text(
+                                    'Enter your delivery location',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
 
                     // Form Fields
+                    // Form Fields (Scaled down, compact gaps and elegant styling)
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
                       child: Form(
                         key: formKey,
                         child: Column(
@@ -1274,37 +1376,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             // Address / House No / Street (Required)
                             const Text(
                               'Street Address / House No.',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              style: TextStyle(fontSize: 11.0, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             TextFormField(
                               controller: addressCtrl,
                               maxLines: 2,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 12.0,
                                 color: Color(0xFF0F172A),
                                 fontWeight: FontWeight.w600,
                               ),
-                              cursorColor: const Color(0xFF051C48),
-                              cursorWidth: 2.0,
-                              decoration: InputDecoration(
+                              cursorColor: const Color(0xFF0F2B48),
+                              cursorWidth: 1.8,
+                              decoration: buildInputDecoration(
                                 hintText: 'e.g. House No. 25, ABC Road',
-                                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                                filled: true,
-                                fillColor: const Color(0xFFF8FAFC),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                                ),
+                                icon: Icons.home_rounded,
                               ),
                               validator: (val) {
                                 if (val == null || val.trim().isEmpty) {
@@ -1313,44 +1400,29 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 return null;
                               },
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
 
                             // Landmark
                             const Text(
                               'Landmark',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              style: TextStyle(fontSize: 11.0, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             TextFormField(
                               controller: landmarkCtrl,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 12.0,
                                 color: Color(0xFF0F172A),
                                 fontWeight: FontWeight.w600,
                               ),
-                              cursorColor: const Color(0xFF051C48),
-                              cursorWidth: 2.0,
-                              decoration: InputDecoration(
+                              cursorColor: const Color(0xFF0F2B48),
+                              cursorWidth: 1.8,
+                              decoration: buildInputDecoration(
                                 hintText: 'e.g. Near XYZ Mall',
-                                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                                filled: true,
-                                fillColor: const Color(0xFFF8FAFC),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                                ),
+                                icon: Icons.apartment_rounded,
                               ),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
 
                             // City & State Row
                             Row(
@@ -1361,78 +1433,48 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                     children: [
                                       const Text(
                                         'City',
-                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                        style: TextStyle(fontSize: 11.0, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4),
                                       TextFormField(
                                         controller: cityCtrl,
                                         style: const TextStyle(
-                                          fontSize: 13.5,
+                                          fontSize: 12.0,
                                           color: Color(0xFF0F172A),
                                           fontWeight: FontWeight.w600,
                                         ),
-                                        cursorColor: const Color(0xFF051C48),
-                                        cursorWidth: 2.0,
-                                        decoration: InputDecoration(
+                                        cursorColor: const Color(0xFF0F2B48),
+                                        cursorWidth: 1.8,
+                                        decoration: buildInputDecoration(
                                           hintText: 'City',
-                                          hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                                          filled: true,
-                                          fillColor: const Color(0xFFF8FAFC),
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                                          ),
+                                          icon: Icons.location_on_outlined,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                                const SizedBox(width: 10),
+                                const SizedBox(width: 8),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       const Text(
                                         'State',
-                                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                                        style: TextStyle(fontSize: 11.0, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                                       ),
-                                      const SizedBox(height: 6),
+                                      const SizedBox(height: 4),
                                       TextFormField(
                                         controller: stateCtrl,
                                         style: const TextStyle(
-                                          fontSize: 13.5,
+                                          fontSize: 12.0,
                                           color: Color(0xFF0F172A),
                                           fontWeight: FontWeight.w600,
                                         ),
-                                        cursorColor: const Color(0xFF051C48),
-                                        cursorWidth: 2.0,
-                                        decoration: InputDecoration(
+                                        cursorColor: const Color(0xFF0F2B48),
+                                        cursorWidth: 1.8,
+                                        decoration: buildInputDecoration(
                                           hintText: 'State',
-                                          hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                                          filled: true,
-                                          fillColor: const Color(0xFFF8FAFC),
-                                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                          border: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                          ),
-                                          enabledBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                          ),
-                                          focusedBorder: OutlineInputBorder(
-                                            borderRadius: BorderRadius.circular(12),
-                                            borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                                          ),
+                                          icon: Icons.map_outlined,
                                         ),
                                       ),
                                     ],
@@ -1440,91 +1482,130 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 8),
 
                             // Pincode
                             const Text(
                               'Pincode',
-                              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF334155)),
+                              style: TextStyle(fontSize: 11.0, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
                             ),
-                            const SizedBox(height: 6),
+                            const SizedBox(height: 4),
                             TextFormField(
                               controller: pincodeCtrl,
                               keyboardType: TextInputType.number,
                               maxLength: 6,
                               style: const TextStyle(
-                                fontSize: 13.5,
+                                fontSize: 12.0,
                                 color: Color(0xFF0F172A),
                                 fontWeight: FontWeight.w600,
                               ),
-                              cursorColor: const Color(0xFF051C48),
-                              cursorWidth: 2.0,
-                              decoration: InputDecoration(
+                              cursorColor: const Color(0xFF0F2B48),
+                              cursorWidth: 1.8,
+                              decoration: buildInputDecoration(
                                 hintText: 'e.g. 201301',
-                                hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
-                                counterText: '',
-                                filled: true,
-                                fillColor: const Color(0xFFF8FAFC),
-                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                                ),
+                                icon: Icons.local_post_office_outlined,
                               ),
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 14),
 
-                            // Action Buttons
+                            // Action Buttons (Neumorphic styled Cancel + Save Address buttons)
                             Row(
                               children: [
                                 Expanded(
-                                  child: OutlinedButton(
-                                    onPressed: () => Navigator.pop(ctx),
-                                    style: OutlinedButton.styleFrom(
-                                      side: const BorderSide(color: Color(0xFFCBD5E1)),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Container(
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE5EDF6),
+                                      borderRadius: BorderRadius.circular(11),
+                                      border: Border.all(color: Colors.white, width: 1.2),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Colors.white,
+                                          offset: Offset(-2, -2),
+                                          blurRadius: 4,
+                                        ),
+                                        BoxShadow(
+                                          color: Color(0x1F0F2B48),
+                                          offset: Offset(2, 2),
+                                          blurRadius: 4,
+                                        ),
+                                      ],
                                     ),
-                                    child: const Text(
-                                      'Cancel',
-                                      style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.bold),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(11),
+                                        onTap: () => Navigator.pop(ctx),
+                                        child: const Center(
+                                          child: Text(
+                                            'Cancel',
+                                            style: TextStyle(
+                                              color: Color(0xFF64748B),
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12.0,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      if (formKey.currentState?.validate() == true) {
-                                        setState(() {
-                                          _deliveryAddress = addressCtrl.text.trim();
-                                          _deliveryLandmark = landmarkCtrl.text.trim();
-                                          _deliveryCity = cityCtrl.text.trim();
-                                          _deliveryState = stateCtrl.text.trim();
-                                          _deliveryPincode = pincodeCtrl.text.trim();
-                                        });
-                                        if (setStateModal != null) {
-                                          setStateModal(() {});
-                                        }
-                                        Navigator.pop(ctx);
-                                      }
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: const Color(0xFF051C48),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                  child: Container(
+                                    height: 38,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF0F2B48), Color(0xFF1E3A8A)],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(11),
+                                      border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1.0),
+                                      boxShadow: [
+                                        const BoxShadow(
+                                          color: Colors.white,
+                                          offset: Offset(-1.5, -1.5),
+                                          blurRadius: 3,
+                                        ),
+                                        BoxShadow(
+                                          color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
+                                          offset: const Offset(2, 3),
+                                          blurRadius: 6,
+                                        ),
+                                      ],
                                     ),
-                                    child: const Text(
-                                      'Save Address',
-                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    child: Material(
+                                      color: Colors.transparent,
+                                      child: InkWell(
+                                        borderRadius: BorderRadius.circular(11),
+                                        onTap: () {
+                                          if (formKey.currentState?.validate() == true) {
+                                            setState(() {
+                                              _deliveryAddress = addressCtrl.text.trim();
+                                              _deliveryLandmark = landmarkCtrl.text.trim();
+                                              _deliveryCity = cityCtrl.text.trim();
+                                              _deliveryState = stateCtrl.text.trim();
+                                              _deliveryPincode = pincodeCtrl.text.trim();
+                                            });
+                                            if (setStateModal != null) {
+                                              setStateModal(() {});
+                                            }
+                                            Navigator.pop(ctx);
+                                          }
+                                        },
+                                        child: const Center(
+                                          child: Text(
+                                            'Save Address',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 12.0,
+                                              letterSpacing: 0.2,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -3499,7 +3580,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     if (setStateModal != null) {
       setStateModal(() {});
     }
-    if (mounted) {
+    if (mounted && modalContext.mounted) {
       _checkAndCloseEmptyCart(modalContext, setStateModal);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -3705,14 +3786,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     StateSetter? setStateCart,
   }) async {
     if (isSameTable(targetTable.name, currentTable)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Table ${targetTable.name} is already active'),
-          backgroundColor: const Color(0xFF051C48),
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 1),
-        ),
-      );
+      if (dialogCtx.mounted) {
+        Navigator.pop(dialogCtx);
+      }
+      _loadCartForTable(targetTable.name, openCartModal: true);
       return;
     }
 
@@ -3720,8 +3797,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       Navigator.pop(dialogCtx);
     }
 
-    // Direct shift/switch without confirmation popup
-    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty) {
+    // If target table is occupied or has running KOT/orders, switch to view that table
+    // Only perform table shift if target table is completely free
+    final targetIsFree = targetTable.status == TableStatus.free &&
+        db.getLiveCartTotal(targetTable.name) <= 0 &&
+        !db.orders.any((o) => isSameTable(o.tableNumber, targetTable.name) && o.status != OrderStatus.completed && o.status != OrderStatus.cancelled);
+
+    if (isShiftMode && hasActiveOrderOrCart && currentTable.isNotEmpty && targetIsFree) {
       await _shiftTable(targetTable.name, setStateCart);
     } else {
       _switchTable(targetTable.name, setStateCart);
@@ -5760,7 +5842,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           Container(
             width: 44,
             height: 4.5,
-            margin: const EdgeInsets.only(top: 12, bottom: 8),
+            margin: const EdgeInsets.only(top: 6, bottom: 2),
             decoration: BoxDecoration(
               color: const Color(0xFFCBD5E1),
               borderRadius: BorderRadius.circular(10),
@@ -5769,7 +5851,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
           // Top Navigation Header for mobile sheet
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1),
             child: Row(
               children: [
                 InkWell(
@@ -5885,11 +5967,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            _hasDeliveryAddress ? Icons.edit_location_alt_rounded : Icons.add_location_alt_rounded,
-                            size: 15,
-                            color: const Color(0xFF0F2B48),
-                          ),
+                          // Icon(
+                          //   _hasDeliveryAddress ? Icons.edit_location_alt_rounded : Icons.add_location_alt_rounded,
+                          //   size: 15,
+                          //   color: const Color(0xFF0F2B48),
+                          // ),
                           const SizedBox(width: 4),
                           Text(
                             _hasDeliveryAddress ? 'Edit Address' : 'Add Address',
@@ -6128,7 +6210,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         // Items Header
         if (!isDesktopPanel)
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 3),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -6150,7 +6232,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFECEC),
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFFFFD5D5), width: 1.0),
+                        border: Border.all(color: const Color(0xFFFFD5D5), width: 0.1),
                         boxShadow: [
                           const BoxShadow(
                             color: Colors.white,
@@ -6477,32 +6559,32 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         // Add Customer & Extra's Buttons (Mobile only)
         if (!isDesktopPanel)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1.5),
             child: Row(
               children: [
                 Expanded(
                   child: InkWell(
                     onTap: () => _showAddCustomerDialog(setStateCart),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(22),
                     child: Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         color: const Color(0xFF0F2B48),
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(22),
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFF0F2B48).withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
+                            blurRadius: 6,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 19),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.person_add_alt_1_rounded, color: Colors.white, size: 17),
+                          const SizedBox(width: 6),
                           Flexible(
                             child: Text(
                               _customerName.isNotEmpty
@@ -6511,7 +6593,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w800,
-                                fontSize: 13.5,
+                                fontSize: 13.0,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -6522,37 +6604,37 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
 
                 Expanded(
                   child: InkWell(
                     onTap: () => _showExtraBenefitDialog(setStateCart),
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(22),
                     child: Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(24),
+                        borderRadius: BorderRadius.circular(22),
                         border: Border.all(color: const Color(0xFFE2E8F0)),
                         boxShadow: const [
                           BoxShadow(
                             color: Colors.white,
                             offset: Offset(-2, -2),
-                            blurRadius: 5,
+                            blurRadius: 4,
                           ),
                           BoxShadow(
                             color: Color(0xFFD3E0EA),
-                            offset: Offset(2.5, 2.5),
-                            blurRadius: 6,
+                            offset: Offset(2, 2),
+                            blurRadius: 5,
                           ),
                         ],
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.local_offer_rounded, color: Color(0xFF0F2B48), size: 18),
-                          const SizedBox(width: 8),
+                          const Icon(Icons.local_offer_rounded, color: Color(0xFF0F2B48), size: 16),
+                          const SizedBox(width: 6),
                           Flexible(
                             child: Text(
                               (computedDiscountAmount > 0 || _tipAmount > 0)
@@ -6561,7 +6643,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               style: const TextStyle(
                                 color: Color(0xFF0F2B48),
                                 fontWeight: FontWeight.w800,
-                                fontSize: 13.5,
+                                fontSize: 13.0,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -6578,23 +6660,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
         // Price Summary Card
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 1.5),
           child: Container(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(18),
               border: Border.all(color: const Color(0xFFE2E8F0).withValues(alpha: 0.8)),
               boxShadow: const [
                 BoxShadow(
                   color: Colors.white,
                   offset: Offset(-2, -2),
-                  blurRadius: 6,
+                  blurRadius: 5,
                 ),
                 BoxShadow(
                   color: Color(0xFFD3E0EA),
-                  offset: Offset(3, 3),
-                  blurRadius: 8,
+                  offset: Offset(2, 2),
+                  blurRadius: 6,
                 ),
               ],
             ),
@@ -6605,16 +6687,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   children: [
                     const Text(
                       'Sub total',
-                      style: TextStyle(fontSize: 13.0, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                     ),
                     Text(
                       '$currency${cartSubtotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                      style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                     ),
                   ],
                 ),
                 if (computedDiscountAmount > 0) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 2.5),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -6626,29 +6708,29 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             : (_discountMode == 'percent' && _discountInputValue > 0
                                 ? 'Discount (${_discountInputValue.toStringAsFixed(0)}%):'
                                 : 'Discount:'),
-                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF10B981), fontWeight: FontWeight.w700),
+                        style: const TextStyle(fontSize: 12.0, color: Color(0xFF10B981), fontWeight: FontWeight.w700),
                       ),
                       Text(
                         '- $currency${computedDiscountAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF10B981)),
                       ),
                     ],
                   ),
                 ],
                 if (_tipAmount > 0) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 2.5),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('Tip:', style: TextStyle(fontSize: 12.5, color: Color(0xFF00A896), fontWeight: FontWeight.w700)),
+                      const Text('Tip:', style: TextStyle(fontSize: 12.0, color: Color(0xFF00A896), fontWeight: FontWeight.w700)),
                       Text(
                         '+ $currency${_tipAmount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w800, color: Color(0xFF00A896)),
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF00A896)),
                       ),
                     ],
                   ),
                 ],
-                const SizedBox(height: 5),
+                const SizedBox(height: 2.5),
                 Builder(
                   builder: (context) {
                     final bool isNonGst = db.restaurant?.billingType == 'Non-GST';
@@ -6666,18 +6748,18 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       children: [
                         Text(
                           taxLabel,
-                          style: const TextStyle(fontSize: 13.0, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
                         ),
                         Text(
                           '+ $currency${cartTax.toStringAsFixed(2)}',
-                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                         ),
                       ],
                     );
                   },
                 ),
                 const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 8),
+                  padding: EdgeInsets.symmetric(vertical: 2),
                   child: Divider(color: Color(0xFFF1F5F9), height: 1, thickness: 1.2),
                 ),
                 Row(
@@ -6685,11 +6767,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   children: [
                     const Text(
                       'Total amount',
-                      style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                      style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
                     ),
                     Text(
                       '$currency${cartTotal.toStringAsFixed(2)}',
-                      style: const TextStyle(fontSize: 19.5, fontWeight: FontWeight.w900, color: Color(0xFF0F2B48)),
+                      style: const TextStyle(fontSize: 16.5, fontWeight: FontWeight.w900, color: Color(0xFF0F2B48)),
                     ),
                   ],
                 ),
@@ -6919,11 +7001,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             backgroundColor: Colors.white,
                             padding: EdgeInsets.zero,
                           ),
-                          icon: Icon(
-                            Icons.print_outlined,
-                            size: 14,
-                            color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF0F2B48),
-                          ),
+                          // icon: Icon(
+                          //   //Icons.print_outlined,
+                          //   size: 14,
+                          //   color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF0F2B48),
+                          // ),
                           label: Text(
                             'Save & Print',
                             style: TextStyle(
@@ -6943,17 +7025,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         else
           // Mobile Action Buttons: KOT | Save & Print | Settle
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 12),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
             child: Row(
               children: [
                 // 1) KOT Button
                 Expanded(
                   flex: 2,
                   child: Container(
-                    height: 48,
+                    height: 46,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(23),
                       border: Border.all(
                         color: const Color(0xFFE2E8F0),
                         width: 1.0,
@@ -6979,7 +7061,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide.none,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -6989,12 +7071,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            // Icon(
-                            //   Icons.cloud_outlined,
-                            //   size: 17,
-                            //   color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF0F2B48),
-                            // ),
-                            const SizedBox(width: 5),
                             Text(
                               'KOT',
                               style: TextStyle(
@@ -7015,10 +7091,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 Expanded(
                   flex: 3,
                   child: Container(
-                    height: 48,
+                    height: 46,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(23),
                       border: Border.all(
                         color: const Color(0xFFE2E8F0),
                         width: 1.0,
@@ -7044,7 +7120,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             },
                       style: OutlinedButton.styleFrom(
                         side: BorderSide.none,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
                         padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -7059,7 +7135,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               size: 16,
                               color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF0F2B48),
                             ),
-                            const SizedBox(width: 5),
+                            const SizedBox(width: 4),
                             Text(
                               'Save & Print',
                               style: TextStyle(
@@ -7080,17 +7156,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 Expanded(
                   flex: 3,
                   child: Container(
-                    height: 48,
+                    height: 46,
                     decoration: BoxDecoration(
                       color: _cartItems.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF0F2B48),
-                      borderRadius: BorderRadius.circular(24),
+                      borderRadius: BorderRadius.circular(23),
                       boxShadow: _cartItems.isEmpty
                           ? []
                           : [
                               BoxShadow(
                                 color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
-                                blurRadius: 8,
-                                offset: const Offset(0, 3),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
                               ),
                             ],
                     ),
@@ -7103,7 +7179,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(23)),
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                       ),
                       child: const FittedBox(
@@ -7331,7 +7407,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
       // DO NOT clear cart, DO NOT mark as paid, DO NOT close modal.
       // Instantly show ReceiptDialog with generated invoice and dynamic QR
-      if (mounted) {
+      if (mounted && targetContext.mounted) {
         showDialog(
           context: targetContext,
           barrierColor: Colors.black.withValues(alpha: 0.35),
@@ -7876,7 +7952,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-              cacheExtent: 600.0,
               itemCount: allCategories.length,
               itemBuilder: (context, index) {
                 final cat = allCategories[index];
@@ -7975,9 +8050,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     padding: const EdgeInsets.all(12),
                     child: TableManagementScreen(
                       onTakeOrder: (tableName) {
-                        if (_selectedTable != tableName) {
-                          _loadCartForTable(tableName);
-                        }
+                        _loadCartForTable(tableName, openCartModal: true);
                         setState(() {
                           _selectedTable = tableName;
                           _selectedOrderType = OrderType.dineIn;
@@ -8235,7 +8308,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-            cacheExtent: 600.0,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: allCategories.length,
             itemBuilder: (context, index) {
@@ -8342,7 +8414,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           borderRadius: BorderRadius.circular(4),
         ),
         child: Text(
-          '$variantsCount Var',
+          '$variantsCount Variants',
           style: const TextStyle(
             color: Color(0xFF051C48),
             fontSize: 8.0,
@@ -8461,27 +8533,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 1. Top Header: Veg/Non-Veg Icon + Category Tag + Qty/Variant/Discount Badge
+                  // 1. Top Header: Veg/Non-Veg Icon + Qty/Variant/Discount Badge
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       _buildFoodTypeIcon(item.itemType),
-                      if (item.category.trim().isNotEmpty) ...[
-                        const SizedBox(width: 5),
-                        Flexible(
-                          child: Text(
-                            item.category.trim().toUpperCase(),
-                            style: const TextStyle(
-                              color: Color(0xFF64748B),
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 0.3,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
                       const Spacer(),
                       _buildWithoutImageTopRightBadge(
                         qty: qty,
@@ -8703,7 +8759,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       borderRadius: BorderRadius.circular(5),
                                     ),
                                     child: Text(
-                                      '${item.variants.length} Var',
+                                      '${item.variants.length} Variants',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 8.0,
@@ -8736,23 +8792,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           ),
                         ),
                         const SizedBox(height: 4),
-
-                        // Category Tag
-                        if (item.category.trim().isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 1.5),
-                            child: Text(
-                              item.category.trim().toUpperCase(),
-                              style: const TextStyle(
-                                color: Color(0xFF64748B),
-                                fontSize: 8.0,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.3,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
 
                         // Product Name (2 Lines for full display)
                         Text(
@@ -8904,26 +8943,358 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     );
   }
 
+  Widget _buildEmptyProductsIllustration() {
+    return SizedBox(
+      width: 175,
+      height: 155,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          // 1. Soft Circular Background Halo with subtle gradient & shadow
+          Container(
+            width: 135,
+            height: 135,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const RadialGradient(
+                colors: [
+                  Color(0xFFEAF3FE),
+                  Color(0xFFD8E9FE),
+                  Color(0xFFC7DEFD),
+                ],
+                stops: [0.35, 0.75, 1.0],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0038A8).withValues(alpha: 0.08),
+                  blurRadius: 24,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+          ),
+
+          // 2. Floating decorative sparkle/bubbles
+          Positioned(
+            top: 24,
+            left: 20,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF93C5FD).withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 36,
+            right: 22,
+            child: Container(
+              width: 11,
+              height: 11,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF93C5FD).withValues(alpha: 0.6),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 30,
+            left: 16,
+            child: Container(
+              width: 5,
+              height: 5,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF60A5FA).withValues(alpha: 0.75),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 22,
+            right: 20,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: const Color(0xFF93C5FD).withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+
+          // 3. Sparkle burst rays above the box
+          Positioned(
+            top: 10,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Transform.rotate(
+                  angle: -0.4,
+                  child: Container(
+                    width: 3,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 3,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Transform.rotate(
+                  angle: 0.4,
+                  child: Container(
+                    width: 3,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF3B82F6),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // 4. Neumorphic 3D Open Food Box Container
+          Positioned(
+            bottom: 12,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topCenter,
+              children: [
+                // Open Lid Left Flap
+                Positioned(
+                  top: -10,
+                  left: -6,
+                  child: Transform.rotate(
+                    angle: -0.28,
+                    child: Container(
+                      width: 28,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F6FD),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                        border: Border.all(color: const Color(0xFFD6E3F4), width: 1.2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF002266).withValues(alpha: 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(-2, -1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Open Lid Right Flap
+                Positioned(
+                  top: -10,
+                  right: -6,
+                  child: Transform.rotate(
+                    angle: 0.28,
+                    child: Container(
+                      width: 28,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF1F6FD),
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(5)),
+                        border: Border.all(color: const Color(0xFFD6E3F4), width: 1.2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF002266).withValues(alpha: 0.08),
+                            blurRadius: 4,
+                            offset: const Offset(2, -1),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Inner Box Cavity (Darker soft-blue/slate depth)
+                Container(
+                  width: 82,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD3E4F8),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFBDD4EE), width: 1.0),
+                  ),
+                ),
+                // Main Box Front Body (Soft white-blue Neumorphic Cube)
+                Container(
+                  margin: const EdgeInsets.only(top: 8),
+                  width: 90,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFFFFFFF),
+                        Color(0xFFF4F8FD),
+                        Color(0xFFE5EFFB),
+                      ],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFDFECFB), width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF002D80).withValues(alpha: 0.14),
+                        blurRadius: 16,
+                        offset: const Offset(0, 8),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.9),
+                        blurRadius: 8,
+                        offset: const Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: Center(
+                    child: Container(
+                      width: 38,
+                      height: 38,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE4F0FD),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFD3E5F9),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: const Icon(
+                        Icons.restaurant_rounded,
+                        color: Color(0xFF6287B8),
+                        size: 20,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProductGrid(List<MenuItemModel> filteredItems, {bool isDesktop = false, required String currency}) {
     if (filteredItems.isEmpty) {
+      final isSearching = _searchQuery.trim().isNotEmpty;
+      final String titleText;
+      final String subtitleText;
+
+      if (isSearching) {
+        titleText = 'No products found for "$_searchQuery"';
+        subtitleText = 'Try searching with a different name or clear the search filter.';
+      } else if (_selectedCategory != 'All') {
+        titleText = 'No products found in this category';
+        subtitleText = 'Start building your menu by adding your first item.';
+      } else {
+        titleText = 'No products found in this category';
+        subtitleText = 'Start building your menu by adding your first item.';
+      }
+
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.restaurant_menu_rounded, size: 48, color: Color(0xFF94A3B8)),
-            const SizedBox(height: 12),
-            const Text(
-              'No products found in this category',
-              style: TextStyle(color: Color(0xFF0F172A), fontWeight: FontWeight.bold, fontSize: 15),
-            ),
-            const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: _showAddItemDialog,
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Your First Item'),
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF051C48)),
-            ),
-          ],
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildEmptyProductsIllustration(),
+              const SizedBox(height: 18),
+              Text(
+                titleText,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Color(0xFF0F1E36),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 16.5,
+                  letterSpacing: -0.2,
+                  height: 1.25,
+                ),
+              ),
+              const SizedBox(height: 6),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 290),
+                child: Text(
+                  subtitleText,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF7E8EA4),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w400,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF003882).withValues(alpha: 0.35),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton.icon(
+                  onPressed: _showAddItemDialog,
+                  icon: const Icon(Icons.add_rounded, size: 19, color: Colors.white),
+                  label: const Text(
+                    'Add Your First Item',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13.5,
+                      letterSpacing: 0.1,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00337A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    elevation: 0,
+                  ),
+                ),
+              ),
+              if (isSearching) ...[
+                const SizedBox(height: 10),
+                TextButton.icon(
+                  onPressed: () => setState(() => _searchQuery = ''),
+                  icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF0066FF)),
+                  label: const Text(
+                    'Clear Search',
+                    style: TextStyle(
+                      color: Color(0xFF0066FF),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
         ),
       );
     }
@@ -8941,9 +9312,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
           return GridView.builder(
             physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-            cacheExtent: 1200.0,
             addAutomaticKeepAlives: false,
             addRepaintBoundaries: true,
+            // ignore: deprecated_member_use
+            cacheExtent: 600.0,
             padding: const EdgeInsets.fromLTRB(4, 4, 4, 90),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: cols,
@@ -8954,14 +9326,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             itemCount: filteredItems.length,
             itemBuilder: (context, index) {
               final item = filteredItems[index];
-              return RepaintBoundary(
-                key: ValueKey('prod_noimg_${item.id}_${item.productId}'),
-                child: _buildProductCard(
-                  item,
-                  showImages: false,
-                  currency: currency,
-                  isDesktop: false,
-                ),
+              return _buildProductCard(
+                item,
+                showImages: false,
+                currency: currency,
+                isDesktop: false,
               );
             },
           );
@@ -8976,9 +9345,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
         return GridView.builder(
           physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-          cacheExtent: 1400.0,
           addAutomaticKeepAlives: false,
           addRepaintBoundaries: true,
+          // ignore: deprecated_member_use
+          cacheExtent: 600.0,
           padding: EdgeInsets.fromLTRB(4, 4, 4, isDesktop ? 10 : 90),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: columnCount,

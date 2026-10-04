@@ -1,8 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../dashboard/main_layout.dart';
+import '../../core/services/onboarding_service.dart';
 import 'business_details_screen.dart';
 
 class ConfirmBusinessNameScreen extends StatefulWidget {
@@ -21,12 +21,17 @@ class _ConfirmBusinessNameScreenState extends State<ConfirmBusinessNameScreen> {
   @override
   void initState() {
     super.initState();
-    // Pre-fill with user's companyName or restaurant name
-    final initialName = db.currentUser?.companyName ??
-        db.restaurant?.name ??
-        'Tea Coffee';
-    _businessNameController = TextEditingController(text: initialName);
+    // Save onboarding step progress (Step 2: Confirm Business Name)
+    db.saveOnboardingProgress(route: 'confirm_business_name', step: 2);
 
+    // Dynamic initial business / company name
+    final initialName = (db.currentUser?.companyName != null && db.currentUser!.companyName!.trim().isNotEmpty)
+        ? db.currentUser!.companyName!.trim()
+        : ((db.restaurant?.name != null && db.restaurant!.name.trim().isNotEmpty)
+            ? db.restaurant!.name.trim()
+            : 'The Sky High');
+
+    _businessNameController = TextEditingController(text: initialName);
     _businessNameController.addListener(() {
       setState(() {});
     });
@@ -38,50 +43,81 @@ class _ConfirmBusinessNameScreenState extends State<ConfirmBusinessNameScreen> {
     super.dispose();
   }
 
-  Widget _buildProfileCardAvatar(String? photoPath, String typedName) {
-    if (photoPath != null && photoPath.isNotEmpty) {
-      if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
+  // Dynamic Avatar Photo Builder with Compact Sizing
+  Widget _buildDynamicAvatar(String? photoPath, String businessName) {
+    if (photoPath != null && photoPath.trim().isNotEmpty) {
+      final cleanPath = photoPath.trim();
+
+      // 1. Local File
+      if (!cleanPath.contains('_selected') && File(cleanPath).existsSync()) {
         return Image.file(
-          File(photoPath),
-          width: 56,
-          height: 56,
+          File(cleanPath),
+          width: 52,
+          height: 52,
           fit: BoxFit.cover,
         );
-      } else {
+      }
+
+      // 2. Base64 Image
+      if (cleanPath.startsWith('data:image') ||
+          (cleanPath.length > 50 && !cleanPath.startsWith('http') && !cleanPath.startsWith('/'))) {
+        try {
+          final cleanBase64 = cleanPath.contains(',') ? cleanPath.split(',').last : cleanPath;
+          final bytes = base64Decode(cleanBase64);
+          return Image.memory(
+            bytes,
+            width: 52,
+            height: 52,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(businessName),
+          );
+        } catch (_) {}
+      }
+
+      // 3. Network URL
+      if (cleanPath.startsWith('http://') || cleanPath.startsWith('https://')) {
         return Image.network(
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-          width: 56,
-          height: 56,
+          cleanPath,
+          width: 52,
+          height: 52,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            color: const Color(0xFFF1F5F9),
-            child: Center(
-              child: Text(
-                typedName.isNotEmpty ? typedName[0].toUpperCase() : 'T',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF00C2FF),
-                ),
-              ),
-            ),
-          ),
+          errorBuilder: (context, error, stackTrace) => _buildFallbackAvatar(businessName),
         );
       }
     }
 
-    return Container(
-      color: const Color(0xFFF1F5F9),
-      child: Center(
-        child: Text(
-          typedName.isNotEmpty ? typedName[0].toUpperCase() : 'T',
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF00C2FF),
+    // Default Fallback Photo / Avatar
+    return _buildFallbackAvatar(businessName);
+  }
+
+  Widget _buildFallbackAvatar(String name) {
+    return Image.network(
+      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
+      width: 52,
+      height: 52,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        final initial = name.trim().isNotEmpty ? name.trim()[0].toUpperCase() : 'S';
+        return Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF93C5FD), Color(0xFF3B82F6)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
-        ),
-      ),
+          child: Center(
+            child: Text(
+              initial,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -98,45 +134,32 @@ class _ConfirmBusinessNameScreenState extends State<ConfirmBusinessNameScreen> {
     });
 
     try {
-      // Save updated business name to database & persistent local storage
-      final success = await db.updateBusinessName(newName);
+      // 1. Update DatabaseService & local state
+      await db.updateBusinessName(newName);
+
+      // 2. Update backend profile if user is authenticated
+      try {
+        final user = db.currentUser;
+        if (user != null) {
+          await OnboardingService().saveProfile(
+            name: user.name.isNotEmpty ? user.name : 'Business Owner',
+            phone: user.phone ?? '',
+            companyName: newName,
+            profileImage: user.profilePhotoPath,
+          );
+        }
+      } catch (_) {}
+
+      // 3. Save progress to next onboarding step (Step 3: Business Details)
+      await db.saveOnboardingProgress(route: 'business_details', step: 3);
 
       if (!mounted) return;
 
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF0F172A),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'Business name updated to "$newName" successfully!',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-
-        // Open Business Details Screen (Country, Phone, Currency, Timezone)
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const BusinessDetailsScreen()),
-        );
-      } else {
-        setState(() => _errorMessage = 'Failed to update business name.');
-      }
+      // 4. Navigate forward to BusinessDetailsScreen
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const BusinessDetailsScreen()),
+      );
     } catch (e) {
       setState(() => _errorMessage = 'Error saving business name: $e');
     } finally {
@@ -147,448 +170,552 @@ class _ConfirmBusinessNameScreenState extends State<ConfirmBusinessNameScreen> {
   @override
   Widget build(BuildContext context) {
     final currentTypedName = _businessNameController.text.trim().isEmpty
-        ? 'Tea Coffee'
+        ? 'The Sky High'
         : _businessNameController.text.trim();
 
-    final userPhotoPath = db.currentUser?.profilePhotoPath;
+    final userPhotoPath = db.companyLogoPath ?? db.currentUser?.profilePhotoPath;
+
+    final dynamicUserName = (db.currentUser?.name != null && db.currentUser!.name.trim().isNotEmpty)
+        ? db.currentUser!.name.trim()
+        : 'Rohit Sharma';
 
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient matching Auth & Profile Screens
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF), // Logo Electric Blue Ambient Glow
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy
+              _buildTopHeader(),
 
-          // 2. Decorative Glass Background Orbs / Ambient Glow Shapes
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 240,
-              height: 240,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 160,
-            left: -80,
-            child: Container(
-              width: 260,
-              height: 260,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF4F46E5).withOpacity(0.2),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF4F46E5).withOpacity(0.2),
-                    blurRadius: 90,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Layout Content
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header Section on Dark Theme
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Circular Glass Back Button
-                      InkWell(
-                        onTap: () => Navigator.pop(context),
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // Screen Header Title
-                      const Text(
-                        'Add your company name',
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.4,
-                        ),
-                      ),
-
-                      const SizedBox(height: 4),
-
-                      const Text(
-                        'Confirm or update your business name for Apna POS profile',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Color(0xFF94A3B8),
-                        ),
+              // 2. Curved White Neumorphic Body with Sticky Next Button
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x25001C55),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. White Bottom Curved Card Container matching Auth Theme
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(32),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 30,
-                          offset: Offset(0, -10),
-                        ),
-                      ],
-                    ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
                     child: Column(
                       children: [
+                        // Scrollable Content
                         Expanded(
                           child: SingleChildScrollView(
                             physics: const BouncingScrollPhysics(),
-                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+                            padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Error Banner
-                                if (_errorMessage != null) ...[
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFFFEF2F2),
-                                      borderRadius: BorderRadius.circular(14),
-                                      border: Border.all(color: const Color(0xFFFCA5A5)),
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        const Icon(Icons.error_outline_rounded,
-                                            color: Color(0xFFEF4444), size: 18),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            _errorMessage!,
-                                            style: const TextStyle(
-                                              color: Color(0xFFB91C1C),
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                ],
-
-                                // 1. Company Name Field Label
-                                const Text(
-                                  'Company Name',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: Color(0xFF334155),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 6),
-
-                                // Semi-Circle Pill Box Field matching Auth Theme
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Error Banner if validation fails
+                              if (_errorMessage != null) ...[
                                 Container(
-                                  height: 52,
-                                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                  margin: const EdgeInsets.only(bottom: 14),
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(26), // Stadium Semi-Circle Pill Shape
-                                    border: Border.all(
-                                      color: const Color(0xFF00C2FF), // Highlighted Cyan border
-                                      width: 1.5,
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x1400C2FF),
-                                        blurRadius: 10,
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ],
+                                    color: const Color(0xFFFEF2F2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(color: const Color(0xFFFCA5A5)),
                                   ),
                                   child: Row(
                                     children: [
-                                      const Icon(
-                                        Icons.storefront_rounded,
-                                        color: GlassTheme.primaryBlue,
-                                        size: 20,
-                                      ),
-                                      const SizedBox(width: 10),
+                                      const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 18),
+                                      const SizedBox(width: 8),
                                       Expanded(
-                                        child: TextField(
-                                          controller: _businessNameController,
+                                        child: Text(
+                                          _errorMessage!,
                                           style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF0F172A),
+                                            color: Color(0xFFB91C1C),
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
                                           ),
-                                          decoration: const InputDecoration(
-                                            hintText: 'Enter company name',
-                                            hintStyle: TextStyle(
-                                              fontSize: 13,
-                                              fontWeight: FontWeight.w400,
-                                              color: Color(0xFFCBD5E1),
-                                            ),
-                                            border: InputBorder.none,
-                                            isDense: true,
-                                            contentPadding: EdgeInsets.zero,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-
-                                const SizedBox(height: 6),
-
-                                const Text(
-                                  'you can change your company name anytime',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: Color(0xFF94A3B8),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 28),
-
-                                // 2. Select Profile Card Section
-                                const Text(
-                                  'Select Profile Card',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF0F172A),
-                                    letterSpacing: -0.3,
-                                  ),
-                                ),
-
-                                const SizedBox(height: 2),
-
-                                const Text(
-                                  'Select profile card for your business',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w400,
-                                    color: Color(0xFF64748B),
-                                  ),
-                                ),
-
-                                const SizedBox(height: 16),
-
-                                // Profile Card Container (Dynamically updating with typed business name!)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFAFAFC),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: const Color(0xFF00C2FF), // Selected Cyan Border
-                                      width: 2,
-                                    ),
-                                    boxShadow: const [
-                                      BoxShadow(
-                                        color: Color(0x1400C2FF),
-                                        blurRadius: 14,
-                                        offset: Offset(0, 4),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      // Circular Avatar Photo / Logo
-                                      Container(
-                                        width: 56,
-                                        height: 56,
-                                        decoration: BoxDecoration(
-                                          shape: BoxShape.circle,
-                                          color: Colors.white,
-                                          border: Border.all(
-                                            color: const Color(0xFF00C2FF),
-                                            width: 2,
-                                          ),
-                                        ),
-                                        child: ClipOval(
-                                          child: _buildProfileCardAvatar(userPhotoPath, currentTypedName),
-                                        ),
-                                      ),
-
-                                      const SizedBox(width: 14),
-
-                                      // Dynamic Business Details
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              currentTypedName,
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w800,
-                                                color: Color(0xFF0F172A),
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              currentTypedName,
-                                              style: const TextStyle(
-                                                fontSize: 13,
-                                                fontWeight: FontWeight.w500,
-                                                color: Color(0xFF475569),
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              (db.currentUser?.name != null && db.currentUser!.name.isNotEmpty)
-                                                  ? db.currentUser!.name
-                                                  : 'Chandan Yaduvanshi',
-                                              style: const TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: Color(0xFF64748B),
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-
-                                      // Green Checkmark Badge
-                                      Container(
-                                        padding: const EdgeInsets.all(5),
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFF10B981), // Emerald Green
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.check_rounded,
-                                          color: Colors.white,
-                                          size: 16,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                               ],
-                            ),
-                          ),
-                        ),
 
-                        // 5. Primary Bottom Action Button ("Next")
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-                          child: Container(
-                            width: double.infinity,
-                            height: 52,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(26),
-                              gradient: GlassTheme.primaryButtonGradient,
-                              boxShadow: const [
-                                BoxShadow(
-                                  color: Color(0x3300C2FF),
-                                  blurRadius: 14,
-                                  offset: Offset(0, 6),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveAndNext,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(26),
+                              // SECTION 1: Company Name Text Header (Icon Removed)
+                              const Text(
+                                'Company Name',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.2,
                                 ),
                               ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Enter or update your business name',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+
+                              const SizedBox(height: 12),
+
+                              // Compact Neumorphic Input Box
+                              Container(
+                                height: 52,
+                                padding: const EdgeInsets.symmetric(horizontal: 12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF6F9FD),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: Colors.white, width: 1.5),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x0A002870),
+                                      blurRadius: 8,
+                                      offset: Offset(2, 3),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 6,
+                                      offset: Offset(-2, -2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Embossed Storefront Icon Container
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
                                         color: Colors.white,
-                                        strokeWidth: 2.5,
+                                        borderRadius: BorderRadius.circular(10),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: const Color(0x0A002870),
+                                            blurRadius: 4,
+                                            offset: const Offset(1, 2),
+                                          ),
+                                        ],
                                       ),
-                                    )
-                                  : const Text(
-                                      'Next',
-                                      style: TextStyle(
-                                        fontSize: 17,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white,
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.storefront_rounded,
+                                          color: Color(0xFF0A2560),
+                                          size: 19,
+                                        ),
                                       ),
                                     ),
-                            ),
+
+                                    const SizedBox(width: 12),
+
+                                    // Editable Company Name TextField
+                                    Expanded(
+                                      child: TextField(
+                                        controller: _businessNameController,
+                                        style: const TextStyle(
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                        decoration: const InputDecoration(
+                                          hintText: 'Enter company name',
+                                          hintStyle: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: Color(0xFF94A3B8),
+                                          ),
+                                          border: InputBorder.none,
+                                          isDense: true,
+                                          contentPadding: EdgeInsets.zero,
+                                        ),
+                                      ),
+                                    ),
+
+                                    // Clear (x) Button
+                                    if (_businessNameController.text.isNotEmpty)
+                                      GestureDetector(
+                                        onTap: () {
+                                          _businessNameController.clear();
+                                          setState(() {});
+                                        },
+                                        child: Container(
+                                          width: 22,
+                                          height: 22,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Color(0xFF94A3B8),
+                                          ),
+                                          child: const Center(
+                                            child: Icon(
+                                              Icons.close_rounded,
+                                              color: Colors.white,
+                                              size: 13,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+
+                              const SizedBox(height: 8),
+
+                              // Helper Text Row with (i) Info icon
+                              Row(
+                                children: const [
+                                  Icon(
+                                    Icons.info_outline_rounded,
+                                    color: Color(0xFF94A3B8),
+                                    size: 14,
+                                  ),
+                                  SizedBox(width: 5),
+                                  Text(
+                                    'You can change your company name anytime',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w400,
+                                      color: Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+
+                              const SizedBox(height: 24),
+
+                              // SECTION 2: Select Profile Card Text Header
+                              const Text(
+                                'Select Profile Card',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0F172A),
+                                  letterSpacing: -0.2,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              const Text(
+                                'Select profile card for your business',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+
+                              const SizedBox(height: 14),
+
+                              // Compact Selected Profile Card Container
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF7FAFF),
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: const Color(0xFF38BDF8),
+                                    width: 1.5,
+                                  ),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0x0C002870),
+                                      blurRadius: 10,
+                                      offset: Offset(2, 3),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 6,
+                                      offset: Offset(-2, -2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  children: [
+                                    // Dynamic Circular Avatar
+                                    Container(
+                                      width: 52,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: const LinearGradient(
+                                          colors: [Color(0xFF93C5FD), Color(0xFF3B82F6)],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x180066FF),
+                                            blurRadius: 6,
+                                            offset: Offset(0, 3),
+                                          ),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child: _buildDynamicAvatar(userPhotoPath, currentTypedName),
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 12),
+
+                                    // Details Column
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            currentTypedName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            currentTypedName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            dynamicUserName,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w500,
+                                              color: Color(0xFF94A3B8),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+
+                                    const SizedBox(width: 8),
+
+                                    // Compact Neumorphic Checkbox Container with Dark Navy Checkmark
+                                    Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFFF1F5F9),
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Color(0x0C002870),
+                                            blurRadius: 4,
+                                            offset: Offset(1, 2),
+                                          ),
+                                          BoxShadow(
+                                            color: Colors.white,
+                                            blurRadius: 4,
+                                            offset: Offset(-1, -1),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Center(
+                                        child: Container(
+                                          width: 26,
+                                          height: 26,
+                                          decoration: const BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: Color(0xFF0A2560),
+                                          ),
+                                          child: const Center(
+                                            child: Icon(
+                                              Icons.check_rounded,
+                                              color: Colors.white,
+                                              size: 15,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
+
+                      // Sticky Bottom Action Button ("Next" - Pinned at the bottom of the white card)
+                      _buildStickyBottomBar(),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+  // Top Midnight Navy Header with Compact Detailing
+  Widget _buildTopHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Color(0xFF021B54),
+            Color(0xFF03266B),
+            Color(0xFF021B54),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 10, 18, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Neumorphic Frosted Circular Back Button on top left
+              InkWell(
+                onTap: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.88),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.2),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chevron_left_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Title
+              const Text(
+                'Add your company name',
+                style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  height: 1.15,
+                  letterSpacing: -0.4,
+                ),
+              ),
+
+              const SizedBox(height: 6),
+
+              // Subtitle
+              const Text(
+                'Confirm or update your business name for\nApna POS profile',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  color: Color(0xFF94A3B8),
+                  height: 1.3,
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Pure Centered "Next" Button (Arrow Removed, White Card Integrated)
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 18),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x30021B54),
+                blurRadius: 12,
+                offset: Offset(0, 6),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSaveAndNext,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.2,
+                    ),
+                  )
+                : const Center(
+                    child: Text(
+                      'Next',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                  ),
+          ),
+        ),
       ),
     );
   }

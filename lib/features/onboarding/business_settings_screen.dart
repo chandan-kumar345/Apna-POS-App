@@ -1,12 +1,7 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../../core/theme/glass_theme.dart';
 import '../../core/database/database_service.dart';
-import '../../core/models/restaurant_model.dart';
-import '../../core/widgets/glass_company_name_badge.dart';
 import '../dashboard/main_layout.dart';
 import '../../core/services/onboarding_service.dart';
-
 
 class BusinessSettingsScreen extends StatefulWidget {
   final bool isFromOnboarding;
@@ -39,10 +34,10 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
   late TextEditingController _tableCountController;
   int _tableCount = 12;
 
-  // 5. Merchant UPI ID Controller
+  // 5. Merchant UPI ID Controller (NOT prefilled)
   late TextEditingController _upiIdController;
 
-  final List<double> _standardGstOptions = [5.0, 12.0, 18.0, 28.0];
+  final List<double> _standardGstOptions = [0.0, 5.0, 12.0, 18.0, 28.0];
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -50,6 +45,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    db.saveOnboardingProgress(route: 'business_settings', step: 7);
     final rest = db.restaurant;
 
     if (rest != null) {
@@ -64,10 +60,12 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       }
       _restaurantType = rest.restaurantType.isNotEmpty ? rest.restaurantType : 'Both';
       _tableCount = rest.tableCount > 0 ? rest.tableCount : 12;
-      _upiIdController = TextEditingController(text: rest.upiId.isNotEmpty ? rest.upiId : 'apnapos@upi');
+      _upiIdController = TextEditingController(
+        text: (rest.upiId.isNotEmpty && !rest.upiId.toLowerCase().contains('apnapos')) ? rest.upiId : '',
+      );
     } else {
       _gstNumberController = TextEditingController();
-      _upiIdController = TextEditingController(text: 'apnapos@upi');
+      _upiIdController = TextEditingController();
     }
 
     _tableCountController = TextEditingController(text: '$_tableCount');
@@ -81,7 +79,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
     super.dispose();
   }
 
-  /// Popup dialog with background blur effect for entering a custom GST %
+  /// Neumorphic dialog for entering a custom GST %
   void _showCustomGstDialog() {
     final controller = TextEditingController(
       text: _isCustomGstSelected ? '$_gstPercentage' : '',
@@ -93,134 +91,158 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         return Dialog(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 24),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF0F172A).withOpacity(0.88),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(
-                    color: Colors.white.withOpacity(0.25),
-                    width: 1.2,
-                  ),
-                  boxShadow: const [
-                    BoxShadow(
-                      color: Colors.black45,
-                      blurRadius: 30,
-                      offset: Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF00C2FF).withOpacity(0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.percent_rounded,
-                            color: Color(0xFF00C2FF),
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        const Text(
-                          'Enter Custom GST %',
-                          style: TextStyle(
-                            fontSize: 16.5,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 14),
-                    TextField(
-                      controller: controller,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      autofocus: true,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'e.g. 18.0',
-                        hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
-                        suffixText: '% GST',
-                        suffixStyle: const TextStyle(
-                          color: Color(0xFF00C2FF),
-                          fontWeight: FontWeight.bold,
-                        ),
-                        filled: true,
-                        fillColor: Colors.white.withOpacity(0.1),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 1.8),
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context),
-                          child: Text(
-                            'Cancel',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.7),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        ElevatedButton(
-                          onPressed: () {
-                            final val = double.tryParse(controller.text.trim());
-                            if (val != null && val >= 0) {
-                              setState(() {
-                                _gstPercentage = val;
-                                _isCustomGstSelected = true;
-                              });
-                              Navigator.pop(context);
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00C2FF),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
-                          ),
-                          child: const Text(
-                            'Apply',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4F8),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(
+                color: const Color(0xFFDEE7F6),
+                width: 1.5,
               ),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x35001C55),
+                  blurRadius: 28,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(7),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEEF5FD),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFDEE9F7), width: 1),
+                      ),
+                      child: const Icon(
+                        Icons.percent_rounded,
+                        color: Color(0xFF0066FF),
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 9),
+                    const Text(
+                      'Enter Custom GST %',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5EDF6),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.white, width: 1.5),
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x14002870),
+                        blurRadius: 4,
+                        offset: Offset(1, 2),
+                      ),
+                      BoxShadow(
+                        color: Colors.white,
+                        blurRadius: 3,
+                        offset: Offset(-1, -1),
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: controller,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    autofocus: true,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0F172A),
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. 18.0',
+                      hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                      suffixText: '% GST',
+                      suffixStyle: TextStyle(
+                        color: Color(0xFF0066FF),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12.5,
+                      ),
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text(
+                        'Cancel',
+                        style: TextStyle(
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0066FF), Color(0xFF0052CC)],
+                        ),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Color(0x250066FF),
+                            blurRadius: 6,
+                            offset: Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final val = double.tryParse(controller.text.trim());
+                          if (val != null && val >= 0) {
+                            setState(() {
+                              _gstPercentage = val;
+                              _isCustomGstSelected = true;
+                            });
+                            Navigator.pop(context);
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                        child: const Text(
+                          'Apply',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         );
@@ -254,6 +276,8 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
           ? 'pure_veg'
           : (_restaurantType.toLowerCase() == 'non-veg' ? 'non_veg' : 'both');
 
+      final upiText = _upiIdController.text.trim();
+
       await OnboardingService().saveOrderSettings(
         services: {
           'dineIn': _selectedServices.contains('Dine In'),
@@ -266,10 +290,10 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
         restaurantType: restType,
         paymentMethods: {
           'cash': true,
-          'upi': _upiIdController.text.trim().isNotEmpty,
+          'upi': upiText.isNotEmpty,
           'card': false,
         },
-        upiId: _upiIdController.text.trim().isEmpty ? 'apnapos@upi' : _upiIdController.text.trim(),
+        upiId: upiText,
         tableCount: _selectedServices.contains('Dine In') ? _tableCount : 0,
       );
 
@@ -279,6 +303,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       if (widget.isFromOnboarding) {
         // Trigger backend onboarding verification
         await OnboardingService().completeOnboarding();
+        await db.saveOnboardingProgress(route: 'completed', step: 8);
       }
 
       if (!mounted) return;
@@ -286,12 +311,12 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       if (widget.isFromOnboarding) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            backgroundColor: const Color(0xFF0F172A),
+            backgroundColor: const Color(0xFF021B54),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             content: const Row(
               children: [
-                Icon(Icons.check_circle_rounded, color: Color(0xFF00C2FF), size: 20),
+                Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 20),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -349,810 +374,376 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
+    final dynamicCompanyName = db.restaurant?.name ??
+        db.currentUser?.companyName ??
+        'Delhi Chai Cafe';
+
     return Scaffold(
-      body: Stack(
-        children: [
-          // 1. Deep Midnight Background Gradient with Glass Ambient Glows
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: RadialGradient(
-                  center: Alignment(0.0, -0.4),
-                  radius: 1.25,
-                  colors: [
-                    Color(0x550052FF),
-                    Color(0xFF071126),
-                    Color(0xFF03060F),
-                  ],
-                  stops: [0.0, 0.6, 1.0],
-                ),
-              ),
-            ),
-          ),
+      resizeToAvoidBottomInset: false,
+      backgroundColor: const Color(0xFF021B54),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: Column(
+            children: [
+              // 1. Top Header on Midnight Navy (No Icon on Badge)
+              _buildTopHeader(dynamicCompanyName),
 
-          // 2. Glassmorphism Ambient Glow Orbs
-          Positioned(
-            top: -60,
-            right: -60,
-            child: Container(
-              width: 220,
-              height: 220,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: const Color(0xFF00C2FF).withOpacity(0.18),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.18),
-                    blurRadius: 80,
-                    spreadRadius: 20,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 3. Main Screen Layout (Responsive & Compact)
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Top Header: Back Button & Highlighted Glass Company Name Badge
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-                  child: Row(
-                    children: [
-                      InkWell(
-                        onTap: () {
-                          if (Navigator.canPop(context)) {
-                            Navigator.pop(context);
-                          } else {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(builder: (_) => const MainLayout()),
-                            );
-                          }
-                        },
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 38,
-                          height: 38,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: Colors.white.withOpacity(0.12),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.2),
-                              width: 1,
-                            ),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: GlassCompanyNameBadge(
-                            name: db.restaurant?.name ?? db.currentUser?.companyName ?? 'Tea Coffee',
-                          ),
-                        ),
+              // 2. Curved Soft Neumorphic Body Sheet with Sticky Save Button (Wider Big Boxes)
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF0F4F8),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x30001C55),
+                        blurRadius: 18,
+                        offset: Offset(0, -4),
                       ),
                     ],
                   ),
-                ),
-
-                // 4. Curved White Container Layout
-                Expanded(
-                  child: Container(
-                    width: double.infinity,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(28),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black45,
-                          blurRadius: 24,
-                          offset: Offset(0, -8),
-                        ),
-                      ],
-                    ),
-                    child: Align(
-                      alignment: Alignment.topCenter,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 800),
-                        child: Column(
-                          children: [
-                            Expanded(
-                              child: SingleChildScrollView(
-                                physics: const BouncingScrollPhysics(),
-                                padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                     // Error Banner
-                                     if (_errorMessage != null) ...[
-                                   Container(
-                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                     decoration: BoxDecoration(
-                                       color: const Color(0xFFFEE2E2),
-                                       borderRadius: BorderRadius.circular(12),
-                                       border: Border.all(color: const Color(0xFFEF4444), width: 1.5),
-                                       boxShadow: const [BoxShadow(color: Color(0x1AEF4444), blurRadius: 6, offset: Offset(0, 2))],
-                                     ),
-                                     child: Row(
-                                       children: [
-                                         const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 20),
-                                         const SizedBox(width: 10),
-                                         Expanded(
-                                           child: Text(
-                                             _errorMessage!,
-                                             style: const TextStyle(
-                                               color: Color(0xFF991B1B),
-                                               fontSize: 13,
-                                               fontWeight: FontWeight.w800,
-                                             ),
-                                           ),
-                                         ),
-                                         IconButton(
-                                           icon: const Icon(Icons.close_rounded, color: Color(0xFF991B1B), size: 18),
-                                           onPressed: () => setState(() => _errorMessage = null),
-                                           constraints: const BoxConstraints(),
-                                           padding: EdgeInsets.zero,
-                                         ),
-                                       ],
-                                     ),
-                                   ),
-                                   const SizedBox(height: 14),
-                                 ],
-
-                                 // Screen Header Title
-                                 Row(
-                                   children: [
-                                     Container(
-                                       padding: const EdgeInsets.all(8),
-                                       decoration: BoxDecoration(
-                                         color: const Color(0xFF00C2FF).withOpacity(0.15),
-                                         shape: BoxShape.circle,
-                                       ),
-                                       child: const Icon(Icons.shopping_cart_checkout_rounded, color: Color(0xFF00C2FF), size: 22),
-                                     ),
-                                     const SizedBox(width: 10),
-                                     const Column(
-                                       crossAxisAlignment: CrossAxisAlignment.start,
-                                       children: [
-                                         Text(
-                                           'Order Setting',
-                                           style: TextStyle(
-                                             fontSize: 15,
-                                             fontWeight: FontWeight.w900,
-                                             color: Color(0xFF0F172A),
-                                             letterSpacing: -0.3,
-                                           ),
-                                         ),
-                                        //  Text(
-                                        //    'Configure services, GST rules, billing type & dining tables',
-                                        //    style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                        //  ),
-                                       ],
-                                     ),
-                                   ],
-                                 ),
-                                 const SizedBox(height: 5),
-                                 const Divider(color: Color(0xFFE2E8F0)),
-                                 const SizedBox(height: 14),
-
-                                  // SECTION 1: Select Your Services (Multi Select)
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                      boxShadow: const [
-                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
-                                              child: const Icon(Icons.room_service_rounded, color: Colors.white, size: 16),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            const Expanded(
-                                              child: Text(
-                                                'Select Your Services',
-                                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          'Choose order channels available in your restaurant',
-                                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: _buildServiceChip(
-                                                title: 'Dine In',
-                                                icon: Icons.restaurant_rounded,
-                                                isSelected: _selectedServices.contains('Dine In'),
-                                                onTap: () {
-                                                  setState(() {
-                                                    if (_selectedServices.contains('Dine In')) {
-                                                      if (_selectedServices.length > 1) {
-                                                        _selectedServices.remove('Dine In');
-                                                      }
-                                                    } else {
-                                                      _selectedServices.add('Dine In');
-                                                    }
-                                                  });
-                                                },
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: _buildServiceChip(
-                                                title: 'Takeaway',
-                                                icon: Icons.takeout_dining_rounded,
-                                                isSelected: _selectedServices.contains('Takeaway'),
-                                                onTap: () {
-                                                  setState(() {
-                                                    if (_selectedServices.contains('Takeaway')) {
-                                                      if (_selectedServices.length > 1) {
-                                                        _selectedServices.remove('Takeaway');
-                                                      }
-                                                    } else {
-                                                      _selectedServices.add('Takeaway');
-                                                    }
-                                                  });
-                                                },
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: _buildServiceChip(
-                                                title: 'Delivery',
-                                                icon: Icons.two_wheeler_rounded,
-                                                isSelected: _selectedServices.contains('Delivery'),
-                                                onTap: () {
-                                                  setState(() {
-                                                    if (_selectedServices.contains('Delivery')) {
-                                                      if (_selectedServices.length > 1) {
-                                                        _selectedServices.remove('Delivery');
-                                                      }
-                                                    } else {
-                                                      _selectedServices.add('Delivery');
-                                                    }
-                                                  });
-                                                },
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 14),
-
-                                  // SECTION 2: Billing Type & GST Setup
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                      boxShadow: const [
-                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
-                                              child: const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 16),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            const Text(
-                                              'Billing Type & GST',
-                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Container(
-                                          padding: const EdgeInsets.all(3),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(14),
-                                          ),
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: InkWell(
-                                                  onTap: () => setState(() => _billingType = 'GST'),
-                                                  borderRadius: BorderRadius.circular(11),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                                    decoration: BoxDecoration(
-                                                      color: _billingType == 'GST' ? const Color(0xFF00C2FF) : Colors.transparent,
-                                                      borderRadius: BorderRadius.circular(11),
-                                                      boxShadow: _billingType == 'GST'
-                                                          ? [
-                                                              BoxShadow(
-                                                                color: const Color(0xFF00C2FF).withOpacity(0.3),
-                                                                blurRadius: 6,
-                                                                offset: const Offset(0, 2),
-                                                              )
-                                                            ]
-                                                          : [],
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                      children: [
-                                                        Icon(
-                                                          _billingType == 'GST' ? Icons.check_circle_rounded : Icons.receipt_long_rounded,
-                                                          size: 16,
-                                                          color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
-                                                        ),
-                                                        const SizedBox(width: 5),
-                                                        Text(
-                                                          _billingType == 'GST' ? 'GST Billing ✅' : 'GST Billing',
-                                                          style: TextStyle(
-                                                            fontSize: 13,
-                                                            fontWeight: FontWeight.w700,
-                                                            color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                              Expanded(
-                                                child: InkWell(
-                                                  onTap: () => setState(() => _billingType = 'Non-GST'),
-                                                  borderRadius: BorderRadius.circular(11),
-                                                  child: Container(
-                                                    padding: const EdgeInsets.symmetric(vertical: 10),
-                                                    decoration: BoxDecoration(
-                                                      color: _billingType == 'Non-GST' ? const Color(0xFF0F172A) : Colors.transparent,
-                                                      borderRadius: BorderRadius.circular(11),
-                                                      boxShadow: _billingType == 'Non-GST'
-                                                          ? [
-                                                              BoxShadow(
-                                                                color: const Color(0xFF0F172A).withOpacity(0.3),
-                                                                blurRadius: 6,
-                                                                offset: const Offset(0, 2),
-                                                              )
-                                                            ]
-                                                          : [],
-                                                    ),
-                                                    child: Row(
-                                                      mainAxisAlignment: MainAxisAlignment.center,
-                                                      children: [
-                                                        Icon(
-                                                          _billingType == 'Non-GST' ? Icons.check_circle_rounded : Icons.description_outlined,
-                                                          size: 16,
-                                                          color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
-                                                        ),
-                                                        const SizedBox(width: 5),
-                                                        Text(
-                                                          _billingType == 'Non-GST' ? 'Non-GST Billing ✅' : 'Non-GST Billing',
-                                                          style: TextStyle(
-                                                            fontSize: 13,
-                                                            fontWeight: FontWeight.w700,
-                                                            color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
-                                                          ),
-                                                        ),
-                                                      ],
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                        if (_billingType == 'GST') ...[
-                                          const SizedBox(height: 14),
-                                          const Text(
-                                            'GSTIN Number *',
-                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
-                                          ),
-                                          const SizedBox(height: 6),
-                                          TextField(
-                                            controller: _gstNumberController,
-                                            textCapitalization: TextCapitalization.characters,
-                                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A), letterSpacing: 1),
-                                            decoration: InputDecoration(
-                                              hintText: 'e.g. 07AAAAA0000A1Z5',
-                                              hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
-                                              prefixIcon: const Icon(Icons.verified_user_rounded, color: Color(0xFF00C2FF)),
-                                              filled: true,
-                                              fillColor: Colors.white,
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(14),
-                                                borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
-                                              ),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(14),
-                                                borderSide: const BorderSide(color: Color(0xFF64748B), width: 1.5),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(14),
-                                                borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 2.0),
-                                              ),
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                                            ),
-                                          ),
-                                          const SizedBox(height: 14),
-                                          const Text(
-                                            'GST Tax Percentage *',
-                                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
-                                          ),
-                                          const SizedBox(height: 8),
-                                          SingleChildScrollView(
-                                            scrollDirection: Axis.horizontal,
-                                            physics: const BouncingScrollPhysics(),
-                                            child: Row(
-                                              children: [
-                                                ..._standardGstOptions.map((rate) {
-                                                  final isSelected = !_isCustomGstSelected && _gstPercentage == rate;
-                                                  return Padding(
-                                                    padding: const EdgeInsets.only(right: 8),
-                                                    child: ChoiceChip(
-                                                      avatar: isSelected ? const Icon(Icons.check_circle_rounded, color: Colors.white, size: 16) : null,
-                                                      label: Text('${rate.toInt()}% GST'),
-                                                      selected: isSelected,
-                                                      selectedColor: const Color(0xFF10B981),
-                                                      backgroundColor: const Color(0xFFF1F5F9),
-                                                      labelStyle: TextStyle(
-                                                        color: isSelected ? Colors.white : const Color(0xFF334155),
-                                                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                                      ),
-                                                      onSelected: (selected) {
-                                                        if (selected) {
-                                                          setState(() {
-                                                            _isCustomGstSelected = false;
-                                                            _gstPercentage = rate;
-                                                          });
-                                                        }
-                                                      },
-                                                    ),
-                                                  );
-                                                }),
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 14),
-
-                                  // SECTION 3: Dietary & Restaurant Type
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                      boxShadow: const [
-                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
-                                              child: const Icon(Icons.restaurant_menu_rounded, color: Colors.white, size: 16),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            const Text(
-                                              'Restaurant Type',
-                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 12),
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: _buildTypeOptionCard(
-                                                title: 'Pure Veg',
-                                                emoji: '🌱',
-                                                color: const Color(0xFF10B981),
-                                                isSelected: _restaurantType == 'Veg',
-                                                onTap: () => setState(() => _restaurantType = 'Veg'),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: _buildTypeOptionCard(
-                                                title: 'Non-Veg',
-                                                emoji: '🍗',
-                                                color: const Color(0xFFEF4444),
-                                                isSelected: _restaurantType == 'Non-Veg',
-                                                onTap: () => setState(() => _restaurantType = 'Non-Veg'),
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: _buildTypeOptionCard(
-                                                title: 'Both',
-                                                emoji: '🥗',
-                                                color: const Color(0xFF0052FF),
-                                                isSelected: _restaurantType == 'Both',
-                                                onTap: () => setState(() => _restaurantType = 'Both'),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  const SizedBox(height: 14),
-
-                                  // SECTION 4: Payment Methods Configuration
-                                  Container(
-                                    padding: const EdgeInsets.all(16),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(16),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
-                                      boxShadow: const [
-                                        BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
-                                      ],
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Row(
-                                          children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
-                                              child: const Icon(Icons.payment_rounded, color: Colors.white, size: 16),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            const Text(
-                                              'Payment Methods',
-                                              style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 4),
-                                        const Text(
-                                          'Add your Merchant UPI VPA ID to receive instant customer payments',
-                                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
-                                        ),
-                                        const SizedBox(height: 12),
-                                        TextField(
-                                          controller: _upiIdController,
-                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
-                                          decoration: InputDecoration(
-                                            labelText: 'Merchant UPI VPA ID',
-                                            labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 12, fontWeight: FontWeight.bold),
-                                            hintText: 'e.g. merchant@okicici, 9876543210@paytm',
-                                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
-                                            prefixIcon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF00C2FF)),
-                                            filled: true,
-                                            fillColor: const Color(0xFFF1F5F9),
-                                            isDense: true,
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-                                            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF00C2FF), width: 1.5)),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-
-                                  // SECTION 5: Tables Configuration (If Dine-In)
-                                  if (_selectedServices.contains('Dine In')) ...[
-                                    const SizedBox(height: 14),
-                                    Container(
-                                      padding: const EdgeInsets.all(16),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white,
-                                        borderRadius: BorderRadius.circular(16),
-                                        border: Border.all(color: const Color(0xFFE2E8F0)),
-                                        boxShadow: const [
-                                          BoxShadow(color: Color(0x06000000), blurRadius: 10, offset: Offset(0, 3)),
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Row(
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(6),
-                                                decoration: const BoxDecoration(color: Color(0xFF051C48), shape: BoxShape.circle),
-                                                child: const Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 16),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              const Text(
-                                                'Number of Tables',
-                                                style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 12),
-                                          Row(
-                                            children: [
-                                              Container(
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFF1F5F9),
-                                                  borderRadius: BorderRadius.circular(14),
-                                                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                                                ),
-                                                child: Row(
-                                                  children: [
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        if (_tableCount > 1) {
-                                                          setState(() {
-                                                            _tableCount--;
-                                                            _tableCountController.text = '$_tableCount';
-                                                          });
-                                                        }
-                                                      },
-                                                      icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF0F172A)),
-                                                    ),
-                                                    SizedBox(
-                                                      width: 50,
-                                                      child: TextField(
-                                                        controller: _tableCountController,
-                                                        keyboardType: TextInputType.number,
-                                                        textAlign: TextAlign.center,
-                                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                                        decoration: const InputDecoration(border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                                                        onChanged: (val) {
-                                                          final num = int.tryParse(val);
-                                                          if (num != null && num > 0) {
-                                                            setState(() => _tableCount = num);
-                                                          }
-                                                        },
-                                                      ),
-                                                    ),
-                                                    IconButton(
-                                                      onPressed: () {
-                                                        setState(() {
-                                                          _tableCount++;
-                                                          _tableCountController.text = '$_tableCount';
-                                                        });
-                                                      },
-                                                      icon: const Icon(Icons.add_circle_outline, color: Color(0xFF0F172A)),
-                                                    ),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(width: 14),
-                                              Expanded(
-                                                child: Text(
-                                                  '$_tableCount Dining Tables',
-                                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                              ],
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+                    child: Column(
+                      children: [
+                        // Scrollable Content (Glitch-Free with Keyboard Inset Padding)
+                        Expanded(
+                          child: SingleChildScrollView(
+                            physics: const BouncingScrollPhysics(),
+                            padding: EdgeInsets.fromLTRB(
+                              14,
+                              16,
+                              14,
+                              16 + MediaQuery.of(context).viewInsets.bottom,
                             ),
-                          ),
-                        ),
-
-                        // 5. Primary Action Button (Save & Launch POS vs Save Settings)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                          child: Container(
-                            width: double.infinity,
-                            height: 48,
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(24),
-                              gradient: widget.isFromOnboarding
-                                  ? GlassTheme.primaryButtonGradient
-                                  : const LinearGradient(
-                                      colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                                      begin: Alignment.centerLeft,
-                                      end: Alignment.centerRight,
-                                    ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: widget.isFromOnboarding ? const Color(0x3300C2FF) : const Color(0x33051C48),
-                                  blurRadius: 12,
-                                  offset: const Offset(0, 5),
-                                ),
-                              ],
-                            ),
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleSaveSettings,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.transparent,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24),
-                                ),
-                              ),
-                              child: _isLoading
-                                  ? const SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                        color: Colors.white,
-                                        strokeWidth: 2.2,
-                                      ),
-                                    )
-                                  : Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          widget.isFromOnboarding ? Icons.rocket_launch_rounded : Icons.save_rounded,
-                                          color: Colors.white,
-                                          size: 18,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Error Banner
+                                if (_errorMessage != null) ...[
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    margin: const EdgeInsets.only(bottom: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFEF2F2),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: const Color(0xFFFCA5A5), width: 1.2),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x10EF4444),
+                                          blurRadius: 6,
+                                          offset: Offset(0, 2),
                                         ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.error_outline_rounded, color: Color(0xFFEF4444), size: 16),
                                         const SizedBox(width: 8),
-                                        Text(
-                                          widget.isFromOnboarding ? 'Save & Launch POS' : 'Save Settings',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                            color: Colors.white,
+                                        Expanded(
+                                          child: Text(
+                                            _errorMessage!,
+                                            style: const TextStyle(
+                                              color: Color(0xFFB91C1C),
+                                              fontSize: 11.5,
+                                              fontWeight: FontWeight.w600,
+                                            ),
                                           ),
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.close_rounded, color: Color(0xFFB91C1C), size: 15),
+                                          onPressed: () => setState(() => _errorMessage = null),
+                                          constraints: const BoxConstraints(),
+                                          padding: EdgeInsets.zero,
                                         ),
                                       ],
                                     ),
+                                  ),
+                                ],
+
+                                // SECTION 1: Select Your Services (Multi-Select)
+                                _buildServicesSection(),
+
+                                const SizedBox(height: 12),
+
+                                // SECTION 2: Billing Type & GST (with Horizontal Slider)
+                                _buildBillingGstSection(),
+
+                                const SizedBox(height: 12),
+
+                                // SECTION 3: Restaurant Type (Dietary)
+                                _buildRestaurantTypeSection(),
+
+                                const SizedBox(height: 12),
+
+                                // SECTION 4: Payment Methods (UPI ID)
+                                _buildPaymentMethodsSection(),
+
+                                // SECTION 5: Tables Configuration (If Dine-In)
+                                if (_selectedServices.contains('Dine In')) ...[
+                                  const SizedBox(height: 12),
+                                  _buildTablesSection(),
+                                ],
+
+                                const SizedBox(height: 16),
+                              ],
                             ),
                           ),
                         ),
+
+                        // Sticky Bottom Action Button with dedicated space above it
+                        _buildStickyBottomBar(),
                       ],
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
-    ],
-  ),
-);
+    );
   }
 
-  Widget _buildServiceChip({
+  // Top Header with Circular Back Button and Company Name Badge (No Icon)
+  Widget _buildTopHeader(String companyName) {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      child: SafeArea(
+        bottom: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: Row(
+            children: [
+              // Circular Neumorphic Back Button
+              InkWell(
+                onTap: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (_) => const MainLayout()),
+                    );
+                  }
+                },
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.9),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.25),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withValues(alpha: 0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, -1),
+                      ),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.chevron_left_rounded,
+                      color: Color(0xFF0F172A),
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              // Neumorphic Frosted Company Name Badge (No Icon)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7.5),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.18),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 220),
+                  child: Text(
+                    companyName,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // SECTION 1: Select Your Services (Multi-Select)
+  Widget _buildServicesSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12002870),
+            blurRadius: 12,
+            offset: Offset(4, 5),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF021B54),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x25021B54),
+                      blurRadius: 6,
+                      offset: Offset(1, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.room_service_rounded,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Select Your Services',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Padding(
+            padding: EdgeInsets.only(left: 37),
+            child: Text(
+              'Choose order channels available in your restaurant',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _buildNeumorphicServiceCard(
+                  title: 'Dine In',
+                  icon: Icons.restaurant_rounded,
+                  isSelected: _selectedServices.contains('Dine In'),
+                  onTap: () {
+                    setState(() {
+                      if (_selectedServices.contains('Dine In')) {
+                        if (_selectedServices.length > 1) {
+                          _selectedServices.remove('Dine In');
+                        }
+                      } else {
+                        _selectedServices.add('Dine In');
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildNeumorphicServiceCard(
+                  title: 'Takeaway',
+                  icon: Icons.takeout_dining_rounded,
+                  isSelected: _selectedServices.contains('Takeaway'),
+                  onTap: () {
+                    setState(() {
+                      if (_selectedServices.contains('Takeaway')) {
+                        if (_selectedServices.length > 1) {
+                          _selectedServices.remove('Takeaway');
+                        }
+                      } else {
+                        _selectedServices.add('Takeaway');
+                      }
+                    });
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildNeumorphicServiceCard(
+                  title: 'Delivery',
+                  icon: Icons.two_wheeler_rounded,
+                  isSelected: _selectedServices.contains('Delivery'),
+                  onTap: () {
+                    setState(() {
+                      if (_selectedServices.contains('Delivery')) {
+                        if (_selectedServices.length > 1) {
+                          _selectedServices.remove('Delivery');
+                        }
+                      } else {
+                        _selectedServices.add('Delivery');
+                      }
+                    });
+                  },
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Individual Service Channel Pill Card (Compact Tactile Neumorphic)
+  Widget _buildNeumorphicServiceCard({
     required String title,
     required IconData icon,
     required bool isSelected,
@@ -1163,37 +754,55 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
       borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 4),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFF00C2FF) : const Color(0xFFF8FAFC),
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [Color(0xFF0066FF), Color(0xFF0052CC)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: isSelected ? null : const Color(0xFFEFF4FA),
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? const Color(0xFF00C2FF) : const Color(0xFFCBD5E1),
-            width: isSelected ? 2 : 1,
+            color: isSelected ? const Color(0xFF70A9FF) : Colors.white,
+            width: isSelected ? 1.5 : 1.2,
           ),
           boxShadow: isSelected
-              ? [
+              ? const [
                   BoxShadow(
-                    color: const Color(0xFF00C2FF).withOpacity(0.3),
-                    blurRadius: 8,
-                    offset: const Offset(0, 3),
+                    color: Color(0x400066FF),
+                    blurRadius: 10,
+                    offset: Offset(0, 4),
                   ),
                 ]
-              : [],
+              : const [
+                  BoxShadow(
+                    color: Color(0x12002870),
+                    blurRadius: 5,
+                    offset: Offset(2, 3),
+                  ),
+                  BoxShadow(
+                    color: Colors.white,
+                    blurRadius: 4,
+                    offset: Offset(-2, -2),
+                  ),
+                ],
         ),
         child: Column(
           children: [
             Icon(
               icon,
-              color: isSelected ? Colors.white : const Color(0xFF475569),
-              size: 22,
+              color: isSelected ? Colors.white : const Color(0xFF334155),
+              size: 20,
             ),
             const SizedBox(height: 4),
             Text(
               title,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
                 color: isSelected ? Colors.white : const Color(0xFF0F172A),
               ),
             ),
@@ -1203,7 +812,543 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
     );
   }
 
-  Widget _buildTypeOptionCard({
+  // SECTION 2: Billing Type & GST Section (with Horizontal Slider)
+  Widget _buildBillingGstSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12002870),
+            blurRadius: 12,
+            offset: Offset(4, 5),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF021B54),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x25021B54),
+                      blurRadius: 6,
+                      offset: Offset(1, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.receipt_long_rounded,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Billing Type & GST',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Padding(
+            padding: EdgeInsets.only(left: 37),
+            child: Text(
+              'Select billing type and configure GST settings',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // GST vs Non-GST Recessed Toggle
+          Container(
+            padding: const EdgeInsets.all(3.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE2E9F3),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x10002870),
+                  blurRadius: 4,
+                  offset: Offset(1, 2),
+                ),
+                BoxShadow(
+                  color: Colors.white,
+                  blurRadius: 3,
+                  offset: Offset(-1, -1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _billingType = 'GST'),
+                    borderRadius: BorderRadius.circular(11),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: _billingType == 'GST'
+                            ? const LinearGradient(
+                                colors: [Color(0xFF0066FF), Color(0xFF004EC4)],
+                              )
+                            : null,
+                        color: _billingType == 'GST' ? null : Colors.transparent,
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: _billingType == 'GST'
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x350066FF),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.check_circle_rounded,
+                            size: 15,
+                            color: _billingType == 'GST' ? Colors.white : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'GST Billing',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _billingType == 'GST' ? Colors.white : const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: InkWell(
+                    onTap: () => setState(() => _billingType = 'Non-GST'),
+                    borderRadius: BorderRadius.circular(11),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      decoration: BoxDecoration(
+                        gradient: _billingType == 'Non-GST'
+                            ? const LinearGradient(
+                                colors: [Color(0xFF021B54), Color(0xFF002B7A)],
+                              )
+                            : null,
+                        color: _billingType == 'Non-GST' ? null : Colors.transparent,
+                        borderRadius: BorderRadius.circular(11),
+                        boxShadow: _billingType == 'Non-GST'
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x35021B54),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 2),
+                                ),
+                              ]
+                            : null,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.description_outlined,
+                            size: 15,
+                            color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF64748B),
+                          ),
+                          const SizedBox(width: 5),
+                          Text(
+                            'Non-GST Billing',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: _billingType == 'Non-GST' ? Colors.white : const Color(0xFF475569),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // If GST Billing is active
+          if (_billingType == 'GST') ...[
+            const SizedBox(height: 12),
+            const Text(
+              'GSTIN Number *',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF334155),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5EDF6),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.white, width: 1.5),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x14002870),
+                    blurRadius: 4,
+                    offset: Offset(1, 2),
+                  ),
+                  BoxShadow(
+                    color: Colors.white,
+                    blurRadius: 3,
+                    offset: Offset(-1, -1),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x10002870),
+                          blurRadius: 3,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.verified_user_rounded,
+                      color: Color(0xFF0066FF),
+                      size: 15,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextField(
+                      controller: _gstNumberController,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                        letterSpacing: 0.6,
+                      ),
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. 07AAAAA0000A1Z5',
+                        hintStyle: TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0,
+                        ),
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 9),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 12),
+            const Text(
+              'GST Tax Percentage *',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF334155),
+              ),
+            ),
+            const SizedBox(height: 7),
+
+            // Horizontal Slider for GST Tax Percentage Options (Glitch-Free & No Overflows)
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  ..._standardGstOptions.map((rate) {
+                    final isSelected = !_isCustomGstSelected && _gstPercentage == rate;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isCustomGstSelected = false;
+                            _gstPercentage = rate;
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                          decoration: BoxDecoration(
+                            gradient: isSelected
+                                ? const LinearGradient(
+                                    colors: [Color(0xFF10B981), Color(0xFF059669)],
+                                  )
+                                : null,
+                            color: isSelected ? null : const Color(0xFFEFF4FA),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF6EE7B7) : Colors.white,
+                              width: 1.2,
+                            ),
+                            boxShadow: isSelected
+                                ? const [
+                                    BoxShadow(
+                                      color: Color(0x3510B981),
+                                      blurRadius: 8,
+                                      offset: Offset(0, 3),
+                                    ),
+                                  ]
+                                : const [
+                                    BoxShadow(
+                                      color: Color(0x10002870),
+                                      blurRadius: 4,
+                                      offset: Offset(2, 2),
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 3,
+                                      offset: Offset(-1, -1),
+                                    ),
+                                  ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isSelected) ...[
+                                const Icon(
+                                  Icons.check_circle_rounded,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 4),
+                              ],
+                              Text(
+                                '${rate.toInt()}% GST',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
+                                  color: isSelected ? Colors.white : const Color(0xFF334155),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+                  // Custom GST Option Button
+                  InkWell(
+                    onTap: _showCustomGstDialog,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                      decoration: BoxDecoration(
+                        gradient: _isCustomGstSelected
+                            ? const LinearGradient(
+                                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                              )
+                            : null,
+                        color: _isCustomGstSelected ? null : const Color(0xFFEFF4FA),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _isCustomGstSelected ? const Color(0xFF6EE7B7) : Colors.white,
+                          width: 1.2,
+                        ),
+                        boxShadow: _isCustomGstSelected
+                            ? const [
+                                BoxShadow(
+                                  color: Color(0x3510B981),
+                                  blurRadius: 8,
+                                  offset: Offset(0, 3),
+                                ),
+                              ]
+                            : const [
+                                BoxShadow(
+                                  color: Color(0x10002870),
+                                  blurRadius: 4,
+                                  offset: Offset(2, 2),
+                                ),
+                                BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 3,
+                                  offset: Offset(-1, -1),
+                                ),
+                              ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (_isCustomGstSelected) ...[
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Text(
+                            _isCustomGstSelected ? '$_gstPercentage%' : 'Custom %',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: _isCustomGstSelected ? FontWeight.w900 : FontWeight.w700,
+                              color: _isCustomGstSelected ? Colors.white : const Color(0xFF334155),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // SECTION 3: Dietary & Restaurant Type
+  Widget _buildRestaurantTypeSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12002870),
+            blurRadius: 12,
+            offset: Offset(4, 5),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF021B54),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x25021B54),
+                      blurRadius: 6,
+                      offset: Offset(1, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.restaurant_menu_rounded,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Restaurant Type',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _buildNeumorphicTypeOption(
+                  title: 'Pure Veg',
+                  emoji: '🌱',
+                  color: const Color(0xFF10B981),
+                  isSelected: _restaurantType == 'Veg',
+                  onTap: () => setState(() => _restaurantType = 'Veg'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildNeumorphicTypeOption(
+                  title: 'Non-Veg',
+                  emoji: '🍗',
+                  color: const Color(0xFFEF4444),
+                  isSelected: _restaurantType == 'Non-Veg',
+                  onTap: () => setState(() => _restaurantType = 'Non-Veg'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _buildNeumorphicTypeOption(
+                  title: 'Both',
+                  emoji: '🥗',
+                  color: const Color(0xFF0066FF),
+                  isSelected: _restaurantType == 'Both',
+                  onTap: () => setState(() => _restaurantType = 'Both'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Dietary option card (Tactile Neumorphic)
+  Widget _buildNeumorphicTypeOption({
     required String title,
     required String emoji,
     required Color color,
@@ -1212,30 +1357,473 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(vertical: 9),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.12) : const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? color.withValues(alpha: 0.14) : const Color(0xFFEFF4FA),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? color : const Color(0xFFCBD5E1),
-            width: isSelected ? 2 : 1,
+            color: isSelected ? color : Colors.white,
+            width: isSelected ? 1.6 : 1.2,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.22),
+                    blurRadius: 8,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : const [
+                  BoxShadow(
+                    color: Color(0x10002870),
+                    blurRadius: 4,
+                    offset: Offset(2, 2),
+                  ),
+                  BoxShadow(
+                    color: Colors.white,
+                    blurRadius: 3,
+                    offset: Offset(-1, -1),
+                  ),
+                ],
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 18)),
+            Text(emoji, style: const TextStyle(fontSize: 17)),
             const SizedBox(height: 3),
             Text(
               title,
               style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
                 color: isSelected ? color : const Color(0xFF475569),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // SECTION 4: Payment Methods (UPI ID)
+  Widget _buildPaymentMethodsSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12002870),
+            blurRadius: 12,
+            offset: Offset(4, 5),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF021B54),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x25021B54),
+                      blurRadius: 6,
+                      offset: Offset(1, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.payment_rounded,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Payment Methods',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          const Padding(
+            padding: EdgeInsets.only(left: 37),
+            child: Text(
+              'Add your Merchant UPI VPA ID to receive customer payments',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // Inset UPI ID Input Field (NOT prefilled)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE5EDF6),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white, width: 1.5),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x14002870),
+                  blurRadius: 4,
+                  offset: Offset(1, 2),
+                ),
+                BoxShadow(
+                  color: Colors.white,
+                  blurRadius: 3,
+                  offset: Offset(-1, -1),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x10002870),
+                        blurRadius: 3,
+                        offset: Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.qr_code_2_rounded,
+                    color: Color(0xFF0066FF),
+                    size: 15,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _upiIdController,
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: 'e.g. merchant@upi, 9876543210@paytm',
+                      hintStyle: TextStyle(
+                        color: Color(0xFF94A3B8),
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      border: InputBorder.none,
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(vertical: 9),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // SECTION 5: Tables Configuration (If Dine-In)
+  Widget _buildTablesSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF4F7FC),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white, width: 1.5),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x12002870),
+            blurRadius: 12,
+            offset: Offset(4, 5),
+          ),
+          BoxShadow(
+            color: Colors.white,
+            blurRadius: 10,
+            offset: Offset(-4, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF021B54),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x25021B54),
+                      blurRadius: 6,
+                      offset: Offset(1, 2),
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.table_restaurant_rounded,
+                    color: Colors.white,
+                    size: 15,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 9),
+              const Text(
+                'Number of Tables',
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE5EDF6),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Colors.white, width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x14002870),
+                      blurRadius: 4,
+                      offset: Offset(1, 2),
+                    ),
+                    BoxShadow(
+                      color: Colors.white,
+                      blurRadius: 3,
+                      offset: Offset(-1, -1),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    // Embossed Minus Button
+                    InkWell(
+                      onTap: () {
+                        if (_tableCount > 1) {
+                          setState(() {
+                            _tableCount--;
+                            _tableCountController.text = '$_tableCount';
+                          });
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
+                        margin: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F6FB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white, width: 1.2),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x12002870),
+                              blurRadius: 3,
+                              offset: Offset(1, 2),
+                            ),
+                            BoxShadow(
+                              color: Colors.white,
+                              blurRadius: 2,
+                              offset: Offset(-1, -1),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.remove_rounded, color: Color(0xFF0066FF), size: 16),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 44,
+                      child: TextField(
+                        controller: _tableCountController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                        onChanged: (val) {
+                          final num = int.tryParse(val);
+                          if (num != null && num > 0) {
+                            setState(() => _tableCount = num);
+                          }
+                        },
+                      ),
+                    ),
+                    // Embossed Plus Button
+                    InkWell(
+                      onTap: () {
+                        setState(() {
+                          _tableCount++;
+                          _tableCountController.text = '$_tableCount';
+                        });
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.all(7),
+                        margin: const EdgeInsets.all(3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF1F6FB),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: Colors.white, width: 1.2),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x12002870),
+                              blurRadius: 3,
+                              offset: Offset(1, 2),
+                            ),
+                            BoxShadow(
+                              color: Colors.white,
+                              blurRadius: 2,
+                              offset: Offset(-1, -1),
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.add_rounded, color: Color(0xFF0066FF), size: 16),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '$_tableCount Dining Tables',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Sticky Bottom Action Bar with Midnight Navy "Save & Launch POS" Button (No Background Box)
+  Widget _buildStickyBottomBar() {
+    return Container(
+      width: double.infinity,
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          width: double.infinity,
+          height: 50,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(25),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFF021B54),
+                Color(0xFF002B7A),
+                Color(0xFF003D9E),
+              ],
+              begin: Alignment.centerLeft,
+              end: Alignment.centerRight,
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.2),
+              width: 1,
+            ),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x35021B54),
+                blurRadius: 14,
+                offset: Offset(0, 6),
+              ),
+              BoxShadow(
+                color: Color(0x10000000),
+                blurRadius: 4,
+                offset: Offset(0, -1),
+              ),
+            ],
+          ),
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _handleSaveSettings,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.transparent,
+              shadowColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(25),
+              ),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        widget.isFromOnboarding ? Icons.rocket_launch_rounded : Icons.save_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        widget.isFromOnboarding ? 'Save & Launch POS' : 'Save Settings',
+                        style: const TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
