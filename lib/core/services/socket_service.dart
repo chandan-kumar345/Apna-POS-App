@@ -13,6 +13,7 @@ typedef SocketReconnectCallback = void Function();
 typedef OrderSettledCallback = void Function(Map<String, dynamic> data);
 typedef OrderUpdatedCallback = void Function(Map<String, dynamic> data);
 typedef OrderDeletedCallback = void Function(Map<String, dynamic> data);
+typedef SubscriptionUpdateCallback = void Function(Map<String, dynamic> data);
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -35,6 +36,7 @@ class SocketService {
   OrderSettledCallback? onOrderSettled;
   OrderUpdatedCallback? onOrderUpdated;
   OrderDeletedCallback? onOrderDeleted;
+  SubscriptionUpdateCallback? onSubscriptionUpdated;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -155,6 +157,10 @@ class SocketService {
       socket.on('order_updated', (data) => _handleOrderUpdated(data));
       socket.on('order:deleted', (data) => _handleOrderDeleted(data));
       socket.on('order_deleted', (data) => _handleOrderDeleted(data));
+
+      // Subscription updated events (real-time toggle from MongoDB Compass or API)
+      socket.on('subscription:updated', (data) => _handleSubscriptionUpdated(data));
+      socket.on('subscription_updated', (data) => _handleSubscriptionUpdated(data));
 
       socket.connect();
     } catch (e) {
@@ -281,6 +287,17 @@ class SocketService {
       onOrderDeleted?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing order:deleted event: $e');
+    }
+  }
+
+  void _handleSubscriptionUpdated(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] Received subscription:updated event: $rawMap');
+      onSubscriptionUpdated?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing subscription:updated event: $e');
     }
   }
 

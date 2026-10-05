@@ -48,4 +48,21 @@ router.get('/leads', authMiddleware, (req, res, next) => subscriptionController.
 // 4. Test SMTP / Email Connection Status
 router.get('/test-email', (req, res, next) => subscriptionController.testEmail(req, res, next));
 
+// 5. Get Current Business Subscription Status
+router.get('/status', optionalAuthMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
+router.post('/verify', optionalAuthMiddleware, (req, res, next) => subscriptionController.getStatus(req, res, next));
+
+// 6. Unlock / Activate Subscription via UPI Payment
+router.post('/activate', optionalAuthMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
+router.post('/unlock', optionalAuthMiddleware, (req, res, next) => subscriptionController.activateSubscription(req, res, next));
+
+// 7. Update Subscription Status directly (e.g. from Compass, SuperAdmin, or API toggle)
+router.patch('/status', optionalAuthMiddleware, (req, res, next) => subscriptionController.updateStatus(req, res, next));
+
+// 8. Assign/Activate Subscription for specific staff
+router.post('/staff', optionalAuthMiddleware, (req, res, next) => subscriptionController.assignStaffSubscription(req, res, next));
+
+// 9. Get All Subscriptions (for Admin / SuperAdmin)
+router.get('/all', optionalAuthMiddleware, (req, res, next) => subscriptionController.getAllSubscriptions(req, res, next));
+
 module.exports = router;

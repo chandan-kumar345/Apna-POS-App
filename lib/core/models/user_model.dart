@@ -48,6 +48,8 @@ class UserModel {
   bool get isWaiter => role.toLowerCase() == 'waiter';
   bool get isChef => role.toLowerCase() == 'chef' || role.toLowerCase() == 'kitchen';
 
+  String get businessId => restaurantId.isNotEmpty ? restaurantId : id;
+
   /// Check if the user has permission to access a specific feature or section
   bool hasPermission(String required) {
     if (isOwner || isAdmin) return true;
@@ -247,7 +249,7 @@ class UserModel {
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? 'Owner',
       pin: json['pin']?.toString() ?? '1234',
-      restaurantId: json['restaurantId']?.toString() ?? '',
+      restaurantId: json['restaurantId']?.toString() ?? json['businessId']?.toString() ?? '',
       phone: json['phone']?.toString(),
       employeeId: json['employeeId']?.toString(),
       permissions: parsedPermissions,

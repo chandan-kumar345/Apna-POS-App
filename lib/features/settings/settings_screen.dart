@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/theme/glass_theme.dart';
 import '../../core/widgets/glass_widgets.dart';
 import '../../core/database/database_service.dart';
@@ -94,7 +95,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   'Update business name, receipt details, and tax rules',
                   style: TextStyle(fontSize: 12, color: GlassTheme.textMedium),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
+
+                // Business ID Key Banner
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF010E2E).withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.vpn_key_rounded, color: Color(0xFF38BDF8), size: 16),
+                      const SizedBox(width: 8),
+                      const Text(
+                        'Business ID: ',
+                        style: TextStyle(
+                          color: Color(0xFF94A3B8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Expanded(
+                        child: SelectableText(
+                          db.currentBusinessId,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            color: Color(0xFF38BDF8),
+                            fontSize: 13.5,
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      InkWell(
+                        onTap: () {
+                          Clipboard.setData(ClipboardData(text: db.currentBusinessId));
+                          HapticFeedback.lightImpact();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              backgroundColor: const Color(0xFF0F172A),
+                              behavior: SnackBarBehavior.floating,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                              content: Row(
+                                children: [
+                                  const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Text(
+                                      'Business ID copied to clipboard: ${db.currentBusinessId}',
+                                      style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              duration: const Duration(seconds: 2),
+                            ),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.copy_rounded, color: Color(0xFF38BDF8), size: 13),
+                              SizedBox(width: 4),
+                              Text(
+                                'Copy Key',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
 
                 GlassTextField(controller: _nameController, labelText: 'Restaurant Outlet Name', hintText: 'Apna POS Diner'),
                 const SizedBox(height: 12),

@@ -231,9 +231,17 @@ class OnboardingService {
     final response = await _apiClient.post(ApiEndpoints.onboardingComplete);
     final data = response['data'] as Map<String, dynamic>;
 
+    final businessId = data['businessId']?.toString() ??
+        (data['business'] is Map ? data['business']['_id']?.toString() ?? data['business']['id']?.toString() : null);
+
+    if (businessId != null && businessId.isNotEmpty) {
+      await _db.saveBusinessId(businessId);
+    }
+
     final currentUser = _db.currentUser;
     if (currentUser != null) {
       final updated = currentUser.copyWith(
+        restaurantId: (businessId != null && businessId.isNotEmpty) ? businessId : currentUser.restaurantId,
         onboardingCompleted: true,
         onboardingStep: 4,
       );
@@ -244,6 +252,7 @@ class OnboardingService {
     if (rest != null) {
       await _db.saveRestaurantOnboarding(
         rest.copyWith(
+          id: (businessId != null && businessId.isNotEmpty) ? businessId : rest.id,
           isOnboarded: true,
         ),
       );

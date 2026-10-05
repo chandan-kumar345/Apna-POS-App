@@ -250,6 +250,29 @@ class SocketService {
     this.broadcastToBusiness(businessId, 'order_deleted', payload);
   }
 
+  /**
+   * Emit subscription updated event across all connected clients in the business
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} subscriptionData
+   */
+  emitSubscriptionUpdated(businessId, subscriptionData) {
+    if (!subscriptionData) return;
+    const payload = {
+      ...subscriptionData,
+      timestamp: new Date().toISOString(),
+    };
+    if (businessId) {
+      this.broadcastToBusiness(businessId, 'subscription:updated', payload);
+      this.broadcastToBusiness(businessId, 'subscription_updated', payload);
+    }
+    // Also broadcast globally so all active sessions get real-time notice
+    if (this.io) {
+      this.io.emit('subscription:updated', payload);
+      this.io.emit('subscription_updated', payload);
+      this.io.emit('subscription:changed', payload);
+    }
+  }
+
   getIO() {
     return this.io;
   }

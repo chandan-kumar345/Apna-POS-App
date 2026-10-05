@@ -25,6 +25,7 @@ class RestaurantModel {
   final bool enableChotuVoice; // Whether Chotu AI Voice assistant icon is enabled in POS
 
   final String? logoUrl;
+  final bool isSubscribed;
 
   bool get showItemImages => posViewMode != 'without_image';
 
@@ -40,6 +41,7 @@ class RestaurantModel {
     this.serviceCharge = 0.0,
     this.tableCount = 12,
     this.isOnboarded = false,
+    this.isSubscribed = false,
     this.services = const ['Dine In'],
     this.billingType = 'GST',
     this.gstNumber = '',
@@ -78,10 +80,11 @@ class RestaurantModel {
         'managerPin': managerPin,
         'enableChotuVoice': enableChotuVoice,
         'logoUrl': logoUrl,
+        'isSubscribed': isSubscribed,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
-        id: json['id'] ?? '',
+        id: json['id']?.toString() ?? json['_id']?.toString() ?? json['businessId']?.toString() ?? '',
         name: json['name'] ?? 'Apna Restaurant',
         tagline: json['tagline'] ?? 'Taste the Perfection',
         phone: json['phone'] ?? '+91 98765 43210',
@@ -92,6 +95,9 @@ class RestaurantModel {
         serviceCharge: (json['serviceCharge'] as num?)?.toDouble() ?? 0.0,
         tableCount: json['tableCount'] ?? 12,
         isOnboarded: json['isOnboarded'] ?? false,
+        isSubscribed: json['isSubscribed'] == true ||
+            (json['subscription'] is Map &&
+                (json['subscription']['isActive'] == true || json['subscription']['status'] == 'active')),
         services: (json['services'] as List?)?.map((e) => e.toString()).toList() ?? const ['Dine In'],
         billingType: json['billingType'] ?? 'GST',
         gstNumber: json['gstNumber'] ?? '',
@@ -116,7 +122,10 @@ class RestaurantModel {
             (json['profile'] is Map ? (json['profile']['profileImage'] ?? json['profile']['logoUrl'] ?? json['profile']['logo'])?.toString() : null),
       );
 
+  String? get businessId => id.isNotEmpty ? id : null;
+
   RestaurantModel copyWith({
+    String? id,
     String? name,
     String? tagline,
     String? phone,
@@ -127,6 +136,7 @@ class RestaurantModel {
     double? serviceCharge,
     int? tableCount,
     bool? isOnboarded,
+    bool? isSubscribed,
     List<String>? services,
     String? billingType,
     String? gstNumber,
@@ -141,7 +151,7 @@ class RestaurantModel {
     String? logoUrl,
   }) {
     return RestaurantModel(
-      id: id,
+      id: id ?? this.id,
       name: name ?? this.name,
       tagline: tagline ?? this.tagline,
       phone: phone ?? this.phone,
@@ -152,6 +162,7 @@ class RestaurantModel {
       serviceCharge: serviceCharge ?? this.serviceCharge,
       tableCount: tableCount ?? this.tableCount,
       isOnboarded: isOnboarded ?? this.isOnboarded,
+      isSubscribed: isSubscribed ?? this.isSubscribed,
       services: services ?? this.services,
       billingType: billingType ?? this.billingType,
       gstNumber: gstNumber ?? this.gstNumber,

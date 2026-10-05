@@ -25,6 +25,8 @@ import '../../core/models/order_model.dart';
 import '../auth/login_screen.dart';
 import 'dashboard_screen.dart';
 import '../subscription/screens/subscription_screen.dart';
+import '../subscription/widgets/subscription_locked_bottom_sheet.dart';
+import '../../core/services/subscription_service.dart';
 import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
 import '../staff/screens/staff_profile_screen.dart';
@@ -343,6 +345,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   String? _lastCompanyName;
   int _lastStaffCount = -1;
   List<String>? _lastPermissions;
+  bool? _lastIsSubscribed;
 
   void _onDbUserChanged() {
     if (!mounted) return;
@@ -350,6 +353,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     final companyLogo = db.companyLogoPath;
     final companyName = db.restaurant?.name ?? db.currentUser?.companyName;
     final staffCount = db.staffList.length;
+    final isSubscribed = db.isSubscribed;
 
     final bool userChanged = _lastUserId != currentUser?.id ||
         _lastUserRole != currentUser?.role ||
@@ -357,6 +361,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         _lastCompanyLogo != companyLogo ||
         _lastCompanyName != companyName ||
         _lastStaffCount != staffCount ||
+        _lastIsSubscribed != isSubscribed ||
         !_stringListEquals(_lastPermissions, currentUser?.permissions);
 
     final bool accessChanged = !_canAccessTab(_selectedIndex);
@@ -368,6 +373,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
       _lastCompanyLogo = companyLogo;
       _lastCompanyName = companyName;
       _lastStaffCount = staffCount;
+      _lastIsSubscribed = isSubscribed;
       _lastPermissions = currentUser?.permissions != null ? List<String>.from(currentUser!.permissions) : null;
 
       setState(() {
@@ -442,6 +448,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
     _lastCompanyName = db.restaurant?.name ?? db.currentUser?.companyName;
     _lastStaffCount = db.staffList.length;
     _lastPermissions = db.currentUser?.permissions != null ? List<String>.from(db.currentUser!.permissions) : null;
+    _lastIsSubscribed = db.isSubscribed;
     _initInitialAccessibleTab();
 
     // Smooth sidebar frame transition with direct touch tracking & smooth curves
@@ -464,6 +471,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     // Initial fetch of unread notifications count
     NotificationService().fetchUnreadCount();
+
+    // Fetch latest subscription status from backend
+    SubscriptionService().getStatus().catchError((_) => <String, dynamic>{});
   }
 
   @override
@@ -1666,36 +1676,41 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                     ),
 
                                    Expanded(
-                                    child: SmoothAnimatedIndexedStack(
-                                      index: _selectedIndex.clamp(0, 13),
-                                      tabBuilders: [
-                                        (ctx) => _canAccessTab(0)
-                                            ? GlassDashboardScreen(
-                                                key: _dashboardKey,
-                                                isActive: _selectedIndex == 0,
-                                                onNavigateTab: (index) => _selectTab(index),
-                                              )
-                                            : _buildAccessDeniedScreen('Dashboard'),
-                                        (ctx) => _canAccessTab(1)
-                                            ? PosRegisterScreen(
-                                                initialTable: _selectedTableForPos,
-                                                initialOrderType: _selectedOrderTypeForPos,
-                                                tableSelectionToken: _posTableSelectionToken,
-                                                onOpenDrawer: _toggleSidebar,
-                                                onOpenTablesTab: () => _selectTab(2),
-                                                isFullScreen: _isPosFullScreen,
-                                                onToggleFullScreen: () {
-                                                  setState(() {
-                                                    _isPosFullScreen = !_isPosFullScreen;
-                                                  });
-                                                },
-                                                onFullScreenChanged: (full) {
-                                                  setState(() {
-                                                    _isPosFullScreen = full;
-                                                  });
-                                                },
-                                              )
-                                            : _buildAccessDeniedScreen('POS'),
+                                    child: SubscriptionLockedBarrier(
+                                      isLocked: !db.isSubscribed && _selectedIndex != 5 && _selectedIndex != 8 && _selectedIndex != 9,
+                                      onUnlocked: () {
+                                        setState(() {});
+                                      },
+                                      child: SmoothAnimatedIndexedStack(
+                                        index: _selectedIndex.clamp(0, 13),
+                                        tabBuilders: [
+                                          (ctx) => _canAccessTab(0)
+                                              ? GlassDashboardScreen(
+                                                  key: _dashboardKey,
+                                                  isActive: _selectedIndex == 0,
+                                                  onNavigateTab: (index) => _selectTab(index),
+                                                )
+                                              : _buildAccessDeniedScreen('Dashboard'),
+                                          (ctx) => _canAccessTab(1)
+                                              ? PosRegisterScreen(
+                                                  initialTable: _selectedTableForPos,
+                                                  initialOrderType: _selectedOrderTypeForPos,
+                                                  tableSelectionToken: _posTableSelectionToken,
+                                                  onOpenDrawer: _toggleSidebar,
+                                                  onOpenTablesTab: () => _selectTab(2),
+                                                  isFullScreen: _isPosFullScreen,
+                                                  onToggleFullScreen: () {
+                                                    setState(() {
+                                                      _isPosFullScreen = !_isPosFullScreen;
+                                                    });
+                                                  },
+                                                  onFullScreenChanged: (full) {
+                                                    setState(() {
+                                                      _isPosFullScreen = full;
+                                                    });
+                                                  },
+                                                )
+                                              : _buildAccessDeniedScreen('POS'),
                                         (ctx) => _canAccessTab(2)
                                             ? TableManagementScreen(
                                                 onTakeOrder: (tableName) {
@@ -1773,8 +1788,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                       ],
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
+                            ),
                             ),
                           ),
 

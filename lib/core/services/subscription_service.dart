@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../database/database_service.dart';
@@ -284,5 +285,107 @@ class SubscriptionService {
       'success': true,
       'message': 'Thank you! Your interest has been submitted successfully. Our team will contact you shortly.',
     };
+  }
+
+  /// Get Live Subscription Status from Backend API
+  Future<Map<String, dynamic>> getStatus() async {
+    try {
+      final response = await _api.get(ApiEndpoints.subscriptionStatus);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] ?? response;
+        if (data is Map<String, dynamic>) {
+          bool isSub = false;
+          if (data['isActive'] != null) {
+            isSub = data['isActive'] == true;
+          } else if (data['isSubscribed'] != null) {
+            isSub = data['isSubscribed'] == true;
+          } else if (data['status'] != null) {
+            isSub = data['status'] == 'active';
+          }
+          await _db.updateSubscriptionStatus(isSub);
+          return data;
+        }
+      }
+    } catch (e) {
+      debugPrint('[SubscriptionService.getStatus] error: $e');
+    }
+    return {
+      'isActive': _db.isSubscribed,
+      'isSubscribed': _db.isSubscribed,
+      'status': _db.isSubscribed ? 'active' : 'inactive',
+      'amount': 300,
+      'upiId': '9709593705@ybl',
+    };
+  }
+
+  /// Activate / Unlock Subscription
+  Future<bool> activateSubscription({
+    String? paymentRef,
+    double amount = 300.0,
+  }) async {
+    try {
+      final payload = {
+        'paymentRef': paymentRef ?? 'UPI_${DateTime.now().millisecondsSinceEpoch}',
+        'amount': amount,
+        'businessId': _db.currentBusinessId,
+      };
+
+      final response = await _api.post(
+        ApiEndpoints.subscriptionActivate,
+        data: payload,
+      );
+
+      if (response != null && response is Map<String, dynamic>) {
+        await _db.updateSubscriptionStatus(true);
+        return true;
+      }
+    } catch (e) {
+      debugPrint('[SubscriptionService.activateSubscription] error: $e');
+    }
+    // Update local state even if offline
+    await _db.updateSubscriptionStatus(true);
+    return true;
+  }
+
+  /// Launch UPI Intent App for payment to 9709593705@ybl for Rs 300
+  Future<bool> launchUpiPayment({
+    String upiId = '9709593705@ybl',
+    double amount = 300.0,
+    String payeeName = 'Apna POS',
+    String transactionNote = 'Apna POS Subscription Unlock',
+  }) async {
+    final cleanAmount = amount.toStringAsFixed(0);
+    final upiUriString = 'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(payeeName)}&am=$cleanAmount&cu=INR&tn=${Uri.encodeComponent(transactionNote)}';
+    
+    final uri = Uri.parse(upiUriString);
+    try {
+      if (await canLaunchUrl(uri)) {
+        return await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        return await launchUrl(uri, mode: LaunchMode.externalNonBrowserApplication);
+      }
+    } catch (e) {
+      debugPrint('[SubscriptionService.launchUpiPayment] Launch error: $e');
+      return false;
+    }
+  }
+
+  /// Open Support / Help on WhatsApp or Phone
+  Future<void> contactSupport() async {
+    final bizId = _db.currentBusinessId;
+    final text = Uri.encodeComponent('Hello Apna POS Support, I need assistance with my Business Subscription (Business ID: $bizId).');
+    final whatsappUri = Uri.parse('https://wa.me/919709593705?text=$text');
+    try {
+      if (await canLaunchUrl(whatsappUri)) {
+        await launchUrl(whatsappUri, mode: LaunchMode.externalApplication);
+      } else {
+        final telUri = Uri.parse('tel:+919709593705');
+        if (await canLaunchUrl(telUri)) {
+          await launchUrl(telUri);
+        }
+      }
+    } catch (e) {
+      debugPrint('[SubscriptionService.contactSupport] error: $e');
+    }
   }
 }

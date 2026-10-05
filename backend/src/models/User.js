@@ -43,13 +43,16 @@ const userSchema = new mongoose.Schema(
     subscription: {
       plan: {
         type: String,
-        enum: ['starter', 'growth', 'pro', 'enterprise', 'custom'],
         default: 'starter',
       },
       status: {
         type: String,
-        enum: ['active', 'trial', 'expired', 'cancelled'],
+        enum: ['active', 'trial', 'expired', 'cancelled', 'inactive'],
         default: 'active',
+      },
+      isActive: {
+        type: Boolean,
+        default: true,
       },
       startDate: {
         type: Date,

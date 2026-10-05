@@ -7,6 +7,7 @@ const cronService = require('./services/cronService');
 const socketService = require('./services/socketService');
 
 const superadminService = require('./services/superadminService');
+const dbWatcherService = require('./services/dbWatcherService');
 
 const startServer = async () => {
   try {
@@ -34,6 +35,9 @@ const startServer = async () => {
 
         // Initialize daily summary cron jobs after DB is connected
         cronService.initSchedulers();
+
+        // Initialize Realtime MongoDB Change Stream Watchers for Compass Updates
+        dbWatcherService.init();
       })
       .catch((err) => {
         console.error(`[MongoDB Connection Error] ${err.message}`);

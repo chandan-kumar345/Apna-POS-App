@@ -296,6 +296,31 @@ class AuthService {
       permissions = ['pos', 'tables', 'orders'];
     }
 
+    const bizSub = business?.subscription || {};
+    const userSub = user?.subscription || {};
+
+    let isSubActive = false;
+    if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
+      isSubActive = Boolean(bizSub.isActive);
+    } else if (bizSub.status !== undefined && bizSub.status !== null) {
+      isSubActive = bizSub.status === 'active';
+    } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
+      isSubActive = Boolean(userSub.isActive);
+    } else if (userSub.status !== undefined && userSub.status !== null) {
+      isSubActive = userSub.status === 'active';
+    }
+
+    const subPayload = {
+      isActive: isSubActive,
+      status: isSubActive ? 'active' : 'inactive',
+      plan: bizSub.plan || userSub.plan || 'standard',
+      amount: bizSub.amount || 300,
+      upiId: '9709593705@ybl',
+      activatedAt: bizSub.activatedAt || userSub.startDate || null,
+      expiresAt: bizSub.expiresAt || userSub.expiresAt || null,
+      paymentRef: bizSub.paymentRef || userSub.paymentRef || '',
+    };
+
     return {
       user: {
         id: user._id,
@@ -311,10 +336,14 @@ class AuthService {
         phoneVerified: user.phoneVerified,
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
         onboardingStep: isStaffUser ? 4 : user.onboardingStep,
+        subscription: subPayload,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
-      business,
+      business: business ? {
+        ...business.toObject(),
+        subscription: subPayload,
+      } : null,
     };
   }
 

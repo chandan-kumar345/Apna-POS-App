@@ -283,6 +283,7 @@ class OnboardingController {
 
       user.onboardingCompleted = true;
       user.onboardingStep = 4;
+      user.businessId = business._id;
       await user.save();
 
       return ApiResponse.success(
@@ -290,10 +291,12 @@ class OnboardingController {
         {
           onboardingCompleted: true,
           onboardingStep: 4,
+          businessId: business._id.toString(),
           user: {
             id: user._id,
             email: user.email,
             role: user.role,
+            businessId: business._id.toString(),
             onboardingCompleted: user.onboardingCompleted,
             onboardingStep: user.onboardingStep,
           },

@@ -78,4 +78,55 @@ describe('Subscription & Lead Generation API', () => {
       expect(saved.sourceFeature).toBe('loyalty');
     });
   });
+
+  describe('GET & POST /api/v1/subscription/status & activate', () => {
+    it('should return subscription status with UPI pay url and amount 300', async () => {
+      const res = await request(app).get('/api/v1/subscription/status');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.upiId).toBe('9709593705@ybl');
+      expect(res.body.data.amount).toBe(300);
+      expect(res.body.data.upiPayUrl).toContain('pa=9709593705@ybl');
+      expect(res.body.data.upiPayUrl).toContain('am=300');
+    });
+
+    it('should unlock and activate subscription on POST /api/v1/subscription/activate', async () => {
+      const res = await request(app)
+        .post('/api/v1/subscription/activate')
+        .send({
+          paymentRef: 'UPI_TEST_UTR_123456',
+          amount: 300,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.isActive).toBe(true);
+      expect(res.body.data.status).toBe('active');
+      expect(res.body.data.upiId).toBe('9709593705@ybl');
+      expect(res.body.data.paymentRef).toBe('UPI_TEST_UTR_123456');
+    });
+
+    it('should list all subscriptions from the new subscriptions collection', async () => {
+      const res = await request(app).get('/api/v1/subscription/all');
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(Array.isArray(res.body.data)).toBe(true);
+    });
+
+    it('should create and assign staff subscription on POST /api/v1/subscription/staff', async () => {
+      const res = await request(app)
+        .post('/api/v1/subscription/staff')
+        .send({
+          userId: '6abe430203f46a99a8b7654c',
+          plan: 'standard',
+          amount: 300,
+          isActive: true,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.isActive).toBe(true);
+      expect(res.body.data.targetType).toBe('staff');
+    });
+  });
 });

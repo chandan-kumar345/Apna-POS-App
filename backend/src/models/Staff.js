@@ -58,6 +58,27 @@ const staffSchema = new mongoose.Schema(
       ref: 'User',
       index: true,
     },
+    subscription: {
+      isActive: {
+        type: Boolean,
+        default: false,
+      },
+      status: {
+        type: String,
+        enum: ['active', 'inactive', 'expired'],
+        default: 'inactive',
+      },
+      plan: {
+        type: String,
+        default: 'standard',
+      },
+      assignedAt: {
+        type: Date,
+      },
+      expiresAt: {
+        type: Date,
+      },
+    },
     department: {
       type: String,
       trim: true,

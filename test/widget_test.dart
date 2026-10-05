@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:apna_pos/main.dart';
 import 'package:apna_pos/core/database/database_service.dart';
@@ -11,7 +12,7 @@ void main() {
     SocketService().disconnect();
     NetworkService().dispose();
     
-    await tester.pumpWidget(const ApnaPosApp());
+    await tester.pumpWidget(const ApnaPosApp(initialHome: SizedBox()));
     await tester.pump(const Duration(milliseconds: 500));
     await tester.pump(const Duration(seconds: 10));
     

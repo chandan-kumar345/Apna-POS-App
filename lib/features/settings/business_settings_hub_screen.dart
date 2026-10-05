@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/sound_service.dart';
@@ -1751,60 +1752,189 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Screen Header Title Banner
-                  // Container(
-                  //   width: double.infinity,
-                  //   padding: const EdgeInsets.all(20),
-                  //   decoration: BoxDecoration(
-                  //     gradient: const LinearGradient(
-                  //       colors: [Color(0xFF051C48), Color(0xFF0A2B6E)],
-                  //       begin: Alignment.topLeft,
-                  //       end: Alignment.bottomRight,
-                  //     ),
-                  //     borderRadius: BorderRadius.circular(20),
-                  //     boxShadow: const [
-                  //       BoxShadow(color: Color(0x1F000000), blurRadius: 12, offset: Offset(0, 4)),
-                  //     ],
-                  //   ),
-                    // child: Row(
-                    //   children: [
-                    //     Container(
-                    //       padding: const EdgeInsets.all(12),
-                    //       decoration: BoxDecoration(
-                    //         color: Colors.white.withValues(alpha: 0.15),
-                    //         shape: BoxShape.circle,
-                    //       ),
-                    //       child: const Icon(Icons.settings_suggest_rounded, color: Color(0xFF00C2FF), size: 28),
-                    //     ),
-                        // const SizedBox(width: 14),
-                        // Expanded(
-                        //   child: Column(
-                        //     crossAxisAlignment: CrossAxisAlignment.start,
-                        //     children: [
-                        //       const Text(
-                        //         'Business Setting',
-                        //         style: TextStyle(
-                        //           fontSize: 22,
-                        //           fontWeight: FontWeight.w900,
-                        //           color: Colors.white,
-                        //           letterSpacing: 0.2,
-                        //         ),
-                        //       ),
-                        //       const SizedBox(height: 3),
-                        //       Text(
-                        //         db.restaurant?.name.isNotEmpty == true
-                        //             ? 'Outlet Settings & Configuration for ${db.restaurant!.name}'
-                        //             : 'Configure store preferences, orders, hardware & payments',
-                        //         style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
-                        //       ),
-                        //     ],
-                        //   ),
-                  //       // ),
-                  //     ],
-                  //   ),
-                  // ),
+                  // PRODUCTION BUSINESS ID KEY & OUTLET HEADER CARD
+                  Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF021B54), Color(0xFF0A2E72)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFF38BDF8).withValues(alpha: 0.35),
+                        width: 1.5,
+                      ),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x28021B54),
+                          blurRadius: 16,
+                          offset: Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.storefront_rounded, color: Color(0xFF38BDF8), size: 24),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    db.restaurant?.name.isNotEmpty == true ? db.restaurant!.name : 'Apna POS Outlet',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
+                                      letterSpacing: -0.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    db.restaurant?.address.isNotEmpty == true ? db.restaurant!.address : 'Active Store Terminal',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white.withValues(alpha: 0.75),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.5)),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  CircleAvatar(radius: 3.5, backgroundColor: Color(0xFF10B981)),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'ONLINE',
+                                    style: TextStyle(
+                                      color: Color(0xFF10B981),
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0x3338BDF8), height: 1),
+                        const SizedBox(height: 12),
 
-                  // const SizedBox(height: 24),
+                        // Business ID Key Strip
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF010E2E),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.25)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.vpn_key_rounded, color: Color(0xFF38BDF8), size: 16),
+                              const SizedBox(width: 8),
+                              const Text(
+                                'Business ID: ',
+                                style: TextStyle(
+                                  color: Color(0xFF94A3B8),
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Expanded(
+                                child: SelectableText(
+                                  db.currentBusinessId,
+                                  style: const TextStyle(
+                                    fontFamily: 'monospace',
+                                    color: Color(0xFF38BDF8),
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.8,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: db.currentBusinessId));
+                                  HapticFeedback.lightImpact();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      backgroundColor: const Color(0xFF0F172A),
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      content: Row(
+                                        children: [
+                                          const Icon(Icons.check_circle_outline_rounded, color: Color(0xFF10B981), size: 18),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              'Business ID copied to clipboard: ${db.currentBusinessId}',
+                                              style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                },
+                                borderRadius: BorderRadius.circular(8),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF38BDF8).withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: const Color(0xFF38BDF8).withValues(alpha: 0.4)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.copy_rounded, color: Color(0xFF38BDF8), size: 13),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'Copy Key',
+                                        style: TextStyle(
+                                          color: Color(0xFF38BDF8),
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
 
                   // CATEGORY 1: STORE & ORDER CONFIGURATION
                   _buildSectionPillHeader('Store & Order Configuration', Icons.storefront_rounded),

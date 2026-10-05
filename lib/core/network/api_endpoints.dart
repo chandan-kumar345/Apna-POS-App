@@ -447,6 +447,9 @@ class ApiEndpoints {
   static const String subscriptionPlans = '/subscription/plans';
   static const String subscriptionLead = '/subscription/lead';
   static const String subscriptionLeads = '/subscription/leads';
+  static const String subscriptionStatus = '/subscription/status';
+  static const String subscriptionActivate = '/subscription/activate';
+  static const String subscriptionVerify = '/subscription/verify';
 
   // Chotu AI Voice endpoints
   static const String chotu = '/chotu';

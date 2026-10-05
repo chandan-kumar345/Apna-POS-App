@@ -30,6 +30,7 @@ import '../services/payment_service.dart';
 import '../services/print_log_service.dart';
 import '../services/socket_service.dart';
 import '../services/staff_service.dart';
+import '../services/subscription_service.dart';
 import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -60,6 +61,7 @@ class DatabaseService extends ChangeNotifier {
   PrintLogService get printLogService => PrintLogService();
   SocketService get socketService => SocketService();
   StaffService get staffService => StaffService();
+  SubscriptionService get subscriptionService => SubscriptionService();
   
   ProductService get _productService => productService;
   OrderService get _orderService => orderService;
@@ -69,6 +71,7 @@ class DatabaseService extends ChangeNotifier {
   ExtraService get _extraService => extraService;
   SocketService get _socketService => socketService;
   StaffService get _staffService => staffService;
+  SubscriptionService get _subscriptionService => subscriptionService;
 
   bool _isSyncing = false;
   bool get isSyncing => _isSyncing;
@@ -127,6 +130,63 @@ class DatabaseService extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  /// Authoritative production Business ID Key for multi-device sync, KDS, waiter terminals and onboarding
+  String get currentBusinessId {
+    if (currentUser?.restaurantId != null && currentUser!.restaurantId.trim().isNotEmpty && currentUser!.restaurantId != 'rest_001') {
+      return currentUser!.restaurantId.trim();
+    }
+    if (restaurant?.id != null && restaurant!.id.trim().isNotEmpty && restaurant!.id != 'rest_001') {
+      return restaurant!.id.trim();
+    }
+    final saved = _prefs?.getString('business_id') ?? _prefs?.getString('apna_pos_business_id');
+    if (saved != null && saved.trim().isNotEmpty) {
+      return saved.trim();
+    }
+    if (restaurant?.name.trim().isNotEmpty == true) {
+      final hashNum = (restaurant!.name.hashCode.abs() % 900000 + 100000).toString();
+      return 'BUS-$hashNum';
+    }
+    return 'BUS-APNA888';
+  }
+
+  Future<void> saveBusinessId(String bizId) async {
+    final clean = bizId.trim();
+    if (clean.isEmpty) return;
+    await _prefs?.setString('business_id', clean);
+    await _prefs?.setString('apna_pos_business_id', clean);
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(id: clean);
+      await _saveRestaurantToPrefs();
+    }
+    if (currentUser != null) {
+      currentUser = currentUser!.copyWith(restaurantId: clean);
+      await saveActiveUser(currentUser!);
+    }
+    notifyListeners();
+  }
+
+  /// Whether the current business subscription is active / unlocked (false for new businesses until paid/unlocked)
+  bool get isSubscribed {
+    if (restaurant != null) {
+      return restaurant!.isSubscribed;
+    }
+    final saved = _prefs?.getBool(_userKey('is_subscribed')) ?? _prefs?.getBool('business_is_subscribed');
+    if (saved != null) {
+      return saved;
+    }
+    return false;
+  }
+
+  Future<void> updateSubscriptionStatus(bool active) async {
+    await _prefs?.setBool(_userKey('is_subscribed'), active);
+    await _prefs?.setBool('business_is_subscribed', active);
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(isSubscribed: active);
+      await _saveRestaurantToPrefs();
+    }
+    notifyListeners();
   }
 
   // Live in-cart totals per table (before KOT is sent)
@@ -898,6 +958,7 @@ class DatabaseService extends ChangeNotifier {
 
   Timer? _autoSyncTimer;
   bool _isSilentSyncing = false;
+  int _subSyncTick = 0;
 
   void _initSocketListeners() {
     _socketService.onOrderSettled = (data) {
@@ -1209,8 +1270,26 @@ class DatabaseService extends ChangeNotifier {
       notifyListeners();
     };
 
+    // Real-time subscription event (e.g. toggled active/inactive directly from MongoDB Compass)
+    _socketService.onSubscriptionUpdated = (data) {
+      debugPrint('[DatabaseService] Real-time subscription event received via socket: $data');
+      bool isActive = false;
+      if (data['isActive'] != null) {
+        isActive = data['isActive'] == true;
+      } else if (data['isSubscribed'] != null) {
+        isActive = data['isSubscribed'] == true;
+      } else if (data['status'] != null) {
+        isActive = data['status'] == 'active';
+      }
+      updateSubscriptionStatus(isActive);
+    };
+
     _socketService.onReconnected = () {
-      debugPrint('[DatabaseService] Socket reconnected. Synchronizing tables for live multi-device state...');
+      debugPrint('[DatabaseService] Socket reconnected. Synchronizing tables & subscription for live multi-device state...');
+      _subscriptionService.getStatus().catchError((e) {
+        debugPrint('[DatabaseService] Reconnect subscription sync error: $e');
+        return <String, dynamic>{};
+      });
       _tableService.fetchTables().then((remoteTables) {
         if (remoteTables.isNotEmpty) {
           tables = remoteTables;
@@ -1283,6 +1362,14 @@ class DatabaseService extends ChangeNotifier {
 
       // 3. Fetch latest active orders from backend
       final remoteOrders = await _orderService.fetchOrders(limit: 1000);
+
+      // 3b. Periodically verify live subscription status (e.g. if toggled in MongoDB Compass)
+      _subSyncTick++;
+      if (_subSyncTick % 2 == 0) {
+        _subscriptionService.getStatus().catchError((e) {
+          return <String, dynamic>{};
+        });
+      }
 
       bool hasChanged = false;
 
@@ -1465,6 +1552,21 @@ class DatabaseService extends ChangeNotifier {
             );
           }
 
+          final rawBizSub = b?['subscription'];
+          final rawUserSub = u['subscription'];
+          final rawSub = rawBizSub is Map ? rawBizSub : (rawUserSub is Map ? rawUserSub : null);
+
+          bool isSubActive = false;
+          if (rawSub != null) {
+            if (rawSub['isActive'] != null) {
+              isSubActive = rawSub['isActive'] == true;
+            } else if (rawSub['isSubscribed'] != null) {
+              isSubActive = rawSub['isSubscribed'] == true;
+            } else if (rawSub['status'] != null) {
+              isSubActive = rawSub['status'] == 'active';
+            }
+          }
+
           if (b != null) {
             restaurant = RestaurantModel(
               id: b['id']?.toString() ?? 'rest_001',
@@ -1476,6 +1578,7 @@ class DatabaseService extends ChangeNotifier {
               taxRate: (ordSet?['tax']?['percentage'] as num?)?.toDouble() ?? 5.0,
               tableCount: (ordSet?['tableCount'] as num?)?.toInt() ?? 12,
               isOnboarded: u['onboardingCompleted'] == true,
+              isSubscribed: isSubActive,
               upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
               enableChotuVoice: ordSet?['enableChotuVoice'] ?? true,
@@ -1483,6 +1586,7 @@ class DatabaseService extends ChangeNotifier {
             );
             await _saveRestaurantToPrefs();
           }
+          await updateSubscriptionStatus(isSubActive);
 
           if (cleanLogo != null && cleanLogo.isNotEmpty) {
             await _prefs?.setString('apna_pos_company_logo', cleanLogo);

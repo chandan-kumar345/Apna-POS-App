@@ -93,6 +93,23 @@ const businessSchema = new mongoose.Schema(
         default: true,
       },
     },
+    subscription: {
+      isActive: { type: Boolean, default: false }, // false for new user until unlocked/paid!
+      status: {
+        type: String,
+        enum: ['active', 'inactive', 'expired', 'trial', 'cancelled'],
+        default: 'inactive',
+      },
+      plan: {
+        type: String,
+        default: 'standard',
+      },
+      amount: { type: Number, default: 300 },
+      upiId: { type: String, default: '9709593705@ybl' },
+      activatedAt: { type: Date, default: null },
+      expiresAt: { type: Date, default: null },
+      paymentRef: { type: String, default: '' },
+    },
   },
   {
     timestamps: true,
