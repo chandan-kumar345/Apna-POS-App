@@ -26,12 +26,14 @@ class RestaurantModel {
 
   final String? logoUrl;
   final bool isSubscribed;
+  final String companyName;
 
   bool get showItemImages => posViewMode != 'without_image';
 
   RestaurantModel({
     required this.id,
     required this.name,
+    this.companyName = '',
     required this.tagline,
     required this.phone,
     required this.address,
@@ -59,6 +61,7 @@ class RestaurantModel {
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
+        'companyName': companyName,
         'tagline': tagline,
         'phone': phone,
         'address': address,
@@ -85,7 +88,10 @@ class RestaurantModel {
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
         id: json['id']?.toString() ?? json['_id']?.toString() ?? json['businessId']?.toString() ?? '',
-        name: json['name'] ?? 'Apna Restaurant',
+        name: json['name'] ?? (json['profile'] is Map ? json['profile']['name'] : null) ?? 'Apna Restaurant',
+        companyName: json['companyName']?.toString() ??
+            (json['profile'] is Map ? json['profile']['companyName']?.toString() : null) ??
+            '',
         tagline: json['tagline'] ?? 'Taste the Perfection',
         phone: json['phone'] ?? '+91 98765 43210',
         address: json['address'] ?? 'Connaught Place, New Delhi',
@@ -127,6 +133,7 @@ class RestaurantModel {
   RestaurantModel copyWith({
     String? id,
     String? name,
+    String? companyName,
     String? tagline,
     String? phone,
     String? address,
@@ -153,6 +160,7 @@ class RestaurantModel {
     return RestaurantModel(
       id: id ?? this.id,
       name: name ?? this.name,
+      companyName: companyName ?? this.companyName,
       tagline: tagline ?? this.tagline,
       phone: phone ?? this.phone,
       address: address ?? this.address,

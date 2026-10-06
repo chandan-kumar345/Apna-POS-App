@@ -149,6 +149,9 @@ customerSchema.index({ businessId: 1, phone: 1 }, { unique: true });
 customerSchema.index({ businessId: 1, firstVisit: 1 });
 customerSchema.index({ businessId: 1, lastVisit: -1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+customerSchema.plugin(tenantIsolationPlugin);
+
 const Customer = mongoose.model('Customer', customerSchema);
 
 module.exports = Customer;

@@ -1677,7 +1677,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
                                    Expanded(
                                     child: SubscriptionLockedBarrier(
-                                      isLocked: !db.isSubscribed && _selectedIndex != 5 && _selectedIndex != 8 && _selectedIndex != 9,
+                                      isLocked: !db.isSubscribed,
                                       onUnlocked: () {
                                         setState(() {});
                                       },
@@ -2320,6 +2320,7 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
   late final Animation<double> _scaleAnimation;
   late int _currentIndex;
   final Set<int> _activatedTabs = {};
+  final Map<int, Widget> _cachedTabWidgets = {};
 
   @override
   void initState() {
@@ -2376,7 +2377,21 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
     _activatedTabs.add(_currentIndex);
     final children = List<Widget>.generate(widget.tabBuilders.length, (i) {
       if (_activatedTabs.contains(i)) {
-        return widget.tabBuilders[i](context);
+        final tabWidget = _cachedTabWidgets.putIfAbsent(
+          i,
+          () => RepaintBoundary(
+            key: ValueKey('tab_boundary_$i'),
+            child: widget.tabBuilders[i](context),
+          ),
+        );
+        final bool isCurrentTab = (i == _currentIndex);
+        return TickerMode(
+          enabled: isCurrentTab,
+          child: Offstage(
+            offstage: !isCurrentTab,
+            child: tabWidget,
+          ),
+        );
       }
       return const SizedBox.shrink();
     });
@@ -2387,9 +2402,11 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
         position: _slideAnimation,
         child: ScaleTransition(
           scale: _scaleAnimation,
-          child: IndexedStack(
-            index: _currentIndex.clamp(0, widget.tabBuilders.length - 1),
-            children: children,
+          child: RepaintBoundary(
+            child: IndexedStack(
+              index: _currentIndex.clamp(0, widget.tabBuilders.length - 1),
+              children: children,
+            ),
           ),
         ),
       ),

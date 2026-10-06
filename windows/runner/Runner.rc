@@ -89,11 +89,11 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "apna_pos" "\0"
+            VALUE "CompanyName", "com.apnapos.app" "\0"
+            VALUE "FileDescription", "Apna POS" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "apna_pos" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Apna POS. All rights reserved." "\0"
             VALUE "OriginalFilename", "apna_pos.exe" "\0"
             VALUE "ProductName", "apna_pos" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"

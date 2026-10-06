@@ -27,6 +27,7 @@ class SpeechRecognitionService extends ChangeNotifier {
 
   double _audioLevel = 0.0; // 0.0 to 1.0 (Google Voice Search equalizer)
   double get audioLevel => _audioLevel;
+  int _lastSoundLevelMs = 0;
 
   String _errorMessage = '';
   String get errorMessage => _errorMessage;
@@ -153,8 +154,15 @@ class SpeechRecognitionService extends ChangeNotifier {
             }
           },
           onSoundLevelChange: (level) {
-            _audioLevel = (level / 100.0).clamp(0.0, 1.0);
-            notifyListeners();
+            final now = DateTime.now().millisecondsSinceEpoch;
+            if (now - _lastSoundLevelMs > 120) {
+              final newLevel = (level / 100.0).clamp(0.0, 1.0);
+              if ((_audioLevel - newLevel).abs() > 0.05) {
+                _audioLevel = newLevel;
+                _lastSoundLevelMs = now;
+                notifyListeners();
+              }
+            }
           },
           listenOptions: stt.SpeechListenOptions(
             localeId: 'hi_IN',

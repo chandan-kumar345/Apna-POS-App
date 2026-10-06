@@ -40,12 +40,12 @@ class SocketService {
           try {
             const decoded = jwt.verify(token, env.JWT_ACCESS_SECRET);
             socket.user = decoded;
-            if (!businessId && decoded.businessId) {
+            // Cryptographically bound businessId from verified token takes precedence
+            if (decoded.businessId) {
               businessId = decoded.businessId.toString();
             }
           } catch (jwtErr) {
-            // Allow connection if businessId is supplied in auth/query
-            // This ensures robust connection even during token refresh
+            console.warn('[Socket Auth] JWT verification warning:', jwtErr.message);
           }
         }
 
@@ -66,12 +66,23 @@ class SocketService {
         this.joinBusinessRoom(socket, initialBusinessId);
       }
 
-      // Explicit room join handler from client
+      // Hardened room join handler: strictly prevent cross-tenant room spoofing
       socket.on('join_business', (data) => {
         const bId = typeof data === 'string' ? data : (data?.businessId || socket.businessId);
-        if (bId) {
-          this.joinBusinessRoom(socket, bId);
+        if (!bId) return;
+
+        const requestedId = bId.toString();
+        // Strict Tenant Guard:
+        // If socket has a verified businessId from JWT, reject any attempt to join another business room
+        if (socket.businessId && socket.businessId !== requestedId && !socket.user?.isSuperAdmin) {
+          console.warn(
+            `[Socket Security Alert] Unauthorized attempt to join room business_${requestedId} by client with tenant ${socket.businessId}`
+          );
+          socket.emit('error', { message: 'Unauthorized room access: Tenant mismatch' });
+          return;
         }
+
+        this.joinBusinessRoom(socket, requestedId);
       });
 
       // Leave business room

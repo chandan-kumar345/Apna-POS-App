@@ -1306,7 +1306,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    _buildFieldLabel('Role *', isMobile),
+                                    Flexible(child: _buildFieldLabel('Role *', isMobile)),
+                                    const SizedBox(width: 4),
                                     InkWell(
                                       onTap: _showAddRoleDialog,
                                       borderRadius: BorderRadius.circular(6),
@@ -1565,7 +1566,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildFieldLabel('Business Branch *', isMobile),
+                Flexible(child: _buildFieldLabel('Business Branch *', isMobile)),
+                const SizedBox(width: 4),
                 InkWell(
                   onTap: _showAddBranchDialog,
                   borderRadius: BorderRadius.circular(6),
@@ -1689,7 +1691,8 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildFieldLabel('Business Branch *', isMobile),
+                          Flexible(child: _buildFieldLabel('Business Branch *', isMobile)),
+                          const SizedBox(width: 4),
                           InkWell(
                             onTap: _showAddBranchDialog,
                             borderRadius: BorderRadius.circular(6),
@@ -2226,10 +2229,14 @@ class _CreateStaffScreenState extends State<CreateStaffScreen> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          'Category Access: $selectedCountInActive / ${activePermissions.length} enabled',
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                        Expanded(
+                          child: Text(
+                            'Category Access: $selectedCountInActive / ${activePermissions.length} enabled',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
+                        const SizedBox(width: 6),
                         TextButton(
                           style: TextButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

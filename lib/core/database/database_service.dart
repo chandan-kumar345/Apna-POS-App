@@ -33,6 +33,7 @@ import '../services/staff_service.dart';
 import '../services/subscription_service.dart';
 import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
+import '../security/secure_storage_service.dart';
 import '../network/api_endpoints.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -111,21 +112,25 @@ class DatabaseService extends ChangeNotifier {
   /// Resolves the authoritative company / restaurant profile logo path or url
   String? get companyLogoPath {
     final savedCompanyLogo = _prefs?.getString('apna_pos_company_logo');
-    if (savedCompanyLogo != null && savedCompanyLogo.trim().isNotEmpty) {
+    if (savedCompanyLogo != null && savedCompanyLogo.trim().isNotEmpty && savedCompanyLogo.trim() != 'assets/images/logo.png') {
       return savedCompanyLogo.trim();
     }
-    if (restaurant?.logoUrl != null && restaurant!.logoUrl!.trim().isNotEmpty) {
+    if (restaurant?.logoUrl != null && restaurant!.logoUrl!.trim().isNotEmpty && restaurant!.logoUrl!.trim() != 'assets/images/logo.png') {
       return restaurant!.logoUrl!.trim();
     }
-    if (currentUser?.profilePhotoPath != null && currentUser!.profilePhotoPath!.trim().isNotEmpty) {
+    if (currentUser?.profilePhotoPath != null && currentUser!.profilePhotoPath!.trim().isNotEmpty && currentUser!.profilePhotoPath!.trim() != 'assets/images/logo.png') {
       return currentUser!.profilePhotoPath!.trim();
     }
+    final owner = cachedOwnerUser;
+    if (owner != null && owner.profilePhotoPath != null && owner.profilePhotoPath!.trim().isNotEmpty && owner.profilePhotoPath!.trim() != 'assets/images/logo.png') {
+      return owner.profilePhotoPath!.trim();
+    }
     final ownerUser = registeredUsers.where((u) => u.isOwner || u.role.toLowerCase() == 'owner').firstOrNull;
-    if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.trim().isNotEmpty) {
+    if (ownerUser != null && ownerUser.profilePhotoPath != null && ownerUser.profilePhotoPath!.trim().isNotEmpty && ownerUser.profilePhotoPath!.trim() != 'assets/images/logo.png') {
       return ownerUser.profilePhotoPath!.trim();
     }
     for (final u in registeredUsers) {
-      if (u.profilePhotoPath != null && u.profilePhotoPath!.trim().isNotEmpty && !u.profilePhotoPath!.contains('staff')) {
+      if (u.profilePhotoPath != null && u.profilePhotoPath!.trim().isNotEmpty && !u.profilePhotoPath!.contains('staff') && u.profilePhotoPath!.trim() != 'assets/images/logo.png') {
         return u.profilePhotoPath!.trim();
       }
     }
@@ -156,6 +161,9 @@ class DatabaseService extends ChangeNotifier {
     if (clean.isEmpty) return;
     await _prefs?.setString('business_id', clean);
     await _prefs?.setString('apna_pos_business_id', clean);
+    try {
+      await SecureStorageService().saveBusinessId(clean);
+    } catch (_) {}
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(id: clean);
       await _saveRestaurantToPrefs();
@@ -180,13 +188,17 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> updateSubscriptionStatus(bool active) async {
+    final bool changed = isSubscribed != active;
     await _prefs?.setBool(_userKey('is_subscribed'), active);
     await _prefs?.setBool('business_is_subscribed', active);
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(isSubscribed: active);
       await _saveRestaurantToPrefs();
     }
-    notifyListeners();
+    if (changed) {
+      debugPrint('[DatabaseService] Real-time subscription status changed: $active (notifying listeners)');
+      notifyListeners();
+    }
   }
 
   // Live in-cart totals per table (before KOT is sent)
@@ -438,15 +450,24 @@ class DatabaseService extends ChangeNotifier {
       _liveTableCarts.forEach((key, list) {
         rawMap[key] = list.map((i) => i.toJson()).toList();
       });
-      await _prefs?.setString(_userKey('live_table_carts'), jsonEncode(rawMap));
-      await _prefs?.setString(_userKey('live_cart_totals'), jsonEncode(_liveCartTotals));
-      await _prefs?.setString(_userKey('live_table_discounts'), jsonEncode(_liveTableDiscounts));
+      final cartsEncoded = jsonEncode(rawMap);
+      final totalsEncoded = jsonEncode(_liveCartTotals);
+      final discountsEncoded = jsonEncode(_liveTableDiscounts);
+
+      await _prefs?.setString(_businessKey('live_table_carts'), cartsEncoded);
+      await _prefs?.setString(_businessKey('live_cart_totals'), totalsEncoded);
+      await _prefs?.setString(_businessKey('live_table_discounts'), discountsEncoded);
+
+      await _prefs?.setString(_userKey('live_table_carts'), cartsEncoded);
+      await _prefs?.setString(_userKey('live_cart_totals'), totalsEncoded);
+      await _prefs?.setString(_userKey('live_table_discounts'), discountsEncoded);
     } catch (_) {}
   }
 
   void _loadLiveTableCartsFromPrefs() {
     try {
-      final cartsJson = _prefs?.getString(_userKey('live_table_carts'));
+      final cartsJson = _prefs?.getString(_businessKey('live_table_carts')) ??
+          _prefs?.getString(_userKey('live_table_carts'));
       if (cartsJson != null && cartsJson.isNotEmpty) {
         final Map<String, dynamic> rawMap = jsonDecode(cartsJson);
         rawMap.forEach((key, val) {
@@ -458,7 +479,8 @@ class DatabaseService extends ChangeNotifier {
           }
         });
       }
-      final totalsJson = _prefs?.getString(_userKey('live_cart_totals'));
+      final totalsJson = _prefs?.getString(_businessKey('live_cart_totals')) ??
+          _prefs?.getString(_userKey('live_cart_totals'));
       if (totalsJson != null && totalsJson.isNotEmpty) {
         final Map<String, dynamic> rawTotals = jsonDecode(totalsJson);
         rawTotals.forEach((key, val) {
@@ -467,7 +489,8 @@ class DatabaseService extends ChangeNotifier {
           }
         });
       }
-      final discountsJson = _prefs?.getString(_userKey('live_table_discounts'));
+      final discountsJson = _prefs?.getString(_businessKey('live_table_discounts')) ??
+          _prefs?.getString(_userKey('live_table_discounts'));
       if (discountsJson != null && discountsJson.isNotEmpty) {
         final Map<String, dynamic> rawDiscounts = jsonDecode(discountsJson);
         rawDiscounts.forEach((key, val) {
@@ -660,6 +683,14 @@ class DatabaseService extends ChangeNotifier {
     return freeList.first;
   }
 
+  /// Authoritative Business-Scoped Key: Used for operational datasets
+  /// (menu, categories, tables, orders, live carts, inventory, customers)
+  String _businessKey(String baseKey) {
+    final bId = currentBusinessId.trim();
+    return 'apna_pos_biz_${bId}_$baseKey';
+  }
+
+  /// User-Scoped Key: Used for user-specific session data (PIN, login credentials)
   String _userKey(String baseKey) {
     final uid = (currentUser?.id != null && currentUser!.id.isNotEmpty)
         ? currentUser!.id
@@ -681,8 +712,9 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.clear();
     _liveTableCarts.clear();
 
-    // 1. Load Restaurant Profile (Strictly User-scoped)
-    String? restaurantJson = _prefs?.getString('apna_pos_${userId}_restaurant');
+    // 1. Load Restaurant Profile (Prioritizing Business-scoped key)
+    String? restaurantJson = _prefs?.getString(_businessKey('restaurant')) ??
+        _prefs?.getString('apna_pos_${userId}_restaurant');
     if (restaurantJson != null && restaurantJson.isNotEmpty) {
       try {
         restaurant = RestaurantModel.fromJson(jsonDecode(restaurantJson));
@@ -704,8 +736,9 @@ class DatabaseService extends ChangeNotifier {
       );
     }
 
-    // 2. Load Menu Items (Strictly User-scoped)
-    String? menuJson = _prefs?.getString('apna_pos_${userId}_menu');
+    // 2. Load Menu Items (Prioritizing Business-scoped key)
+    String? menuJson = _prefs?.getString(_businessKey('menu')) ??
+        _prefs?.getString('apna_pos_${userId}_menu');
     if (menuJson != null && menuJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(menuJson);
@@ -718,8 +751,9 @@ class DatabaseService extends ChangeNotifier {
       menuItems = [];
     }
 
-    // 3. Load Categories (Strictly User-scoped)
-    String? catJson = _prefs?.getString('apna_pos_${userId}_categories');
+    // 3. Load Categories (Prioritizing Business-scoped key)
+    String? catJson = _prefs?.getString(_businessKey('categories')) ??
+        _prefs?.getString('apna_pos_${userId}_categories');
     if (catJson != null && catJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(catJson);
@@ -732,8 +766,9 @@ class DatabaseService extends ChangeNotifier {
       _syncCategoriesFromMenu();
     }
 
-    // 3b. Load Category Images (Strictly User-scoped)
-    String? catImagesJson = _prefs?.getString('apna_pos_${userId}_category_images');
+    // 3b. Load Category Images (Prioritizing Business-scoped key)
+    String? catImagesJson = _prefs?.getString(_businessKey('category_images')) ??
+        _prefs?.getString('apna_pos_${userId}_category_images');
     if (catImagesJson != null && catImagesJson.isNotEmpty) {
       try {
         final Map rawMap = jsonDecode(catImagesJson);
@@ -745,8 +780,9 @@ class DatabaseService extends ChangeNotifier {
       categoryImages = {};
     }
 
-    // 4. Load Tables (Strictly User-scoped)
-    String? tablesJson = _prefs?.getString('apna_pos_${userId}_tables');
+    // 4. Load Tables (Prioritizing Business-scoped key)
+    String? tablesJson = _prefs?.getString(_businessKey('tables')) ??
+        _prefs?.getString('apna_pos_${userId}_tables');
     if (tablesJson != null && tablesJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(tablesJson);
@@ -759,15 +795,16 @@ class DatabaseService extends ChangeNotifier {
       _seedCleanTables(restaurant?.tableCount ?? 12);
     }
 
-    // 4b. Load Custom Floors (Strictly User-scoped)
-    final savedFloors = _prefs?.getStringList('apna_pos_${userId}_custom_floors');
+    // 4b. Load Custom Floors (Prioritizing Business-scoped key)
+    final savedFloors = _prefs?.getStringList(_businessKey('custom_floors')) ??
+        _prefs?.getStringList('apna_pos_${userId}_custom_floors');
     if (savedFloors != null && savedFloors.isNotEmpty) {
       _customFloors = List<String>.from(savedFloors);
     } else {
       _customFloors = ['Ground Floor', '1st Floor'];
     }
 
-    // 5. Load Orders (Strictly User-scoped)
+    // 5. Load Orders (Prioritizing Business-scoped key)
     final List<OrderModel> loadedOrders = [];
     final Set<String> loadedKeys = {};
 
@@ -789,6 +826,7 @@ class DatabaseService extends ChangeNotifier {
       } catch (_) {}
     }
 
+    tryLoadOrdersFromJson(_prefs?.getString(_businessKey('orders')));
     tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${userId}_orders'));
     if (restaurant?.id != null && restaurant!.id != userId) {
       tryLoadOrdersFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_orders'));
@@ -800,8 +838,9 @@ class DatabaseService extends ChangeNotifier {
       orders = [];
     }
 
-    // 6. Load Inventory (Strictly User-scoped)
-    String? inventoryJson = _prefs?.getString('apna_pos_${userId}_inventory');
+    // 6. Load Inventory (Prioritizing Business-scoped key)
+    String? inventoryJson = _prefs?.getString(_businessKey('inventory')) ??
+        _prefs?.getString('apna_pos_${userId}_inventory');
     if (inventoryJson != null && inventoryJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(inventoryJson);
@@ -813,8 +852,9 @@ class DatabaseService extends ChangeNotifier {
       inventoryItems = [];
     }
 
-    // 7. Load Customers (Strictly User-scoped)
-    String? customersJson = _prefs?.getString('apna_pos_${userId}_customers');
+    // 7. Load Customers (Prioritizing Business-scoped key)
+    String? customersJson = _prefs?.getString(_businessKey('customers')) ??
+        _prefs?.getString('apna_pos_${userId}_customers');
     if (customersJson != null && customersJson.isNotEmpty) {
       try {
         final List raw = jsonDecode(customersJson);
@@ -1274,7 +1314,9 @@ class DatabaseService extends ChangeNotifier {
     _socketService.onSubscriptionUpdated = (data) {
       debugPrint('[DatabaseService] Real-time subscription event received via socket: $data');
       bool isActive = false;
-      if (data['isActive'] != null) {
+      if (data['isSubscriptionActive'] != null) {
+        isActive = data['isSubscriptionActive'] == true;
+      } else if (data['isActive'] != null) {
         isActive = data['isActive'] == true;
       } else if (data['isSubscribed'] != null) {
         isActive = data['isSubscribed'] == true;
@@ -1311,7 +1353,8 @@ class DatabaseService extends ChangeNotifier {
   }
 
   /// Starts periodic background auto-sync for live tables and active orders across devices
-  void startAutoSync({Duration interval = const Duration(seconds: 4)}) {
+  /// Optimized to 45 seconds to prevent device hang / CPU thrashing while Socket.IO handles instant updates
+  void startAutoSync({Duration interval = const Duration(seconds: 45)}) {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer.periodic(interval, (_) {
       syncTablesAndOrdersSilently();
@@ -1360,12 +1403,12 @@ class DatabaseService extends ChangeNotifier {
       // 2. Fetch live tables from backend
       final remoteTables = await _tableService.fetchTables();
 
-      // 3. Fetch latest active orders from backend
-      final remoteOrders = await _orderService.fetchOrders(limit: 1000);
+      // 3. Fetch latest active orders from backend (limit to recent active set)
+      final remoteOrders = await _orderService.fetchOrders(limit: 50);
 
       // 3b. Periodically verify live subscription status (e.g. if toggled in MongoDB Compass)
       _subSyncTick++;
-      if (_subSyncTick % 2 == 0) {
+      if (_subSyncTick % 3 == 0) {
         _subscriptionService.getStatus().catchError((e) {
           return <String, dynamic>{};
         });
@@ -1476,11 +1519,27 @@ class DatabaseService extends ChangeNotifier {
             merged.add(rt);
           }
         }
-        tables = merged;
+        bool tablesChanged = false;
+        if (tables.length != merged.length) {
+          tablesChanged = true;
+        } else {
+          for (int i = 0; i < tables.length; i++) {
+            if (tables[i].status != merged[i].status ||
+                tables[i].activeOrderTotal != merged[i].activeOrderTotal ||
+                tables[i].activeOrderId != merged[i].activeOrderId ||
+                tables[i].activeOrderNumber != merged[i].activeOrderNumber ||
+                tables[i].occupiedSince != merged[i].occupiedSince) {
+              tablesChanged = true;
+              break;
+            }
+          }
+        }
 
-        // Reconcile with latest running orders
-        _reconcileTablesWithRunningOrders();
-        hasChanged = true;
+        if (tablesChanged) {
+          tables = merged;
+          _reconcileTablesWithRunningOrders();
+          hasChanged = true;
+        }
       }
 
       if (hasChanged) {
@@ -1558,7 +1617,9 @@ class DatabaseService extends ChangeNotifier {
 
           bool isSubActive = false;
           if (rawSub != null) {
-            if (rawSub['isActive'] != null) {
+            if (rawSub['isSubscriptionActive'] != null) {
+              isSubActive = rawSub['isSubscriptionActive'] == true;
+            } else if (rawSub['isActive'] != null) {
               isSubActive = rawSub['isActive'] == true;
             } else if (rawSub['isSubscribed'] != null) {
               isSubActive = rawSub['isSubscribed'] == true;
@@ -1938,7 +1999,9 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> _saveRestaurantToPrefs() async {
     if (restaurant != null) {
-      await _prefs?.setString(_userKey('restaurant'), jsonEncode(restaurant!.toJson()));
+      final jsonStr = jsonEncode(restaurant!.toJson());
+      await _prefs?.setString(_businessKey('restaurant'), jsonStr);
+      await _prefs?.setString(_userKey('restaurant'), jsonStr);
     }
   }
 
@@ -2466,6 +2529,8 @@ class DatabaseService extends ChangeNotifier {
         final ApiClient client = ApiClient();
         await client.patch(ApiEndpoints.profileSettings, data: {
           'name': updated.name,
+          'companyName': updated.companyName,
+          'profileLogo': updated.logoUrl,
           'tagline': updated.tagline,
           'phone': updated.phone,
           'address': updated.address,
@@ -2477,6 +2542,99 @@ class DatabaseService extends ChangeNotifier {
     } catch (e) {
       debugPrint('[DatabaseService.updateRestaurantProfile] API error: $e');
     }
+  }
+
+  /// Update core Business Profile details (Name, Company, Logo, Phone)
+  /// and sync with backend audit history, Firestore, and local prefs.
+  Future<void> updateBusinessProfileDetails({
+    required String businessName,
+    required String companyName,
+    required String phone,
+    String? ownerName,
+    String? logoUrl,
+    String? changeReason,
+  }) async {
+    final current = restaurant ??
+        RestaurantModel(
+          id: currentBusinessId,
+          name: businessName,
+          companyName: companyName,
+          tagline: '',
+          phone: phone,
+          address: '',
+          cuisineType: 'General',
+        );
+
+    final cleanName = businessName.trim();
+    final cleanCompany = companyName.trim();
+    final cleanPhone = phone.trim();
+    final cleanOwnerName = (ownerName != null && ownerName.trim().isNotEmpty)
+        ? ownerName.trim()
+        : (currentUser?.name ?? cleanName);
+    final cleanLogo = (logoUrl != null && logoUrl.trim().isNotEmpty) ? logoUrl.trim() : current.logoUrl;
+
+    final updated = current.copyWith(
+      name: cleanName,
+      companyName: cleanCompany,
+      phone: cleanPhone,
+      logoUrl: cleanLogo,
+    );
+
+    restaurant = updated;
+    await _saveRestaurantToPrefs();
+
+    if (cleanLogo != null && cleanLogo.isNotEmpty) {
+      await _prefs?.setString('apna_pos_company_logo', cleanLogo);
+    }
+    if (cleanCompany.isNotEmpty) {
+      await _prefs?.setString('apna_pos_company_name', cleanCompany);
+    }
+
+    if (currentUser != null) {
+      currentUser = currentUser!.copyWith(
+        name: cleanOwnerName,
+        companyName: cleanCompany,
+        phone: cleanPhone,
+        profilePhotoPath: cleanLogo ?? currentUser!.profilePhotoPath,
+      );
+      await saveActiveUser(currentUser!);
+    } else if (cleanOwnerName.isNotEmpty) {
+      currentUser = UserModel(
+        id: 'owner_$currentBusinessId',
+        name: cleanOwnerName,
+        email: 'owner@apnapos.com',
+        role: 'Owner',
+        pin: '0000',
+        restaurantId: currentBusinessId,
+        phone: cleanPhone,
+        companyName: cleanCompany,
+        profilePhotoPath: cleanLogo,
+      );
+      await saveActiveUser(currentUser!);
+    }
+
+    await _firestoreService.saveRestaurant(restaurant!);
+    notifyListeners();
+
+    // Non-blocking asynchronous backend persistence for instant UI response and resilient offline UX
+    _authService.isAuthenticated().then((isAuth) {
+      if (isAuth) {
+        final ApiClient client = ApiClient();
+        client.patch(ApiEndpoints.profileUpdate, data: {
+          'name': cleanName,
+          'ownerName': cleanOwnerName,
+          'companyName': cleanCompany,
+          'phone': cleanPhone,
+          'profileLogo': cleanLogo ?? '',
+          'changeReason': changeReason ?? 'Profile updated from Business Settings Hub',
+        }).catchError((e) {
+          debugPrint('[DatabaseService.updateBusinessProfileDetails] API sync note: $e');
+          return <String, dynamic>{};
+        });
+      }
+    }).catchError((e) {
+      debugPrint('[DatabaseService.updateBusinessProfileDetails] Auth check note: $e');
+    });
   }
 
   Future<void> updatePosViewMode(String mode) async {
@@ -2792,7 +2950,9 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> _saveMenuToPrefs() async {
     _deduplicateMenuItems();
-    await _prefs?.setString(_userKey('menu'), jsonEncode(menuItems.map((e) => e.toJson()).toList()));
+    final jsonStr = jsonEncode(menuItems.map((e) => e.toJson()).toList());
+    await _prefs?.setString(_businessKey('menu'), jsonStr);
+    await _prefs?.setString(_userKey('menu'), jsonStr);
     _syncCategoriesFromMenu();
   }
 
@@ -3041,7 +3201,9 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveCategoriesToPrefs() async {
-    await _prefs?.setString(_userKey('categories'), jsonEncode(categories));
+    final enc = jsonEncode(categories);
+    await _prefs?.setString(_businessKey('categories'), enc);
+    await _prefs?.setString(_userKey('categories'), enc);
   }
 
   String? getCategoryImage(String category) {
@@ -3101,7 +3263,9 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveCategoryImagesToPrefs() async {
-    await _prefs?.setString(_userKey('category_images'), jsonEncode(categoryImages));
+    final enc = jsonEncode(categoryImages);
+    await _prefs?.setString(_businessKey('category_images'), enc);
+    await _prefs?.setString(_userKey('category_images'), enc);
   }
 
   // --- TABLE MANAGEMENT SERVICES ---
@@ -3552,7 +3716,9 @@ class DatabaseService extends ChangeNotifier {
 
   Future<void> _saveTablesToPrefs() async {
     _sortTablesSequentially();
-    await _prefs?.setString(_userKey('tables'), jsonEncode(tables.map((e) => e.toJson()).toList()));
+    final jsonStr = jsonEncode(tables.map((e) => e.toJson()).toList());
+    await _prefs?.setString(_businessKey('tables'), jsonStr);
+    await _prefs?.setString(_userKey('tables'), jsonStr);
   }
 
   // --- ORDERS & POS BILLING SERVICES ---
@@ -4497,6 +4663,7 @@ class DatabaseService extends ChangeNotifier {
   Future<void> saveOrdersToPrefs() async {
     orders = deduplicateOrdersList(orders);
     final encoded = jsonEncode(orders.map((e) => e.toJson()).toList());
+    await _prefs?.setString(_businessKey('orders'), encoded);
     await _prefs?.setString(_userKey('orders'), encoded);
     if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
       await _prefs?.setString('apna_pos_${restaurant!.id}_orders', encoded);
@@ -4527,12 +4694,16 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> _saveInventoryToPrefs() async {
-    await _prefs?.setString(_userKey('inventory'), jsonEncode(inventoryItems.map((e) => e.toJson()).toList()));
+    final encoded = jsonEncode(inventoryItems.map((e) => e.toJson()).toList());
+    await _prefs?.setString(_businessKey('inventory'), encoded);
+    await _prefs?.setString(_userKey('inventory'), encoded);
   }
 
   // --- CUSTOMER MANAGEMENT & SUGGESTIONS ---
   Future<void> _saveCustomersToPrefs() async {
-    await _prefs?.setString(_userKey('customers'), jsonEncode(customers.map((c) => c.toJson()).toList()));
+    final encoded = jsonEncode(customers.map((c) => c.toJson()).toList());
+    await _prefs?.setString(_businessKey('customers'), encoded);
+    await _prefs?.setString(_userKey('customers'), encoded);
   }
 
   Future<void> syncCustomersFromBackend() async {

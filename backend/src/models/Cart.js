@@ -129,4 +129,7 @@ cartSchema.methods.recalculateTotals = function () {
   this.updatedAt = new Date();
 };
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+cartSchema.plugin(tenantIsolationPlugin);
+
 module.exports = mongoose.model('Cart', cartSchema);

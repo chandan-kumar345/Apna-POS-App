@@ -71,6 +71,9 @@ const tableSchema = new mongoose.Schema(
 tableSchema.index({ businessId: 1, tableNumber: 1 }, { unique: true });
 tableSchema.index({ businessId: 1, status: 1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+tableSchema.plugin(tenantIsolationPlugin);
+
 const Table = mongoose.model('Table', tableSchema);
 
 module.exports = Table;

@@ -59,6 +59,9 @@ const inventorySchema = new mongoose.Schema(
 
 inventorySchema.index({ businessId: 1, itemName: 1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+inventorySchema.plugin(tenantIsolationPlugin);
+
 const Inventory = mongoose.model('Inventory', inventorySchema);
 
 module.exports = Inventory;

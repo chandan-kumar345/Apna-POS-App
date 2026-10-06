@@ -9,12 +9,77 @@ import '../../core/models/order_model.dart';
 import '../../core/services/report_service.dart';
 import '../pos/receipt_dialog.dart';
 import 'widgets/calendar_popup_card.dart';
-import 'widgets/custom_date_range_picker_dialog.dart';
 import 'widgets/metric_sparkline.dart';
 import 'widgets/payment_mode_donut_chart.dart';
 import 'widgets/sales_trend_chart.dart';
 
 enum SalesDateFilter { allTime, today, yesterday, thisWeek, thisMonth, custom }
+
+/// Neumorphic Theme & Shadow Configurations for Sales Report - Calibrated for high performance & tactile depth
+class _ReportsNeumorphicTheme {
+  static const Color background = Color(0xFFEEF2F6);
+  static const Color surface = Color(0xFFEEF2F6);
+  static const Color sunkenSurface = Color(0xFFE2E9F2);
+  static const Color darkShadow = Color(0xFFC5D1E0);
+
+  static const Color textDark = Color(0xFF0F172A);
+  static const Color textBody = Color(0xFF334155);
+  static const Color textMuted = Color(0xFF64748B);
+  static const Color navyBrand = Color(0xFF051C48);
+  static const Color blueBrand = Color(0xFF1E60F2);
+
+  /// Standard raised card shadows - crisp, clean, soft neumorphic depth without light spreading
+  static List<BoxShadow> get raisedShadows => [
+        BoxShadow(
+          color: darkShadow.withValues(alpha: 0.22),
+          offset: const Offset(0, 3),
+          blurRadius: 6,
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.6),
+          offset: const Offset(0, -1),
+          blurRadius: 2,
+          spreadRadius: 0,
+        ),
+      ];
+
+  /// Soft raised shadows for compact buttons, dropdowns, page pills - crisp, tight shadow
+  static List<BoxShadow> get softRaisedShadows => [
+        BoxShadow(
+          color: darkShadow.withValues(alpha: 0.18),
+          offset: const Offset(0, 1.5),
+          blurRadius: 3.5,
+          spreadRadius: 0,
+        ),
+        BoxShadow(
+          color: Colors.white.withValues(alpha: 0.5),
+          offset: const Offset(0, -0.5),
+          blurRadius: 1.5,
+          spreadRadius: 0,
+        ),
+      ];
+
+  /// Sunken / Inset well shadows for unselected tabs, inner boxes & search bar
+  static List<BoxShadow> get sunkenShadows => [
+        BoxShadow(
+          color: darkShadow.withValues(alpha: 0.15),
+          offset: const Offset(0, 1.5),
+          blurRadius: 3,
+          spreadRadius: 0,
+        ),
+      ];
+
+  /// Clean accent shadow for active pills & primary action buttons without diffuse light spreading
+  static List<BoxShadow> get accentShadows => [
+        BoxShadow(
+          color: blueBrand.withValues(alpha: 0.24),
+          offset: const Offset(0, 2.5),
+          blurRadius: 5,
+          spreadRadius: 0,
+        ),
+      ];
+}
 
 class ReportsScreen extends StatefulWidget {
   const ReportsScreen({super.key});
@@ -28,7 +93,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   final ReportService _reportService = ReportService();
 
   // Filters State
-  SalesDateFilter _selectedDateFilter = SalesDateFilter.thisMonth;
+  SalesDateFilter _selectedDateFilter = SalesDateFilter.today;
   DateTimeRange? _customDateRange;
   String _selectedOutlet = 'All Outlets';
   String _selectedPaymentMode = 'All Payment Modes';
@@ -93,36 +158,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
     ];
   }
 
-  final List<String> _desktopTabs = [
-    'Sales Details',
-    'Top Products',
-    'Category Wise',
-    'Payment Mode',
-    'Order Type',
-    'Outlet Wise',
-    'Staff Wise',
-  ];
-
-  final List<String> _mobileTabs = [
-    'Sales Details',
-    'Top Products',
-    'Category Wise',
-    'Payment Mode',
-    'Order Type',
-    'Outlet Wise',
-    'Staff Wise',
-  ];
-
   @override
   void initState() {
     super.initState();
     _db.addListener(_onDbChange);
 
-    // Initial default: 1st of month to today
+    // Initial default: Today
     final now = DateTime.now();
+    _selectedDateFilter = SalesDateFilter.today;
     _customDateRange = DateTimeRange(
-      start: DateTime(now.year, now.month, 1),
-      end: now,
+      start: DateTime(now.year, now.month, now.day, 0, 0, 0),
+      end: DateTime(now.year, now.month, now.day, 23, 59, 59, 999),
     );
 
     // Initial instant cached compute
@@ -152,7 +198,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void _onDbChange() {
     if (!mounted) return;
     _dbDebounceTimer?.cancel();
-    _dbDebounceTimer = Timer(const Duration(milliseconds: 200), () {
+    _dbDebounceTimer = Timer(const Duration(milliseconds: 350), () {
       if (mounted) {
         _loadSalesReport(showLoading: false);
       }
@@ -285,11 +331,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   void _resetFilters() {
     setState(() {
-      _selectedDateFilter = SalesDateFilter.thisMonth;
+      _selectedDateFilter = SalesDateFilter.today;
       final now = DateTime.now();
       _customDateRange = DateTimeRange(
-        start: DateTime(now.year, now.month, 1),
-        end: now,
+        start: DateTime(now.year, now.month, now.day, 0, 0, 0),
+        end: DateTime(now.year, now.month, now.day, 23, 59, 59, 999),
       );
       _selectedOutlet = 'All Outlets';
       _selectedPaymentMode = 'All Payment Modes';
@@ -306,11 +352,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   String _getDateRangeBoxDisplay() {
     final fmt = DateFormat('dd MMM yyyy');
+    if (_selectedDateFilter == SalesDateFilter.today) {
+      return DateFormat('dd MMM yyyy').format(DateTime.now());
+    }
+    if (_selectedDateFilter == SalesDateFilter.yesterday) {
+      final y = DateTime.now().subtract(const Duration(days: 1));
+      return DateFormat('dd MMM yyyy').format(y);
+    }
     if (_customDateRange != null) {
-      return '${fmt.format(_customDateRange!.start)} - ${fmt.format(_customDateRange!.end)}';
+      final startStr = fmt.format(_customDateRange!.start);
+      final endStr = fmt.format(_customDateRange!.end);
+      if (startStr == endStr) {
+        return startStr;
+      }
+      return '$startStr - $endStr';
     }
     final now = DateTime.now();
-    return '${fmt.format(DateTime(now.year, now.month, 1))} - ${fmt.format(now)}';
+    return fmt.format(now);
   }
 
   String _getPresetFilterDisplay() {
@@ -436,27 +494,6 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 
-  Future<void> _openCustomDatePicker() async {
-    final now = DateTime.now();
-    final initialStart = _customDateRange?.start ?? DateTime(now.year, now.month, 1);
-    final initialEnd = _customDateRange?.end ?? now;
-
-    final picked = await CustomDateRangePickerDialog.show(
-      context,
-      initialStartDate: initialStart,
-      initialEndDate: initialEnd,
-    );
-
-    if (picked != null) {
-      setState(() {
-        _customDateRange = picked;
-        _selectedDateFilter = SalesDateFilter.custom;
-        _currentPage = 1;
-      });
-      _loadSalesReport();
-    }
-  }
-
   Widget _buildDateRangeBox({required bool isMobile}) {
     final dateRangeText = _getDateRangeBoxDisplay();
     final key = isMobile ? _mobileDateRangeKey : _desktopDateRangeKey;
@@ -464,31 +501,29 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return InkWell(
       key: key,
       onTap: () => _openCalendarPopup(context, isMobile: isMobile),
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        height: isMobile ? 36 : 42,
-        padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
+        height: isMobile ? 38 : 42,
+        padding: EdgeInsets.symmetric(horizontal: isMobile ? 9 : 14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: const [
-            BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
-          ],
+          color: _ReportsNeumorphicTheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+          boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
         ),
         child: Row(
           mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today_rounded, size: isMobile ? 13 : 16, color: const Color(0xFF0F172A)),
-            SizedBox(width: isMobile ? 5 : 6),
+            Icon(Icons.calendar_today_rounded, size: isMobile ? 14 : 16, color: _ReportsNeumorphicTheme.navyBrand),
+            SizedBox(width: isMobile ? 6 : 8),
             if (isMobile)
               Expanded(
                 child: Text(
                   dateRangeText,
                   style: const TextStyle(
-                    fontSize: 10.5,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: _ReportsNeumorphicTheme.textDark,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -500,13 +535,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 style: const TextStyle(
                   fontSize: 13.5,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
+                  color: _ReportsNeumorphicTheme.textDark,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-            SizedBox(width: isMobile ? 3 : 6),
-            Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
+            SizedBox(width: isMobile ? 4 : 6),
+            Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 16 : 19, color: _ReportsNeumorphicTheme.textMuted),
           ],
         ),
       ),
@@ -519,13 +554,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Theme(
       data: Theme.of(context).copyWith(
         popupMenuTheme: PopupMenuThemeData(
-          color: Colors.white,
+          color: _ReportsNeumorphicTheme.surface,
           elevation: 8,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: Color(0xFFE2E8F0)),
+            side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
           ),
-          shadowColor: const Color(0x20000000),
+          shadowColor: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.5),
         ),
       ),
       child: PopupMenuButton<SalesDateFilter>(
@@ -534,10 +569,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         elevation: 8,
         padding: EdgeInsets.zero,
         position: PopupMenuPosition.under,
-        color: Colors.white,
+        color: _ReportsNeumorphicTheme.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
-          side: const BorderSide(color: Color(0xFFE2E8F0)),
+          side: const BorderSide(color: Color(0xFFCBD5E1), width: 1.1),
         ),
         onSelected: (filter) {
           _applyPresetFilter(filter);
@@ -550,29 +585,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
           _buildPopupMenuItem(SalesDateFilter.allTime, 'All Time', _selectedDateFilter == SalesDateFilter.allTime),
         ],
         child: Container(
-          height: isMobile ? 36 : 42,
-          padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
+          height: isMobile ? 38 : 42,
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 9 : 14),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
-            boxShadow: const [
-              BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
-            ],
+            color: _ReportsNeumorphicTheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+            boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
           ),
           child: Row(
             mainAxisSize: isMobile ? MainAxisSize.max : MainAxisSize.min,
             children: [
-              Icon(Icons.calendar_month_outlined, size: isMobile ? 14 : 17, color: const Color(0xFF0F172A)),
-              SizedBox(width: isMobile ? 5 : 6),
+              Icon(Icons.calendar_month_outlined, size: isMobile ? 15 : 17, color: _ReportsNeumorphicTheme.navyBrand),
+              SizedBox(width: isMobile ? 6 : 8),
               if (isMobile)
                 Expanded(
                   child: Text(
                     displayLabel,
                     style: const TextStyle(
-                      fontSize: 10.5,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFF0F172A),
+                      color: _ReportsNeumorphicTheme.textDark,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -584,13 +617,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   style: const TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    color: _ReportsNeumorphicTheme.textDark,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              SizedBox(width: isMobile ? 3 : 6),
-              Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
+              SizedBox(width: isMobile ? 4 : 6),
+              Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 16 : 19, color: _ReportsNeumorphicTheme.textMuted),
             ],
           ),
         ),
@@ -607,8 +640,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFEFF6FF) : Colors.transparent,
+          color: isSelected ? _ReportsNeumorphicTheme.sunkenSurface : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
+          border: isSelected ? Border.all(color: _ReportsNeumorphicTheme.blueBrand.withValues(alpha: 0.3), width: 1) : null,
+          boxShadow: isSelected ? _ReportsNeumorphicTheme.sunkenShadows : null,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -618,11 +653,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected ? const Color(0xFF2563EB) : const Color(0xFF1E293B),
+                color: isSelected ? _ReportsNeumorphicTheme.blueBrand : _ReportsNeumorphicTheme.textDark,
               ),
             ),
             if (isSelected)
-              const Icon(Icons.check_rounded, size: 16, color: Color(0xFF2563EB)),
+              const Icon(Icons.check_rounded, size: 16, color: _ReportsNeumorphicTheme.blueBrand),
           ],
         ),
       ),
@@ -633,10 +668,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final ordersToExport = _reportData?.orders ?? [];
     if (ordersToExport.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('No sales records found to export.'),
-          backgroundColor: Color(0xFFD97706),
+        SnackBar(
+          content: const Text('No sales records found to export.'),
+          backgroundColor: const Color(0xFFD97706),
           behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       return;
@@ -645,8 +681,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final currency = _db.restaurant?.currencySymbol ?? '₹';
     final List<List<dynamic>> rows = [
       _isStaffUser
-          ? ['Bill No', 'Date & Time', 'Order Type', 'Table', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)']
-          : ['Bill No', 'Date & Time', 'Handled By / Staff', 'Order Type', 'Table', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)'],
+          ? ['Bill No', 'Date & Time', 'Order Type', 'Table', 'Ordered Products (Bill-Wise)', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)']
+          : ['Bill No', 'Date & Time', 'Handled By / Staff', 'Order Type', 'Table', 'Ordered Products (Bill-Wise)', 'Items Count', 'Payment Mode', 'Customer', 'Amount ($currency)'],
     ];
 
     for (final o in ordersToExport) {
@@ -655,12 +691,19 @@ class _ReportsScreenState extends State<ReportsScreen> {
           ? 'Dine In'
           : (o.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery');
 
+      final orderedProducts = o.items.isEmpty
+          ? '-'
+          : o.items
+              .map((i) => '${i.item.name} x${i.quantity} ($currency${(i.item.effectivePrice * i.quantity).toStringAsFixed(0)})')
+              .join('; ');
+
       if (_isStaffUser) {
         rows.add([
           o.orderNumber,
           o.createdAt,
           typeStr,
           o.tableNumber ?? '-',
+          orderedProducts,
           itemsCount,
           o.paymentMethod,
           o.customerName ?? 'Walk-in',
@@ -673,6 +716,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           o.staffName ?? 'Direct / Owner',
           typeStr,
           o.tableNumber ?? '-',
+          orderedProducts,
           itemsCount,
           o.paymentMethod,
           o.customerName ?? 'Walk-in',
@@ -688,21 +732,82 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     try {
-      final tempDir = await getTemporaryDirectory();
-      final filePath = '${tempDir.path}/Sales_Report_${DateTime.now().millisecondsSinceEpoch}.csv';
+      Directory? targetDir;
+      try {
+        if (Platform.isAndroid) {
+          final docsDir = Directory('/storage/emulated/0/Documents');
+          if (!docsDir.existsSync()) {
+            try {
+              await docsDir.create(recursive: true);
+            } catch (_) {}
+          }
+          if (await docsDir.exists()) {
+            targetDir = docsDir;
+          } else {
+            final downloadDir = Directory('/storage/emulated/0/Download');
+            if (await downloadDir.exists()) {
+              targetDir = downloadDir;
+            }
+          }
+        }
+      } catch (_) {}
+
+      try {
+        targetDir ??= await getApplicationDocumentsDirectory();
+      } catch (_) {}
+      try {
+        targetDir ??= await getDownloadsDirectory();
+      } catch (_) {}
+      try {
+        targetDir ??= await getExternalStorageDirectory();
+      } catch (_) {}
+      try {
+        targetDir ??= await getTemporaryDirectory();
+      } catch (_) {}
+      targetDir ??= Directory.systemTemp;
+
+      final now = DateTime.now();
+      final dateTag = DateFormat('yyyyMMdd_HHmmss').format(now);
+      final filePath = '${targetDir.path}/Sales_Report_$dateTag.csv';
       final file = File(filePath);
       await file.writeAsString(csvBuffer.toString());
 
-      await SharePlus.instance.share(
-        ShareParams(
-          text: 'Apna POS Sales Report Export (${ordersToExport.length} Bills)',
-          files: [XFile(filePath, mimeType: 'text/csv')],
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Your Excel sales report is downloaded.',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFF16A34A),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export error: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Download error: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
         );
       }
     }
@@ -717,7 +822,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final allOrders = _reportData?.orders ?? [];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: _ReportsNeumorphicTheme.background,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -725,7 +830,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
             final isDesktop = constraints.maxWidth >= 1050;
 
             return SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               padding: EdgeInsets.symmetric(
                 horizontal: isMobile ? 12 : 20,
                 vertical: isMobile ? 12 : 16,
@@ -735,95 +842,104 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 children: [
                   // --- STAFF NOTICE BANNER (WHEN LOGGED IN AS STAFF) ---
                   if (_isStaffUser) ...[
-                    Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFEFF6FF), Color(0xFFDBEAFE)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
+                    RepaintBoundary(
+                      child: Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: _ReportsNeumorphicTheme.surface,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+                          boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
                         ),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                        boxShadow: const [
-                          BoxShadow(color: Color(0x06000000), blurRadius: 4, offset: Offset(0, 1)),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF2563EB),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.person_rounded, size: 16, color: Colors.white),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Personal Sales Report: ${_db.currentUser?.name ?? "Staff"}',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w800,
-                                    color: Color(0xFF1E3A8A),
-                                  ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(7),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [_ReportsNeumorphicTheme.blueBrand, _ReportsNeumorphicTheme.navyBrand],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
                                 ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  'Role: ${(_db.currentUser?.role ?? "Staff").toUpperCase()} • Displaying only your processed orders',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w500,
-                                    color: Color(0xFF2563EB),
+                                shape: BoxShape.circle,
+                                boxShadow: _ReportsNeumorphicTheme.accentShadows,
+                              ),
+                              child: const Icon(Icons.person_rounded, size: 16, color: Colors.white),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Personal Sales Report: ${_db.currentUser?.name ?? "Staff"}',
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w800,
+                                      color: _ReportsNeumorphicTheme.navyBrand,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Role: ${(_db.currentUser?.role ?? "Staff").toUpperCase()} • Displaying only your processed orders',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: _ReportsNeumorphicTheme.blueBrand,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF2563EB),
-                              borderRadius: BorderRadius.circular(6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: _ReportsNeumorphicTheme.navyBrand,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                'My Orders Only',
+                                style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
                             ),
-                            child: const Text(
-                              'My Orders Only',
-                              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Colors.white),
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ],
                   // --- 1. TOP FILTER BAR ---
-                  _buildTopFilterBar(isMobile: isMobile),
+                  RepaintBoundary(
+                    child: _buildTopFilterBar(isMobile: isMobile),
+                  ),
                   const SizedBox(height: 16),
 
                   // --- 2. TOP 5 METRIC CARDS ---
-                  _buildTopMetricCards(summary: summary, currency: currency, isMobile: isMobile, isDesktop: isDesktop),
+                  RepaintBoundary(
+                    child: _buildTopMetricCards(summary: summary, currency: currency, isMobile: isMobile, isDesktop: isDesktop),
+                  ),
                   const SizedBox(height: 16),
 
                   // --- 3. CHARTS & VISUAL ANALYTICS SECTION ---
-                  _buildChartsSection(
-                    salesTrend: salesTrend,
-                    paymentModes: paymentModes,
-                    totalSales: summary.totalRevenue,
-                    currency: currency,
-                    isMobile: isMobile,
+                  RepaintBoundary(
+                    child: _buildChartsSection(
+                      salesTrend: salesTrend,
+                      paymentModes: paymentModes,
+                      totalSales: summary.totalRevenue,
+                      currency: currency,
+                      isMobile: isMobile,
+                    ),
                   ),
                   const SizedBox(height: 18),
 
                   // --- 4. TABBED DATA & RECENT SALES TABLE SECTION ---
-                  _buildTabbedDataSection(
-                    orders: allOrders,
-                    currency: currency,
-                    isMobile: isMobile,
+                  RepaintBoundary(
+                    child: _buildTabbedDataSection(
+                      orders: allOrders,
+                      currency: currency,
+                      isMobile: isMobile,
+                    ),
                   ),
                 ],
               ),
@@ -840,14 +956,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
   Widget _buildTopFilterBar({required bool isMobile}) {
     if (isMobile) {
       return Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: const [
-            BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
-          ],
+          color: _ReportsNeumorphicTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+          boxShadow: _ReportsNeumorphicTheme.raisedShadows,
         ),
         child: Column(
           children: [
@@ -960,44 +1074,74 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       _loadSalesReport(showLoading: false);
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
+                      backgroundColor: _ReportsNeumorphicTheme.blueBrand,
                       foregroundColor: Colors.white,
                       elevation: 0,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shadowColor: _ReportsNeumorphicTheme.blueBrand.withValues(alpha: 0.3),
                     ),
-                    child: const Text('Apply', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
+                    child: const Text('Apply', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 3,
-                  child: OutlinedButton(
-                    onPressed: _resetFilters,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF334155),
-                      side: const BorderSide(color: Color(0xFFE2E8F0)),
-                      padding: const EdgeInsets.symmetric(vertical: 9),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      backgroundColor: Colors.white,
+                  child: InkWell(
+                    onTap: _resetFilters,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: _ReportsNeumorphicTheme.surface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                        boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                      ),
+                      child: const Text(
+                        'Reset',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: _ReportsNeumorphicTheme.textBody,
+                        ),
+                      ),
                     ),
-                    child: const Text('Reset', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 8),
-                Container(
-                  height: 36,
-                  width: 36,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                InkWell(
+                  onTap: _exportSalesToExcel,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    height: 38,
+                    width: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _ReportsNeumorphicTheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                      boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                    ),
+                    child: const Icon(Icons.file_download_outlined, color: _ReportsNeumorphicTheme.navyBrand, size: 18),
                   ),
-                  child: IconButton(
-                    icon: const Icon(Icons.refresh_rounded, color: Color(0xFF334155), size: 18),
-                    tooltip: 'Refresh Data',
-                    onPressed: () => _loadSalesReport(showLoading: false),
-                    padding: EdgeInsets.zero,
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () => _loadSalesReport(showLoading: false),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    height: 38,
+                    width: 38,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: _ReportsNeumorphicTheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                      boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                    ),
+                    child: const Icon(Icons.refresh_rounded, color: _ReportsNeumorphicTheme.navyBrand, size: 18),
                   ),
                 ),
               ],
@@ -1011,12 +1155,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
-        ],
+        color: _ReportsNeumorphicTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+        boxShadow: _ReportsNeumorphicTheme.raisedShadows,
       ),
       child: Row(
         children: [
@@ -1121,46 +1263,92 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   _loadSalesReport(showLoading: false);
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB),
+                  backgroundColor: _ReportsNeumorphicTheme.blueBrand,
                   foregroundColor: Colors.white,
                   elevation: 0,
                   padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
                   minimumSize: const Size(70, 42),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  shadowColor: _ReportsNeumorphicTheme.blueBrand.withValues(alpha: 0.3),
                 ),
-                child: const Text('Apply', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+                child: const Text('Apply', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
               ),
               const SizedBox(width: 10),
 
               // Reset Button
-              OutlinedButton(
-                onPressed: _resetFilters,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF334155),
-                  side: const BorderSide(color: Color(0xFFE2E8F0)),
+              InkWell(
+                onTap: _resetFilters,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 42,
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  minimumSize: const Size(70, 42),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  backgroundColor: Colors.white,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _ReportsNeumorphicTheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                    boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                  ),
+                  child: const Text(
+                    'Reset',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: _ReportsNeumorphicTheme.textBody,
+                    ),
+                  ),
                 ),
-                child: const Text('Reset', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold)),
+              ),
+              const SizedBox(width: 10),
+
+              // Export CSV Button
+              InkWell(
+                onTap: _exportSalesToExcel,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 42,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _ReportsNeumorphicTheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                    boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.file_download_outlined, size: 18, color: _ReportsNeumorphicTheme.navyBrand),
+                      SizedBox(width: 5),
+                      Text(
+                        'Export',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          color: _ReportsNeumorphicTheme.textBody,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(width: 10),
 
               // Refresh Icon Button beside Reset
-              Container(
-                height: 42,
-                width: 42,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: IconButton(
-                  icon: const Icon(Icons.refresh_rounded, size: 20, color: Color(0xFF334155)),
-                  tooltip: 'Refresh Report Data',
-                  onPressed: () => _loadSalesReport(),
-                  padding: EdgeInsets.zero,
+              InkWell(
+                onTap: () => _loadSalesReport(),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  height: 42,
+                  width: 42,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: _ReportsNeumorphicTheme.surface,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                    boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                  ),
+                  child: const Icon(Icons.refresh_rounded, size: 20, color: _ReportsNeumorphicTheme.navyBrand),
                 ),
               ),
             ],
@@ -1179,29 +1367,27 @@ class _ReportsScreenState extends State<ReportsScreen> {
     final effectiveValue = items.contains(value) ? value : items.first;
 
     return Container(
-      height: isMobile ? 36 : 42,
-      padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 14),
+      height: isMobile ? 38 : 42,
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 9 : 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
-        ],
+        color: _ReportsNeumorphicTheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+        boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: effectiveValue,
           isDense: true,
           isExpanded: isMobile,
-          dropdownColor: Colors.white,
-          borderRadius: BorderRadius.circular(10),
+          dropdownColor: _ReportsNeumorphicTheme.surface,
+          borderRadius: BorderRadius.circular(12),
           elevation: 6,
-          icon: Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 15 : 19, color: const Color(0xFF64748B)),
+          icon: Icon(Icons.keyboard_arrow_down_rounded, size: isMobile ? 16 : 19, color: _ReportsNeumorphicTheme.textMuted),
           style: TextStyle(
             fontSize: isMobile ? 11 : 13.5,
             fontWeight: FontWeight.w600,
-            color: const Color(0xFF0F172A),
+            color: _ReportsNeumorphicTheme.textDark,
           ),
           items: items.map((item) {
             return DropdownMenuItem<String>(
@@ -1213,7 +1399,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 style: TextStyle(
                   fontSize: isMobile ? 11 : 13.5,
                   fontWeight: FontWeight.w600,
-                  color: const Color(0xFF0F172A),
+                  color: _ReportsNeumorphicTheme.textDark,
                 ),
               ),
             );
@@ -1393,12 +1579,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: EdgeInsets.all(isMobile ? 12 : 14),
       decoration: BoxDecoration(
-        gradient: cardGradient,
+        color: _ReportsNeumorphicTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor),
-        boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 6, offset: Offset(0, 2)),
-        ],
+        border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+        boxShadow: _ReportsNeumorphicTheme.raisedShadows,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1408,30 +1592,32 @@ class _ReportsScreenState extends State<ReportsScreen> {
           Row(
             children: [
               Container(
-                width: isMobile ? 42 : 48,
-                height: isMobile ? 42 : 48,
+                width: isMobile ? 40 : 46,
+                height: isMobile ? 40 : 46,
                 padding: const EdgeInsets.all(4),
                 decoration: BoxDecoration(
-                  color: iconBgColor,
+                  color: _ReportsNeumorphicTheme.sunkenSurface,
                   shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                  boxShadow: _ReportsNeumorphicTheme.sunkenShadows,
                 ),
                 alignment: Alignment.center,
                 child: iconAsset != null
                     ? Image.asset(
                         iconAsset,
-                        width: isMobile ? 30 : 36,
-                        height: isMobile ? 30 : 36,
+                        width: isMobile ? 28 : 34,
+                        height: isMobile ? 28 : 34,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(
+                        errorBuilder: (context, error, stackTrace) => Icon(
                           icon ?? Icons.analytics_rounded,
                           color: iconColor,
-                          size: isMobile ? 22 : 26,
+                          size: isMobile ? 20 : 24,
                         ),
                       )
                     : Icon(
                         icon ?? Icons.analytics_rounded,
                         color: iconColor,
-                        size: isMobile ? 22 : 26,
+                        size: isMobile ? 20 : 24,
                       ),
               ),
               const SizedBox(width: 8),
@@ -1439,9 +1625,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Text(
                   title,
                   style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
-                    fontWeight: FontWeight.w600,
-                    color: const Color(0xFF64748B),
+                    fontSize: isMobile ? 11.5 : 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: _ReportsNeumorphicTheme.textMuted,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -1449,21 +1635,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
 
           // Big Amount
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: isMobile ? 16 : 18.5,
-              fontWeight: FontWeight.w900,
-              color: const Color(0xFF0F172A),
-              letterSpacing: -0.3,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: isMobile ? 17 : 20,
+                fontWeight: FontWeight.w900,
+                color: _ReportsNeumorphicTheme.textDark,
+                letterSpacing: -0.3,
+              ),
+              maxLines: 1,
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
 
           // Trend + Sparkline Row
           Row(
@@ -1475,26 +1664,35 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.arrow_drop_up_rounded, color: Color(0xFF16A34A), size: 16),
-                        Text(
-                          '+${trendPct.toInt()}%',
-                          style: const TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF16A34A),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(5),
+                        border: Border.all(color: const Color(0xFF86EFAC), width: 0.8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.arrow_drop_up_rounded, color: Color(0xFF16A34A), size: 14),
+                          Text(
+                            '+${trendPct.toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF16A34A),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
+                    const SizedBox(height: 3),
                     const Text(
                       'vs previous period',
                       style: TextStyle(
                         fontSize: 8.5,
-                        color: Color(0xFF94A3B8),
-                        fontWeight: FontWeight.w500,
+                        color: _ReportsNeumorphicTheme.textMuted,
+                        fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -1585,12 +1783,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: _ReportsNeumorphicTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
-          BoxShadow(color: Color(0x04000000), blurRadius: 10, offset: Offset(0, 2)),
-        ],
+        border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+        boxShadow: _ReportsNeumorphicTheme.raisedShadows,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1621,28 +1817,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Search Box & Filter Button
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildSearchInput(),
-                          ),
-                          const SizedBox(width: 8),
-                          InkWell(
-                            onTap: _openCustomDatePicker,
-                            borderRadius: BorderRadius.circular(8),
-                            child: Container(
-                              padding: const EdgeInsets.all(9),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFE2E8F0)),
-                              ),
-                              child: const Icon(Icons.filter_alt_rounded, size: 18, color: Color(0xFF0F172A)),
-                            ),
-                          ),
-                        ],
-                      ),
+                      // Search Box (Filtering driven by top filter section)
+                      _buildSearchInput(),
                     ],
                   )
                 : Row(
@@ -1680,7 +1856,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
             const LinearProgressIndicator(
               minHeight: 2,
               backgroundColor: Colors.transparent,
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1E60F2)),
+              valueColor: AlwaysStoppedAnimation<Color>(_ReportsNeumorphicTheme.blueBrand),
             ),
 
           // Tab Content View
@@ -1706,23 +1882,37 @@ class _ReportsScreenState extends State<ReportsScreen> {
     required VoidCallback onTap,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.only(right: 8),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(10),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8.5),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF1E60F2) : const Color(0xFFF1F5F9),
-            borderRadius: BorderRadius.circular(8),
+            gradient: isSelected
+                ? const LinearGradient(
+                    colors: [_ReportsNeumorphicTheme.blueBrand, _ReportsNeumorphicTheme.navyBrand],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  )
+                : null,
+            color: isSelected ? null : _ReportsNeumorphicTheme.sunkenSurface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? Colors.white.withValues(alpha: 0.3) : const Color(0xFFCBD5E1),
+              width: 1,
+            ),
+            boxShadow: isSelected
+                ? _ReportsNeumorphicTheme.accentShadows
+                : _ReportsNeumorphicTheme.sunkenShadows,
           ),
           child: Text(
             title,
             style: TextStyle(
               fontSize: 12.5,
-              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-              color: isSelected ? Colors.white : const Color(0xFF334155),
+              fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+              color: isSelected ? Colors.white : _ReportsNeumorphicTheme.textBody,
             ),
           ),
         ),
@@ -1732,11 +1922,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
   Widget _buildSearchInput() {
     return Container(
-      height: 36,
+      height: 38,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: _ReportsNeumorphicTheme.sunkenSurface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+        boxShadow: _ReportsNeumorphicTheme.sunkenShadows,
       ),
       child: TextField(
         controller: _searchController,
@@ -1744,14 +1935,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
           setState(() => _currentPage = 1);
           _loadSalesReport(showLoading: false);
         },
-        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textDark),
         decoration: const InputDecoration(
           hintText: 'Search by bill no, order no...',
-          hintStyle: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8), fontWeight: FontWeight.w400),
-          prefixIcon: Icon(Icons.search_rounded, size: 16, color: Color(0xFF64748B)),
+          hintStyle: TextStyle(fontSize: 11.5, color: _ReportsNeumorphicTheme.textMuted, fontWeight: FontWeight.w500),
+          prefixIcon: Icon(Icons.search_rounded, size: 16, color: _ReportsNeumorphicTheme.navyBrand),
           border: InputBorder.none,
           isDense: true,
-          contentPadding: EdgeInsets.symmetric(vertical: 9),
+          contentPadding: EdgeInsets.symmetric(vertical: 10),
         ),
       ),
     );
@@ -1803,7 +1994,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               SizedBox(height: 10),
               Text(
                 'No sales records found',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _ReportsNeumorphicTheme.textMuted),
               ),
             ],
           ),
@@ -1826,27 +2017,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
             children: [
               // Header Row matching mockup
               Container(
-                height: 42,
-                color: const Color(0xFFF8FAFC),
+                height: 44,
+                decoration: const BoxDecoration(
+                  color: _ReportsNeumorphicTheme.sunkenSurface,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                ),
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Row(
                   children: [
-                    const SizedBox(width: 35, child: Text('#', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 140, child: Text('Date & Time', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 85, child: Text('Bill No', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                    const SizedBox(width: 35, child: Text('#', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 140, child: Text('Date & Time', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 85, child: Text('Bill No', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
                     if (!_isStaffUser)
-                      const Expanded(flex: 100, child: Text('Staff', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 95, child: Text('Order Type', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 60, child: Text('Table', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 50, child: Text('Items', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 110, child: Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 115, child: Text('Customer', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const Expanded(flex: 90, child: Text('Amount (₹)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
-                    const SizedBox(width: 45, child: Text('Action', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5, color: Color(0xFF0F172A)))),
+                      const Expanded(flex: 100, child: Text('Staff', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 95, child: Text('Order Type', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 60, child: Text('Table', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 50, child: Text('Items', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 110, child: Text('Payment Mode', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 115, child: Text('Customer', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const Expanded(flex: 90, child: Text('Amount (₹)', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
+                    const SizedBox(width: 45, child: Text('Action', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: _ReportsNeumorphicTheme.textDark))),
                   ],
                 ),
               ),
-              const Divider(height: 1, color: Color(0xFFF1F5F9)),
+              Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.3)),
 
               // Data Rows
               ...List.generate(pagedOrders.length, (idx) {
@@ -1869,17 +2063,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         children: [
                           SizedBox(
                             width: 35,
-                            child: Text('$globalIndex', style: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500)),
+                            child: Text('$globalIndex', style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textMuted, fontWeight: FontWeight.w600)),
                           ),
                           Expanded(
                             flex: 140,
-                            child: Text(formattedDate, style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155), fontWeight: FontWeight.w500)),
+                            child: Text(formattedDate, style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textBody, fontWeight: FontWeight.w600)),
                           ),
                           Expanded(
                             flex: 85,
                             child: Text(
                               order.orderNumber.startsWith('#') ? order.orderNumber : '#${order.orderNumber}',
-                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark),
                             ),
                           ),
                           if (!_isStaffUser)
@@ -1893,8 +2087,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                     height: 6,
                                     decoration: BoxDecoration(
                                       color: (order.staffName != null && order.staffName!.isNotEmpty)
-                                          ? const Color(0xFF2563EB)
-                                          : const Color(0xFF94A3B8),
+                                          ? _ReportsNeumorphicTheme.blueBrand
+                                          : _ReportsNeumorphicTheme.textMuted,
                                       shape: BoxShape.circle,
                                     ),
                                   ),
@@ -1906,8 +2100,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                         color: order.staffName?.isNotEmpty == true
-                                            ? const Color(0xFF1E40AF)
-                                            : const Color(0xFF64748B),
+                                            ? _ReportsNeumorphicTheme.navyBrand
+                                            : _ReportsNeumorphicTheme.textMuted,
                                       ),
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
@@ -1922,21 +2116,21 @@ class _ReportsScreenState extends State<ReportsScreen> {
                           ),
                           Expanded(
                             flex: 60,
-                            child: Text(order.tableNumber?.isNotEmpty == true ? order.tableNumber! : '-', style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569))),
+                            child: Text(order.tableNumber?.isNotEmpty == true ? order.tableNumber! : '-', style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textBody)),
                           ),
                           Expanded(
                             flex: 50,
-                            child: Text('$totalQty', style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569))),
+                            child: Text('$totalQty', style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textBody)),
                           ),
                           Expanded(
                             flex: 110,
-                            child: Text(order.paymentMethod, style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155))),
+                            child: Text(order.paymentMethod, style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textBody)),
                           ),
                           Expanded(
                             flex: 115,
                             child: Text(
                               order.customerName?.isNotEmpty == true ? order.customerName! : 'Walk-in',
-                              style: const TextStyle(fontSize: 12.5, color: Color(0xFF334155)),
+                              style: const TextStyle(fontSize: 12.5, color: _ReportsNeumorphicTheme.textBody),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1945,13 +2139,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             flex: 90,
                             child: Text(
                               _formatNumber(order.totalAmount),
-                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: _ReportsNeumorphicTheme.textDark),
                             ),
                           ),
                           SizedBox(
                             width: 45,
                             child: PopupMenuButton<String>(
-                              color: Colors.white,
+                              color: _ReportsNeumorphicTheme.surface,
                               surfaceTintColor: Colors.transparent,
                               elevation: 6,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -1970,17 +2164,17 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                 }
                               },
                               itemBuilder: (ctx) => const [
-                                PopupMenuItem(value: 'view', child: Text('View Invoice / Receipt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)))),
-                                PopupMenuItem(value: 'share', child: Text('Share Bill Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)))),
+                                PopupMenuItem(value: 'view', child: Text('View Invoice / Receipt', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textDark))),
+                                PopupMenuItem(value: 'share', child: Text('Share Bill Details', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textDark))),
                               ],
-                              child: const Icon(Icons.more_horiz_rounded, size: 18, color: Color(0xFF64748B)),
+                              child: const Icon(Icons.more_horiz_rounded, size: 18, color: _ReportsNeumorphicTheme.textMuted),
                             ),
                           ),
                         ],
                       ),
                     ),
                     if (idx < pagedOrders.length - 1)
-                      const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                      Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
                   ],
                 );
               }),
@@ -2053,7 +2247,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (topProds.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(32),
-        child: Center(child: Text('No top selling products recorded', style: TextStyle(color: Color(0xFF64748B)))),
+        child: Center(child: Text('No top selling products recorded', style: TextStyle(color: _ReportsNeumorphicTheme.textMuted))),
       );
     }
 
@@ -2061,7 +2255,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: topProds.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final p = topProds[idx];
         final isVeg = p.foodType == 'veg';
@@ -2070,7 +2264,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
           child: Row(
             children: [
-              Text('#${idx + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF64748B))),
+              Text('#${idx + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _ReportsNeumorphicTheme.textMuted)),
               const SizedBox(width: 10),
               Container(
                 width: 14,
@@ -2095,12 +2289,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(p.name, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-                    Text(p.category, style: const TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+                    Text(p.name, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark)),
+                    Text(p.category, style: const TextStyle(fontSize: 10, color: _ReportsNeumorphicTheme.textMuted)),
                   ],
                 ),
               ),
-              Text('${p.quantity} sold', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF475569))),
+              Text('${p.quantity} sold', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textBody)),
               const SizedBox(width: 14),
               Text('$currency${_formatNumber(p.revenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF16A34A))),
             ],
@@ -2116,7 +2310,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     if (categories.isEmpty) {
       return const Padding(
         padding: EdgeInsets.all(32),
-        child: Center(child: Text('No category statistics found', style: TextStyle(color: Color(0xFF64748B)))),
+        child: Center(child: Text('No category statistics found', style: TextStyle(color: _ReportsNeumorphicTheme.textMuted))),
       );
     }
 
@@ -2124,7 +2318,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: categories.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final c = categories[idx];
         return Padding(
@@ -2135,13 +2329,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(c.categoryName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    Text(c.categoryName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark)),
                     const SizedBox(height: 2),
-                    Text('${c.itemsSold} items sold • ${c.percentage.toStringAsFixed(1)}% share', style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                    Text('${c.itemsSold} items sold • ${c.percentage.toStringAsFixed(1)}% share', style: const TextStyle(fontSize: 10.5, color: _ReportsNeumorphicTheme.textMuted)),
                   ],
                 ),
               ),
-              Text('$currency${_formatNumber(c.totalRevenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+              Text('$currency${_formatNumber(c.totalRevenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _ReportsNeumorphicTheme.blueBrand)),
             ],
           ),
         );
@@ -2156,7 +2350,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: modes.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final m = modes[idx];
         return Padding(
@@ -2167,9 +2361,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(m.mode, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    Text(m.mode, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark)),
                     const SizedBox(height: 2),
-                    Text('${m.count} bills • ${m.percentage.toStringAsFixed(1)}% of total sales', style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                    Text('${m.count} bills • ${m.percentage.toStringAsFixed(1)}% of total sales', style: const TextStyle(fontSize: 10.5, color: _ReportsNeumorphicTheme.textMuted)),
                   ],
                 ),
               ),
@@ -2188,7 +2382,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: types.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final t = types[idx];
         return Padding(
@@ -2199,13 +2393,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(t.type, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    Text(t.type, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark)),
                     const SizedBox(height: 2),
-                    Text('${t.count} orders • Avg: $currency${_formatNumber(t.avgTicket)}', style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                    Text('${t.count} orders • Avg: $currency${_formatNumber(t.avgTicket)}', style: const TextStyle(fontSize: 10.5, color: _ReportsNeumorphicTheme.textMuted)),
                   ],
                 ),
               ),
-              Text('$currency${_formatNumber(t.amount)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+              Text('$currency${_formatNumber(t.amount)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _ReportsNeumorphicTheme.blueBrand)),
             ],
           ),
         );
@@ -2220,7 +2414,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: outlets.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final o = outlets[idx];
         return Padding(
@@ -2231,13 +2425,13 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(o.outletName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+                    Text(o.outletName, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark)),
                     const SizedBox(height: 2),
-                    Text('${o.billsCount} bills settled', style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
+                    Text('${o.billsCount} bills settled', style: const TextStyle(fontSize: 10.5, color: _ReportsNeumorphicTheme.textMuted)),
                   ],
                 ),
               ),
-              Text('$currency${_formatNumber(o.totalRevenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Color(0xFF2563EB))),
+              Text('$currency${_formatNumber(o.totalRevenue)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _ReportsNeumorphicTheme.blueBrand)),
             ],
           ),
         );
@@ -2259,7 +2453,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               SizedBox(height: 10),
               Text(
                 'No staff performance records found for this period.',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _ReportsNeumorphicTheme.textMuted),
               ),
             ],
           ),
@@ -2273,7 +2467,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: staff.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => Divider(height: 1, color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.2)),
       itemBuilder: (ctx, idx) {
         final s = staff[idx];
         final isExpanded = _expandedStaffIds.contains(s.staffName);
@@ -2290,7 +2484,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
         return Container(
           decoration: BoxDecoration(
-            color: isExpanded ? const Color(0xFFF8FAFC) : Colors.transparent,
+            color: isExpanded ? _ReportsNeumorphicTheme.sunkenSurface.withValues(alpha: 0.5) : Colors.transparent,
           ),
           child: Column(
             children: [
@@ -2317,14 +2511,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         height: 36,
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
-                            colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
+                            colors: [_ReportsNeumorphicTheme.blueBrand, _ReportsNeumorphicTheme.navyBrand],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(8),
-                          boxShadow: const [
-                            BoxShadow(color: Color(0x142563EB), blurRadius: 4, offset: Offset(0, 1)),
-                          ],
+                          boxShadow: _ReportsNeumorphicTheme.accentShadows,
                         ),
                         alignment: Alignment.center,
                         child: Text(
@@ -2346,7 +2538,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               children: [
                                 Text(
                                   s.staffName,
-                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark),
                                 ),
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -2357,7 +2549,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   ),
                                   child: Text(
                                     s.role.toUpperCase(),
-                                    style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: Color(0xFF2563EB)),
+                                    style: const TextStyle(fontSize: 8.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.blueBrand),
                                   ),
                                 ),
                               ],
@@ -2370,12 +2562,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               children: [
                                 Text(
                                   '${s.billsCount} bills settled',
-                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w500, color: _ReportsNeumorphicTheme.textMuted),
                                 ),
                                 const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 9.5)),
                                 Text(
                                   'Avg: $currency${_formatNumber(s.avgTicket)}',
-                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textBody),
                                 ),
                                 const Text('•', style: TextStyle(color: Color(0xFFCBD5E1), fontSize: 9.5)),
                                 Text(
@@ -2396,7 +2588,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         children: [
                           Text(
                             '$currency${_formatNumber(s.totalRevenue)}',
-                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: _ReportsNeumorphicTheme.textDark),
                           ),
                           if (s.orders.isNotEmpty) ...[
                             const SizedBox(height: 2),
@@ -2405,12 +2597,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                               children: [
                                 Text(
                                   isExpanded ? 'Hide bills' : 'View bills (${s.orders.length})',
-                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                                  style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.blueBrand),
                                 ),
                                 Icon(
                                   isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
                                   size: 14,
-                                  color: const Color(0xFF2563EB),
+                                  color: _ReportsNeumorphicTheme.blueBrand,
                                 ),
                               ],
                             ),
@@ -2428,9 +2620,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
                   child: Container(
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      color: _ReportsNeumorphicTheme.surface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                      boxShadow: _ReportsNeumorphicTheme.sunkenShadows,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2438,12 +2631,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                           decoration: const BoxDecoration(
-                            color: Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.vertical(top: Radius.circular(7)),
+                            color: _ReportsNeumorphicTheme.sunkenSurface,
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(9)),
                           ),
                           child: Text(
                             'Recent Orders Settled by ${s.staffName} (${s.orders.length} total)',
-                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFF334155)),
+                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -2463,8 +2656,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             },
                             child: Container(
                               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                              decoration: const BoxDecoration(
-                                border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                              decoration: BoxDecoration(
+                                border: Border(bottom: BorderSide(color: _ReportsNeumorphicTheme.darkShadow.withValues(alpha: 0.15))),
                               ),
                               child: Row(
                                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -2480,11 +2673,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                           children: [
                                             Text(
                                               o.orderNumber.startsWith('#') ? o.orderNumber : '#${o.orderNumber}',
-                                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: _ReportsNeumorphicTheme.textDark),
                                             ),
                                             Text(
                                               dateStr,
-                                              style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                                              style: const TextStyle(fontSize: 9.5, color: _ReportsNeumorphicTheme.textMuted),
                                             ),
                                           ],
                                         ),
@@ -2498,12 +2691,12 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                             Container(
                                               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
                                               decoration: BoxDecoration(
-                                                color: const Color(0xFFF1F5F9),
+                                                color: _ReportsNeumorphicTheme.sunkenSurface,
                                                 borderRadius: BorderRadius.circular(4),
                                               ),
                                               child: Text(
                                                 o.paymentMethod,
-                                                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                                                style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textBody),
                                               ),
                                             ),
                                           ],
@@ -2514,7 +2707,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
                                   const SizedBox(width: 8),
                                   Text(
                                     '$currency${_formatNumber(o.totalAmount)}',
-                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                    style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.textDark),
                                   ),
                                 ],
                               ),
@@ -2549,7 +2742,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: _ReportsNeumorphicTheme.surface,
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(16)),
       ),
       child: isMobile
@@ -2558,7 +2751,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               children: [
                 Text(
                   'Showing $startRec - $endRec of $totalRecords',
-                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                  style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textMuted),
                 ),
                 InkWell(
                   onTap: () {
@@ -2572,9 +2765,9 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     children: [
                       Text(
                         'View All',
-                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFF1E60F2)),
+                        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _ReportsNeumorphicTheme.blueBrand),
                       ),
-                      Icon(Icons.arrow_forward_rounded, size: 14, color: Color(0xFF1E60F2)),
+                      Icon(Icons.arrow_forward_rounded, size: 14, color: _ReportsNeumorphicTheme.blueBrand),
                     ],
                   ),
                 ),
@@ -2584,7 +2777,7 @@ class _ReportsScreenState extends State<ReportsScreen> {
               children: [
                 Text(
                   'Showing $startRec - $endRec of $totalRecords records',
-                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _ReportsNeumorphicTheme.textMuted),
                 ),
                 const Spacer(),
 
@@ -2593,17 +2786,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   onTap: _currentPage > 1 ? () => setState(() => _currentPage--) : null,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _ReportsNeumorphicTheme.surface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                      boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
                     ),
                     child: Icon(
                       Icons.chevron_left_rounded,
                       size: 18,
-                      color: _currentPage > 1 ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                      color: _currentPage > 1 ? _ReportsNeumorphicTheme.textDark : const Color(0xFFCBD5E1),
                     ),
                   ),
                 ),
@@ -2615,21 +2809,24 @@ class _ReportsScreenState extends State<ReportsScreen> {
                     onTap: () => setState(() => _currentPage = p),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      width: 32,
-                      height: 32,
+                      width: 34,
+                      height: 34,
                       margin: const EdgeInsets.symmetric(horizontal: 2.5),
                       decoration: BoxDecoration(
-                        color: _currentPage == p ? const Color(0xFF0A3F9B) : Colors.white,
+                        color: _currentPage == p ? _ReportsNeumorphicTheme.navyBrand : _ReportsNeumorphicTheme.surface,
                         borderRadius: BorderRadius.circular(8),
-                        border: _currentPage == p ? null : Border.all(color: const Color(0xFFE2E8F0)),
+                        border: _currentPage == p ? null : Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                        boxShadow: _currentPage == p
+                            ? _ReportsNeumorphicTheme.accentShadows
+                            : _ReportsNeumorphicTheme.softRaisedShadows,
                       ),
                       child: Center(
                         child: Text(
                           '$p',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: _currentPage == p ? FontWeight.w700 : FontWeight.w600,
-                            color: _currentPage == p ? Colors.white : const Color(0xFF334155),
+                            fontWeight: _currentPage == p ? FontWeight.w800 : FontWeight.w600,
+                            color: _currentPage == p ? Colors.white : _ReportsNeumorphicTheme.textBody,
                           ),
                         ),
                       ),
@@ -2639,27 +2836,30 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 if (totalPages > 5) ...[
                   const Padding(
                     padding: EdgeInsets.symmetric(horizontal: 4),
-                    child: Text('...', style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12)),
+                    child: Text('...', style: TextStyle(color: _ReportsNeumorphicTheme.textMuted, fontSize: 12)),
                   ),
                   InkWell(
                     onTap: () => setState(() => _currentPage = totalPages),
                     borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      width: 32,
-                      height: 32,
+                      width: 34,
+                      height: 34,
                       margin: const EdgeInsets.symmetric(horizontal: 2.5),
                       decoration: BoxDecoration(
-                        color: _currentPage == totalPages ? const Color(0xFF0A3F9B) : Colors.white,
+                        color: _currentPage == totalPages ? _ReportsNeumorphicTheme.navyBrand : _ReportsNeumorphicTheme.surface,
                         borderRadius: BorderRadius.circular(8),
-                        border: _currentPage == totalPages ? null : Border.all(color: const Color(0xFFE2E8F0)),
+                        border: _currentPage == totalPages ? null : Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                        boxShadow: _currentPage == totalPages
+                            ? _ReportsNeumorphicTheme.accentShadows
+                            : _ReportsNeumorphicTheme.softRaisedShadows,
                       ),
                       child: Center(
                         child: Text(
                           '$totalPages',
                           style: TextStyle(
                             fontSize: 12,
-                            fontWeight: _currentPage == totalPages ? FontWeight.w700 : FontWeight.w600,
-                            color: _currentPage == totalPages ? Colors.white : const Color(0xFF334155),
+                            fontWeight: _currentPage == totalPages ? FontWeight.w800 : FontWeight.w600,
+                            color: _currentPage == totalPages ? Colors.white : _ReportsNeumorphicTheme.textBody,
                           ),
                         ),
                       ),
@@ -2674,17 +2874,18 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   onTap: _currentPage < totalPages ? () => setState(() => _currentPage++) : null,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    width: 32,
-                    height: 32,
+                    width: 34,
+                    height: 34,
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: _ReportsNeumorphicTheme.surface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                      boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
                     ),
                     child: Icon(
                       Icons.chevron_right_rounded,
                       size: 18,
-                      color: _currentPage < totalPages ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                      color: _currentPage < totalPages ? _ReportsNeumorphicTheme.textDark : const Color(0xFFCBD5E1),
                     ),
                   ),
                 ),
@@ -2693,4 +2894,5 @@ class _ReportsScreenState extends State<ReportsScreen> {
     );
   }
 }
+
 

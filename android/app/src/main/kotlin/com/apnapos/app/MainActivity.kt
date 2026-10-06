@@ -1,4 +1,4 @@
-package com.example.apna_pos
+package com.apnapos.app
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode

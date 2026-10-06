@@ -1,19 +1,42 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Users collection rules
-    match /users/{userId} {
-      allow read, write: if request.auth != null;
-    }
     
-    // Restaurants collection rules
-    match /restaurants/{restaurantId} {
-      allow read, write: if request.auth != null;
+    // Helper: user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
     }
 
-    // Default rule for all other documents
+    // Users collection: users can only read and write their own document
+    match /users/{userId} {
+      allow read, write: if isAuthenticated() && (
+        request.auth.uid == userId ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
+    }
+    
+    // Restaurants collection: only authenticated owner or authorized staff can manage
+    match /restaurants/{restaurantId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated() && (
+        !exists(/databases/$(database)/documents/restaurants/$(restaurantId)) ||
+        (resource != null && (resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid)) ||
+        (request.resource != null && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid))
+      );
+    }
+
+    // Dedicated multi-tenant business collections
+    match /businesses/{businessId} {
+      allow read, write: if isAuthenticated();
+
+      match /{subcollection}/{document=**} {
+        allow read, write: if isAuthenticated();
+      }
+    }
+
+    // Zero-Trust Default: Reject any collection outside defined models
     match /{document=**} {
-      allow read, write: if request.auth != null;
+      allow read, write: if false;
     }
   }
 }

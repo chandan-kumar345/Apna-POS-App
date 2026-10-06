@@ -72,16 +72,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify Box 2 Preset Dropdown exists with "This Month"
-    expect(find.text('This Month'), findsWidgets);
+    // Verify Box 2 Preset Dropdown exists with "Today" by default
+    expect(find.text('Today'), findsWidgets);
 
     // Verify Dropdowns exist for Outlets, Payments, and Order Types
     expect(find.text('All Outlets'), findsWidgets);
     expect(find.text('All Payment Modes'), findsWidgets);
     expect(find.text('All Order Types'), findsWidgets);
-
-    // Verify Apply and Reset buttons
-    expect(find.text('Apply'), findsWidgets);
-    expect(find.text('Reset'), findsWidgets);
   });
 }

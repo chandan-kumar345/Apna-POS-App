@@ -204,6 +204,9 @@ printLogSchema.index({ businessId: 1, orderNumber: 1 });
 printLogSchema.index({ businessId: 1, paymentStatus: 1 });
 printLogSchema.index({ businessId: 1, printType: 1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+printLogSchema.plugin(tenantIsolationPlugin);
+
 const PrintLog = mongoose.model('PrintLog', printLogSchema);
 
 module.exports = PrintLog;

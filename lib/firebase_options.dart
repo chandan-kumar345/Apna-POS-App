@@ -48,7 +48,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '370857291670',
     projectId: 'apna-pos-55b95',
     storageBucket: 'apna-pos-55b95.firebasestorage.app',
-    iosBundleId: 'com.example.apna_pos',
+    iosBundleId: 'com.apnapos.app',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -57,7 +57,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '370857291670',
     projectId: 'apna-pos-55b95',
     storageBucket: 'apna-pos-55b95.firebasestorage.app',
-    iosBundleId: 'com.example.apna_pos',
+    iosBundleId: 'com.apnapos.app',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

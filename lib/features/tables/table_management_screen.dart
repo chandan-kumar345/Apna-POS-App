@@ -809,7 +809,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                               Row(
                                 children: const [
                                   Text(
-                                    'Floor Area',
+                                    'Floor / Dining Area',
                                     style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                                   ),
                                   Text(
@@ -971,6 +971,17 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                         key: const ValueKey('edit_floor_name_field'),
                                         controller: editFloorCtrl,
                                         style: const TextStyle(color: Color(0xFF0F172A), fontSize: 12.5, fontWeight: FontWeight.w700),
+                                        onChanged: (newName) async {
+                                          final clean = newName.trim();
+                                          if (clean.isNotEmpty && clean.toLowerCase() != selectedFloor.trim().toLowerCase()) {
+                                            final oldName = selectedFloor;
+                                            await db.renameFloor(oldName, clean);
+                                            if (_selectedFloor == oldName) {
+                                              setState(() => _selectedFloor = clean);
+                                            }
+                                            selectedFloor = clean;
+                                          }
+                                        },
                                         onSubmitted: (newName) async {
                                           final clean = newName.trim();
                                           if (clean.isNotEmpty && clean.toLowerCase() != selectedFloor.trim().toLowerCase()) {
@@ -2271,7 +2282,34 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
   }
 }
 
-/// An isolated self-ticking running duration badge that updates every 1s locally
+/// Shared high-efficiency ticker for table duration badges to prevent timer spam
+class TableClockTicker {
+  static final TableClockTicker instance = TableClockTicker._();
+  TableClockTicker._();
+
+  Timer? _timer;
+  final ValueNotifier<int> tickNotifier = ValueNotifier<int>(0);
+  int _listenerCount = 0;
+
+  void subscribe() {
+    _listenerCount++;
+    if (_timer == null || !_timer!.isActive) {
+      _timer = Timer.periodic(const Duration(seconds: 2), (_) {
+        tickNotifier.value++;
+      });
+    }
+  }
+
+  void unsubscribe() {
+    _listenerCount = (_listenerCount - 1).clamp(0, 999999);
+    if (_listenerCount == 0) {
+      _timer?.cancel();
+      _timer = null;
+    }
+  }
+}
+
+/// An isolated self-ticking running duration badge that updates via shared ticker locally
 class LiveTableDurationBadge extends StatefulWidget {
   final TableModel table;
   final String? activeOrderCreatedAt;
@@ -2287,36 +2325,36 @@ class LiveTableDurationBadge extends StatefulWidget {
 }
 
 class _LiveTableDurationBadgeState extends State<LiveTableDurationBadge> {
-  Timer? _timer;
+  bool _isSubscribed = false;
 
   @override
   void initState() {
     super.initState();
-    _startTimerIfNeeded();
+    _checkSubscription();
   }
 
   @override
   void didUpdateWidget(covariant LiveTableDurationBadge oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _startTimerIfNeeded();
+    _checkSubscription();
   }
 
-  void _startTimerIfNeeded() {
-    if (widget.table.status != TableStatus.free) {
-      if (_timer == null || !_timer!.isActive) {
-        _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-          if (mounted) setState(() {});
-        });
-      }
-    } else {
-      _timer?.cancel();
-      _timer = null;
+  void _checkSubscription() {
+    if (widget.table.status != TableStatus.free && !_isSubscribed) {
+      TableClockTicker.instance.subscribe();
+      _isSubscribed = true;
+    } else if (widget.table.status == TableStatus.free && _isSubscribed) {
+      TableClockTicker.instance.unsubscribe();
+      _isSubscribed = false;
     }
   }
 
   @override
   void dispose() {
-    _timer?.cancel();
+    if (_isSubscribed) {
+      TableClockTicker.instance.unsubscribe();
+      _isSubscribed = false;
+    }
     super.dispose();
   }
 
@@ -2324,43 +2362,50 @@ class _LiveTableDurationBadgeState extends State<LiveTableDurationBadge> {
   Widget build(BuildContext context) {
     if (widget.table.status == TableStatus.free) return const SizedBox.shrink();
 
-    final duration = widget.table.getRunningDuration(activeOrderCreatedAt: widget.activeOrderCreatedAt) ?? Duration.zero;
+    return ValueListenableBuilder<int>(
+      valueListenable: TableClockTicker.instance.tickNotifier,
+      builder: (context, _, child) {
+        final duration = widget.table.getRunningDuration(activeOrderCreatedAt: widget.activeOrderCreatedAt) ?? Duration.zero;
 
-    return Container(
-      height: 22,
-      padding: const EdgeInsets.symmetric(horizontal: 3),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: const Color(0xFFFDE68A),
-          width: 0.8,
-        ),
-      ),
-      alignment: Alignment.center,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.access_time_rounded,
-              size: 9.5,
-              color: Color(0xFFD97706),
-            ),
-            const SizedBox(width: 2.5),
-            Text(
-              formatRunningDuration(duration),
-              style: const TextStyle(
-                fontSize: 8.5,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFFD97706),
+        return RepaintBoundary(
+          child: Container(
+            height: 22,
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: const Color(0xFFFDE68A),
+                width: 0.8,
               ),
             ),
-          ],
-        ),
-      ),
+            alignment: Alignment.center,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.access_time_rounded,
+                    size: 9.5,
+                    color: Color(0xFFD97706),
+                  ),
+                  const SizedBox(width: 2.5),
+                  Text(
+                    formatRunningDuration(duration),
+                    style: const TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFFD97706),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

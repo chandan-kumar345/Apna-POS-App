@@ -68,6 +68,16 @@ const subscriptionSchema = new mongoose.Schema(
       default: true,
       index: true,
     },
+    isSubscriptionActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+    isSubscribed: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
     status: {
       type: String,
       enum: ['active', 'inactive', 'expired', 'trial', 'cancelled', 'pending'],
@@ -122,10 +132,71 @@ const subscriptionSchema = new mongoose.Schema(
   }
 );
 
+// Keep isSubscriptionActive, isActive, isSubscribed, and status synchronized across all operations
+subscriptionSchema.pre('save', function (next) {
+  if (this.isModified('isSubscriptionActive')) {
+    const val = Boolean(this.isSubscriptionActive);
+    this.isActive = val;
+    this.isSubscribed = val;
+    if (val && this.status !== 'active') this.status = 'active';
+    if (!val && this.status === 'active') this.status = 'inactive';
+  } else if (this.isModified('isActive')) {
+    const val = Boolean(this.isActive);
+    this.isSubscriptionActive = val;
+    this.isSubscribed = val;
+    if (val && this.status !== 'active') this.status = 'active';
+    if (!val && this.status === 'active') this.status = 'inactive';
+  } else if (this.isModified('isSubscribed')) {
+    const val = Boolean(this.isSubscribed);
+    this.isActive = val;
+    this.isSubscriptionActive = val;
+    if (val && this.status !== 'active') this.status = 'active';
+    if (!val && this.status === 'active') this.status = 'inactive';
+  } else if (this.isModified('status')) {
+    const val = this.status === 'active';
+    this.isActive = val;
+    this.isSubscriptionActive = val;
+    this.isSubscribed = val;
+  }
+  next();
+});
+
+subscriptionSchema.pre('findOneAndUpdate', function (next) {
+  const update = this.getUpdate();
+  if (update) {
+    const set = update.$set || update;
+    if (set.isSubscriptionActive !== undefined) {
+      const val = Boolean(set.isSubscriptionActive);
+      set.isActive = val;
+      set.isSubscribed = val;
+      set.status = val ? 'active' : 'inactive';
+    } else if (set.isActive !== undefined) {
+      const val = Boolean(set.isActive);
+      set.isSubscriptionActive = val;
+      set.isSubscribed = val;
+      set.status = val ? 'active' : 'inactive';
+    } else if (set.isSubscribed !== undefined) {
+      const val = Boolean(set.isSubscribed);
+      set.isSubscriptionActive = val;
+      set.isActive = val;
+      set.status = val ? 'active' : 'inactive';
+    } else if (set.status !== undefined) {
+      const val = set.status === 'active';
+      set.isActive = val;
+      set.isSubscriptionActive = val;
+      set.isSubscribed = val;
+    }
+  }
+  next();
+});
+
 // Indexes for ultra-fast queries and compass editing
+subscriptionSchema.index({ businessId: 1, isSubscriptionActive: 1 });
 subscriptionSchema.index({ businessId: 1, isActive: 1 });
+subscriptionSchema.index({ userId: 1, isSubscriptionActive: 1 });
 subscriptionSchema.index({ userId: 1, isActive: 1 });
 subscriptionSchema.index({ staffId: 1, isActive: 1 });
+subscriptionSchema.index({ userEmail: 1, isSubscriptionActive: 1 });
 subscriptionSchema.index({ userEmail: 1, isActive: 1 });
 subscriptionSchema.index({ targetType: 1, isActive: 1 });
 

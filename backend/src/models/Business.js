@@ -32,6 +32,27 @@ const businessSchema = new mongoose.Schema(
       website: { type: String, default: '', trim: true },
       referralCode: { type: String, default: '', trim: true },
     },
+    profileHistory: [
+      {
+        updatedAt: { type: Date, default: Date.now },
+        updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        previousProfile: {
+          name: { type: String, default: '' },
+          companyName: { type: String, default: '' },
+          profileLogo: { type: String, default: '' },
+          phone: { type: String, default: '' },
+        },
+        updatedProfile: {
+          name: { type: String, default: '' },
+          companyName: { type: String, default: '' },
+          profileLogo: { type: String, default: '' },
+          phone: { type: String, default: '' },
+        },
+        changedFields: [{ type: String }],
+        changeReason: { type: String, default: 'Profile update from Business Settings Hub' },
+        ipAddress: { type: String, default: '' },
+      },
+    ],
     business: {
       country: { type: String, default: 'IN', trim: true },
       currency: { type: String, default: 'INR', trim: true },

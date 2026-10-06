@@ -11,40 +11,44 @@ class SoundService {
   static const String _prefKeySoundEnabled = 'sound_feedback_enabled';
   static bool soundEnabled = true;
 
-  final AudioPlayer _buttonPlayer = AudioPlayer();
-  final AudioPlayer _keyPlayer = AudioPlayer();
-  final AudioPlayer _notificationPlayer = AudioPlayer();
+  AudioPlayer? _buttonPlayer;
+  AudioPlayer? _keyPlayer;
+  AudioPlayer? _notificationPlayer;
 
   bool _isInitialized = false;
   int _lastButtonClickTime = 0;
   int _lastKeyPressTime = 0;
   int _lastNotificationSoundTime = 0;
 
-  /// Initialize sound service and preload audio sources
+  /// Initialize sound service and preload audio sources lazily
   Future<void> init() async {
     if (_isInitialized) return;
     try {
       final prefs = await SharedPreferences.getInstance();
       soundEnabled = prefs.getBool(_prefKeySoundEnabled) ?? true;
 
+      _buttonPlayer = AudioPlayer();
+      _keyPlayer = AudioPlayer();
+      _notificationPlayer = AudioPlayer();
+
       if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
-        await _buttonPlayer.setPlayerMode(PlayerMode.lowLatency);
-        await _keyPlayer.setPlayerMode(PlayerMode.lowLatency);
-        await _notificationPlayer.setPlayerMode(PlayerMode.lowLatency);
+        await _buttonPlayer?.setPlayerMode(PlayerMode.lowLatency);
+        await _keyPlayer?.setPlayerMode(PlayerMode.lowLatency);
+        await _notificationPlayer?.setPlayerMode(PlayerMode.lowLatency);
       }
 
-      await _buttonPlayer.setReleaseMode(ReleaseMode.stop);
-      await _keyPlayer.setReleaseMode(ReleaseMode.stop);
-      await _notificationPlayer.setReleaseMode(ReleaseMode.stop);
+      await _buttonPlayer?.setReleaseMode(ReleaseMode.stop);
+      await _keyPlayer?.setReleaseMode(ReleaseMode.stop);
+      await _notificationPlayer?.setReleaseMode(ReleaseMode.stop);
 
-      await _buttonPlayer.setSource(AssetSource('sounds/ios_click.wav'));
-      await _keyPlayer.setSource(AssetSource('sounds/ios_keypress.wav'));
-      await _notificationPlayer.setSource(AssetSource('sounds/Notification_sound.mp3'));
+      await _buttonPlayer?.setSource(AssetSource('sounds/ios_click.wav'));
+      await _keyPlayer?.setSource(AssetSource('sounds/ios_keypress.wav'));
+      await _notificationPlayer?.setSource(AssetSource('sounds/Notification_sound.mp3'));
 
       // Clean, crisp acoustic volumes
-      await _buttonPlayer.setVolume(0.40);
-      await _keyPlayer.setVolume(0.30);
-      await _notificationPlayer.setVolume(0.95);
+      await _buttonPlayer?.setVolume(0.40);
+      await _keyPlayer?.setVolume(0.30);
+      await _notificationPlayer?.setVolume(0.95);
 
       _isInitialized = true;
     } catch (_) {
@@ -55,93 +59,92 @@ class SoundService {
   /// Toggle sound enabled/disabled setting
   static Future<void> setSoundEnabled(bool enabled) async {
     soundEnabled = enabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_prefKeySoundEnabled, enabled);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_prefKeySoundEnabled, enabled);
+    } catch (_) {}
   }
 
   /// Play notification mp3 sound whenever a push or notification arrives
   static void playNotificationSound() {
     if (!soundEnabled) return;
 
-    // Debounce within 300ms to avoid overlapping audio
+    // Debounce within 400ms to avoid overlapping audio
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastNotificationSoundTime < 300) {
+    if (now - _instance._lastNotificationSoundTime < 400) {
       return;
     }
     _instance._lastNotificationSoundTime = now;
 
     // Trigger haptic notification feedback
-    HapticFeedback.heavyImpact();
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (_) {}
 
     if (_instance._isInitialized) {
       _instance._playNotificationAsset();
     } else {
-      _instance.init().then((_) => _instance._playNotificationAsset());
+      _instance.init().then((_) => _instance._playNotificationAsset()).catchError((_) {});
     }
   }
 
   void _playNotificationAsset() async {
     try {
-      await _notificationPlayer.stop();
-      await _notificationPlayer.play(AssetSource('sounds/Notification_sound.mp3'));
+      await _notificationPlayer?.stop();
+      await _notificationPlayer?.play(AssetSource('sounds/Notification_sound.mp3'));
     } catch (_) {}
   }
 
-  /// Play light button click sound on button/interactive tap immediately with 0 delay
+  /// Play light button click sound on button/interactive tap with safe debouncing
   static void playButtonClick() {
     if (!soundEnabled) return;
 
-    // Debounce within 60ms to avoid double sound
+    // Strong debounce within 140ms to protect Android message queue from flooding
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastButtonClickTime < 60) {
+    if (now - _instance._lastButtonClickTime < 140) {
       return;
     }
     _instance._lastButtonClickTime = now;
 
-    // 1. Instant zero-latency native hardware sound & haptic feedback
-    try {
-      SystemSound.play(SystemSoundType.click);
-    } catch (_) {}
+    // Fast native hardware sound & haptic feedback
     try {
       HapticFeedback.selectionClick();
     } catch (_) {}
 
-    // 2. Fast low-latency asset playback non-blockingly
+    // Low-latency asset playback
     if (_instance._isInitialized) {
       _instance._playButtonAsset();
     }
   }
 
-  void _playButtonAsset() async {
+  void _playButtonAsset() {
     try {
-      await _buttonPlayer.stop();
-      await _buttonPlayer.play(AssetSource('sounds/ios_click.wav'));
+      _buttonPlayer?.play(AssetSource('sounds/ios_click.wav'), mode: PlayerMode.lowLatency);
     } catch (_) {}
   }
 
-  /// Play light keypress sound on text field tap or typing with zero latency
+  /// Play light keypress sound on text field tap or typing with safe debouncing
   static void playKeyPress() {
     if (!soundEnabled) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastKeyPressTime < 30) {
+    if (now - _instance._lastKeyPressTime < 120) {
       return;
     }
     _instance._lastKeyPressTime = now;
 
-    // Instant native hardware click
-    SystemSound.play(SystemSoundType.click);
-    HapticFeedback.selectionClick();
+    try {
+      HapticFeedback.selectionClick();
+    } catch (_) {}
 
     if (_instance._isInitialized) {
       _instance._playKeyAsset();
     }
   }
 
-  void _playKeyAsset() async {
+  void _playKeyAsset() {
     try {
-      await _keyPlayer.stop();
-      await _keyPlayer.play(AssetSource('sounds/ios_keypress.wav'));
+      _keyPlayer?.play(AssetSource('sounds/ios_keypress.wav'), mode: PlayerMode.lowLatency);
     } catch (_) {}
   }
 }

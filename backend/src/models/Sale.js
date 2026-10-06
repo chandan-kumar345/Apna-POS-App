@@ -92,6 +92,9 @@ const saleSchema = new mongoose.Schema(
 saleSchema.index({ businessId: 1, saleDate: -1 });
 saleSchema.index({ businessId: 1, paymentMethod: 1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+saleSchema.plugin(tenantIsolationPlugin);
+
 const Sale = mongoose.model('Sale', saleSchema);
 
 module.exports = Sale;

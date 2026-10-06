@@ -375,13 +375,21 @@ class _StaffSettingsScreenState extends State<StaffSettingsScreen>
     if (!reportingList.contains('None')) {
       reportingList.add('None');
     }
-    _reportingToOptions = reportingList;
-
-    _selectedReportingTo = _reportingToOptions.firstWhere(
-      (r) => r.toLowerCase().contains(_currentStaff.reportingTo.toLowerCase()) ||
-          _currentStaff.reportingTo.toLowerCase().contains(r.toLowerCase()),
-      orElse: () => _reportingToOptions.first,
-    );
+    if (_currentStaff.reportingTo.isNotEmpty) {
+      final matchingOption = _reportingToOptions.firstWhere(
+        (r) => r.toLowerCase().contains(_currentStaff.reportingTo.toLowerCase()) ||
+            _currentStaff.reportingTo.toLowerCase().contains(r.toLowerCase()),
+        orElse: () => '',
+      );
+      if (matchingOption.isNotEmpty) {
+        _selectedReportingTo = matchingOption;
+      } else {
+        _reportingToOptions.insert(0, _currentStaff.reportingTo);
+        _selectedReportingTo = _currentStaff.reportingTo;
+      }
+    } else {
+      _selectedReportingTo = _reportingToOptions.first;
+    }
 
     // 5. Shift
     _selectedShift = _shiftOptions.firstWhere(

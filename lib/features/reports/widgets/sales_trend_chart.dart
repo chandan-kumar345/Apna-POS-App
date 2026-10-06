@@ -46,14 +46,21 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
     return Container(
       padding: EdgeInsets.all(widget.isMobile ? 14 : 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: const Color(0xFFEEF2F6),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-        boxShadow: const [
+        border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 10,
-            offset: Offset(0, 3),
+            color: Colors.white.withValues(alpha: 0.85),
+            offset: const Offset(-3, -3),
+            blurRadius: 7,
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: const Color(0xFFC5D1E0).withValues(alpha: 0.55),
+            offset: const Offset(3, 3),
+            blurRadius: 7,
+            spreadRadius: 0,
           ),
         ],
       ),
@@ -77,15 +84,17 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
                   child: MouseRegion(
                     onHover: (event) => _handleTouch(event.localPosition, constraints.maxWidth, points.length),
                     onExit: (_) => setState(() => _hoveredIndex = null),
-                    child: CustomPaint(
-                      size: Size(constraints.maxWidth, constraints.maxHeight),
-                      painter: _DualAxisChartPainter(
-                        points: points,
-                        maxSales: salesCeiling,
-                        maxOrders: ordersCeiling,
-                        currency: widget.currency,
-                        isMobile: widget.isMobile,
-                        hoveredIndex: _hoveredIndex,
+                    child: RepaintBoundary(
+                      child: CustomPaint(
+                        size: Size(constraints.maxWidth, constraints.maxHeight),
+                        painter: _DualAxisChartPainter(
+                          points: points,
+                          maxSales: salesCeiling,
+                          maxOrders: ordersCeiling,
+                          currency: widget.currency,
+                          isMobile: widget.isMobile,
+                          hoveredIndex: _hoveredIndex,
+                        ),
                       ),
                     ),
                   ),
@@ -148,31 +157,47 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
   }
 
   Widget _buildHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return Wrap(
+      alignment: WrapAlignment.spaceBetween,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 8,
       children: [
         // Title with Icon
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: widget.isMobile ? 38 : 44,
-              height: widget.isMobile ? 38 : 44,
+              width: widget.isMobile ? 36 : 44,
+              height: widget.isMobile ? 36 : 44,
               padding: const EdgeInsets.all(5),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                color: const Color(0xFFE2E8F2),
                 shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFFC5D1E0).withValues(alpha: 0.5),
+                    offset: const Offset(1.5, 1.5),
+                    blurRadius: 3,
+                  ),
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.8),
+                    offset: const Offset(-1.5, -1.5),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               alignment: Alignment.center,
               child: Image.asset(
                 'assets/images/sales report icon/sales trend.png',
-                width: widget.isMobile ? 26 : 32,
-                height: widget.isMobile ? 26 : 32,
+                width: widget.isMobile ? 24 : 32,
+                height: widget.isMobile ? 24 : 32,
                 fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => Icon(
+                errorBuilder: (context, error, stackTrace) => Icon(
                   Icons.analytics_rounded,
                   color: const Color(0xFF0F172A),
-                  size: widget.isMobile ? 20 : 24,
+                  size: widget.isMobile ? 18 : 24,
                 ),
               ),
             ),
@@ -180,7 +205,7 @@ class _SalesTrendChartState extends State<SalesTrendChart> {
             Text(
               'Sales Trend',
               style: TextStyle(
-                fontSize: widget.isMobile ? 14 : 15.5,
+                fontSize: widget.isMobile ? 13.5 : 15.5,
                 fontWeight: FontWeight.w800,
                 color: const Color(0xFF0F172A),
               ),

@@ -447,9 +447,10 @@ class _SubscriptionLockedBottomSheetState extends State<SubscriptionLockedBottom
 
   /// Glowing 3D Lock Illustration with Golden Aura & 4 Sparkle Stars
   Widget _buildGlowing3DLockIllustration() {
-    return AnimatedBuilder(
-      animation: _glowController,
-      builder: (context, child) {
+    return RepaintBoundary(
+      child: AnimatedBuilder(
+        animation: _glowController,
+        builder: (context, child) {
         final glowScale = 1.0 + (_glowController.value * 0.08);
         final shimmer = _glowController.value;
 
@@ -536,6 +537,7 @@ class _SubscriptionLockedBottomSheetState extends State<SubscriptionLockedBottom
           ),
         );
       },
+    ),
     );
   }
 
@@ -753,15 +755,23 @@ class SubscriptionLockedBarrier extends StatelessWidget {
 
     return Stack(
       children: [
-        // Background child (e.g. POS Screen)
-        child,
+        // Background child (e.g. POS Screen) isolated from touch and repainting
+        IgnorePointer(
+          ignoring: isLocked,
+          child: RepaintBoundary(child: child),
+        ),
 
-        // Premium Frosted Glass Blur Barrier (Deep blur matching reference UI)
+        // Premium Frosted Glass Blur Barrier (Hardware-isolated repaint boundary)
         Positioned.fill(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+          child: RepaintBoundary(
             child: Container(
-              color: const Color(0x660F172A), // Deep translucent dark glass overlay
+              color: const Color(0x880F172A),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                child: Container(
+                  color: Colors.black.withValues(alpha: 0.1),
+                ),
+              ),
             ),
           ),
         ),
@@ -771,8 +781,10 @@ class SubscriptionLockedBarrier extends StatelessWidget {
           left: 0,
           right: 0,
           bottom: 0,
-          child: SubscriptionLockedBottomSheet(
-            onUnlocked: onUnlocked,
+          child: RepaintBoundary(
+            child: SubscriptionLockedBottomSheet(
+              onUnlocked: onUnlocked,
+            ),
           ),
         ),
       ],

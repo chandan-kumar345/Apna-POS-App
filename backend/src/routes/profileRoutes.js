@@ -7,6 +7,9 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get('/', (req, res, next) => profileController.getProfile(req, res, next));
+router.put('/', (req, res, next) => profileController.updateProfile(req, res, next));
+router.patch('/profile', (req, res, next) => profileController.updateProfile(req, res, next));
+router.get('/history', (req, res, next) => profileController.getProfileHistory(req, res, next));
 router.patch('/pos-settings', (req, res, next) => profileController.updatePosSettings(req, res, next));
 router.patch('/settings', (req, res, next) => profileController.updateSettings(req, res, next));
 

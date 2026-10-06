@@ -379,6 +379,9 @@ orderSchema.index({ businessId: 1, tableNumber: 1 });
 orderSchema.index({ businessId: 1, idempotencyKey: 1 });
 orderSchema.index({ businessId: 1, clientSyncId: 1 });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+orderSchema.plugin(tenantIsolationPlugin);
+
 const Order = mongoose.model('Order', orderSchema);
 
 module.exports = Order;

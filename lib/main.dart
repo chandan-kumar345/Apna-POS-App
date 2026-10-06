@@ -6,17 +6,10 @@ import 'core/services/sound_service.dart';
 import 'core/services/local_notification_service.dart';
 import 'core/network/api_endpoints.dart';
 import 'core/widgets/sound_feedback_wrapper.dart';
+import 'features/auth/splash_screen.dart';
 import 'features/auth/get_started_screen.dart';
 import 'features/auth/login_screen.dart';
-import 'features/auth/create_profile_screen.dart';
 import 'features/dashboard/main_layout.dart';
-import 'features/onboarding/restaurant_onboarding_screen.dart';
-import 'features/onboarding/confirm_business_name_screen.dart';
-import 'features/onboarding/business_details_screen.dart';
-import 'features/onboarding/choose_business_category_screen.dart';
-import 'features/onboarding/add_business_address_screen.dart';
-import 'features/onboarding/confirm_business_address_screen.dart';
-import 'features/onboarding/business_settings_screen.dart';
 import 'features/notifications/services/notification_permission_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
@@ -63,69 +56,19 @@ void main() async {
     }),
   ]);
 
-  // Determine initial home screen with onboarding resumption
-  final defaultHome = _getInitialHomeScreen();
+  // Launch via fast animated SplashScreen (or direct SuperAdmin on web)
+  Widget initialHome;
+  if (kIsWeb && (Uri.base.path.toLowerCase().contains('admin') || Uri.base.path.toLowerCase().contains('super'))) {
+    initialHome = const SuperAdminLoginScreen();
+  } else {
+    initialHome = const SplashScreen();
+  }
 
   runApp(
     ProviderScope(
-      child: ApnaPosApp(initialHome: defaultHome),
+      child: ApnaPosApp(initialHome: initialHome),
     ),
   );
-}
-
-Widget _getInitialHomeScreen() {
-  final db = DatabaseService();
-
-  if (kIsWeb) {
-    final path = Uri.base.path.toLowerCase();
-    if (path.contains('admin') || path.contains('super')) {
-      return const SuperAdminLoginScreen();
-    }
-    if (db.currentUser != null && db.isOnboardingCompleted) {
-      return const MainLayout();
-    }
-    if (db.currentUser == null) {
-      return const LoginScreen();
-    }
-  }
-
-  // 1. If not logged in -> Show Login or GetStarted
-  if (db.currentUser == null) {
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
-      return const LoginScreen();
-    }
-    return const GetStartedScreen();
-  }
-
-  // 2. If logged in and onboarding is completely finished -> Show POS Dashboard
-  if (db.isOnboardingCompleted) {
-    return const MainLayout();
-  }
-
-  // 3. User is logged in but onboarding is in progress:
-  // Resume at the exact screen where the user left off!
-  final route = db.getOnboardingRoute();
-  final step = db.getOnboardingStep();
-
-  if (route == 'confirm_business_name' || step == 2) {
-    return const ConfirmBusinessNameScreen();
-  } else if (route == 'business_details' || step == 3) {
-    return const BusinessDetailsScreen();
-  } else if (route == 'choose_category' || step == 4) {
-    return const ChooseBusinessCategoryScreen();
-  } else if (route == 'add_address' || step == 5) {
-    return const AddBusinessAddressScreen();
-  } else if (route == 'confirm_address' || step == 6) {
-    return const ConfirmBusinessAddressScreen();
-  } else if (route == 'business_settings' || step == 7) {
-    return const BusinessSettingsScreen();
-  } else if (route == 'create_profile' ||
-      (db.currentUser!.companyName == null || db.currentUser!.companyName!.isEmpty)) {
-    return const CreateProfileScreen();
-  } else {
-    // Default to Upgrade to Business screen
-    return const RestaurantOnboardingScreen();
-  }
 }
 
 class ApnaPosApp extends StatelessWidget {
@@ -146,6 +89,7 @@ class ApnaPosApp extends StatelessWidget {
       },
       home: initialHome,
       routes: {
+        '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginScreen(),
         '/get-started': (context) => const GetStartedScreen(),
         '/dashboard': (context) => const MainLayout(),

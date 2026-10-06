@@ -20,10 +20,12 @@ class MetricSparkline extends StatelessWidget {
     return SizedBox(
       width: width,
       height: height,
-      child: CustomPaint(
-        painter: _SparklinePainter(
-          color: color,
-          points: customPoints,
+      child: RepaintBoundary(
+        child: CustomPaint(
+          painter: _SparklinePainter(
+            color: color,
+            points: customPoints,
+          ),
         ),
       ),
     );

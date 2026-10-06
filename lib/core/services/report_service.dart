@@ -492,65 +492,19 @@ class ReportService {
             ordersOverride: mergedOrders.isNotEmpty ? mergedOrders : null,
           );
 
-          // Authoritatively blend server report metrics and local calculations:
-          // Take the maximum to guarantee we NEVER show 1 order when cloud has 130+ orders!
-          final double finalRevenue = math.max(serverReport.summary.totalRevenue, local.summary.totalRevenue);
-          final double finalGross = math.max(serverReport.summary.grossSales, local.summary.grossSales);
-          final double finalNet = math.max(serverReport.summary.netSales, local.summary.netSales);
-          final int finalOrdersCount = math.max(serverReport.summary.totalOrders, local.summary.totalOrders);
-          final int finalItemsCount = math.max(serverReport.summary.totalItems, local.summary.totalItems);
-          final double finalDiscount = math.max(serverReport.summary.totalDiscount, local.summary.totalDiscount);
-          final double finalTax = math.max(serverReport.summary.totalTax, local.summary.totalTax);
-          final double finalCgst = math.max(serverReport.summary.cgst, local.summary.cgst);
-          final double finalSgst = math.max(serverReport.summary.sgst, local.summary.sgst);
-          final double finalIgst = math.max(serverReport.summary.igst, local.summary.igst);
-          final double finalAov = finalOrdersCount > 0 ? (finalRevenue / finalOrdersCount) : 0.0;
-
-          final mergedSummary = SalesReportSummary(
-            totalRevenue: finalRevenue,
-            grossSales: finalGross > 0 ? finalGross : finalRevenue,
-            netSales: finalNet > 0 ? finalNet : (finalRevenue - finalTax),
-            totalOrders: finalOrdersCount,
-            totalItems: finalItemsCount,
-            totalDiscount: finalDiscount,
-            totalTax: finalTax,
-            cgst: finalCgst,
-            sgst: finalSgst,
-            igst: finalIgst,
-            avgOrderValue: finalAov,
-            growthSalesPct: serverReport.summary.growthSalesPct,
-            growthOrdersPct: serverReport.summary.growthOrdersPct,
-            growthAovPct: serverReport.summary.growthAovPct,
-            growthItemsPct: serverReport.summary.growthItemsPct,
-          );
-
-          final finalTrend = (local.salesTrend.isNotEmpty && (isSingleDayPeriod || serverReport.salesTrend.length <= 1))
-              ? local.salesTrend
-              : (serverReport.salesTrend.isNotEmpty ? serverReport.salesTrend : local.salesTrend);
-
-          final finalCatWise = local.categoryWise.isNotEmpty ? local.categoryWise : serverReport.categoryWise;
-          final finalPaymentModes = local.paymentModes.isNotEmpty ? local.paymentModes : serverReport.paymentModes;
-          final finalSalesByOrderType = local.salesByOrderType.isNotEmpty ? local.salesByOrderType : serverReport.salesByOrderType;
-          final finalTopProducts = local.topProducts.isNotEmpty ? local.topProducts : serverReport.topProducts;
-          final finalStaffWise = local.staffWise.isNotEmpty ? local.staffWise : serverReport.staffWise;
-          final finalOutletWise = local.outletWise.isNotEmpty ? local.outletWise : serverReport.outletWise;
-
+          // Return date-filtered report with strictly matched orders and metrics
           return SalesReportData(
-            summary: mergedSummary,
-            paymentModes: finalPaymentModes,
-            salesByOrderType: finalSalesByOrderType,
-            topProducts: finalTopProducts,
-            salesTrend: finalTrend,
-            categoryWise: finalCatWise,
-            staffWise: finalStaffWise,
-            outletWise: finalOutletWise,
-            orders: local.orders.isNotEmpty
-                ? local.orders
-                : (serverReport.orders.isNotEmpty
-                    ? serverReport.orders.where((o) => o.status != OrderStatus.cancelled && (o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid')).toList()
-                    : mergedOrders.where((o) => o.status != OrderStatus.cancelled && (o.status == OrderStatus.completed || o.isPaid || o.paymentStatus.toLowerCase() == 'paid')).toList()),
-            startDate: serverReport.startDate.isNotEmpty ? serverReport.startDate : (startDate ?? ''),
-            endDate: serverReport.endDate.isNotEmpty ? serverReport.endDate : (endDate ?? ''),
+            summary: local.summary,
+            paymentModes: local.paymentModes,
+            salesByOrderType: local.salesByOrderType,
+            topProducts: local.topProducts,
+            salesTrend: local.salesTrend,
+            categoryWise: local.categoryWise,
+            staffWise: local.staffWise,
+            outletWise: local.outletWise,
+            orders: local.orders,
+            startDate: startDate ?? fromDate ?? serverReport.startDate,
+            endDate: endDate ?? toDate ?? serverReport.endDate,
             period: period ?? 'allTime',
           );
         }

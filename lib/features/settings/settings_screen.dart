@@ -273,7 +273,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: GlassTheme.primaryCyan.withOpacity(0.15),
+                        color: GlassTheme.primaryCyan.withValues(alpha: 0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.volume_up_rounded, color: GlassTheme.primaryCyan, size: 20),

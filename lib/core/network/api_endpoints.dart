@@ -405,6 +405,8 @@ class ApiEndpoints {
 
   // Profile & Business Settings endpoints
   static const String profile = '/profile';
+  static const String profileUpdate = '/profile/profile';
+  static const String profileHistory = '/profile/history';
   static const String posSettings = '/profile/pos-settings';
   static const String profileSettings = '/profile/settings';
 

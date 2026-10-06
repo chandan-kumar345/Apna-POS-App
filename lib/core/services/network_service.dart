@@ -21,7 +21,7 @@ class NetworkService {
 
   void _startMonitoring() {
     _monitorTimer?.cancel();
-    _monitorTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+    _monitorTimer = Timer.periodic(const Duration(seconds: 20), (_) {
       checkNow();
     });
     checkNow();

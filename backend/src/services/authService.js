@@ -296,29 +296,58 @@ class AuthService {
       permissions = ['pos', 'tables', 'orders'];
     }
 
+    const Subscription = require('../models/Subscription');
+    let subDoc = null;
+    try {
+      if (business?._id) {
+        subDoc = await Subscription.findOne({ businessId: business._id }).sort({ createdAt: -1 });
+      }
+      if (!subDoc && user?._id) {
+        subDoc = await Subscription.findOne({ userId: user._id }).sort({ createdAt: -1 });
+      }
+    } catch (_) {}
+
     const bizSub = business?.subscription || {};
     const userSub = user?.subscription || {};
 
     let isSubActive = false;
-    if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
-      isSubActive = Boolean(bizSub.isActive);
-    } else if (bizSub.status !== undefined && bizSub.status !== null) {
-      isSubActive = bizSub.status === 'active';
-    } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
-      isSubActive = Boolean(userSub.isActive);
-    } else if (userSub.status !== undefined && userSub.status !== null) {
-      isSubActive = userSub.status === 'active';
+    if (subDoc) {
+      if (subDoc.isSubscriptionActive !== undefined && subDoc.isSubscriptionActive !== null) {
+        isSubActive = Boolean(subDoc.isSubscriptionActive);
+      } else if (subDoc.isActive !== undefined && subDoc.isActive !== null) {
+        isSubActive = Boolean(subDoc.isActive);
+      } else if (subDoc.isSubscribed !== undefined && subDoc.isSubscribed !== null) {
+        isSubActive = Boolean(subDoc.isSubscribed);
+      } else if (subDoc.status !== undefined && subDoc.status !== null) {
+        isSubActive = subDoc.status === 'active';
+      }
+    } else {
+      if (bizSub.isSubscriptionActive !== undefined && bizSub.isSubscriptionActive !== null) {
+        isSubActive = Boolean(bizSub.isSubscriptionActive);
+      } else if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
+        isSubActive = Boolean(bizSub.isActive);
+      } else if (bizSub.status !== undefined && bizSub.status !== null) {
+        isSubActive = bizSub.status === 'active';
+      } else if (userSub.isSubscriptionActive !== undefined && userSub.isSubscriptionActive !== null) {
+        isSubActive = Boolean(userSub.isSubscriptionActive);
+      } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
+        isSubActive = Boolean(userSub.isActive);
+      } else if (userSub.status !== undefined && userSub.status !== null) {
+        isSubActive = userSub.status === 'active';
+      }
     }
 
     const subPayload = {
+      isSubscriptionActive: isSubActive,
       isActive: isSubActive,
+      isSubscribed: isSubActive,
       status: isSubActive ? 'active' : 'inactive',
-      plan: bizSub.plan || userSub.plan || 'standard',
-      amount: bizSub.amount || 300,
-      upiId: '9709593705@ybl',
-      activatedAt: bizSub.activatedAt || userSub.startDate || null,
-      expiresAt: bizSub.expiresAt || userSub.expiresAt || null,
-      paymentRef: bizSub.paymentRef || userSub.paymentRef || '',
+      plan: subDoc?.plan || bizSub.plan || userSub.plan || 'standard',
+      amount: subDoc?.amount || bizSub.amount || 300,
+      upiId: subDoc?.upiId || '9709593705@ybl',
+      activatedAt: subDoc?.activatedAt || bizSub.activatedAt || userSub.startDate || null,
+      expiresAt: subDoc?.expiresAt || bizSub.expiresAt || userSub.expiresAt || null,
+      paymentRef: subDoc?.paymentRef || bizSub.paymentRef || userSub.paymentRef || '',
     };
 
     return {

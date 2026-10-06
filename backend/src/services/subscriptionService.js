@@ -225,6 +225,15 @@ class SubscriptionService {
       }
     }
 
+    if (!business && !user && !staffId) {
+      business = await Business.findOne().sort({ createdAt: -1 });
+      if (business) {
+        user = await User.findById(business.ownerId);
+      } else {
+        user = await User.findOne().sort({ createdAt: -1 });
+      }
+    }
+
     const targetBizId = business?._id || businessId;
     const targetUserId = user?._id || userId;
     const targetStaffId = staff?._id || staffId;
@@ -243,6 +252,9 @@ class SubscriptionService {
     if (!subDoc && user?.email) {
       subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ createdAt: -1 });
     }
+    if (!subDoc) {
+      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
+    }
 
     let isSubscribed = false;
     let plan = 'standard';
@@ -255,8 +267,12 @@ class SubscriptionService {
 
     if (subDoc) {
       // Document found in the new subscriptions collection
-      if (subDoc.isActive !== undefined && subDoc.isActive !== null) {
+      if (subDoc.isSubscriptionActive !== undefined && subDoc.isSubscriptionActive !== null) {
+        isSubscribed = Boolean(subDoc.isSubscriptionActive);
+      } else if (subDoc.isActive !== undefined && subDoc.isActive !== null) {
         isSubscribed = Boolean(subDoc.isActive);
+      } else if (subDoc.isSubscribed !== undefined && subDoc.isSubscribed !== null) {
+        isSubscribed = Boolean(subDoc.isSubscribed);
       } else {
         isSubscribed = subDoc.status === 'active';
       }
@@ -279,10 +295,14 @@ class SubscriptionService {
       const userSub = user?.subscription || {};
       const staffSub = staff?.subscription || {};
 
-      if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
+      if (bizSub.isSubscriptionActive !== undefined && bizSub.isSubscriptionActive !== null) {
+        isSubscribed = Boolean(bizSub.isSubscriptionActive);
+      } else if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
         isSubscribed = Boolean(bizSub.isActive);
       } else if (bizSub.status !== undefined && bizSub.status !== null) {
         isSubscribed = bizSub.status === 'active';
+      } else if (userSub.isSubscriptionActive !== undefined && userSub.isSubscriptionActive !== null) {
+        isSubscribed = Boolean(userSub.isSubscriptionActive);
       } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
         isSubscribed = Boolean(userSub.isActive);
       } else if (userSub.status !== undefined && userSub.status !== null) {
@@ -312,7 +332,9 @@ class SubscriptionService {
             phone: user?.phone || business?.profile?.phone || staff?.phone || '',
             plan,
             amount,
+            isSubscriptionActive: isSubscribed,
             isActive: isSubscribed,
+            isSubscribed,
             status: isSubscribed ? 'active' : 'inactive',
             upiId,
             paymentRef,
@@ -326,6 +348,7 @@ class SubscriptionService {
     const upiPayUrl = `upi://pay?pa=${upiId}&pn=Apna%20POS&am=${amount}&cu=INR&tn=Apna%20POS%20Subscription%20Unlock`;
 
     return {
+      isSubscriptionActive: isSubscribed,
       isActive: isSubscribed,
       isSubscribed,
       status: isSubscribed ? 'active' : 'inactive',
@@ -397,7 +420,9 @@ class SubscriptionService {
         billingCycle: paymentData.billingCycle || 'monthly',
         amount,
         currency: 'INR',
+        isSubscriptionActive: true,
         isActive: true,
+        isSubscribed: true,
         status: 'active',
         upiId: '9709593705@ybl',
         paymentRef: ref,
@@ -413,6 +438,7 @@ class SubscriptionService {
     if (business) {
       business.subscription = business.subscription || {};
       business.subscription.isActive = true;
+      business.subscription.isSubscriptionActive = true;
       business.subscription.status = 'active';
       business.subscription.amount = amount;
       business.subscription.upiId = '9709593705@ybl';
@@ -426,6 +452,7 @@ class SubscriptionService {
     if (user) {
       user.subscription = user.subscription || {};
       user.subscription.isActive = true;
+      user.subscription.isSubscriptionActive = true;
       user.subscription.status = 'active';
       user.subscription.startDate = now;
       user.subscription.expiresAt = expiry;
@@ -441,6 +468,7 @@ class SubscriptionService {
           {
             $set: {
               'subscription.isActive': true,
+              'subscription.isSubscriptionActive': true,
               'subscription.status': 'active',
               'subscription.plan': 'standard',
               'subscription.assignedAt': now,
@@ -464,7 +492,25 @@ class SubscriptionService {
       }
     } catch (_) {}
 
+    // 6. Broadcast Real-Time Socket Event to all connected devices in the business
+    try {
+      const socketService = require('./socketService');
+      socketService.emitSubscriptionUpdated(business?._id || targetBizId, {
+        subscriptionId: subscription._id,
+        businessId: business?._id || targetBizId,
+        userId: user?._id || targetUserId,
+        isSubscriptionActive: true,
+        isActive: true,
+        isSubscribed: true,
+        status: 'active',
+        plan: subscription.plan || 'standard',
+        amount,
+        expiresAt: expiry,
+      });
+    } catch (_) {}
+
     return {
+      isSubscriptionActive: true,
       isActive: true,
       isSubscribed: true,
       status: 'active',
@@ -548,32 +594,71 @@ class SubscriptionService {
       }
     }
 
-    const isActive = subData.isActive !== undefined ? Boolean(subData.isActive) : (subData.status === 'active');
+    const isActive = subData.isSubscriptionActive !== undefined
+      ? Boolean(subData.isSubscriptionActive)
+      : (subData.isActive !== undefined ? Boolean(subData.isActive) : (subData.status === 'active'));
     const status = isActive ? 'active' : (subData.status || 'inactive');
 
-    const filter = subData.subscriptionId
-      ? { _id: subData.subscriptionId }
-      : (business?._id ? { businessId: business._id } : { userId: user?._id });
+    if (!business && !user && !subData.subscriptionId) {
+      business = await Business.findOne().sort({ createdAt: -1 });
+      if (business) {
+        user = await User.findById(business.ownerId);
+      } else {
+        user = await User.findOne().sort({ createdAt: -1 });
+      }
+    }
 
-    if (subData.subscriptionId || business?._id || user?._id) {
-      await Subscription.findOneAndUpdate(
-        filter,
-        {
-          $set: {
-            isActive,
-            status,
-            ...(subData.plan && { plan: subData.plan }),
-            ...(subData.amount && { amount: Number(subData.amount) }),
-            ...(subData.expiresAt && { expiresAt: new Date(subData.expiresAt) }),
-          },
-        },
-        { upsert: true }
-      );
+    let subDoc = null;
+    if (subData.subscriptionId) {
+      subDoc = await Subscription.findById(subData.subscriptionId);
+    } else if (business?._id) {
+      subDoc = await Subscription.findOne({ businessId: business._id }).sort({ updatedAt: -1, createdAt: -1 });
+    } else if (user?._id) {
+      subDoc = await Subscription.findOne({ userId: user._id }).sort({ updatedAt: -1, createdAt: -1 });
+    }
+    if (!subDoc) {
+      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
+    }
+
+    if (subDoc) {
+      subDoc.isSubscriptionActive = isActive;
+      subDoc.isActive = isActive;
+      subDoc.isSubscribed = isActive;
+      subDoc.status = status;
+      if (business?._id && !subDoc.businessId) subDoc.businessId = business._id;
+      if (user?._id && !subDoc.userId) subDoc.userId = user._id;
+      if (isActive && (!subDoc.expiresAt || new Date(subDoc.expiresAt) < new Date())) {
+        subDoc.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      }
+      if (subData.plan) subDoc.plan = subData.plan;
+      if (subData.amount) subDoc.amount = Number(subData.amount);
+      if (subData.expiresAt) subDoc.expiresAt = new Date(subData.expiresAt);
+      await subDoc.save();
+    } else {
+      subDoc = await Subscription.create({
+        businessId: business?._id || null,
+        userId: user?._id || null,
+        userEmail: user?.email || 'admin@apnapos.com',
+        userName: user?.name || business?.profile?.name || 'Administrator',
+        businessName: business?.profile?.companyName || 'My Restaurant',
+        phone: user?.phone || business?.profile?.phone || '',
+        isSubscriptionActive: isActive,
+        isActive,
+        isSubscribed: isActive,
+        status,
+        plan: subData.plan || 'standard',
+        amount: Number(subData.amount) || 300,
+        expiresAt: subData.expiresAt
+          ? new Date(subData.expiresAt)
+          : (isActive ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null),
+        activatedAt: isActive ? new Date() : null,
+      });
     }
 
     if (business) {
       business.subscription = business.subscription || {};
       business.subscription.isActive = isActive;
+      business.subscription.isSubscriptionActive = isActive;
       business.subscription.status = status;
       if (subData.plan) business.subscription.plan = subData.plan;
       if (subData.amount) business.subscription.amount = Number(subData.amount);
@@ -584,13 +669,27 @@ class SubscriptionService {
     if (user) {
       user.subscription = user.subscription || {};
       user.subscription.isActive = isActive;
+      user.subscription.isSubscriptionActive = isActive;
       user.subscription.status = status;
       if (subData.plan) user.subscription.plan = subData.plan;
       if (subData.expiresAt) user.subscription.expiresAt = new Date(subData.expiresAt);
       await user.save();
     }
 
-    return this.getStatus(business?._id, user?._id);
+    const result = await this.getStatus(subDoc?.businessId || business?._id, subDoc?.userId || user?._id);
+
+    try {
+      const socketService = require('./socketService');
+      socketService.emitSubscriptionUpdated(business?._id, {
+        ...result,
+        isSubscriptionActive: isActive,
+        isActive,
+        isSubscribed: isActive,
+        status,
+      });
+    } catch (_) {}
+
+    return result;
   }
 
   /**

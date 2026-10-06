@@ -158,14 +158,21 @@ class PaymentModeDonutChart extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.all(isMobile ? 14 : 18),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: const Color(0xFFEEF2F6),
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE2E8F0)),
-          boxShadow: const [
+          border: Border.all(color: const Color(0xFFD6E2EE), width: 1.1),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x06000000),
-              blurRadius: 10,
-              offset: Offset(0, 3),
+              color: Colors.white.withValues(alpha: 0.85),
+              offset: const Offset(-3, -3),
+              blurRadius: 7,
+              spreadRadius: 0,
+            ),
+            BoxShadow(
+              color: const Color(0xFFC5D1E0).withValues(alpha: 0.55),
+              offset: const Offset(3, 3),
+              blurRadius: 7,
+              spreadRadius: 0,
             ),
           ],
         ),
@@ -184,8 +191,21 @@ class PaymentModeDonutChart extends StatelessWidget {
                       height: isMobile ? 40 : 46,
                       padding: const EdgeInsets.all(5),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0F172A).withValues(alpha: 0.08),
+                        color: const Color(0xFFE2E8F2),
                         shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFC5D1E0).withValues(alpha: 0.5),
+                            offset: const Offset(1.5, 1.5),
+                            blurRadius: 3,
+                          ),
+                          BoxShadow(
+                            color: Colors.white.withValues(alpha: 0.8),
+                            offset: const Offset(-1.5, -1.5),
+                            blurRadius: 3,
+                          ),
+                        ],
                       ),
                       alignment: Alignment.center,
                       child: Image.asset(
@@ -193,7 +213,7 @@ class PaymentModeDonutChart extends StatelessWidget {
                         width: isMobile ? 28 : 34,
                         height: isMobile ? 28 : 34,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => Icon(
+                        errorBuilder: (context, error, stackTrace) => Icon(
                           Icons.credit_card_rounded,
                           color: const Color(0xFF0F172A),
                           size: isMobile ? 20 : 24,
@@ -229,12 +249,14 @@ class PaymentModeDonutChart extends StatelessWidget {
                     child: Stack(
                       alignment: Alignment.center,
                       children: [
-                        CustomPaint(
-                          size: const Size(150, 150),
-                          painter: _DonutChartPainter(
-                            paymentModes: canonicalModes,
-                            totalSales: effectiveTotal,
-                            getColor: _getColorForMode,
+                        RepaintBoundary(
+                          child: CustomPaint(
+                            size: const Size(150, 150),
+                            painter: _DonutChartPainter(
+                              paymentModes: canonicalModes,
+                              totalSales: effectiveTotal,
+                              getColor: _getColorForMode,
+                            ),
                           ),
                         ),
                         Column(
@@ -340,12 +362,14 @@ class PaymentModeDonutChart extends StatelessWidget {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          CustomPaint(
-                            size: const Size(140, 140),
-                            painter: _DonutChartPainter(
-                              paymentModes: canonicalModes,
-                              totalSales: effectiveTotal,
-                              getColor: _getColorForMode,
+                          RepaintBoundary(
+                            child: CustomPaint(
+                              size: const Size(140, 140),
+                              painter: _DonutChartPainter(
+                                paymentModes: canonicalModes,
+                                totalSales: effectiveTotal,
+                                getColor: _getColorForMode,
+                              ),
                             ),
                           ),
                           Column(

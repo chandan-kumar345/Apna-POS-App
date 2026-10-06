@@ -224,7 +224,7 @@ void main() {
       expect(find.text('Work Details'), findsOneWidget);
       expect(find.text('Department'), findsOneWidget);
       expect(find.text('Reporting To'), findsOneWidget);
-      expect(find.text('Work Location'), findsOneWidget);
+      expect(find.text('Business Branch *'), findsOneWidget);
       expect(find.text('Shift / Working Hours'), findsOneWidget);
 
       // Verify Login & Security Card (Password only, NO PIN fields)
@@ -237,17 +237,16 @@ void main() {
       expect(find.text('4-Digit Quick PIN'), findsNothing);
 
       // Verify Permissions Card (Categories & Sub-permissions)
-      expect(find.text('Permissions'), findsOneWidget);
-      expect(find.text('Set what this staff member can access'), findsOneWidget);
-      expect(find.text('POS & Orders'), findsOneWidget);
-      expect(find.text('Products'), findsOneWidget);
-      expect(find.text('Inventory'), findsOneWidget);
-      expect(find.text('Customers'), findsOneWidget);
-      expect(find.text('Reports'), findsOneWidget);
-      expect(find.text('Settings'), findsOneWidget);
-      expect(find.text('Others'), findsOneWidget);
-      expect(find.text('Access POS'), findsOneWidget);
-      expect(find.text('Apply Discount'), findsOneWidget);
+      expect(find.text('Permissions Matrix'), findsOneWidget);
+      expect(find.textContaining('12'), findsWidgets);
+      expect(find.text('Dashboard'), findsWidgets);
+      expect(find.text('POS Billing'), findsWidgets);
+      expect(find.text('Tables & Floor'), findsWidgets);
+      expect(find.text('My Orders & KDS'), findsWidgets);
+      expect(find.text('Menu & Catalog'), findsWidgets);
+      expect(find.text('Inventory'), findsWidgets);
+      expect(find.text('Access POS Billing'), findsWidgets);
+      expect(find.text('Apply Bill Discounts'), findsWidgets);
 
       // Verify Preferences Card
       expect(find.text('Preferences'), findsOneWidget);
@@ -325,13 +324,12 @@ void main() {
       await tester.tap(find.text('Permissions'));
       await tester.pumpAndSettle();
 
-      expect(find.text('POS & Orders'), findsOneWidget);
-      expect(find.text('Products & Menu'), findsOneWidget);
+      expect(find.text('POS Billing'), findsOneWidget);
+      expect(find.text('Menu & Catalog'), findsOneWidget);
       expect(find.text('Inventory'), findsOneWidget);
-      expect(find.text('Customers & CRM'), findsOneWidget);
-      expect(find.text('Reports & Analytics'), findsOneWidget);
-      expect(find.text('Settings & Business'), findsOneWidget);
-      expect(find.text('System & Others'), findsOneWidget);
+      expect(find.text('CRM Customers'), findsOneWidget);
+      expect(find.text('Sales Report'), findsOneWidget);
+      expect(find.text('Business Setting'), findsOneWidget);
       expect(find.textContaining('Role Presets'), findsOneWidget);
 
       // Switch to Tab 2 (Work Settings)

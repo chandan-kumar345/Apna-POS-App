@@ -81,6 +81,24 @@ const authMiddleware = async (req, res, next) => {
     req.permissions = permissions;
     req.business = business;
     req.businessId = business._id;
+    req.tenantOptions = { _tenantId: business._id };
+
+    // Strict Tenant Boundary Verification: Prevent cross-tenant spoofing via X-Business-ID
+    const requestedTenantHeader = req.headers['x-business-id'];
+    if (requestedTenantHeader && requestedTenantHeader.trim() !== '') {
+      const cleanHeaderId = requestedTenantHeader.trim();
+      const authenticatedTenantId = business._id.toString();
+      if (cleanHeaderId !== authenticatedTenantId && !user.isSuperAdmin && !isSuperAdminEmail) {
+        console.warn(
+          `[Tenant Security Alert] Cross-tenant spoofing detected! User ${user._id} attempted to access tenant ${cleanHeaderId} using token for ${authenticatedTenantId}`
+        );
+        throw ApiError.forbidden(
+          'Access denied: You do not have permission to access resources belonging to this business',
+          'TENANT_MISMATCH_FORBIDDEN'
+        );
+      }
+    }
+
     next();
   } catch (error) {
     next(error);

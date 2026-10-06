@@ -172,6 +172,9 @@ class NotificationService extends ChangeNotifier {
         }
       }
 
+      final prevIds = _notifications.map((n) => '${n.id}_${n.isRead}').toList();
+      final prevUnread = _unreadCount;
+
       if (page == 1 || refresh || silent) {
         // Merge seamlessly without flashing
         _notifications.clear();
@@ -186,15 +189,24 @@ class NotificationService extends ChangeNotifier {
           (data['unreadCount'] as int?) ?? _notifications.where((n) => !n.isRead).length;
       _errorMessage = null;
 
+      final newIds = _notifications.map((n) => '${n.id}_${n.isRead}').toList();
+      final hasChanged = !listEquals(prevIds, newIds) || prevUnread != _unreadCount;
+
       _persistNotificationsToCache();
+
+      if (!silent || hasChanged) {
+        notifyListeners();
+      }
     } catch (e) {
       debugPrint('[NotificationService] Error fetching notifications: $e');
       if (_notifications.isEmpty) {
         _errorMessage = 'Unable to load notifications. Please check your connection.';
       }
+      if (!silent) {
+        notifyListeners();
+      }
     } finally {
       _isLoading = false;
-      notifyListeners();
     }
   }
 

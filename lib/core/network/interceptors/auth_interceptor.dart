@@ -33,6 +33,11 @@ class AuthInterceptor extends Interceptor {
       options.headers['X-Device-ID'] = deviceId;
     }
 
+    final businessId = await _storageService.getBusinessId();
+    if (businessId != null && businessId.trim().isNotEmpty) {
+      options.headers['X-Business-ID'] = businessId.trim();
+    }
+
     options.headers['X-Request-Timestamp'] = DateTime.now().millisecondsSinceEpoch.toString();
     
     return handler.next(options);

@@ -30,7 +30,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
   DateTime? _customEndDate;
 
   // Cloud API State
-  bool _isLoading = true;
+  bool _isManualRefreshing = false;
   String? _errorMessage;
   DashboardSummaryData _summaryData = DashboardSummaryData();
   OrderTypeStatsData _orderTypesData = OrderTypeStatsData.empty();
@@ -55,22 +55,21 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         _paymentMethodsData = initialLocal.payments;
         _taxData = initialLocal.taxes;
         _orderStatsData = initialLocal.orderStats;
-        _isLoading = false;
       }
     }
-    _loadDashboardData();
+    _loadDashboardData(isManual: false);
   }
 
   @override
   void didUpdateWidget(covariant GlassDashboardScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.isActive && !oldWidget.isActive) {
-      _loadDashboardData();
+      _loadDashboardData(isManual: false);
     }
   }
 
   void refreshDashboard() {
-    _loadDashboardData();
+    _loadDashboardData(isManual: false);
   }
 
   @override
@@ -82,7 +81,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
   void _onDbChange() {
     if (!mounted) return;
     if (widget.isActive) {
-      _loadDashboardData();
+      _loadDashboardData(isManual: false);
     } else {
       final localData = _computeLocalDashboardData(_dashboardFilter, _customStartDate, _customEndDate);
       if (localData != null && mounted) {
@@ -147,12 +146,14 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     return range.end.toUtc().toIso8601String();
   }
 
-  Future<void> _loadDashboardData() async {
+  Future<void> _loadDashboardData({bool isManual = false}) async {
     if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+    if (isManual) {
+      setState(() {
+        _isManualRefreshing = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final isAuth = await _db.authService.isAuthenticated();
@@ -169,7 +170,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
               _taxData = localData.taxes;
               _orderStatsData = localData.orderStats;
             }
-            _isLoading = false;
+            _isManualRefreshing = false;
             _errorMessage = null;
           });
         }
@@ -194,7 +195,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           _paymentMethodsData = overview.paymentMethods;
           _taxData = overview.taxes;
           _orderStatsData = overview.orderStats;
-          _isLoading = false;
+          _isManualRefreshing = false;
           _errorMessage = null;
         });
       }
@@ -212,7 +213,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             _taxData = localData.taxes;
             _orderStatsData = localData.orderStats;
           }
-          _isLoading = false;
+          _isManualRefreshing = false;
           _errorMessage = null;
         });
       }
@@ -229,7 +230,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       backgroundColor: const Color(0xFFF4F6FB),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadDashboardData,
+          onRefresh: () => _loadDashboardData(isManual: true),
           color: const Color(0xFF0284C7),
           child: Center(
             child: ConstrainedBox(
@@ -290,7 +291,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                               ),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
-                              onPressed: _loadDashboardData,
+                              onPressed: () => _loadDashboardData(isManual: true),
                             ),
                           ],
                         ),
@@ -427,14 +428,14 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           value: _dashboardFilter,
           onChanged: (val) {
             setState(() => _dashboardFilter = val);
-            _loadDashboardData();
+            _loadDashboardData(isManual: true);
           },
         ),
         const SizedBox(width: 8),
         Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: _loadDashboardData,
+            onTap: () => _loadDashboardData(isManual: true),
             borderRadius: BorderRadius.circular(12),
             child: Container(
               padding: const EdgeInsets.all(8),
@@ -455,7 +456,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                   ),
                 ],
               ),
-              child: _isLoading
+              child: _isManualRefreshing
                   ? const SizedBox(
                       width: 16,
                       height: 16,

@@ -161,6 +161,9 @@ productSchema.index({ businessId: 1, sku: 1 });
 productSchema.index({ businessId: 1, createdAt: -1 });
 productSchema.index({ businessId: 1, name: 'text', description: 'text' });
 
+const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
+productSchema.plugin(tenantIsolationPlugin);
+
 const Product = mongoose.model('Product', productSchema);
 
 module.exports = Product;

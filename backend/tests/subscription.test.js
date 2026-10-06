@@ -100,10 +100,45 @@ describe('Subscription & Lead Generation API', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
+      expect(res.body.data.isSubscriptionActive).toBe(true);
       expect(res.body.data.isActive).toBe(true);
       expect(res.body.data.status).toBe('active');
       expect(res.body.data.upiId).toBe('9709593705@ybl');
       expect(res.body.data.paymentRef).toBe('UPI_TEST_UTR_123456');
+    });
+
+    it('should lock subscription when isSubscriptionActive is updated to false', async () => {
+      const updateRes = await request(app)
+        .patch('/api/v1/subscription/status')
+        .send({
+          isSubscriptionActive: false,
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.success).toBe(true);
+
+      const statusRes = await request(app).get('/api/v1/subscription/status');
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.data.isSubscriptionActive).toBe(false);
+      expect(statusRes.body.data.isActive).toBe(false);
+      expect(statusRes.body.data.status).toBe('inactive');
+    });
+
+    it('should unlock subscription when isSubscriptionActive is updated to true', async () => {
+      const updateRes = await request(app)
+        .patch('/api/v1/subscription/status')
+        .send({
+          isSubscriptionActive: true,
+        });
+
+      expect(updateRes.status).toBe(200);
+      expect(updateRes.body.success).toBe(true);
+
+      const statusRes = await request(app).get('/api/v1/subscription/status');
+      expect(statusRes.status).toBe(200);
+      expect(statusRes.body.data.isSubscriptionActive).toBe(true);
+      expect(statusRes.body.data.isActive).toBe(true);
+      expect(statusRes.body.data.status).toBe('active');
     });
 
     it('should list all subscriptions from the new subscriptions collection', async () => {
