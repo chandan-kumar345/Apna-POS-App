@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -118,8 +117,8 @@ class _ProductionRegistrationScreenState
       appVersion: '1.0.0',
       deviceId: 'DEV_${DateTime.now().millisecondsSinceEpoch}',
       deviceModel: 'Android/iOS Device',
-      operatingSystem: kIsWeb ? 'Web' : (Platform.isAndroid ? 'Android' : 'iOS'),
-      registrationSource: kIsWeb ? 'WEB' : (Platform.isAndroid ? 'ANDROID' : 'IOS'),
+      operatingSystem: kIsWeb ? 'Web' : (defaultTargetPlatform == TargetPlatform.android ? 'Android' : 'iOS'),
+      registrationSource: kIsWeb ? 'WEB' : (defaultTargetPlatform == TargetPlatform.android ? 'ANDROID' : 'IOS'),
     );
 
     ref.read(registrationNotifierProvider.notifier).registerUser(entity);

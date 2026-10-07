@@ -175,36 +175,135 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  bool? _inMemorySubscriptionStatus;
+
   /// Whether the current business subscription is active / unlocked (false for new businesses until paid/unlocked)
   bool get isSubscribed {
-    if (restaurant != null) {
-      return restaurant!.isSubscribed;
+    if (_inMemorySubscriptionStatus != null) {
+      return _inMemorySubscriptionStatus!;
     }
-    final saved = _prefs?.getBool(_userKey('is_subscribed')) ?? _prefs?.getBool('business_is_subscribed');
+    if (restaurant != null && restaurant!.isSubscribed) {
+      return true;
+    }
+    final saved = _prefs?.getBool(_userKey('is_subscribed')) ??
+        _prefs?.getBool(_userKey('is_subscription_active')) ??
+        _prefs?.getBool(_businessKey('is_subscribed')) ??
+        _prefs?.getBool(_businessKey('is_subscription_active')) ??
+        _prefs?.getBool('business_is_subscribed') ??
+        _prefs?.getBool('is_subscribed') ??
+        _prefs?.getBool('is_subscription_active');
     if (saved != null) {
       return saved;
     }
     return false;
   }
 
+  /// Alias for isSubscribed ensuring complete compatibility with unified premiumSubscription
+  bool get isSubscriptionActive => isSubscribed;
+
   Future<void> updateSubscriptionStatus(bool active) async {
     final bool changed = isSubscribed != active;
+    _inMemorySubscriptionStatus = active;
+    if (!changed) {
+      return;
+    }
     await _prefs?.setBool(_userKey('is_subscribed'), active);
+    await _prefs?.setBool(_userKey('is_subscription_active'), active);
+    await _prefs?.setBool(_businessKey('is_subscribed'), active);
+    await _prefs?.setBool(_businessKey('is_subscription_active'), active);
     await _prefs?.setBool('business_is_subscribed', active);
+    await _prefs?.setBool('is_subscribed', active);
+    await _prefs?.setBool('is_subscription_active', active);
     if (restaurant != null) {
       restaurant = restaurant!.copyWith(isSubscribed: active);
       await _saveRestaurantToPrefs();
     }
-    if (changed) {
-      debugPrint('[DatabaseService] Real-time subscription status changed: $active (notifying listeners)');
-      notifyListeners();
-    }
+    debugPrint('[DatabaseService] Real-time subscription status changed: $active (notifying listeners)');
+    notifyListeners();
   }
 
   // Live in-cart totals per table (before KOT is sent)
   final Map<String, double> _liveCartTotals = {};
   final Map<String, List<CartItemModel>> _liveTableCarts = {};
   final Map<String, Map<String, dynamic>> _liveTableDiscounts = {};
+  final Map<String, Map<String, dynamic>> _liveDraftCustomerInfo = {};
+  final Map<String, Map<String, dynamic>> _liveDraftDeliveryInfo = {};
+
+  Map<String, dynamic>? getLiveCustomerInfo(String key) {
+    final cleanKey = key.trim();
+    if (cleanKey.isEmpty) return null;
+    if (_liveDraftCustomerInfo.containsKey(cleanKey)) {
+      return _liveDraftCustomerInfo[cleanKey];
+    }
+    final tbl = tables.where((t) =>
+      isSameTable(t.name, cleanKey) ||
+      isSameTable(t.tableNumber.toString(), cleanKey) ||
+      isSameTable('T-${t.tableNumber}', cleanKey)
+    ).firstOrNull;
+    if (tbl != null && _liveDraftCustomerInfo.containsKey(tbl.name)) {
+      return _liveDraftCustomerInfo[tbl.name];
+    }
+    for (final entry in _liveDraftCustomerInfo.entries) {
+      if (entry.key.toLowerCase().trim() == cleanKey.toLowerCase() || isSameTable(entry.key, cleanKey) || (tbl != null && isSameTable(entry.key, tbl.name))) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  void setLiveCustomerInfo(String key, {required String name, required String phone}) {
+    final cleanKey = key.trim();
+    if (cleanKey.isEmpty) return;
+    if (name.trim().isEmpty && phone.trim().isEmpty) {
+      _liveDraftCustomerInfo.remove(cleanKey);
+      _liveDraftCustomerInfo.remove('T-$cleanKey');
+    } else {
+      _liveDraftCustomerInfo[cleanKey] = {
+        'name': name.trim(),
+        'phone': phone.trim(),
+      };
+    }
+    _saveLiveTableCartsToPrefs();
+    notifyListeners();
+  }
+
+  Map<String, dynamic>? getLiveDeliveryInfo(String key) {
+    final cleanKey = key.trim();
+    if (cleanKey.isEmpty) return null;
+    if (_liveDraftDeliveryInfo.containsKey(cleanKey)) {
+      return _liveDraftDeliveryInfo[cleanKey];
+    }
+    for (final entry in _liveDraftDeliveryInfo.entries) {
+      if (entry.key.toLowerCase().trim() == cleanKey.toLowerCase() || isSameTable(entry.key, cleanKey)) {
+        return entry.value;
+      }
+    }
+    return null;
+  }
+
+  void setLiveDeliveryInfo(String key, {
+    required String address,
+    String landmark = '',
+    String city = '',
+    String state = '',
+    String pincode = '',
+  }) {
+    final cleanKey = key.trim();
+    if (cleanKey.isEmpty) return;
+    if (address.trim().isEmpty && landmark.trim().isEmpty && city.trim().isEmpty && state.trim().isEmpty && pincode.trim().isEmpty) {
+      _liveDraftDeliveryInfo.remove(cleanKey);
+    } else {
+      _liveDraftDeliveryInfo[cleanKey] = {
+        'address': address.trim(),
+        'landmark': landmark.trim(),
+        'city': city.trim(),
+        'state': state.trim(),
+        'pincode': pincode.trim(),
+      };
+    }
+    _saveLiveTableCartsToPrefs();
+    notifyListeners();
+  }
 
   Map<String, dynamic>? getLiveTableDiscount(String tableName) {
     if (_liveTableDiscounts.containsKey(tableName)) {
@@ -406,6 +505,32 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.remove(sourceTable);
     _liveTableDiscounts.remove(sourceTable);
 
+    // 2b. Shift Customer & Delivery Info
+    final srcCust = getLiveCustomerInfo(sourceTable);
+    final dstCust = getLiveCustomerInfo(targetTable);
+    if (srcCust != null && dstCust == null) {
+      setLiveCustomerInfo(
+        targetTable,
+        name: srcCust['name']?.toString() ?? '',
+        phone: srcCust['phone']?.toString() ?? '',
+      );
+    }
+    _liveDraftCustomerInfo.remove(sourceTable);
+
+    final srcDel = getLiveDeliveryInfo(sourceTable);
+    final dstDel = getLiveDeliveryInfo(targetTable);
+    if (srcDel != null && dstDel == null) {
+      setLiveDeliveryInfo(
+        targetTable,
+        address: srcDel['address']?.toString() ?? '',
+        landmark: srcDel['landmark']?.toString() ?? '',
+        city: srcDel['city']?.toString() ?? '',
+        state: srcDel['state']?.toString() ?? '',
+        pincode: srcDel['pincode']?.toString() ?? '',
+      );
+    }
+    _liveDraftDeliveryInfo.remove(sourceTable);
+
     // 3. Shift Active pending / preparing Orders
     final shiftedOrders = <OrderModel>[];
     for (int i = 0; i < orders.length; i++) {
@@ -453,14 +578,20 @@ class DatabaseService extends ChangeNotifier {
       final cartsEncoded = jsonEncode(rawMap);
       final totalsEncoded = jsonEncode(_liveCartTotals);
       final discountsEncoded = jsonEncode(_liveTableDiscounts);
+      final customerInfoEncoded = jsonEncode(_liveDraftCustomerInfo);
+      final deliveryInfoEncoded = jsonEncode(_liveDraftDeliveryInfo);
 
       await _prefs?.setString(_businessKey('live_table_carts'), cartsEncoded);
       await _prefs?.setString(_businessKey('live_cart_totals'), totalsEncoded);
       await _prefs?.setString(_businessKey('live_table_discounts'), discountsEncoded);
+      await _prefs?.setString(_businessKey('live_draft_customer_info'), customerInfoEncoded);
+      await _prefs?.setString(_businessKey('live_draft_delivery_info'), deliveryInfoEncoded);
 
       await _prefs?.setString(_userKey('live_table_carts'), cartsEncoded);
       await _prefs?.setString(_userKey('live_cart_totals'), totalsEncoded);
       await _prefs?.setString(_userKey('live_table_discounts'), discountsEncoded);
+      await _prefs?.setString(_userKey('live_draft_customer_info'), customerInfoEncoded);
+      await _prefs?.setString(_userKey('live_draft_delivery_info'), deliveryInfoEncoded);
     } catch (_) {}
   }
 
@@ -499,6 +630,26 @@ class DatabaseService extends ChangeNotifier {
           }
         });
       }
+      final customerJson = _prefs?.getString(_businessKey('live_draft_customer_info')) ??
+          _prefs?.getString(_userKey('live_draft_customer_info'));
+      if (customerJson != null && customerJson.isNotEmpty) {
+        final Map<String, dynamic> rawCust = jsonDecode(customerJson);
+        rawCust.forEach((key, val) {
+          if (val is Map) {
+            _liveDraftCustomerInfo[key] = Map<String, dynamic>.from(val);
+          }
+        });
+      }
+      final deliveryJson = _prefs?.getString(_businessKey('live_draft_delivery_info')) ??
+          _prefs?.getString(_userKey('live_draft_delivery_info'));
+      if (deliveryJson != null && deliveryJson.isNotEmpty) {
+        final Map<String, dynamic> rawDel = jsonDecode(deliveryJson);
+        rawDel.forEach((key, val) {
+          if (val is Map) {
+            _liveDraftDeliveryInfo[key] = Map<String, dynamic>.from(val);
+          }
+        });
+      }
     } catch (_) {}
   }
 
@@ -509,17 +660,27 @@ class DatabaseService extends ChangeNotifier {
     _liveCartTotals.remove(tRef);
     _liveTableCarts.remove(tRef);
     _liveTableDiscounts.remove(tRef);
+    _liveDraftCustomerInfo.remove(tRef);
+    _liveDraftDeliveryInfo.remove(tRef);
     _liveCartTotals.remove('T-$tRef');
     _liveTableCarts.remove('T-$tRef');
     _liveTableDiscounts.remove('T-$tRef');
+    _liveDraftCustomerInfo.remove('T-$tRef');
+    _liveDraftDeliveryInfo.remove('T-$tRef');
 
     for (int i = 0; i < tables.length; i++) {
       final t = tables[i];
       if (isSameTable(t.name, tRef) || isSameTable(t.tableNumber.toString(), tRef) || isSameTable('T-${t.tableNumber}', tRef)) {
         _liveCartTotals.remove(t.name);
         _liveTableCarts.remove(t.name);
+        _liveTableDiscounts.remove(t.name);
+        _liveDraftCustomerInfo.remove(t.name);
+        _liveDraftDeliveryInfo.remove(t.name);
         _liveCartTotals.remove('T-${t.tableNumber}');
         _liveTableCarts.remove('T-${t.tableNumber}');
+        _liveTableDiscounts.remove('T-${t.tableNumber}');
+        _liveDraftCustomerInfo.remove('T-${t.tableNumber}');
+        _liveDraftDeliveryInfo.remove('T-${t.tableNumber}');
         tables[i] = t.copyWith(
           status: TableStatus.free,
           currentOrderId: null,
@@ -708,9 +869,15 @@ class DatabaseService extends ChangeNotifier {
     }
 
     ProductService.clearPosCache();
+    staffList.clear();
+    _customStaffRoles.clear();
+    _customBusinessBranches.clear();
     _holdOrders.clear();
     _liveCartTotals.clear();
     _liveTableCarts.clear();
+    _liveTableDiscounts.clear();
+    _liveDraftCustomerInfo.clear();
+    _liveDraftDeliveryInfo.clear();
 
     // 1. Load Restaurant Profile (Prioritizing Business-scoped key)
     String? restaurantJson = _prefs?.getString(_businessKey('restaurant')) ??
@@ -978,6 +1145,9 @@ class DatabaseService extends ChangeNotifier {
       _holdOrders.clear();
       _liveCartTotals.clear();
       _liveTableCarts.clear();
+      _liveTableDiscounts.clear();
+      _liveDraftCustomerInfo.clear();
+      _liveDraftDeliveryInfo.clear();
       restaurant = null;
     }
 
@@ -1312,7 +1482,6 @@ class DatabaseService extends ChangeNotifier {
 
     // Real-time subscription event (e.g. toggled active/inactive directly from MongoDB Compass)
     _socketService.onSubscriptionUpdated = (data) {
-      debugPrint('[DatabaseService] Real-time subscription event received via socket: $data');
       bool isActive = false;
       if (data['isSubscriptionActive'] != null) {
         isActive = data['isSubscriptionActive'] == true;
@@ -1323,7 +1492,10 @@ class DatabaseService extends ChangeNotifier {
       } else if (data['status'] != null) {
         isActive = data['status'] == 'active';
       }
-      updateSubscriptionStatus(isActive);
+      if (isSubscribed != isActive) {
+        debugPrint('[DatabaseService] Real-time subscription event received via socket: $data');
+        updateSubscriptionStatus(isActive);
+      }
     };
 
     _socketService.onReconnected = () {
@@ -2303,9 +2475,15 @@ class DatabaseService extends ChangeNotifier {
     categories.clear();
     orders.clear();
     inventoryItems.clear();
+    staffList.clear();
+    _customStaffRoles.clear();
+    _customBusinessBranches.clear();
     _holdOrders.clear();
     _liveCartTotals.clear();
     _liveTableCarts.clear();
+    _liveTableDiscounts.clear();
+    _liveDraftCustomerInfo.clear();
+    _liveDraftDeliveryInfo.clear();
 
     final uid = currentUser?.id ?? 'new_user';
 
@@ -2316,8 +2494,16 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.remove('apna_pos_${uid}_inventory');
     await _prefs?.remove('apna_pos_${uid}_tables');
     await _prefs?.remove('apna_pos_${uid}_restaurant');
+    await _prefs?.remove('apna_pos_${uid}_staff_list');
+    await _prefs?.remove('apna_pos_${uid}_custom_staff_roles');
+    await _prefs?.remove('apna_pos_${uid}_custom_business_branches');
     await _prefs?.remove('apna_pos_${uid}_manual_products_history');
     _manualProductsHistory.clear();
+
+    // Remove business-scoped keys for this session
+    await _prefs?.remove(_businessKey('staff_list'));
+    await _prefs?.remove(_businessKey('custom_staff_roles'));
+    await _prefs?.remove(_businessKey('custom_business_branches'));
 
     // Remove legacy un-scoped keys
     await _prefs?.remove('apna_pos_menu');
@@ -2326,6 +2512,9 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.remove('apna_pos_inventory');
     await _prefs?.remove('apna_pos_tables');
     await _prefs?.remove('apna_pos_restaurant');
+    await _prefs?.remove('apna_pos_staff_list');
+    await _prefs?.remove('apna_pos_custom_staff_roles');
+    await _prefs?.remove('apna_pos_custom_business_branches');
 
     restaurant = RestaurantModel(
       id: 'rest_${currentUser?.id ?? DateTime.now().millisecondsSinceEpoch}',
@@ -3371,9 +3560,7 @@ class DatabaseService extends ChangeNotifier {
         final isAuth = await _authService.isAuthenticated();
         if (isAuth && updatedTablesToSync.isNotEmpty) {
           for (final t in updatedTablesToSync) {
-            if (t.id.isNotEmpty && !t.id.startsWith('TBL-')) {
-              await _tableService.updateTable(t);
-            }
+            await _tableService.updateTable(t);
           }
         }
       } catch (e) {
@@ -3697,6 +3884,52 @@ class DatabaseService extends ChangeNotifier {
     }
     await _saveTablesToPrefs();
     notifyListeners();
+  }
+
+  /// Update an existing table (name, floor, capacity, tableNumber) and sync with cloud MongoDB
+  Future<void> updateTable(TableModel updatedTable) async {
+    final idx = tables.indexWhere((t) =>
+        (t.id.isNotEmpty && t.id == updatedTable.id) ||
+        (t.tableNumber > 0 && t.tableNumber == updatedTable.tableNumber) ||
+        isSameTable(t.name, updatedTable.name));
+
+    if (idx >= 0) {
+      final oldTable = tables[idx];
+      tables[idx] = updatedTable.copyWith(
+        id: oldTable.id.isNotEmpty ? oldTable.id : updatedTable.id,
+        status: oldTable.status,
+        currentOrderId: oldTable.currentOrderId,
+        occupiedSince: oldTable.occupiedSince,
+        activeOrderNumber: oldTable.activeOrderNumber,
+        activeOrderTotal: oldTable.activeOrderTotal,
+        activeItemCount: oldTable.activeItemCount,
+      );
+    } else {
+      tables.add(updatedTable);
+    }
+
+    _sortTablesSequentially();
+    await _saveTablesToPrefs();
+    notifyListeners();
+
+    // Sync directly to backend API for multi-device live sync
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          final res = await _tableService.updateTable(updatedTable);
+          if (res != null && res.id.isNotEmpty) {
+            final refreshedIdx = tables.indexWhere((t) => t.id == updatedTable.id || isSameTable(t.name, updatedTable.name));
+            if (refreshedIdx >= 0) {
+              tables[refreshedIdx] = tables[refreshedIdx].copyWith(id: res.id);
+              await _saveTablesToPrefs();
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.updateTable] API sync error: $e');
+      }
+    }());
   }
 
   void _sortTablesSequentially() {
@@ -5297,7 +5530,13 @@ class DatabaseService extends ChangeNotifier {
   // ==================== STAFF MANAGEMENT ====================
   Future<void> _saveStaffToPrefs() async {
     try {
-      final jsonStr = jsonEncode(staffList.map((s) => s.toJson()).toList());
+      final activeBizId = currentBusinessId.trim();
+      final scopedStaff = staffList
+          .where((s) => s.businessId.isEmpty || s.businessId == activeBizId)
+          .map((s) => s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s)
+          .toList();
+      final jsonStr = jsonEncode(scopedStaff.map((s) => s.toJson()).toList());
+      await _prefs?.setString(_businessKey('staff_list'), jsonStr);
       await _prefs?.setString(_userKey('staff_list'), jsonStr);
       final uid = currentUser?.id;
       if (uid != null && uid.isNotEmpty) {
@@ -5311,6 +5550,7 @@ class DatabaseService extends ChangeNotifier {
 
   void _loadStaffFromPrefs() {
     try {
+      staffList.clear();
       _loadStaffRolesFromPrefs();
       _loadBusinessBranchesFromPrefs();
 
@@ -5321,6 +5561,7 @@ class DatabaseService extends ChangeNotifier {
 
       final List<StaffModel> loadedStaff = [];
       final Set<String> loadedKeys = {};
+      final activeBizId = currentBusinessId.trim();
 
       void tryLoadStaffFromJson(String? jsonStr) {
         if (jsonStr == null || jsonStr.isEmpty) return;
@@ -5331,6 +5572,10 @@ class DatabaseService extends ChangeNotifier {
               .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
               .toList();
           for (final s in parsed) {
+            // STRICT TENANT ISOLATION: Reject any staff that belongs to a different business
+            if (s.businessId.isNotEmpty && activeBizId.isNotEmpty && s.businessId != activeBizId) {
+              continue;
+            }
             final key = s.id.isNotEmpty ? s.id : s.employeeId;
             if (key.isNotEmpty && !loadedKeys.contains(key)) {
               loadedKeys.add(key);
@@ -5340,22 +5585,28 @@ class DatabaseService extends ChangeNotifier {
               if (s.email.isNotEmpty) {
                 loadedKeys.add('email_${s.email.toLowerCase()}');
               }
-              loadedStaff.add(s);
+              final stamped = s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s;
+              loadedStaff.add(stamped);
             }
           }
         } catch (_) {}
       }
 
-      // 1. Load active user-scoped staff list
-      tryLoadStaffFromJson(_prefs?.getString(_userKey('staff_list')));
+      // 1. Authoritative business-scoped staff list
+      tryLoadStaffFromJson(_prefs?.getString(_businessKey('staff_list')));
 
-      // 1b. Load by explicit user ID
+      // 2. Load active user-scoped staff list
+      if (loadedStaff.isEmpty) {
+        tryLoadStaffFromJson(_prefs?.getString(_userKey('staff_list')));
+      }
+
+      // 3. Load by explicit user ID
       final uid = currentUser?.id;
       if (loadedStaff.isEmpty && uid != null && uid.isNotEmpty) {
         tryLoadStaffFromJson(_prefs?.getString('apna_pos_${uid}_staff_list'));
       }
 
-      // 2. If empty and restaurant ID is known, check restaurant-scoped staff list
+      // 4. If empty and restaurant ID is known, check restaurant-scoped staff list
       if (loadedStaff.isEmpty && restaurant?.id != null && restaurant!.id.isNotEmpty) {
         tryLoadStaffFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_staff_list'));
       }
@@ -5369,32 +5620,40 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void syncStaffList(List<StaffModel> remoteStaff) {
-    if (remoteStaff.isEmpty) {
-      // If remote query is empty (e.g. search/filter or offline), preserve existing local staff
-      return;
-    }
+    final activeBizId = currentBusinessId.trim();
+
+    // Filter incoming remote staff to guarantee they match currentBusinessId
+    final validRemote = remoteStaff.where((r) =>
+      r.businessId.isEmpty || activeBizId.isEmpty || r.businessId == activeBizId
+    ).map((r) => r.businessId.isEmpty ? r.copyWith(businessId: activeBizId) : r).toList();
+
+    // Retain only local-only un-synced staff (ids starting with 'st_') belonging to activeBizId
+    final localUnsynced = staffList.where((s) =>
+      s.id.startsWith('st_') && (s.businessId.isEmpty || s.businessId == activeBizId)
+    ).map((s) => s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s).toList();
 
     final Map<String, StaffModel> merged = {};
 
-    // 1. First add all local staff
-    for (final local in staffList) {
-      final key = local.id.isNotEmpty ? local.id : (local.employeeId.isNotEmpty ? local.employeeId : local.email);
-      if (key.isNotEmpty) {
-        merged[key] = local;
-      }
-    }
-
-    // 2. Overlay remote staff
-    for (final remote in remoteStaff) {
-      // Remove any matching local item by ID, employeeId, or email to prevent duplicates
-      merged.removeWhere((k, v) =>
-          v.id == remote.id ||
-          (remote.employeeId.isNotEmpty && v.employeeId == remote.employeeId) ||
-          (remote.email.isNotEmpty && v.email.trim().toLowerCase() == remote.email.trim().toLowerCase()));
-
+    // 1. Authoritative remote staff for current business
+    for (final remote in validRemote) {
       final key = remote.id.isNotEmpty ? remote.id : (remote.employeeId.isNotEmpty ? remote.employeeId : remote.email);
       if (key.isNotEmpty) {
         merged[key] = remote;
+      }
+    }
+
+    // 2. Add local unsynced staff only if not already on remote
+    for (final local in localUnsynced) {
+      final isAlreadyOnRemote = merged.values.any((r) =>
+        (r.id.isNotEmpty && r.id == local.id) ||
+        (local.employeeId.isNotEmpty && r.employeeId == local.employeeId) ||
+        (local.email.isNotEmpty && r.email.trim().toLowerCase() == local.email.trim().toLowerCase())
+      );
+      if (!isAlreadyOnRemote) {
+        final key = local.id.isNotEmpty ? local.id : (local.employeeId.isNotEmpty ? local.employeeId : local.email);
+        if (key.isNotEmpty) {
+          merged[key] = local;
+        }
       }
     }
 
@@ -5404,45 +5663,49 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void addStaff(StaffModel staff) {
+    final activeBizId = currentBusinessId.trim();
+    final stampedStaff = staff.businessId.isEmpty ? staff.copyWith(businessId: activeBizId) : staff;
     staffList.removeWhere((s) =>
-        s.id == staff.id ||
-        (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId) ||
-        (s.email.isNotEmpty && staff.email.isNotEmpty && s.email.trim().toLowerCase() == staff.email.trim().toLowerCase()));
-    staffList.insert(0, staff);
-    if (staff.role.trim().isNotEmpty) {
-      addCustomRole(staff.role.trim());
+        s.id == stampedStaff.id ||
+        (s.employeeId.isNotEmpty && s.employeeId == stampedStaff.employeeId) ||
+        (s.email.isNotEmpty && stampedStaff.email.isNotEmpty && s.email.trim().toLowerCase() == stampedStaff.email.trim().toLowerCase()));
+    staffList.insert(0, stampedStaff);
+    if (stampedStaff.role.trim().isNotEmpty) {
+      addCustomRole(stampedStaff.role.trim());
     }
-    if (staff.workLocation.trim().isNotEmpty) {
-      addBusinessBranch(staff.workLocation.trim());
+    if (stampedStaff.workLocation.trim().isNotEmpty) {
+      addBusinessBranch(stampedStaff.workLocation.trim());
     }
     _saveStaffToPrefs();
     notifyListeners();
   }
 
   void updateStaff(StaffModel staff) {
-    final idx = staffList.indexWhere((s) => s.id == staff.id || (s.employeeId.isNotEmpty && s.employeeId == staff.employeeId));
+    final activeBizId = currentBusinessId.trim();
+    final stampedStaff = staff.businessId.isEmpty ? staff.copyWith(businessId: activeBizId) : staff;
+    final idx = staffList.indexWhere((s) => s.id == stampedStaff.id || (s.employeeId.isNotEmpty && s.employeeId == stampedStaff.employeeId));
     if (idx != -1) {
-      staffList[idx] = staff;
+      staffList[idx] = stampedStaff;
     } else {
-      staffList.insert(0, staff);
+      staffList.insert(0, stampedStaff);
     }
-    if (staff.role.trim().isNotEmpty) {
-      addCustomRole(staff.role.trim());
+    if (stampedStaff.role.trim().isNotEmpty) {
+      addCustomRole(stampedStaff.role.trim());
     }
-    if (staff.workLocation.trim().isNotEmpty) {
-      addBusinessBranch(staff.workLocation.trim());
+    if (stampedStaff.workLocation.trim().isNotEmpty) {
+      addBusinessBranch(stampedStaff.workLocation.trim());
     }
     // If active user is this staff member, sync currentUser permissions and profile in real-time
-    if (currentUser != null && (currentUser!.id == staff.id || (staff.employeeId.isNotEmpty && currentUser!.employeeId == staff.employeeId))) {
+    if (currentUser != null && (currentUser!.id == stampedStaff.id || (stampedStaff.employeeId.isNotEmpty && currentUser!.employeeId == stampedStaff.employeeId))) {
       currentUser = currentUser!.copyWith(
-        name: staff.name,
-        email: staff.email,
-        phone: staff.phone,
-        role: staff.role,
-        employeeId: staff.employeeId,
-        profilePhotoPath: staff.avatarUrl,
-        pin: staff.pin,
-        permissions: staff.permissions,
+        name: stampedStaff.name,
+        email: stampedStaff.email,
+        phone: stampedStaff.phone,
+        role: stampedStaff.role,
+        employeeId: stampedStaff.employeeId,
+        profilePhotoPath: stampedStaff.avatarUrl,
+        pin: stampedStaff.pin,
+        permissions: stampedStaff.permissions,
       );
       _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
     }
@@ -5467,6 +5730,393 @@ class DatabaseService extends ChangeNotifier {
   void deleteStaff(String id) {
     staffList.removeWhere((s) => s.id == id);
     _saveStaffToPrefs();
+    notifyListeners();
+  }
+
+  // ==================== META INTEGRATION SETTINGS ====================
+  bool get isMetaIntegrationEnabled =>
+      _prefs?.getBool(_businessKey('meta_enabled')) ??
+      _prefs?.getBool('apna_pos_meta_enabled') ??
+      false;
+
+  String get metaPixelId =>
+      _prefs?.getString(_businessKey('meta_pixel_id')) ??
+      _prefs?.getString('apna_pos_meta_pixel_id') ??
+      '';
+
+  String get metaPageId =>
+      _prefs?.getString(_businessKey('meta_page_id')) ??
+      _prefs?.getString('apna_pos_meta_page_id') ??
+      '';
+
+  String get metaAccessToken =>
+      _prefs?.getString(_businessKey('meta_access_token')) ??
+      _prefs?.getString('apna_pos_meta_access_token') ??
+      '';
+
+  String get metaInstagramHandle =>
+      _prefs?.getString(_businessKey('meta_ig_handle')) ??
+      _prefs?.getString('apna_pos_meta_ig_handle') ??
+      '';
+
+  bool get isMetaCatalogSyncEnabled =>
+      _prefs?.getBool(_businessKey('meta_catalog_sync')) ??
+      _prefs?.getBool('apna_pos_meta_catalog_sync') ??
+      true;
+
+  Future<void> saveMetaSettings({
+    required bool enabled,
+    required String pixelId,
+    required String pageId,
+    required String accessToken,
+    required String igHandle,
+    required bool catalogSync,
+  }) async {
+    await _prefs?.setBool(_businessKey('meta_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_meta_enabled', enabled);
+
+    await _prefs?.setString(_businessKey('meta_pixel_id'), pixelId.trim());
+    await _prefs?.setString('apna_pos_meta_pixel_id', pixelId.trim());
+
+    await _prefs?.setString(_businessKey('meta_page_id'), pageId.trim());
+    await _prefs?.setString('apna_pos_meta_page_id', pageId.trim());
+
+    await _prefs?.setString(_businessKey('meta_access_token'), accessToken.trim());
+    await _prefs?.setString('apna_pos_meta_access_token', accessToken.trim());
+
+    await _prefs?.setString(_businessKey('meta_ig_handle'), igHandle.trim());
+    await _prefs?.setString('apna_pos_meta_ig_handle', igHandle.trim());
+
+    await _prefs?.setBool(_businessKey('meta_catalog_sync'), catalogSync);
+    await _prefs?.setBool('apna_pos_meta_catalog_sync', catalogSync);
+
+    notifyListeners();
+  }
+
+  // ==================== WHATSAPP INTEGRATION SETTINGS ====================
+  bool get isWhatsAppIntegrationEnabled =>
+      _prefs?.getBool(_businessKey('wa_enabled')) ??
+      _prefs?.getBool('apna_pos_wa_enabled') ??
+      false;
+
+  String get whatsAppProvider =>
+      _prefs?.getString(_businessKey('wa_provider')) ??
+      _prefs?.getString('apna_pos_wa_provider') ??
+      'meta_cloud';
+
+  String get whatsAppPhoneNumber =>
+      _prefs?.getString(_businessKey('wa_phone')) ??
+      _prefs?.getString('apna_pos_wa_phone') ??
+      '';
+
+  String get whatsAppPhoneId =>
+      _prefs?.getString(_businessKey('wa_phone_id')) ??
+      _prefs?.getString('apna_pos_wa_phone_id') ??
+      '';
+
+  String get whatsAppWabaId =>
+      _prefs?.getString(_businessKey('wa_waba_id')) ??
+      _prefs?.getString('apna_pos_wa_waba_id') ??
+      '';
+
+  String get whatsAppAccessToken =>
+      _prefs?.getString(_businessKey('wa_access_token')) ??
+      _prefs?.getString('apna_pos_wa_access_token') ??
+      '';
+
+  String get whatsAppWebhookToken =>
+      _prefs?.getString(_businessKey('wa_webhook_token')) ??
+      _prefs?.getString('apna_pos_wa_webhook_token') ??
+      '';
+
+  Future<void> saveWhatsAppIntegrationSettings({
+    required bool enabled,
+    required String provider,
+    required String phoneNumber,
+    required String phoneId,
+    required String wabaId,
+    required String accessToken,
+    required String webhookToken,
+  }) async {
+    await _prefs?.setBool(_businessKey('wa_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_wa_enabled', enabled);
+
+    await _prefs?.setString(_businessKey('wa_provider'), provider.trim());
+    await _prefs?.setString('apna_pos_wa_provider', provider.trim());
+
+    await _prefs?.setString(_businessKey('wa_phone'), phoneNumber.trim());
+    await _prefs?.setString('apna_pos_wa_phone', phoneNumber.trim());
+
+    await _prefs?.setString(_businessKey('wa_phone_id'), phoneId.trim());
+    await _prefs?.setString('apna_pos_wa_phone_id', phoneId.trim());
+
+    await _prefs?.setString(_businessKey('wa_waba_id'), wabaId.trim());
+    await _prefs?.setString('apna_pos_wa_waba_id', wabaId.trim());
+
+    await _prefs?.setString(_businessKey('wa_access_token'), accessToken.trim());
+    await _prefs?.setString('apna_pos_wa_access_token', accessToken.trim());
+
+    await _prefs?.setString(_businessKey('wa_webhook_token'), webhookToken.trim());
+    await _prefs?.setString('apna_pos_wa_webhook_token', webhookToken.trim());
+
+    notifyListeners();
+  }
+
+  // ==================== WHATSAPP MESSAGES SETTINGS ====================
+  bool get isWhatsAppAutoBillEnabled =>
+      _prefs?.getBool(_businessKey('wa_auto_bill')) ??
+      _prefs?.getBool('apna_pos_wa_auto_bill') ??
+      true;
+
+  bool get isWhatsAppKotStatusEnabled =>
+      _prefs?.getBool(_businessKey('wa_kot_status')) ??
+      _prefs?.getBool('apna_pos_wa_kot_status') ??
+      true;
+
+  bool get isWhatsAppPaymentReminderEnabled =>
+      _prefs?.getBool(_businessKey('wa_pay_reminder')) ??
+      _prefs?.getBool('apna_pos_wa_pay_reminder') ??
+      true;
+
+  bool get isWhatsAppLoyaltyGreetingsEnabled =>
+      _prefs?.getBool(_businessKey('wa_loyalty_greet')) ??
+      _prefs?.getBool('apna_pos_wa_loyalty_greet') ??
+      true;
+
+  String get whatsAppCustomBillTemplate =>
+      _prefs?.getString(_businessKey('wa_bill_template')) ??
+      _prefs?.getString('apna_pos_wa_bill_template') ??
+      'Hello {customer_name}, thanks for visiting {restaurant_name}! Here is your digital bill for Order #{order_number} of total ₹{total_amount}. View invoice: {bill_link}';
+
+  String get whatsAppCustomFooter =>
+      _prefs?.getString(_businessKey('wa_custom_footer')) ??
+      _prefs?.getString('apna_pos_wa_custom_footer') ??
+      'Thank you for dining with us! For questions or reservations, contact us anytime.';
+
+  Future<void> saveWhatsAppMessageSettings({
+    required bool autoBill,
+    required bool kotStatus,
+    required bool payReminder,
+    required bool loyaltyGreet,
+    required String billTemplate,
+    required String customFooter,
+  }) async {
+    await _prefs?.setBool(_businessKey('wa_auto_bill'), autoBill);
+    await _prefs?.setBool('apna_pos_wa_auto_bill', autoBill);
+
+    await _prefs?.setBool(_businessKey('wa_kot_status'), kotStatus);
+    await _prefs?.setBool('apna_pos_wa_kot_status', kotStatus);
+
+    await _prefs?.setBool(_businessKey('wa_pay_reminder'), payReminder);
+    await _prefs?.setBool('apna_pos_wa_pay_reminder', payReminder);
+
+    await _prefs?.setBool(_businessKey('wa_loyalty_greet'), loyaltyGreet);
+    await _prefs?.setBool('apna_pos_wa_loyalty_greet', loyaltyGreet);
+
+    await _prefs?.setString(_businessKey('wa_bill_template'), billTemplate.trim());
+    await _prefs?.setString('apna_pos_wa_bill_template', billTemplate.trim());
+
+    await _prefs?.setString(_businessKey('wa_custom_footer'), customFooter.trim());
+    await _prefs?.setString('apna_pos_wa_custom_footer', customFooter.trim());
+
+    notifyListeners();
+  }
+
+  // ==================== AI CHAT AGENT SETTINGS ====================
+  bool get isAiChatAgentEnabled =>
+      _prefs?.getBool(_businessKey('ai_agent_enabled')) ??
+      _prefs?.getBool('apna_pos_ai_agent_enabled') ??
+      false;
+
+  String get aiChatAgentPersona =>
+      _prefs?.getString(_businessKey('ai_agent_persona')) ??
+      _prefs?.getString('apna_pos_ai_agent_persona') ??
+      'friendly';
+
+  String get aiChatAgentGreeting =>
+      _prefs?.getString(_businessKey('ai_agent_greeting')) ??
+      _prefs?.getString('apna_pos_ai_agent_greeting') ??
+      'Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today\'s special offers, or table bookings!';
+
+  bool get isAiChatAgentAutoMenuSuggest =>
+      _prefs?.getBool(_businessKey('ai_agent_menu_suggest')) ??
+      _prefs?.getBool('apna_pos_ai_agent_menu_suggest') ??
+      true;
+
+  bool get isAiChatAgentAutoOrderTaking =>
+      _prefs?.getBool(_businessKey('ai_agent_order_taking')) ??
+      _prefs?.getBool('apna_pos_ai_agent_order_taking') ??
+      true;
+
+  String get aiChatAgentSystemPrompt =>
+      _prefs?.getString(_businessKey('ai_agent_system_prompt')) ??
+      _prefs?.getString('apna_pos_ai_agent_system_prompt') ??
+      'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.';
+
+  String get aiChatAgentApiKey =>
+      _prefs?.getString(_businessKey('ai_agent_api_key')) ??
+      _prefs?.getString('apna_pos_ai_agent_api_key') ??
+      '';
+
+  Future<void> saveAiChatAgentSettings({
+    required bool enabled,
+    required String persona,
+    required String greeting,
+    required bool autoMenuSuggest,
+    required bool autoOrderTaking,
+    required String systemPrompt,
+    required String apiKey,
+  }) async {
+    await _prefs?.setBool(_businessKey('ai_agent_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_ai_agent_enabled', enabled);
+
+    await _prefs?.setString(_businessKey('ai_agent_persona'), persona.trim());
+    await _prefs?.setString('apna_pos_ai_agent_persona', persona.trim());
+
+    await _prefs?.setString(_businessKey('ai_agent_greeting'), greeting.trim());
+    await _prefs?.setString('apna_pos_ai_agent_greeting', greeting.trim());
+
+    await _prefs?.setBool(_businessKey('ai_agent_menu_suggest'), autoMenuSuggest);
+    await _prefs?.setBool('apna_pos_ai_agent_menu_suggest', autoMenuSuggest);
+
+    await _prefs?.setBool(_businessKey('ai_agent_order_taking'), autoOrderTaking);
+    await _prefs?.setBool('apna_pos_ai_agent_order_taking', autoOrderTaking);
+
+    await _prefs?.setString(_businessKey('ai_agent_system_prompt'), systemPrompt.trim());
+    await _prefs?.setString('apna_pos_ai_agent_system_prompt', systemPrompt.trim());
+
+    await _prefs?.setString(_businessKey('ai_agent_api_key'), apiKey.trim());
+    await _prefs?.setString('apna_pos_ai_agent_api_key', apiKey.trim());
+
+    notifyListeners();
+  }
+
+  // ==================== META CHATS SETTINGS ====================
+  bool get isMetaChatsEnabled =>
+      _prefs?.getBool(_businessKey('meta_chats_enabled')) ??
+      _prefs?.getBool('apna_pos_meta_chats_enabled') ??
+      false;
+
+  bool get isMetaChatsAutoWelcomeEnabled =>
+      _prefs?.getBool(_businessKey('meta_chats_auto_welcome')) ??
+      _prefs?.getBool('apna_pos_meta_chats_auto_welcome') ??
+      true;
+
+  String get metaChatsWelcomeMessage =>
+      _prefs?.getString(_businessKey('meta_chats_welcome_msg')) ??
+      _prefs?.getString('apna_pos_meta_chats_welcome_msg') ??
+      'Hello! Thanks for connecting with {restaurant_name} on Messenger & Instagram Direct. How can we make your day delicious?';
+
+  bool get isMetaChatsLeadCaptureEnabled =>
+      _prefs?.getBool(_businessKey('meta_chats_lead_capture')) ??
+      _prefs?.getBool('apna_pos_meta_chats_lead_capture') ??
+      true;
+
+  String get metaChatsHumanHandoverKeyword =>
+      _prefs?.getString(_businessKey('meta_chats_handover_kw')) ??
+      _prefs?.getString('apna_pos_meta_chats_handover_kw') ??
+      'agent, human, help, support, talk to manager';
+
+  String get metaChatsAwayMessage =>
+      _prefs?.getString(_businessKey('meta_chats_away_msg')) ??
+      _prefs?.getString('apna_pos_meta_chats_away_msg') ??
+      'We are currently closed. Our team will get back to you as soon as our outlet opens. Thank you for your patience!';
+
+  Future<void> saveMetaChatsSettings({
+    required bool enabled,
+    required bool autoWelcome,
+    required String welcomeMessage,
+    required bool leadCapture,
+    required String humanHandoverKeyword,
+    required String awayMessage,
+  }) async {
+    await _prefs?.setBool(_businessKey('meta_chats_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_meta_chats_enabled', enabled);
+
+    await _prefs?.setBool(_businessKey('meta_chats_auto_welcome'), autoWelcome);
+    await _prefs?.setBool('apna_pos_meta_chats_auto_welcome', autoWelcome);
+
+    await _prefs?.setString(_businessKey('meta_chats_welcome_msg'), welcomeMessage.trim());
+    await _prefs?.setString('apna_pos_meta_chats_welcome_msg', welcomeMessage.trim());
+
+    await _prefs?.setBool(_businessKey('meta_chats_lead_capture'), leadCapture);
+    await _prefs?.setBool('apna_pos_meta_chats_lead_capture', leadCapture);
+
+    await _prefs?.setString(_businessKey('meta_chats_handover_kw'), humanHandoverKeyword.trim());
+    await _prefs?.setString('apna_pos_meta_chats_handover_kw', humanHandoverKeyword.trim());
+
+    await _prefs?.setString(_businessKey('meta_chats_away_msg'), awayMessage.trim());
+    await _prefs?.setString('apna_pos_meta_chats_away_msg', awayMessage.trim());
+
+    notifyListeners();
+  }
+
+  // ==================== WALLET SETTINGS ====================
+  bool get isWalletEnabled =>
+      _prefs?.getBool(_businessKey('wallet_enabled')) ??
+      _prefs?.getBool('apna_pos_wallet_enabled') ??
+      true;
+
+  double get walletCashbackPercentage =>
+      _prefs?.getDouble(_businessKey('wallet_cashback_pct')) ??
+      _prefs?.getDouble('apna_pos_wallet_cashback_pct') ??
+      5.0;
+
+  double get walletMinRechargeAmount =>
+      _prefs?.getDouble(_businessKey('wallet_min_recharge')) ??
+      _prefs?.getDouble('apna_pos_wallet_min_recharge') ??
+      200.0;
+
+  double get walletMaxRedeemPercentagePerOrder =>
+      _prefs?.getDouble(_businessKey('wallet_max_redeem_pct')) ??
+      _prefs?.getDouble('apna_pos_wallet_max_redeem_pct') ??
+      50.0;
+
+  double get walletSignupBonus =>
+      _prefs?.getDouble(_businessKey('wallet_signup_bonus')) ??
+      _prefs?.getDouble('apna_pos_wallet_signup_bonus') ??
+      50.0;
+
+  bool get isWalletAllowNegativeBalance =>
+      _prefs?.getBool(_businessKey('wallet_allow_negative')) ??
+      _prefs?.getBool('apna_pos_wallet_allow_negative') ??
+      false;
+
+  String get walletBusinessPayoutUpi =>
+      _prefs?.getString(_businessKey('wallet_payout_upi')) ??
+      _prefs?.getString('apna_pos_wallet_payout_upi') ??
+      '';
+
+  Future<void> saveWalletSettings({
+    required bool enabled,
+    required double cashbackPercentage,
+    required double minRechargeAmount,
+    required double maxRedeemPercentage,
+    required double signupBonus,
+    required bool allowNegativeBalance,
+    required String businessPayoutUpi,
+  }) async {
+    await _prefs?.setBool(_businessKey('wallet_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_wallet_enabled', enabled);
+
+    await _prefs?.setDouble(_businessKey('wallet_cashback_pct'), cashbackPercentage);
+    await _prefs?.setDouble('apna_pos_wallet_cashback_pct', cashbackPercentage);
+
+    await _prefs?.setDouble(_businessKey('wallet_min_recharge'), minRechargeAmount);
+    await _prefs?.setDouble('apna_pos_wallet_min_recharge', minRechargeAmount);
+
+    await _prefs?.setDouble(_businessKey('wallet_max_redeem_pct'), maxRedeemPercentage);
+    await _prefs?.setDouble('apna_pos_wallet_max_redeem_pct', maxRedeemPercentage);
+
+    await _prefs?.setDouble(_businessKey('wallet_signup_bonus'), signupBonus);
+    await _prefs?.setDouble('apna_pos_wallet_signup_bonus', signupBonus);
+
+    await _prefs?.setBool(_businessKey('wallet_allow_negative'), allowNegativeBalance);
+    await _prefs?.setBool('apna_pos_wallet_allow_negative', allowNegativeBalance);
+
+    await _prefs?.setString(_businessKey('wallet_payout_upi'), businessPayoutUpi.trim());
+    await _prefs?.setString('apna_pos_wallet_payout_upi', businessPayoutUpi.trim());
+
     notifyListeners();
   }
 }

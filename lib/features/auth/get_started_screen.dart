@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -41,7 +40,7 @@ class _GetStartedScreenState extends State<GetStartedScreen>
 
   @override
   Widget build(BuildContext context) {
-    if (ResponsiveLayoutHelper.isDesktop(context) || (!kIsWeb && Platform.isWindows)) {
+    if (ResponsiveLayoutHelper.isDesktop(context) || (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows)) {
       return const LoginScreen();
     }
 

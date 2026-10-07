@@ -9,10 +9,11 @@ const createTableSchema = Joi.object({
 });
 
 const updateTableSchema = Joi.object({
-  name: Joi.string().trim().min(1).max(50),
-  floor: Joi.string().trim(),
-  capacity: Joi.number().integer().min(1),
-  status: Joi.string().valid('free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved'),
+  tableNumber: Joi.number().integer().min(1).optional(),
+  name: Joi.string().trim().min(1).max(50).optional(),
+  floor: Joi.string().trim().optional(),
+  capacity: Joi.number().integer().min(1).optional(),
+  status: Joi.string().valid('free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved').optional(),
   occupiedSince: Joi.alternatives().try(Joi.date(), Joi.string()).allow(null, '').optional(),
 }).min(1);
 

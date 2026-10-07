@@ -122,6 +122,10 @@ mindmap
 * **REQ-POS-01 (Live Cart Isolation):** In-memory and persisted live table carts (`live_table_carts`) must be isolated per tenant. Table 4 in Restaurant A has no correlation, memory overlap, or sync overlap with Table 4 in Restaurant B.
 * **REQ-POS-02 (Table Shift Boundaries):** Dynamic table shifting (`shiftTableData`) must operate strictly within the tenant's floor inventory. Cross-tenant table shifting is technically impossible at the schema level.
 * **REQ-POS-03 (Offline Cart Recovery):** If a POS terminal restarts while holding offline carts, local cache rehydration must only hydrate carts matching the active authenticated `currentBusinessId`.
+* **REQ-POS-04 (Concurrent Multi-Order & Multi-Table Draft Isolation):** Cashiers and servers must be able to switch freely between multiple Dine-In tables (e.g., Table 1, Table 2) and non-dine-in channels (`Takeaway`, `Delivery`) simultaneously. Each table/channel maintains its own completely isolated draft cart without item clobbering, overwriting, or cross-clearing.
+* **REQ-POS-05 (Customer & Delivery Metadata Isolation):** Each table and order draft maintains private, isolated customer details (`_customerName`, `_customerPhone`), applied discounts/coupons, and delivery metadata (`_deliveryAddress`, `landmark`, `city`, `pincode`). Switching tables or order channels must restore the respective draft's customer data without leaking into other tables.
+* **REQ-POS-06 (Default Table Tap Switch vs Explicit Shift Contract):** Tapping any table in the table selection grid or floor picker defaults strictly to **Table Switch** (`isShiftMode = false`). Tapping a free or occupied table must NEVER trigger a table shift unless the operator explicitly activates the "Shift Order" button.
+* **REQ-POS-07 (Independent Settlement & Freeing):** Completing or settling a bill on Table 1 frees only Table 1 (`TableStatus.free`), leaving Table 2, Takeaway, and Delivery drafts 100% active and untouched.
 
 ### 4.3 Orders & KOT Kitchen Fulfillment Domain
 * **REQ-ORD-01 (Independent Order Numbering Sequences):** Order numbers (e.g., `#ORD-001`, `#KOT-104`) must increment independently per tenant per business day. Tenant B's order volume will never impact Tenant A's sequential counters.
@@ -170,6 +174,7 @@ mindmap
 | **AC-ISO-03** | Customer Phone Autocomplete | Attacker in Tenant B types phone number of regular customer from Tenant A. Zero results returned in suggestions. |
 | **AC-ISO-04** | Local Device Account Switching | User logs out of Tenant A and logs into Tenant B on same tablet. Zero residual menu items, carts, or orders from Tenant A appear in memory or UI. |
 | **AC-ISO-05** | UI & Logic Zero-Disruption | Full regression test of PosRegisterScreen, TableManagementScreen, KOT Print, and BusinessSettingsHubScreen passes with 100% feature and visual parity. |
+| **AC-ISO-06** | Multi-Order & Multi-Table Draft Isolation | Concurrently building orders for Table 1 (Customer A), Table 2 (Customer B), Takeaway (Customer C), and Delivery (Customer D) preserves all cart items, discounts, and customer details independently. Settle Table 1 frees only Table 1; Table 2, Takeaway, and Delivery remain unaffected. |
 
 ---
 *Approved by Apna POS Lead Systems Architect & Principal Security Engineer.*

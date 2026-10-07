@@ -334,14 +334,39 @@ class TableService {
   }
 
   async updateTable(businessId, tableId, data) {
-    const table = await Table.findOneAndUpdate(
-      { _id: tableId, businessId },
+    const cleanId = (tableId || '').toString().trim();
+    const isObjectId = mongoose.Types.ObjectId.isValid(cleanId);
+    const numOnly = parseInt(cleanId.replace(/\D/g, ''), 10) || (data.tableNumber ? parseInt(data.tableNumber, 10) : 0);
+
+    const query = {
+      businessId,
+      $or: [
+        ...(isObjectId ? [{ _id: cleanId }] : []),
+        ...(cleanId.length > 0 ? [{ name: { $regex: new RegExp(`^${cleanId}$`, 'i') } }] : []),
+        ...(numOnly > 0 ? [{ name: `T-${numOnly}` }, { tableNumber: numOnly }] : []),
+      ],
+    };
+
+    let table = await Table.findOneAndUpdate(
+      query,
       { $set: data },
       { new: true, runValidators: true }
     );
 
     if (!table) {
-      throw ApiError.notFound('Table not found');
+      // If table wasn't found (e.g. was created offline or with local ID), create it in MongoDB
+      const allTables = await Table.find({ businessId }).sort({ tableNumber: -1 });
+      const maxNum = allTables.length > 0 ? (allTables[0].tableNumber || allTables.length) : 0;
+      const finalNum = data.tableNumber || (numOnly > 0 ? numOnly : maxNum + 1);
+
+      table = await Table.create({
+        businessId,
+        tableNumber: finalNum,
+        name: data.name || (cleanId.length > 0 && !cleanId.startsWith('TBL-') ? cleanId : `T-${finalNum}`),
+        floor: data.floor || 'Ground Floor',
+        capacity: data.capacity || 4,
+        status: data.status || 'free',
+      });
     }
 
     const enriched = await this.enrichTableDoc(businessId, table);

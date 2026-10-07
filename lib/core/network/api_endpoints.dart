@@ -118,7 +118,10 @@ class ApiEndpoints {
       return;
     }
 
-    final bool isDesktop = !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final bool isDesktop = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
     final primaryCandidates = [
       'http://$defaultLanIp:$defaultPort/api/v1',
       'http://172.16.2.2:$defaultPort/api/v1',
@@ -126,7 +129,7 @@ class ApiEndpoints {
       'http://172.16.2.4:$defaultPort/api/v1',
       if (isDesktop) 'http://127.0.0.1:$defaultPort/api/v1',
       if (isDesktop) 'http://localhost:$defaultPort/api/v1',
-      if (!kIsWeb && Platform.isAndroid) 'http://10.0.2.2:$defaultPort/api/v1',
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) 'http://10.0.2.2:$defaultPort/api/v1',
       'http://127.0.0.1:$defaultPort/api/v1',
       'http://localhost:$defaultPort/api/v1',
       productionApiUrl,
@@ -154,7 +157,7 @@ class ApiEndpoints {
     }
 
     // 6. Default fallback: Default LAN IP on Android, localhost on Desktop
-    if (!kIsWeb && Platform.isAndroid) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       _resolvedBaseUrl = 'http://$defaultLanIp:$defaultPort/api/v1';
     } else if (isDesktop) {
       _resolvedBaseUrl = 'http://127.0.0.1:$defaultPort/api/v1';
@@ -266,7 +269,7 @@ class ApiEndpoints {
       }
       return productionApiUrl;
     }
-    if (!kIsWeb && Platform.isAndroid) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return 'http://$defaultLanIp:$defaultPort/api/v1';
     }
     return 'http://127.0.0.1:$defaultPort/api/v1';

@@ -1,6 +1,7 @@
 const User = require('../models/User');
 const Business = require('../models/Business');
 const Staff = require('../models/Staff');
+const Subscription = require('../models/Subscription');
 const tokenService = require('./tokenService');
 const notificationService = require('./notificationService');
 const ApiError = require('../utils/ApiError');
@@ -35,6 +36,30 @@ class AuthService {
       business = await Business.create({
         ownerId: user._id,
       });
+    }
+
+    // Initialize Default False Subscription in unified premiumsubscriptions collection
+    try {
+      await Subscription.create({
+        businessId: business._id,
+        userId: user._id,
+        targetType: 'business',
+        userEmail: user.email,
+        userName: options.name || user.email.split('@')[0],
+        businessName: business?.profile?.companyName || 'My Restaurant',
+        phone: user.phone || '',
+        userCreatedAt: user.createdAt,
+        plan: 'starter',
+        isSubscriptionActive: false,
+        isActive: false,
+        isSubscribed: false,
+        status: 'inactive',
+        hasLoyalty: false,
+        hasCampaign: false,
+        hasInventory: false,
+      });
+    } catch (err) {
+      console.warn(`[Default Subscription Init Warning] ${err.message}`);
     }
 
     // Trigger Welcome Notification with idempotency

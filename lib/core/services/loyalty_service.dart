@@ -24,22 +24,76 @@ class LoyaltyService {
 
   /// Default fallback programs if fresh offline or first launch
   LoyaltyBrandingModel getDefaultLoyaltyBranding() {
-    final companyName = _db.restaurant?.name ??
-        _db.currentUser?.companyName ??
-        _db.currentUser?.name ??
-        'THE ROYAL GARDENIA';
-    final companyLogo = _db.currentUser?.profilePhotoPath ?? '';
+    final companyName = _db.restaurant?.name.trim().isNotEmpty == true
+        ? _db.restaurant!.name.trim()
+        : (_db.currentUser?.companyName?.trim().isNotEmpty == true
+            ? _db.currentUser!.companyName!.trim()
+            : (_db.currentUser?.name.trim().isNotEmpty == true ? _db.currentUser!.name.trim() : 'MOTI MAHAL'));
+    final companyLogo = _db.companyLogoPath ?? _db.currentUser?.profilePhotoPath ?? '';
 
     return LoyaltyBrandingModel(
       companyName: companyName,
       companyLogo: companyLogo,
-      programs: [],
+      programs: [
+        LoyaltyProgramModel(
+          id: 'prog_visit_made',
+          type: LoyaltyType.visitMade,
+          title: companyName,
+          description: 'Get rewarded on every purchase',
+          earningRule: '1 Visit Made = 1000 Chilly',
+          rewardCurrency: 'Chilly',
+          gradientColors: ['#2E0627', '#7C0E4B'],
+          orderIndex: 0,
+          milestones: [
+            RewardMilestoneModel(id: '1', label: '300 Chilly', value: 300, iconName: 'cookie'),
+            RewardMilestoneModel(id: '2', label: '500 Chilly', value: 500, iconName: 'cookie'),
+            RewardMilestoneModel(id: '3', label: '800 Chilly', value: 800, iconName: 'cookie'),
+          ],
+        ),
+        LoyaltyProgramModel(
+          id: 'prog_amount_spent',
+          type: LoyaltyType.amountSpent,
+          title: companyName,
+          description: 'Get rewarded on every purchase',
+          earningRule: '₹75 Amount Spent = 1 Cookie',
+          rewardCurrency: 'Cookie',
+          gradientColors: ['#5C0707', '#BF1313'],
+          orderIndex: 1,
+          milestones: [
+            RewardMilestoneModel(id: '1', label: '300 Cookie', value: 300, iconName: 'cookie'),
+            RewardMilestoneModel(id: '2', label: '500 Cookie', value: 500, iconName: 'cookie'),
+            RewardMilestoneModel(id: '3', label: '800 Cookie', value: 800, iconName: 'cookie'),
+          ],
+        ),
+        LoyaltyProgramModel(
+          id: 'prog_cashback',
+          type: LoyaltyType.cashback,
+          title: companyName,
+          description: 'Get rewarded on every step',
+          earningRule: '10% Cashback on sales',
+          rewardCurrency: '%',
+          gradientColors: ['#0B253A', '#134E63'],
+          orderIndex: 2,
+          cashbackDetails: CashbackDetailsModel(
+            percentage: 10.0,
+            minSpend: 500.0,
+            headline: '10% Cashback on sales',
+            subtext: 'On min. spend of ₹500',
+            termsNote: 'Cashback will be credited when another coupon or offer is already applied.',
+            billRewardText: 'Rs 500+ bill earns 10% cashback',
+            slabTitle: 'STARTER REWARD',
+            goal: 'On min purchase of Rs 500',
+            reward: '🎁 Earn 10% cashback',
+            progressPercent: 65.0,
+          ),
+        ),
+      ],
     );
   }
 
   /// Fetch all active loyalty programs with company branding from API (or local cache)
   Future<LoyaltyBrandingModel> fetchLoyaltyPrograms({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cachedBranding != null) {
+    if (!forceRefresh && _cachedBranding != null && _cachedBranding!.programs.isNotEmpty) {
       return _cachedBranding!;
     }
 
@@ -52,9 +106,12 @@ class LoyaltyService {
               ? response['data']
               : response;
           if (data is Map<String, dynamic>) {
-            _cachedBranding = LoyaltyBrandingModel.fromJson(data);
-            await _persistBrandingToPrefs(_cachedBranding!);
-            return _cachedBranding!;
+            final parsed = LoyaltyBrandingModel.fromJson(data);
+            if (parsed.programs.isNotEmpty) {
+              _cachedBranding = parsed;
+              await _persistBrandingToPrefs(_cachedBranding!);
+              return _cachedBranding!;
+            }
           }
         }
       }
@@ -63,7 +120,7 @@ class LoyaltyService {
     }
 
     final local = await _loadBrandingFromPrefs();
-    if (local != null) {
+    if (local != null && local.programs.isNotEmpty) {
       _cachedBranding = local;
       return local;
     }

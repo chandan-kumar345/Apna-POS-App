@@ -1,5 +1,5 @@
+import 'dart:io' show File;
 import 'dart:convert';
-import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -67,7 +67,7 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
       final currentUser = dbInstance.currentUser;
 
       // 1. Windows Native Printing Flow
-      if (!kIsWeb && Platform.isWindows) {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
         final defaultPrinter = await windowsPrinterService.getActiveDefaultPrinter();
         if (defaultPrinter != null) {
           if (mounted) {
@@ -503,7 +503,7 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
           fit: fit,
           errorBuilder: (context, error, stackTrace) => _buildDefaultCompanyLogo(size, fit: fit, fallbackTextColor: fallbackTextColor),
         );
-      } else if (!photoPath.contains('_selected') && File(photoPath).existsSync()) {
+      } else if (!kIsWeb && !photoPath.contains('_selected') && File(photoPath).existsSync()) {
         return Image.file(
           File(photoPath),
           width: size,
@@ -759,7 +759,7 @@ class _StaffIdCardDialogState extends State<StaffIdCardDialog> {
           errorBuilder: (context, error, stackTrace) =>
               isOwnerStaff ? _buildDefaultCompanyLogo(size, fit: BoxFit.cover) : _buildInitialsAvatar(staff, size),
         );
-      } else if (!effectivePhoto.contains('_selected') && File(effectivePhoto).existsSync()) {
+      } else if (!kIsWeb && !effectivePhoto.contains('_selected') && File(effectivePhoto).existsSync()) {
         avatarContent = Image.file(
           File(effectivePhoto),
           width: size,

@@ -238,53 +238,78 @@ class _SuperAdminLayoutState extends State<SuperAdminLayout> {
       child: Focus(
         autofocus: true,
         child: Scaffold(
-          backgroundColor: SuperAdminTheme.bg,
-          body: Row(
-            children: [
-              // 1. Persistent Neumorphic Sidebar
-              SuperAdminSidebar(
-                selectedIndex: _selectedTab,
-                isCollapsed: _isSidebarCollapsed,
-                onItemSelected: (idx) {
-                  setState(() {
-                    _selectedTab = idx;
-                    _selectedUserId = null;
-                    _selectedBusinessId = null;
-                    _selectedBusinessSalesId = null;
-                    _showingRevenueReport = false;
-                  });
-                },
-                onToggleCollapse: () {
-                  setState(() {
-                    _isSidebarCollapsed = !_isSidebarCollapsed;
-                  });
-                },
-                onLogout: _handleLogout,
-              ),
+          backgroundColor: const Color(0xFF031024),
+          body: Container(
+            decoration: const BoxDecoration(
+              gradient: SuperAdminTheme.headerGradient,
+            ),
+            child: SafeArea(
+              bottom: true,
+              child: Column(
+                children: [
+                  // 1. TOP HEADER BAR (Over Midnight Navy Gradient)
+                  SuperAdminHeader(
+                    pageTitle: _getPageTitle(),
+                    breadcrumbSubtitle: _getBreadcrumb(),
+                    onNavigate: _handleNavigation,
+                    onLogout: _handleLogout,
+                  ),
 
-              // 2. Main Content Canvas
-              Expanded(
-                child: Column(
-                  children: [
-                    // Persistent Top Header
-                    SuperAdminHeader(
-                      pageTitle: _getPageTitle(),
-                      breadcrumbSubtitle: _getBreadcrumb(),
-                      onNavigate: _handleNavigation,
-                      onLogout: _handleLogout,
-                    ),
+                  // 2. MAIN WORKSPACE WITH LARGE CURVED TOP (Matching Windows Build)
+                  Expanded(
+                    child: Container(
+                      width: double.infinity,
+                      decoration: SuperAdminTheme.workspaceDecoration,
+                      child: ClipRRect(
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(32),
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 14, left: 16, right: 16, bottom: 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Floating Continuous White Sidebar Card
+                              SuperAdminSidebar(
+                                selectedIndex: _selectedTab,
+                                isCollapsed: _isSidebarCollapsed,
+                                onItemSelected: (idx) {
+                                  setState(() {
+                                    _selectedTab = idx;
+                                    _selectedUserId = null;
+                                    _selectedBusinessId = null;
+                                    _selectedBusinessSalesId = null;
+                                    _showingRevenueReport = false;
+                                  });
+                                },
+                                onToggleCollapse: () {
+                                  setState(() {
+                                    _isSidebarCollapsed = !_isSidebarCollapsed;
+                                  });
+                                },
+                                onLogout: _handleLogout,
+                              ),
+                              const SizedBox(width: 14),
 
-                    // Scrollable Active Screen Content
-                    Expanded(
-                      child: Container(
-                        color: SuperAdminTheme.bg,
-                        child: _buildActiveScreen(),
+                              // Active Screen Workspace Canvas
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: Container(
+                                    color: Colors.transparent,
+                                    child: _buildActiveScreen(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),

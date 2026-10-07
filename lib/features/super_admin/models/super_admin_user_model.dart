@@ -52,9 +52,13 @@ class PlatformUser {
   final String role;
   final String status; // active, inactive, suspended, trial, paid, expired
   final String subscriptionPlan;
+  final bool isSubscribed;
   final DateTime createdAt;
   final DateTime? lastLogin;
   final String? profilePhoto;
+
+  bool get isSubscriptionActive => isSubscribed;
+  DateTime get userCreatedAt => createdAt;
 
   const PlatformUser({
     required this.id,
@@ -66,6 +70,7 @@ class PlatformUser {
     required this.role,
     required this.status,
     required this.subscriptionPlan,
+    this.isSubscribed = false,
     required this.createdAt,
     this.lastLogin,
     this.profilePhoto,
@@ -78,6 +83,7 @@ class PlatformUser {
     String? status,
     String? role,
     String? subscriptionPlan,
+    bool? isSubscribed,
     DateTime? lastLogin,
   }) {
     return PlatformUser(
@@ -90,6 +96,7 @@ class PlatformUser {
       role: role ?? this.role,
       status: status ?? this.status,
       subscriptionPlan: subscriptionPlan ?? this.subscriptionPlan,
+      isSubscribed: isSubscribed ?? this.isSubscribed,
       createdAt: createdAt,
       lastLogin: lastLogin ?? this.lastLogin,
       profilePhoto: profilePhoto,
@@ -97,6 +104,15 @@ class PlatformUser {
   }
 
   factory PlatformUser.fromJson(Map<String, dynamic> json) {
+    final isSubActive = json['isSubscribed'] == true ||
+        json['isSubscriptionActive'] == true ||
+        (json['premiumSubscription'] is Map &&
+            (json['premiumSubscription']['isSubscriptionActive'] == true ||
+                json['premiumSubscription']['isActive'] == true ||
+                json['premiumSubscription']['isSubscribed'] == true)) ||
+        (json['status'] == 'paid');
+
+    final rawCreated = json['userCreatedAt'] ?? json['createdAt'];
     return PlatformUser(
       id: json['id'] ?? json['_id'] ?? '',
       name: json['name'] ?? '',
@@ -106,9 +122,10 @@ class PlatformUser {
       businessName: json['businessName'] ?? 'Unassigned',
       role: json['role'] ?? 'Staff',
       status: json['status'] ?? 'active',
-      subscriptionPlan: json['subscriptionPlan'] ?? 'Free Trial',
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
+      subscriptionPlan: json['subscriptionPlan'] ?? (isSubActive ? 'Growth Pro' : 'Free'),
+      isSubscribed: isSubActive,
+      createdAt: rawCreated != null
+          ? DateTime.tryParse(rawCreated.toString()) ?? DateTime.now()
           : DateTime.now(),
       lastLogin: json['lastLogin'] != null
           ? DateTime.tryParse(json['lastLogin'].toString())
@@ -127,7 +144,10 @@ class PlatformUser {
     'role': role,
     'status': status,
     'subscriptionPlan': subscriptionPlan,
+    'isSubscribed': isSubscribed,
+    'isSubscriptionActive': isSubscribed,
     'createdAt': createdAt.toIso8601String(),
+    'userCreatedAt': createdAt.toIso8601String(),
     'lastLogin': lastLogin?.toIso8601String(),
     'profilePhoto': profilePhoto,
   };

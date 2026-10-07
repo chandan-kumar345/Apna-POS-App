@@ -295,7 +295,9 @@ class SubscriptionService {
         final data = response['data'] ?? response;
         if (data is Map<String, dynamic>) {
           bool isSub = false;
-          if (data['isActive'] != null) {
+          if (data['isSubscriptionActive'] != null) {
+            isSub = data['isSubscriptionActive'] == true;
+          } else if (data['isActive'] != null) {
             isSub = data['isActive'] == true;
           } else if (data['isSubscribed'] != null) {
             isSub = data['isSubscribed'] == true;

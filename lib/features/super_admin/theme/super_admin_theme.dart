@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Design System & Theme constants for Apna POSS Web Super Admin Dashboard
+/// Design System & Theme constants for Apna POS Web Super Admin Dashboard
+/// Fully unified with Windows Build & Pure Neumorphism
 class SuperAdminTheme {
   // Brand & Accent Colors
   static const Color primary = Color(0xFF0052FF);
@@ -24,13 +25,60 @@ class SuperAdminTheme {
   static const Color info = Color(0xFF6366F1);
   static const Color infoLight = Color(0xFFEEF2FF);
 
-  // Background & Surface Neutrals
-  static const Color bg = Color(0xFFF0F4F8);
+  // Background & Surface Neutrals (Matching Windows build)
+  static const Color bg = Color(0xFFEDF3FA);
   static const Color background = bg;
   static const Color surface = Color(0xFFFFFFFF);
   static const Color cardBg = surface;
   static const Color surfaceElevated = Color(0xFFF8FAFC);
-  static const Color surfaceInset = Color(0xFFE2E8F0);
+  static const Color surfaceInset = Color(0xFFF1F5F9);
+
+  // Windows Top Header Gradient
+  static const LinearGradient headerGradient = LinearGradient(
+    colors: [
+      Color(0xFF031024), // Deep Midnight Navy
+      Color(0xFF072146), // Rich Royal Navy
+      Color(0xFF0A2E5C), // Deep Indigo Blue
+    ],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Primary Button Gradient
+  static const LinearGradient primaryButtonGradient = LinearGradient(
+    colors: [Color(0xFF0052FF), Color(0xFF0038E0)],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+
+  // Workspace Curved Top Container Decoration (Matching Windows Build)
+  static const BoxDecoration workspaceDecoration = BoxDecoration(
+    color: Color(0xFFEDF3FA),
+    borderRadius: BorderRadius.vertical(
+      top: Radius.circular(32),
+    ),
+    boxShadow: [
+      BoxShadow(
+        color: Color(0x33000000),
+        blurRadius: 16,
+        offset: Offset(0, -4),
+      ),
+    ],
+  );
+
+  // Floating Sidebar Card Decoration
+  static BoxDecoration get sidebarDecoration => BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(22),
+    border: Border.all(color: const Color(0xFFE2E8F0)),
+    boxShadow: [
+      BoxShadow(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+        blurRadius: 16,
+        offset: const Offset(0, 4),
+      ),
+    ],
+  );
 
   // Text Hierarchy
   static const Color textPrimary = Color(0xFF0F172A);
@@ -42,7 +90,7 @@ class SuperAdminTheme {
   static const Color border = Color(0xFFE2E8F0);
   static const Color borderLight = Color(0xFFF1F5F9);
 
-  // Neumorphic Soft Shadows
+  // Pure Neumorphic Soft Dual Shadows
   static List<BoxShadow> get cardShadow => [
     const BoxShadow(
       color: Colors.white,
@@ -51,7 +99,7 @@ class SuperAdminTheme {
       spreadRadius: 0,
     ),
     BoxShadow(
-      color: const Color(0xFFB4C8DC).withValues(alpha: 0.4),
+      color: const Color(0xFFB4C8DC).withValues(alpha: 0.45),
       offset: const Offset(4, 6),
       blurRadius: 12,
       spreadRadius: 0,
@@ -102,26 +150,27 @@ class SuperAdminTheme {
 
   static BoxDecoration neumorphicBox({
     Color color = surface,
-    double radius = 14,
+    double radius = 18,
     Border? border,
     List<BoxShadow>? customShadow,
   }) {
     return BoxDecoration(
       color: color,
       borderRadius: BorderRadius.circular(radius),
-      border: border ?? Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+      border: border ?? Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
       boxShadow: customShadow ?? cardShadow,
     );
   }
 
   static BoxDecoration insetBox({
     Color color = const Color(0xFFF1F5F9),
-    double radius = 10,
+    double radius = 12,
+    Border? border,
   }) {
     return BoxDecoration(
       color: color,
       borderRadius: BorderRadius.circular(radius),
-      border: Border.all(color: const Color(0xFFCBD5E1).withValues(alpha: 0.6), width: 1.0),
+      border: border ?? Border.all(color: const Color(0xFFCBD5E1).withValues(alpha: 0.7), width: 1.0),
     );
   }
 

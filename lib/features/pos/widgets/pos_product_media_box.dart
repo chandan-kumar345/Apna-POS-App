@@ -57,7 +57,10 @@ class _PosMediaPlaybackCoordinator {
 
   int get _maxActiveDecoders {
     if (kIsWeb) return 2;
-    if (Platform.isAndroid || Platform.isIOS) return 1;
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      return 1;
+    }
     return 2;
   }
 
@@ -296,7 +299,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
     _isVideoLoading = true;
     _isVideoError = false;
 
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       try {
         WindowsVideoPlayer.registerWith();
       } catch (e) {
@@ -329,7 +332,7 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
         );
       } else if (playablePath.startsWith('http://') || playablePath.startsWith('https://')) {
         var netUrl = playablePath;
-        if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows && netUrl.contains('localhost:')) {
           netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
         }
         controller = VideoPlayerController.networkUrl(
@@ -341,10 +344,17 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
           },
         );
       } else {
-        controller = VideoPlayerController.file(
-          File(playablePath),
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-        );
+        if (kIsWeb) {
+          controller = VideoPlayerController.networkUrl(
+            Uri.parse(playablePath),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+        } else {
+          controller = VideoPlayerController.file(
+            File(playablePath),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+        }
       }
 
       await controller.initialize();

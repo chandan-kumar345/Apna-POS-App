@@ -101,7 +101,7 @@ const cartSchema = new mongoose.Schema(
       default: Date.now,
     },
   },
-  { timestamps: true }
+  { timestamps: true, versionKey: false }
 );
 
 // Compound index for instant active cart lookup per business, table, and order type

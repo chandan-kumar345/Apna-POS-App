@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/super_admin_theme.dart';
 import '../../services/super_admin_api_service.dart';
+import '../../models/super_admin_subscription_model.dart';
 
 class SuperAdminSubscriptionsScreen extends StatefulWidget {
   final Function(int targetTab, String? entityId)? onNavigate;
@@ -220,6 +221,35 @@ class _SuperAdminSubscriptionsScreenState extends State<SuperAdminSubscriptionsS
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          sub.subscriptionStatus == SubscriptionStatus.active
+                                              ? Icons.check_circle_rounded
+                                              : Icons.power_settings_new_rounded,
+                                          size: 18,
+                                          color: sub.subscriptionStatus == SubscriptionStatus.active
+                                              ? SuperAdminTheme.success
+                                              : SuperAdminTheme.textMuted,
+                                        ),
+                                        tooltip: sub.subscriptionStatus == SubscriptionStatus.active
+                                            ? 'Deactivate Subscription'
+                                            : 'Activate Subscription',
+                                        onPressed: () {
+                                          final isActive = sub.subscriptionStatus == SubscriptionStatus.active;
+                                          api.toggleSubscriptionStatus(sub.businessId, !isActive);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                !isActive
+                                                    ? 'Subscription ACTIVATED for ${sub.businessName}'
+                                                    : 'Subscription DEACTIVATED for ${sub.businessName}',
+                                              ),
+                                              backgroundColor: !isActive ? SuperAdminTheme.success : SuperAdminTheme.warning,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                       IconButton(
                                         icon: const Icon(Icons.more_time_rounded, size: 17, color: SuperAdminTheme.primary),
                                         tooltip: 'Extend 30 Days',

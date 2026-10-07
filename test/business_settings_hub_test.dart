@@ -52,6 +52,7 @@ void main() {
     expect(find.text('Store & Order Configuration'), findsOneWidget);
     expect(find.text('Financials & Payments'), findsOneWidget);
     expect(find.text('Hardware & Logistics'), findsOneWidget);
+    expect(find.text('Marketing & Communication'), findsOneWidget);
     expect(find.text('Super Admin & Database'), findsNothing);
 
     // Verify key cards
@@ -63,8 +64,14 @@ void main() {
     expect(find.text('Chotu AI Voice'), findsOneWidget);
     expect(find.text('Payment Setting'), findsOneWidget);
     expect(find.text('Tax Settings'), findsOneWidget);
+    expect(find.text('Wallet'), findsOneWidget);
     expect(find.text('Printer Setting'), findsOneWidget);
     expect(find.text('Sound Setting'), findsOneWidget);
+    expect(find.text('Meta Integration'), findsOneWidget);
+    expect(find.text('WhatsApp Integration'), findsOneWidget);
+    expect(find.text('WhatsApp Messages'), findsOneWidget);
+    expect(find.text('AI Chat Agent'), findsOneWidget);
+    expect(find.text('Meta Chats'), findsOneWidget);
     expect(find.text('Order Purge'), findsNothing);
   });
 
@@ -248,5 +255,182 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Security / Manager PIN'), findsNothing);
+  });
+
+  testWidgets('Tapping Meta Integration card opens Meta modal, updates values, and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final metaCard = find.text('Meta Integration');
+    expect(metaCard, findsOneWidget);
+    await tester.ensureVisible(metaCard);
+    await tester.tap(metaCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Meta System User Access Token'), findsOneWidget);
+    expect(find.text('Enable Meta Integration'), findsOneWidget);
+    expect(find.text('Facebook Pixel / Dataset ID'), findsOneWidget);
+    expect(find.text('Instagram Handle'), findsOneWidget);
+    expect(find.text('Test Meta Connection'), findsOneWidget);
+    expect(find.text('Save Meta Settings'), findsOneWidget);
+
+    final saveBtn = find.text('Save Meta Settings');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Facebook Pixel / Dataset ID'), findsNothing);
+  });
+
+  testWidgets('Tapping WhatsApp Integration card opens WhatsApp modal and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final waCard = find.text('WhatsApp Integration');
+    expect(waCard, findsOneWidget);
+    await tester.ensureVisible(waCard);
+    await tester.tap(waCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cloud API, Phone Number & Webhooks'), findsOneWidget);
+    expect(find.text('Meta Cloud API'), findsOneWidget);
+    expect(find.text('Twilio'), findsOneWidget);
+    expect(find.text('QR Gateway'), findsOneWidget);
+    expect(find.text('Sender Business Phone Number *'), findsOneWidget);
+    expect(find.text('Save WhatsApp Gateway'), findsOneWidget);
+
+    final saveBtn = find.text('Save WhatsApp Gateway');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cloud API, Phone Number & Webhooks'), findsNothing);
+  });
+
+  testWidgets('Tapping WhatsApp Messages card opens template customizer modal and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final msgCard = find.text('WhatsApp Messages');
+    expect(msgCard, findsOneWidget);
+    await tester.ensureVisible(msgCard);
+    await tester.tap(msgCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Automations, Instant Invoices & Custom Templates'), findsOneWidget);
+    expect(find.text('Auto Send Bill on Settlement'), findsOneWidget);
+    expect(find.text('KOT & Order Status Updates'), findsOneWidget);
+    expect(find.text('Payment Reminders'), findsOneWidget);
+    expect(find.text('Loyalty & Birthday Greetings'), findsOneWidget);
+    expect(find.text('LIVE CUSTOMER PREVIEW'), findsOneWidget);
+    expect(find.text('Save Message Settings'), findsOneWidget);
+
+    final saveBtn = find.text('Save Message Settings');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Automations, Instant Invoices & Custom Templates'), findsNothing);
+  });
+
+  testWidgets('Tapping AI Chat Agent card opens AI agent modal and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final aiCard = find.text('AI Chat Agent');
+    expect(aiCard, findsOneWidget);
+    await tester.ensureVisible(aiCard);
+    await tester.tap(aiCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Autonomous Hospitality & Order Assistant'), findsOneWidget);
+    expect(find.text('AI Welcome Greeting Message'), findsOneWidget);
+    expect(find.text('Smart Menu Recommendations'), findsOneWidget);
+    expect(find.text('Direct Order & Cart Taking'), findsOneWidget);
+    expect(find.text('AI Agent Simulator'), findsOneWidget);
+    expect(find.text('Save AI Agent'), findsOneWidget);
+
+    final saveBtn = find.text('Save AI Agent');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Autonomous Hospitality & Order Assistant'), findsNothing);
+  });
+
+  testWidgets('Tapping Meta Chats card opens Meta Chats modal and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final metaChatsCard = find.text('Meta Chats');
+    expect(metaChatsCard, findsOneWidget);
+    await tester.ensureVisible(metaChatsCard);
+    await tester.tap(metaChatsCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Messenger & Instagram Direct Automated Inboxes'), findsOneWidget);
+    expect(find.text('Enable Meta Chats Automation'), findsOneWidget);
+    expect(find.text('Auto Welcome Greeting'), findsOneWidget);
+    expect(find.text('Social Lead Capture'), findsOneWidget);
+    expect(find.text('Staff / Human Handover Trigger Keywords'), findsOneWidget);
+    expect(find.text('Save Meta Chats'), findsOneWidget);
+
+    final saveBtn = find.text('Save Meta Chats');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Messenger & Instagram Direct Automated Inboxes'), findsNothing);
+  });
+
+  testWidgets('Tapping Wallet card opens Wallet settings modal and saves', (tester) async {
+    tester.view.physicalSize = const Size(1000, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(buildTestWidget());
+    await tester.pumpAndSettle();
+
+    final walletCard = find.text('Wallet');
+    expect(walletCard, findsOneWidget);
+    await tester.ensureVisible(walletCard);
+    await tester.tap(walletCard);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Customer & Outlet Wallet'), findsOneWidget);
+    expect(find.text('Prepaid Balances, Cashbacks & Payouts'), findsOneWidget);
+    expect(find.text('Enable Wallet System'), findsOneWidget);
+    expect(find.text('Recharge Cashback (%)'), findsOneWidget);
+    expect(find.text('Min Recharge (₹)'), findsOneWidget);
+    expect(find.text('Allow Trusted Negative Credit (Khata Tab)'), findsOneWidget);
+    expect(find.text('Merchant Payout UPI VPA (Settlements)'), findsOneWidget);
+    expect(find.text('Save Wallet Settings'), findsOneWidget);
+
+    final saveBtn = find.text('Save Wallet Settings');
+    await tester.ensureVisible(saveBtn);
+    await tester.tap(saveBtn);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Customer & Outlet Wallet'), findsNothing);
   });
 }

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,13 +9,13 @@ class NotificationPermissionHelper {
   /// directly via native Android system permission popups (no custom UI)
   static Future<void> requestAllAppPermissionsOnStartup() async {
     try {
-      if (kIsWeb || (!Platform.isAndroid && !Platform.isIOS)) return;
+      if (kIsWeb || (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) return;
 
       final prefs = await SharedPreferences.getInstance();
       final alreadyRequested = prefs.getBool(_prefKeyInitialRequested) ?? false;
       if (alreadyRequested) {
         // Also ensure notification permission is checked on Android 13+
-        if (Platform.isAndroid || Platform.isIOS) {
+        if (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS) {
           final notifStatus = await Permission.notification.status;
           if (notifStatus.isDenied) {
             await Permission.notification.request();
@@ -32,7 +31,7 @@ class NotificationPermissionHelper {
         Permission.notification,
         Permission.camera,
         Permission.location,
-        if (Platform.isAndroid) ...[
+        if (defaultTargetPlatform == TargetPlatform.android) ...[
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
         ],

@@ -32,17 +32,17 @@ class SuperAdminKpiCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
         padding: const EdgeInsets.all(18),
         decoration: SuperAdminTheme.neumorphicBox(
-          radius: 14,
+          radius: 18,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            // Top Row: Title + Icon Badge
+            // Top Row: Title + Pastel Squircle Icon Badge
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -52,8 +52,8 @@ class SuperAdminKpiCard extends StatelessWidget {
                     title,
                     style: const TextStyle(
                       fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: SuperAdminTheme.textSecondary,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF475569),
                       letterSpacing: -0.1,
                     ),
                     maxLines: 1,
@@ -61,16 +61,17 @@ class SuperAdminKpiCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.all(8),
+                  width: 38,
+                  height: 38,
                   decoration: BoxDecoration(
                     color: iconBgColor ?? iconColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: iconColor.withValues(alpha: 0.2),
+                      color: iconColor.withValues(alpha: 0.22),
                       width: 1.0,
                     ),
                   ),
-                  child: Icon(icon, color: iconColor, size: 18),
+                  child: Icon(icon, color: iconColor, size: 19),
                 ),
               ],
             ),
@@ -80,7 +81,12 @@ class SuperAdminKpiCard extends StatelessWidget {
             // Value
             Text(
               value,
-              style: SuperAdminTheme.kpiValue,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF0F172A),
+                letterSpacing: -0.5,
+              ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
@@ -92,10 +98,14 @@ class SuperAdminKpiCard extends StatelessWidget {
               Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                     decoration: BoxDecoration(
-                      color: trendColor.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(6),
+                      color: isPositive ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isPositive ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA),
+                        width: 1.0,
+                      ),
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -110,7 +120,7 @@ class SuperAdminKpiCard extends StatelessWidget {
                           '${isPositive ? "+" : ""}${changePercentage!.toStringAsFixed(1)}%',
                           style: TextStyle(
                             fontSize: 11.5,
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w800,
                             color: trendColor,
                           ),
                         ),
@@ -123,8 +133,8 @@ class SuperAdminKpiCard extends StatelessWidget {
                       comparisonPeriod,
                       style: const TextStyle(
                         fontSize: 11,
-                        color: SuperAdminTheme.textMuted,
-                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF94A3B8),
+                        fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -137,8 +147,8 @@ class SuperAdminKpiCard extends StatelessWidget {
                 subtitle!,
                 style: const TextStyle(
                   fontSize: 11.5,
-                  color: SuperAdminTheme.textMuted,
-                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                  fontWeight: FontWeight.w600,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

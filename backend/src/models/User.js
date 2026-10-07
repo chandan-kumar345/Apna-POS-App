@@ -48,11 +48,15 @@ const userSchema = new mongoose.Schema(
       status: {
         type: String,
         enum: ['active', 'trial', 'expired', 'cancelled', 'inactive'],
-        default: 'active',
+        default: 'inactive',
       },
       isActive: {
         type: Boolean,
-        default: true,
+        default: false,
+      },
+      isSubscriptionActive: {
+        type: Boolean,
+        default: false,
       },
       startDate: {
         type: Date,
@@ -60,7 +64,7 @@ const userSchema = new mongoose.Schema(
       },
       expiresAt: {
         type: Date,
-        default: () => new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        default: null,
       },
       billingCycle: {
         type: String,

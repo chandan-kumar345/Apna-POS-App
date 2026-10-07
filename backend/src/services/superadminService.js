@@ -10,6 +10,7 @@ const Staff = require('../models/Staff');
 const Sale = require('../models/Sale');
 const { Notification } = require('../models/Notification');
 const { SubscriptionLead } = require('../models/SubscriptionLead');
+const Subscription = require('../models/Subscription');
 const Cart = require('../models/Cart');
 const Extra = require('../models/Extra');
 const PrintLog = require('../models/PrintLog');
@@ -381,6 +382,18 @@ class SuperadminService {
 
         const totalSales = salesSum[0]?.total || 0;
 
+        const subDoc = await Subscription.findOne({
+          $or: [
+            { userId: u._id },
+            { userEmail: u.email.toLowerCase().trim() },
+            ...(bizId ? [{ businessId: bizId }] : []),
+          ],
+        }).lean();
+
+        const isSubActive = subDoc
+          ? Boolean(subDoc.isSubscriptionActive || subDoc.isActive || subDoc.isSubscribed || subDoc.status === 'active')
+          : Boolean(u.subscription?.isActive && (u.subscription?.status === 'active' || u.subscription?.isSubscriptionActive));
+
         return {
           id: u._id,
           email: u.email,
@@ -391,15 +404,20 @@ class SuperadminService {
           emailVerified: !!u.emailVerified,
           onboardingCompleted: !!u.onboardingCompleted,
           createdAt: u.createdAt,
+          userCreatedAt: u.createdAt,
           updatedAt: u.updatedAt,
-          subscription: u.subscription || {
-            plan: 'starter',
-            status: 'active',
-            startDate: u.createdAt,
-            expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-            billingCycle: 'annual',
-            maxTables: 50,
-            maxStaff: 20,
+          isSubscriptionActive: isSubActive,
+          isSubscribed: isSubActive,
+          subscription: {
+            plan: subDoc?.plan || u.subscription?.plan || 'starter',
+            status: isSubActive ? 'active' : 'inactive',
+            isActive: isSubActive,
+            isSubscriptionActive: isSubActive,
+            startDate: subDoc?.userCreatedAt || subDoc?.createdAt || u.createdAt,
+            expiresAt: subDoc?.expiresAt || u.subscription?.expiresAt || null,
+            billingCycle: subDoc?.billingCycle || u.subscription?.billingCycle || 'annual',
+            maxTables: u.subscription?.maxTables || 50,
+            maxStaff: u.subscription?.maxStaff || 20,
           },
           business: business
             ? {
@@ -697,7 +715,7 @@ class SuperadminService {
   }
 
   /**
-   * Update Subscription Plan, Expiry & Limits
+   * Update Subscription Plan, Expiry & Limits for a Specific User
    */
   async updateUserSubscription(userId, subData) {
     const user = await User.findById(userId);
@@ -707,8 +725,16 @@ class SuperadminService {
 
     user.subscription = user.subscription || {};
 
+    const isSubActive = subData.isSubscriptionActive !== undefined
+      ? Boolean(subData.isSubscriptionActive)
+      : (subData.isActive !== undefined
+          ? Boolean(subData.isActive)
+          : (subData.status !== undefined ? subData.status.toLowerCase() === 'active' : user.subscription.isActive));
+
     if (subData.plan) user.subscription.plan = subData.plan.toLowerCase();
-    if (subData.status) user.subscription.status = subData.status.toLowerCase();
+    user.subscription.status = isSubActive ? 'active' : (subData.status ? subData.status.toLowerCase() : 'inactive');
+    user.subscription.isActive = isSubActive;
+    user.subscription.isSubscriptionActive = isSubActive;
     if (subData.billingCycle) user.subscription.billingCycle = subData.billingCycle.toLowerCase();
     if (subData.maxTables !== undefined) user.subscription.maxTables = Number(subData.maxTables);
     if (subData.maxStaff !== undefined) user.subscription.maxStaff = Number(subData.maxStaff);
@@ -722,14 +748,85 @@ class SuperadminService {
         : new Date();
       currentExpiry.setDate(currentExpiry.getDate() + Number(subData.extendDays));
       user.subscription.expiresAt = currentExpiry;
+    } else if (isSubActive && (!user.subscription.expiresAt || user.subscription.expiresAt < new Date())) {
+      user.subscription.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     }
 
     await user.save();
+
+    // Sync to Business
+    let business = null;
+    if (user.businessId) {
+      business = await Business.findById(user.businessId);
+    }
+    if (!business) {
+      business = await Business.findOne({ ownerId: user._id });
+    }
+
+    if (business) {
+      business.subscription = business.subscription || {};
+      business.subscription.isActive = isSubActive;
+      business.subscription.isSubscriptionActive = isSubActive;
+      business.subscription.status = isSubActive ? 'active' : 'inactive';
+      business.subscription.plan = user.subscription.plan || 'standard';
+      business.subscription.expiresAt = user.subscription.expiresAt;
+      await business.save();
+    }
+
+    // Upsert into unified "premiumsubscriptions" collection for this specific owner user
+    const subFilter = business?._id
+      ? { businessId: business._id }
+      : { userId: user._id };
+
+    const premiumSub = await Subscription.findOneAndUpdate(
+      subFilter,
+      {
+        businessId: business?._id || null,
+        userId: user._id,
+        userEmail: user.email,
+        userName: business?.profile?.name || user.email.split('@')[0],
+        businessName: business?.profile?.companyName || 'My Restaurant',
+        phone: user.phone || business?.profile?.phone || '',
+        plan: user.subscription.plan || 'starter',
+        billingCycle: user.subscription.billingCycle || 'monthly',
+        amount: isSubActive ? 300 : 0,
+        currency: 'INR',
+        isSubscriptionActive: isSubActive,
+        isActive: isSubActive,
+        isSubscribed: isSubActive,
+        status: isSubActive ? 'active' : 'inactive',
+        hasLoyalty: isSubActive,
+        hasCampaign: isSubActive,
+        hasInventory: isSubActive,
+        features: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff', 'crm'],
+        userCreatedAt: user.createdAt,
+        activatedAt: isSubActive ? new Date() : null,
+        expiresAt: user.subscription.expiresAt,
+      },
+      { upsert: true, new: true }
+    );
+
+    // Broadcast real-time update to this tenant
+    try {
+      const socketService = require('./socketService');
+      if (business?._id) {
+        socketService.emitSubscriptionUpdated(business._id, {
+          isSubscriptionActive: isSubActive,
+          isActive: isSubActive,
+          isSubscribed: isSubActive,
+          status: isSubActive ? 'active' : 'inactive',
+          hasLoyalty: isSubActive,
+          hasCampaign: isSubActive,
+          hasInventory: isSubActive,
+        });
+      }
+    } catch (_) {}
 
     return {
       id: user._id,
       email: user.email,
       subscription: user.subscription,
+      premiumSubscription: premiumSub,
     };
   }
 

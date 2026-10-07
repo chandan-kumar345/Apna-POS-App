@@ -314,7 +314,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       _isVideoInitialized = false;
     });
 
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       try {
         WindowsVideoPlayer.registerWith();
       } catch (_) {}
@@ -353,7 +353,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         );
       } else if (playablePath.startsWith('http://') || playablePath.startsWith('https://')) {
         var netUrl = playablePath;
-        if (!kIsWeb && Platform.isWindows && netUrl.contains('localhost:')) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows && netUrl.contains('localhost:')) {
           netUrl = netUrl.replaceAll('localhost:', '127.0.0.1:');
         }
         _previewVideoController = VideoPlayerController.networkUrl(
@@ -361,10 +361,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
           videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
         );
       } else {
-        _previewVideoController = VideoPlayerController.file(
-          File(playablePath),
-          videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
-        );
+        if (kIsWeb) {
+          _previewVideoController = VideoPlayerController.networkUrl(
+            Uri.parse(playablePath),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+        } else {
+          _previewVideoController = VideoPlayerController.file(
+            File(playablePath),
+            videoPlayerOptions: VideoPlayerOptions(mixWithOthers: true),
+          );
+        }
       }
 
       await _previewVideoController!.initialize();

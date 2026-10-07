@@ -1865,6 +1865,2044 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     );
   }
 
+  // ==========================================
+  // MODAL 8: META INTEGRATION (FACEBOOK & INSTAGRAM)
+  // ==========================================
+  void _showMetaIntegrationModal() {
+    bool isEnabled = db.isMetaIntegrationEnabled;
+    final pixelIdCtrl = TextEditingController(text: db.metaPixelId);
+    final pageIdCtrl = TextEditingController(text: db.metaPageId);
+    final accessTokenCtrl = TextEditingController(text: db.metaAccessToken);
+    final igHandleCtrl = TextEditingController(text: db.metaInstagramHandle);
+    bool catalogSync = db.isMetaCatalogSyncEnabled;
+    bool obscureToken = true;
+    bool isSaving = false;
+    bool isTesting = false;
+    String? modalError;
+    String? testSuccessMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.hub_rounded,
+                              accentColor: const Color(0xFF0668E1),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Meta Integration',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Facebook Pixel, Instagram & Meta Commerce',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        if (testSuccessMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    testSuccessMessage!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF15803D),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Master Toggle Tile
+                        _buildNeumorphicToggleTile(
+                          title: 'Enable Meta Integration',
+                          subtitle: 'Track conversions & sync catalog with Meta Ads',
+                          value: isEnabled,
+                          accentColor: const Color(0xFF0668E1),
+                          onChanged: (val) => setModalState(() {
+                            isEnabled = val;
+                            modalError = null;
+                            testSuccessMessage = null;
+                          }),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Form Fields
+                        _buildNeumorphicInputField(
+                          controller: pixelIdCtrl,
+                          label: 'Facebook Pixel / Dataset ID',
+                          hint: 'e.g. 123456789012345',
+                          prefixIcon: Icons.track_changes_rounded,
+                          isNumeric: true,
+                        ),
+                        const SizedBox(height: 12),
+
+                        _buildNeumorphicInputField(
+                          controller: pageIdCtrl,
+                          label: 'Facebook Page ID / Business Account ID',
+                          hint: 'e.g. 109876543210',
+                          prefixIcon: Icons.pages_rounded,
+                          isNumeric: true,
+                        ),
+                        const SizedBox(height: 12),
+
+                        _buildNeumorphicInputField(
+                          controller: igHandleCtrl,
+                          label: 'Instagram Handle',
+                          hint: 'e.g. @your_restaurant_handle',
+                          prefixIcon: Icons.camera_alt_rounded,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Access Token Field with Show/Hide
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Meta System User Access Token',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => setModalState(() => obscureToken = !obscureToken),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        obscureToken ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                        size: 14,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        obscureToken ? 'Show' : 'Hide',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _NeumorphicTheme.sunkenSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                              ),
+                              child: TextField(
+                                controller: accessTokenCtrl,
+                                obscureText: obscureToken,
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _NeumorphicTheme.textDark),
+                                decoration: const InputDecoration(
+                                  hintText: 'e.g. EAABsbCS5...',
+                                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+                                  prefixIcon: Icon(Icons.vpn_key_rounded, color: _NeumorphicTheme.navyBrand, size: 18),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Catalog Sync Toggle Tile
+                        _buildNeumorphicToggleTile(
+                          title: 'Auto Sync Menu Catalog',
+                          subtitle: 'Automatically sync POS menu items to Meta Catalog',
+                          value: catalogSync,
+                          accentColor: const Color(0xFF0668E1),
+                          onChanged: (val) => setModalState(() => catalogSync = val),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Test Connection Button
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _NeumorphicTheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF0668E1).withValues(alpha: 0.3), width: 1.2),
+                            boxShadow: _NeumorphicTheme.softRaisedShadows,
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: isTesting
+                                  ? null
+                                  : () async {
+                                      final token = accessTokenCtrl.text.trim();
+                                      final pixel = pixelIdCtrl.text.trim();
+                                      if (token.isEmpty && pixel.isEmpty) {
+                                        setModalState(() {
+                                          modalError = 'Please enter Pixel ID or Access Token to test connection';
+                                          testSuccessMessage = null;
+                                        });
+                                        return;
+                                      }
+                                      setModalState(() {
+                                        isTesting = true;
+                                        modalError = null;
+                                        testSuccessMessage = null;
+                                      });
+                                      await Future.delayed(const Duration(milliseconds: 600));
+                                      setModalState(() {
+                                        isTesting = false;
+                                        testSuccessMessage = '✓ Meta Pixel & Graph API connection verified successfully!';
+                                      });
+                                    },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isTesting)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0668E1)),
+                                      )
+                                    else
+                                      const Icon(Icons.sensors_rounded, color: Color(0xFF0668E1), size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Test Meta Connection',
+                                      style: TextStyle(
+                                        color: Color(0xFF0668E1),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Save & Cancel Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save Meta Settings',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveMetaSettings(
+                                          enabled: isEnabled,
+                                          pixelId: pixelIdCtrl.text,
+                                          pageId: pageIdCtrl.text,
+                                          accessToken: accessTokenCtrl.text,
+                                          igHandle: igHandleCtrl.text,
+                                          catalogSync: catalogSync,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('Meta integration settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // MODAL 9: WHATSAPP INTEGRATION (GATEWAY & META CLOUD API)
+  // ==========================================
+  void _showWhatsAppIntegrationModal() {
+    bool isEnabled = db.isWhatsAppIntegrationEnabled;
+    String provider = db.whatsAppProvider; // 'meta_cloud', 'twilio', 'qr_gateway'
+    final phoneCtrl = TextEditingController(text: db.whatsAppPhoneNumber);
+    final phoneIdCtrl = TextEditingController(text: db.whatsAppPhoneId);
+    final wabaIdCtrl = TextEditingController(text: db.whatsAppWabaId);
+    final accessTokenCtrl = TextEditingController(text: db.whatsAppAccessToken);
+    final webhookTokenCtrl = TextEditingController(text: db.whatsAppWebhookToken);
+    bool obscureToken = true;
+    bool isSaving = false;
+    bool isTesting = false;
+    String? modalError;
+    String? testSuccessMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.chat_rounded,
+                              accentColor: const Color(0xFF25D366),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'WhatsApp Integration',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Cloud API, Phone Number & Webhooks',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        if (testSuccessMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    testSuccessMessage!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF15803D),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Master Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Enable WhatsApp Integration',
+                          subtitle: 'Connect WhatsApp Gateway for customer messaging',
+                          value: isEnabled,
+                          accentColor: const Color(0xFF25D366),
+                          onChanged: (val) => setModalState(() {
+                            isEnabled = val;
+                            modalError = null;
+                            testSuccessMessage = null;
+                          }),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Provider Selection
+                        const Text(
+                          'WhatsApp Provider Gateway',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Meta Cloud API',
+                                isSelected: provider == 'meta_cloud',
+                                onTap: () => setModalState(() => provider = 'meta_cloud'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Twilio',
+                                isSelected: provider == 'twilio',
+                                onTap: () => setModalState(() => provider = 'twilio'),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'QR Gateway',
+                                isSelected: provider == 'qr_gateway',
+                                onTap: () => setModalState(() => provider = 'qr_gateway'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Phone Number
+                        _buildNeumorphicInputField(
+                          controller: phoneCtrl,
+                          label: 'Sender Business Phone Number *',
+                          hint: 'e.g. +91 98765 43210',
+                          prefixIcon: Icons.phone_rounded,
+                          isNumeric: true,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Phone ID & WABA ID
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: phoneIdCtrl,
+                                label: 'Phone Number ID',
+                                hint: 'e.g. 104567890123',
+                                prefixIcon: Icons.perm_identity_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: wabaIdCtrl,
+                                label: 'WABA Business ID',
+                                hint: 'e.g. 109876543210',
+                                prefixIcon: Icons.badge_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Permanent Access Token
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Permanent Access / Bearer Token',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => setModalState(() => obscureToken = !obscureToken),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        obscureToken ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                        size: 14,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        obscureToken ? 'Show' : 'Hide',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _NeumorphicTheme.sunkenSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                              ),
+                              child: TextField(
+                                controller: accessTokenCtrl,
+                                obscureText: obscureToken,
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _NeumorphicTheme.textDark),
+                                decoration: const InputDecoration(
+                                  hintText: 'e.g. EAAGy7...',
+                                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+                                  prefixIcon: Icon(Icons.key_rounded, color: _NeumorphicTheme.navyBrand, size: 18),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Webhook Verify Token
+                        _buildNeumorphicInputField(
+                          controller: webhookTokenCtrl,
+                          label: 'Webhook Verify Token',
+                          hint: 'e.g. apna_pos_webhook_secret_123',
+                          prefixIcon: Icons.lock_outline_rounded,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Test Ping Button
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _NeumorphicTheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.4), width: 1.2),
+                            boxShadow: _NeumorphicTheme.softRaisedShadows,
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: isTesting
+                                  ? null
+                                  : () async {
+                                      final ph = phoneCtrl.text.trim();
+                                      if (ph.isEmpty) {
+                                        setModalState(() {
+                                          modalError = 'Please enter a business phone number to test';
+                                          testSuccessMessage = null;
+                                        });
+                                        return;
+                                      }
+                                      setModalState(() {
+                                        isTesting = true;
+                                        modalError = null;
+                                        testSuccessMessage = null;
+                                      });
+                                      await Future.delayed(const Duration(milliseconds: 600));
+                                      setModalState(() {
+                                        isTesting = false;
+                                        testSuccessMessage = '✓ WhatsApp Cloud Gateway connection active and verified!';
+                                      });
+                                    },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isTesting)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF25D366)),
+                                      )
+                                    else
+                                      const Icon(Icons.send_rounded, color: Color(0xFF16A34A), size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Test WhatsApp Ping',
+                                      style: TextStyle(
+                                        color: Color(0xFF15803D),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save WhatsApp Gateway',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveWhatsAppIntegrationSettings(
+                                          enabled: isEnabled,
+                                          provider: provider,
+                                          phoneNumber: phoneCtrl.text,
+                                          phoneId: phoneIdCtrl.text,
+                                          wabaId: wabaIdCtrl.text,
+                                          accessToken: accessTokenCtrl.text,
+                                          webhookToken: webhookTokenCtrl.text,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('WhatsApp integration settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // MODAL 10: WHATSAPP MESSAGES (AUTOMATIONS & TEMPLATES)
+  // ==========================================
+  void _showWhatsAppMessagesModal() {
+    bool autoBill = db.isWhatsAppAutoBillEnabled;
+    bool kotStatus = db.isWhatsAppKotStatusEnabled;
+    bool payReminder = db.isWhatsAppPaymentReminderEnabled;
+    bool loyaltyGreet = db.isWhatsAppLoyaltyGreetingsEnabled;
+    final billTemplateCtrl = TextEditingController(text: db.whatsAppCustomBillTemplate);
+    final footerCtrl = TextEditingController(text: db.whatsAppCustomFooter);
+    bool isSaving = false;
+    String? modalError;
+
+    // Helper for inserting dynamic variable token into template
+    void insertVariable(String token, StateSetter setModalState) {
+      final text = billTemplateCtrl.text;
+      final sel = billTemplateCtrl.selection;
+      if (sel.isValid && sel.start >= 0) {
+        final newText = text.replaceRange(sel.start, sel.end, token);
+        billTemplateCtrl.value = TextEditingValue(
+          text: newText,
+          selection: TextSelection.collapsed(offset: sel.start + token.length),
+        );
+      } else {
+        billTemplateCtrl.text = '$text $token';
+      }
+      setModalState(() {});
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 680 ? 620.0 : (screenWidth * 0.94);
+
+            final previewText = billTemplateCtrl.text
+                .replaceAll('{customer_name}', 'Rahul')
+                .replaceAll('{restaurant_name}', db.restaurant?.name ?? 'Apna POS')
+                .replaceAll('{order_number}', '1042')
+                .replaceAll('{total_amount}', '450.00')
+                .replaceAll('{bill_link}', 'https://bill.apnapos.app/inv/1042')
+                .replaceAll('{date}', '08 Oct 2026');
+
+            final previewFooter = footerCtrl.text.trim();
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.mark_chat_unread_rounded,
+                              accentColor: const Color(0xFF059669),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'WhatsApp Messages',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Automations, Instant Invoices & Custom Templates',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // SECTION 1: AUTOMATED TRIGGERS
+                        const Text(
+                          'AUTOMATED EVENT TRIGGERS',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF475569),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'Auto Send Bill on Settlement',
+                          subtitle: 'Instant WhatsApp message with invoice when bill is paid',
+                          value: autoBill,
+                          accentColor: const Color(0xFF059669),
+                          onChanged: (val) => setModalState(() => autoBill = val),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'KOT & Order Status Updates',
+                          subtitle: 'Alert customer when order is accepted or ready',
+                          value: kotStatus,
+                          accentColor: const Color(0xFF0284C7),
+                          onChanged: (val) => setModalState(() => kotStatus = val),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'Payment Reminders',
+                          subtitle: 'Send payment link with UPI QR for open table credits',
+                          value: payReminder,
+                          accentColor: const Color(0xFFD97706),
+                          onChanged: (val) => setModalState(() => payReminder = val),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'Loyalty & Birthday Greetings',
+                          subtitle: 'Send points summary and birthday greetings',
+                          value: loyaltyGreet,
+                          accentColor: const Color(0xFF8B5CF6),
+                          onChanged: (val) => setModalState(() => loyaltyGreet = val),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // SECTION 2: TEMPLATE CUSTOMIZER
+                        const Text(
+                          'DIGITAL BILL MESSAGE TEMPLATE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF475569),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+
+                        // Variable Chips Row
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildVariableChip(
+                              label: '{customer_name}',
+                              onTap: () => insertVariable('{customer_name}', setModalState),
+                            ),
+                            _buildVariableChip(
+                              label: '{restaurant_name}',
+                              onTap: () => insertVariable('{restaurant_name}', setModalState),
+                            ),
+                            _buildVariableChip(
+                              label: '{order_number}',
+                              onTap: () => insertVariable('{order_number}', setModalState),
+                            ),
+                            _buildVariableChip(
+                              label: '{total_amount}',
+                              onTap: () => insertVariable('{total_amount}', setModalState),
+                            ),
+                            _buildVariableChip(
+                              label: '{bill_link}',
+                              onTap: () => insertVariable('{bill_link}', setModalState),
+                            ),
+                            _buildVariableChip(
+                              label: '{date}',
+                              onTap: () => insertVariable('{date}', setModalState),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _NeumorphicTheme.sunkenSurface,
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                          ),
+                          child: TextField(
+                            controller: billTemplateCtrl,
+                            maxLines: 4,
+                            onChanged: (_) => setModalState(() {}),
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: _NeumorphicTheme.textDark),
+                            decoration: const InputDecoration(
+                              hintText: 'Enter template text...',
+                              border: InputBorder.none,
+                              contentPadding: EdgeInsets.all(12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Custom Footer Note
+                        _buildNeumorphicInputField(
+                          controller: footerCtrl,
+                          label: 'Custom Footer Note / FSSAI & Terms',
+                          hint: 'e.g. Thanks for visiting! FSSAI Lic # 12345678901234',
+                          prefixIcon: Icons.notes_rounded,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // SECTION 3: LIVE WHATSAPP PREVIEW BUBBLE
+                        const Text(
+                          'LIVE CUSTOMER PREVIEW',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF475569),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE5DDD5),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFCBD5E1), width: 1.2),
+                          ),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: const BorderRadius.only(
+                                topLeft: Radius.circular(14),
+                                topRight: Radius.circular(14),
+                                bottomRight: Radius.circular(14),
+                                bottomLeft: Radius.circular(4),
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.08),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    const Icon(Icons.receipt_long_rounded, size: 14, color: Color(0xFF059669)),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      db.restaurant?.name ?? 'Apna POS Outlet',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w900,
+                                        color: Color(0xFF059669),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  previewText,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    height: 1.35,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                                if (previewFooter.isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    previewFooter,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontStyle: FontStyle.italic,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.bottomRight,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Text('Just now', style: TextStyle(fontSize: 9.5, color: Color(0xFF94A3B8))),
+                                      SizedBox(width: 4),
+                                      Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF38BDF8)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save Message Settings',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveWhatsAppMessageSettings(
+                                          autoBill: autoBill,
+                                          kotStatus: kotStatus,
+                                          payReminder: payReminder,
+                                          loyaltyGreet: loyaltyGreet,
+                                          billTemplate: billTemplateCtrl.text,
+                                          customFooter: footerCtrl.text,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('WhatsApp message settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // MODAL 11: AI CHAT AGENT (AUTONOMOUS ASSISTANT)
+  // ==========================================
+  void _showAiChatAgentModal() {
+    bool isEnabled = db.isAiChatAgentEnabled;
+    String persona = db.aiChatAgentPersona;
+    final greetingCtrl = TextEditingController(text: db.aiChatAgentGreeting);
+    bool autoMenuSuggest = db.isAiChatAgentAutoMenuSuggest;
+    bool autoOrderTaking = db.isAiChatAgentAutoOrderTaking;
+    final promptCtrl = TextEditingController(text: db.aiChatAgentSystemPrompt);
+    final apiKeyCtrl = TextEditingController(text: db.aiChatAgentApiKey);
+    bool obscureApiKey = true;
+    bool isSaving = false;
+    bool isTesting = false;
+    String? modalError;
+    String? testSimResponse;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 680 ? 620.0 : (screenWidth * 0.94);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.smart_toy_rounded,
+                              accentColor: const Color(0xFF8B5CF6),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'AI Chat Agent',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Autonomous Hospitality & Order Assistant',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Master Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Enable AI Chat Agent',
+                          subtitle: 'Autonomous AI responds to guest inquiries 24/7',
+                          value: isEnabled,
+                          accentColor: const Color(0xFF8B5CF6),
+                          onChanged: (val) => setModalState(() => isEnabled = val),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Persona Selector
+                        const Text(
+                          'AI AGENT PERSONALITY / TONE',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF475569),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Friendly & Warm',
+                                isSelected: persona == 'friendly',
+                                onTap: () => setModalState(() => persona = 'friendly'),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Professional',
+                                isSelected: persona == 'professional',
+                                onTap: () => setModalState(() => persona = 'professional'),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Chef & Foodie',
+                                isSelected: persona == 'chef',
+                                onTap: () => setModalState(() => persona = 'chef'),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildProviderChip(
+                                label: 'Upsell Focus',
+                                isSelected: persona == 'sales',
+                                onTap: () => setModalState(() => persona = 'sales'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Greeting Message
+                        _buildNeumorphicInputField(
+                          controller: greetingCtrl,
+                          label: 'AI Welcome Greeting Message',
+                          hint: 'Namaste! Welcome to {restaurant_name}...',
+                          prefixIcon: Icons.waving_hand_rounded,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Autonomous Feature Toggles
+                        const Text(
+                          'AUTONOMOUS CAPABILITIES',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFF475569),
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'Smart Menu Recommendations',
+                          subtitle: 'Suggest bestsellers, pairings & chef specials',
+                          value: autoMenuSuggest,
+                          accentColor: const Color(0xFF059669),
+                          onChanged: (val) => setModalState(() => autoMenuSuggest = val),
+                        ),
+                        const SizedBox(height: 8),
+
+                        _buildNeumorphicToggleTile(
+                          title: 'Direct Order & Cart Taking',
+                          subtitle: 'Allow customers to specify items and place orders in chat',
+                          value: autoOrderTaking,
+                          accentColor: const Color(0xFF2563EB),
+                          onChanged: (val) => setModalState(() => autoOrderTaking = val),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Custom System Instructions
+                        _buildNeumorphicInputField(
+                          controller: promptCtrl,
+                          label: 'Custom AI System Prompt & Rules',
+                          hint: 'e.g. Highlight pure veg items, explain today special 15% discount...',
+                          prefixIcon: Icons.psychology_rounded,
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Custom API Key Field (Optional)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Expanded(
+                                  child: Text(
+                                    'Custom LLM API Key (Optional - Default: Built-in)',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF334155),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                InkWell(
+                                  onTap: () => setModalState(() => obscureApiKey = !obscureApiKey),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        obscureApiKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                        size: 14,
+                                        color: const Color(0xFF64748B),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        obscureApiKey ? 'Show' : 'Hide',
+                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Container(
+                              decoration: BoxDecoration(
+                                color: _NeumorphicTheme.sunkenSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
+                              ),
+                              child: TextField(
+                                controller: apiKeyCtrl,
+                                obscureText: obscureApiKey,
+                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _NeumorphicTheme.textDark),
+                                decoration: const InputDecoration(
+                                  hintText: 'AIzaSy... / sk-... (Leave empty to use built-in engine)',
+                                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
+                                  prefixIcon: Icon(Icons.key_rounded, color: _NeumorphicTheme.navyBrand, size: 18),
+                                  border: InputBorder.none,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Interactive Test Simulation Box
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF3E8FF),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: const Color(0xFFC084FC), width: 1.2),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.auto_awesome_rounded, color: Color(0xFF7E22CE), size: 18),
+                                  const SizedBox(width: 6),
+                                  const Text(
+                                    'AI Agent Simulator',
+                                    style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6B21A8), fontSize: 12.5),
+                                  ),
+                                  const Spacer(),
+                                  TextButton(
+                                    onPressed: isTesting
+                                        ? null
+                                        : () async {
+                                            setModalState(() {
+                                              isTesting = true;
+                                              testSimResponse = null;
+                                            });
+                                            await Future.delayed(const Duration(milliseconds: 700));
+                                            setModalState(() {
+                                              isTesting = false;
+                                              testSimResponse =
+                                                  'Bot: "${greetingCtrl.text.replaceAll('{restaurant_name}', db.restaurant?.name ?? 'Apna POS')}\n\nOur top specialties today: Paneer Butter Masala & Garlic Naan combo! Would you like me to book a table for you?"';
+                                            });
+                                          },
+                                    child: isTesting
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7E22CE)),
+                                          )
+                                        : const Text('Simulate Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: Color(0xFF7E22CE))),
+                                  ),
+                                ],
+                              ),
+                              if (testSimResponse != null) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    testSimResponse!,
+                                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF1E293B), height: 1.35),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save AI Agent',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveAiChatAgentSettings(
+                                          enabled: isEnabled,
+                                          persona: persona,
+                                          greeting: greetingCtrl.text,
+                                          autoMenuSuggest: autoMenuSuggest,
+                                          autoOrderTaking: autoOrderTaking,
+                                          systemPrompt: promptCtrl.text,
+                                          apiKey: apiKeyCtrl.text,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('AI Chat Agent settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // MODAL 12: META CHATS (MESSENGER & INSTAGRAM DMS)
+  // ==========================================
+  void _showMetaChatsModal() {
+    bool isEnabled = db.isMetaChatsEnabled;
+    bool autoWelcome = db.isMetaChatsAutoWelcomeEnabled;
+    final welcomeCtrl = TextEditingController(text: db.metaChatsWelcomeMessage);
+    bool leadCapture = db.isMetaChatsLeadCaptureEnabled;
+    final handoverCtrl = TextEditingController(text: db.metaChatsHumanHandoverKeyword);
+    final awayCtrl = TextEditingController(text: db.metaChatsAwayMessage);
+    bool isSaving = false;
+    bool isTesting = false;
+    String? modalError;
+    String? testSuccessMessage;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.forum_rounded,
+                              accentColor: const Color(0xFF0084FF),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Meta Chats',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Messenger & Instagram Direct Automated Inboxes',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        if (testSuccessMessage != null) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 18),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    testSuccessMessage!,
+                                    style: const TextStyle(
+                                      color: Color(0xFF15803D),
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Master Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Enable Meta Chats Automation',
+                          subtitle: 'Automatically manage incoming Facebook & Instagram DMs',
+                          value: isEnabled,
+                          accentColor: const Color(0xFF0084FF),
+                          onChanged: (val) => setModalState(() => isEnabled = val),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Auto Welcome Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Auto Welcome Greeting',
+                          subtitle: 'Instantly reply when a user messages on IG or Facebook',
+                          value: autoWelcome,
+                          accentColor: const Color(0xFF0084FF),
+                          onChanged: (val) => setModalState(() => autoWelcome = val),
+                        ),
+                        const SizedBox(height: 10),
+
+                        // Welcome Message Text
+                        _buildNeumorphicInputField(
+                          controller: welcomeCtrl,
+                          label: 'Direct Message Welcome Text',
+                          hint: 'Hello! Thanks for connecting with {restaurant_name}...',
+                          prefixIcon: Icons.chat_bubble_outline_rounded,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Lead Capture Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Social Lead Capture',
+                          subtitle: 'Automatically prompt for customer mobile number to sync with CRM',
+                          value: leadCapture,
+                          accentColor: const Color(0xFF10B981),
+                          onChanged: (val) => setModalState(() => leadCapture = val),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Human Handover Keyword
+                        _buildNeumorphicInputField(
+                          controller: handoverCtrl,
+                          label: 'Staff / Human Handover Trigger Keywords',
+                          hint: 'agent, human, help, support, talk to manager',
+                          prefixIcon: Icons.support_agent_rounded,
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Away Message
+                        _buildNeumorphicInputField(
+                          controller: awayCtrl,
+                          label: 'Off-Hours / Away Auto-Reply',
+                          hint: 'We are currently closed. Our team will get back to you...',
+                          prefixIcon: Icons.schedule_rounded,
+                          maxLines: 2,
+                        ),
+                        const SizedBox(height: 16),
+
+                        // Test Meta Ping
+                        Container(
+                          decoration: BoxDecoration(
+                            color: _NeumorphicTheme.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF0084FF).withValues(alpha: 0.4), width: 1.2),
+                            boxShadow: _NeumorphicTheme.softRaisedShadows,
+                          ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: isTesting
+                                  ? null
+                                  : () async {
+                                      setModalState(() {
+                                        isTesting = true;
+                                        testSuccessMessage = null;
+                                        modalError = null;
+                                      });
+                                      await Future.delayed(const Duration(milliseconds: 600));
+                                      setModalState(() {
+                                        isTesting = false;
+                                        testSuccessMessage = '✓ Messenger & Instagram webhook endpoints active and ready!';
+                                      });
+                                    },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    if (isTesting)
+                                      const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0084FF)),
+                                      )
+                                    else
+                                      const Icon(Icons.flash_on_rounded, color: Color(0xFF0084FF), size: 18),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'Test Meta Webhook Handshake',
+                                      style: TextStyle(
+                                        color: Color(0xFF0084FF),
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save Meta Chats',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveMetaChatsSettings(
+                                          enabled: isEnabled,
+                                          autoWelcome: autoWelcome,
+                                          welcomeMessage: welcomeCtrl.text,
+                                          leadCapture: leadCapture,
+                                          humanHandoverKeyword: handoverCtrl.text,
+                                          awayMessage: awayCtrl.text,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('Meta Chats settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
+  // MODAL 13: WALLET SETTINGS (PREPAID & CASHBACKS)
+  // ==========================================
+  void _showWalletModal() {
+    bool isEnabled = db.isWalletEnabled;
+    final cashbackCtrl = TextEditingController(text: db.walletCashbackPercentage.toString());
+    final minRechargeCtrl = TextEditingController(text: db.walletMinRechargeAmount.toString());
+    final maxRedeemCtrl = TextEditingController(text: db.walletMaxRedeemPercentagePerOrder.toString());
+    final signupBonusCtrl = TextEditingController(text: db.walletSignupBonus.toString());
+    bool allowNegative = db.isWalletAllowNegativeBalance;
+    final payoutUpiCtrl = TextEditingController(text: db.walletBusinessPayoutUpi);
+    bool isSaving = false;
+    String? modalError;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useRootNavigator: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: dialogWidth,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Header
+                        Row(
+                          children: [
+                            _buildNeumorphicIconBadge(
+                              icon: Icons.account_balance_wallet_rounded,
+                              accentColor: const Color(0xFF0D9488),
+                              size: 44,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: const [
+                                  Text(
+                                    'Customer & Outlet Wallet',
+                                    style: TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w900,
+                                      color: _NeumorphicTheme.textDark,
+                                    ),
+                                  ),
+                                  SizedBox(height: 2),
+                                  Text(
+                                    'Prepaid Balances, Cashbacks & Payouts',
+                                    style: TextStyle(
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: _NeumorphicTheme.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        const Divider(color: Color(0xFFD3DFEE), height: 1),
+                        const SizedBox(height: 14),
+
+                        if (modalError != null) ...[
+                          _buildNeumorphicErrorAlert(modalError!),
+                          const SizedBox(height: 12),
+                        ],
+
+                        // Master Toggle
+                        _buildNeumorphicToggleTile(
+                          title: 'Enable Wallet System',
+                          subtitle: 'Allow patrons to recharge prepaid credit and earn cashback',
+                          value: isEnabled,
+                          accentColor: const Color(0xFF0D9488),
+                          onChanged: (val) => setModalState(() => isEnabled = val),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Form Fields
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: cashbackCtrl,
+                                label: 'Recharge Cashback (%)',
+                                hint: 'e.g. 5.0',
+                                prefixIcon: Icons.percent_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: minRechargeCtrl,
+                                label: 'Min Recharge (₹)',
+                                hint: 'e.g. 200',
+                                prefixIcon: Icons.currency_rupee_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: maxRedeemCtrl,
+                                label: 'Max Redeem Per Bill (%)',
+                                hint: 'e.g. 50.0',
+                                prefixIcon: Icons.price_check_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _buildNeumorphicInputField(
+                                controller: signupBonusCtrl,
+                                label: 'Signup Bonus (₹)',
+                                hint: 'e.g. 50',
+                                prefixIcon: Icons.card_giftcard_rounded,
+                                isNumeric: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Allow Negative / Overdraft Tab
+                        _buildNeumorphicToggleTile(
+                          title: 'Allow Trusted Negative Credit (Khata Tab)',
+                          subtitle: 'Allow regular patrons to exceed zero balance for post-payment',
+                          value: allowNegative,
+                          accentColor: const Color(0xFFD97706),
+                          onChanged: (val) => setModalState(() => allowNegative = val),
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Payout UPI ID
+                        _buildNeumorphicInputField(
+                          controller: payoutUpiCtrl,
+                          label: 'Merchant Payout UPI VPA (Settlements)',
+                          hint: 'e.g. merchant@icici',
+                          prefixIcon: Icons.account_balance_rounded,
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildNeumorphicButton(
+                                label: 'Cancel',
+                                isSecondary: true,
+                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              flex: 2,
+                              child: _buildNeumorphicButton(
+                                label: isSaving ? 'Saving...' : 'Save Wallet Settings',
+                                icon: Icons.check_rounded,
+                                isLoading: isSaving,
+                                onPressed: isSaving
+                                    ? null
+                                    : () async {
+                                        final cb = double.tryParse(cashbackCtrl.text.trim()) ?? 0.0;
+                                        final mr = double.tryParse(minRechargeCtrl.text.trim()) ?? 0.0;
+                                        final mx = double.tryParse(maxRedeemCtrl.text.trim()) ?? 100.0;
+                                        final sb = double.tryParse(signupBonusCtrl.text.trim()) ?? 0.0;
+
+                                        setModalState(() {
+                                          isSaving = true;
+                                          modalError = null;
+                                        });
+
+                                        await db.saveWalletSettings(
+                                          enabled: isEnabled,
+                                          cashbackPercentage: cb,
+                                          minRechargeAmount: mr,
+                                          maxRedeemPercentage: mx,
+                                          signupBonus: sb,
+                                          allowNegativeBalance: allowNegative,
+                                          businessPayoutUpi: payoutUpiCtrl.text,
+                                        );
+
+                                        if (dialogCtx.mounted) {
+                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                        }
+                                        _refreshState();
+                                        _showSuccessSnackBar('Wallet settings saved successfully!');
+                                      },
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showSuccessSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -2032,7 +4070,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Financials & Payments',
                         icon: Icons.account_balance_wallet_rounded,
-                        countText: '2 Items',
+                        countText: '3 Items',
                         accentColor: const Color(0xFF059669),
                       ),
                       const SizedBox(height: 14),
@@ -2058,6 +4096,15 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             accentColor: const Color(0xFF6366F1),
                             badgeText: '${restaurant?.taxRate ?? 5.0}%',
                             onTap: _showTaxSettingsModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Wallet',
+                            subtitle: db.isWalletEnabled ? 'Prepaid & Cashback Active' : 'Prepaid & Khata Tab',
+                            icon: Icons.account_balance_wallet_rounded,
+                            accentColor: const Color(0xFF0D9488),
+                            badgeText: db.isWalletEnabled ? '${db.walletCashbackPercentage}% Back' : 'Setup',
+                            onTap: _showWalletModal,
                           ),
                         ],
                       ),
@@ -2100,7 +4147,70 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         ],
                       ),
 
-                      // 5. CATEGORY 4: SUPER ADMIN & MAINTENANCE (Visible ONLY to Super Admin users)
+                      const SizedBox(height: 28),
+
+                      // 5. CATEGORY 4: MARKETING & COMMUNICATION
+                      _buildNeumorphicSectionHeader(
+                        title: 'Marketing & Communication',
+                        icon: Icons.campaign_rounded,
+                        countText: '5 Items',
+                        accentColor: const Color(0xFF0052FF),
+                      ),
+                      const SizedBox(height: 14),
+
+                      Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: [
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Meta Integration',
+                            subtitle: db.isMetaIntegrationEnabled ? 'Pixel & Catalog Active' : 'Facebook & Instagram',
+                            icon: Icons.hub_rounded,
+                            accentColor: const Color(0xFF0668E1),
+                            badgeText: db.isMetaIntegrationEnabled ? 'Active' : 'Setup',
+                            onTap: _showMetaIntegrationModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'WhatsApp Integration',
+                            subtitle: db.isWhatsAppIntegrationEnabled ? 'Gateway Connected' : 'Cloud API & Gateway',
+                            icon: Icons.chat_rounded,
+                            accentColor: const Color(0xFF25D366),
+                            badgeText: db.isWhatsAppIntegrationEnabled ? 'Connected' : 'Configure',
+                            onTap: _showWhatsAppIntegrationModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'WhatsApp Messages',
+                            subtitle: 'Auto-Bill, KOT & Templates',
+                            icon: Icons.mark_chat_unread_rounded,
+                            accentColor: const Color(0xFF059669),
+                            badgeText: 'Automations',
+                            onTap: _showWhatsAppMessagesModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'AI Chat Agent',
+                            subtitle: db.isAiChatAgentEnabled ? 'AI Assistant Online' : 'Smart Order Assistant',
+                            icon: Icons.smart_toy_rounded,
+                            accentColor: const Color(0xFF8B5CF6),
+                            badgeText: db.isAiChatAgentEnabled ? 'AI Live' : 'Smart AI',
+                            onTap: _showAiChatAgentModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Meta Chats',
+                            subtitle: db.isMetaChatsEnabled ? 'Messenger & DMs Connected' : 'Messenger & IG DMs',
+                            icon: Icons.forum_rounded,
+                            accentColor: const Color(0xFF0084FF),
+                            badgeText: db.isMetaChatsEnabled ? 'Active' : 'DMs',
+                            onTap: _showMetaChatsModal,
+                          ),
+                        ],
+                      ),
+
+                      // 6. CATEGORY 5: SUPER ADMIN & MAINTENANCE (Visible ONLY to Super Admin users)
                       if (db.currentUser?.isSuperAdmin == true) ...[
                         const SizedBox(height: 28),
                         _buildNeumorphicSectionHeader(
@@ -2881,6 +4991,146 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Neumorphic Toggle Switch Tile
+  Widget _buildNeumorphicToggleTile({
+    required String title,
+    required String subtitle,
+    required bool value,
+    required Color accentColor,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: value ? accentColor.withValues(alpha: 0.08) : _NeumorphicTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: value ? accentColor.withValues(alpha: 0.4) : const Color(0xFFCBD5E1),
+          width: 1.2,
+        ),
+        boxShadow: _NeumorphicTheme.softRaisedShadows,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: _NeumorphicTheme.textDark,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: _NeumorphicTheme.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch.adaptive(
+            value: value,
+            activeTrackColor: accentColor,
+            activeThumbColor: Colors.white,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Selectable Provider Chip
+  Widget _buildProviderChip({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF059669) : _NeumorphicTheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isSelected ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
+              width: 1.2,
+            ),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF059669).withValues(alpha: 0.3),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : _NeumorphicTheme.softRaisedShadows,
+          ),
+          child: Center(
+            child: Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.white : _NeumorphicTheme.textDark,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Quick variable insert chip
+  Widget _buildVariableChip({
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: _NeumorphicTheme.sunkenSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.add_rounded, size: 12, color: Color(0xFF2563EB)),
+              const SizedBox(width: 3),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -714,55 +714,38 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                     ),
                     const SizedBox(height: 12),
 
-                    // Open Feature Main Screen Action
+                    // Done / Close Action
                     Container(
                       width: double.infinity,
                       height: 38,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(8),
-                        color: const Color(0xFF2563EB),
+                        color: const Color(0xFF0F172A),
                       ),
                       child: Material(
                         color: Colors.transparent,
                         child: InkWell(
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            _navigateToTargetScreen(sourceFeature);
-                          },
+                          onTap: () => Navigator.pop(ctx),
                           borderRadius: BorderRadius.circular(8),
-                          child: Center(
+                          child: const Center(
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
+                                Icon(Icons.check_circle_outline_rounded,
+                                    size: 15, color: Colors.white),
+                                SizedBox(width: 6),
                                 Text(
-                                  _getProceedButtonLabel(sourceFeature),
-                                  style: const TextStyle(
+                                  'Got It',
+                                  style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    fontSize: 11.5,
+                                    fontSize: 12,
                                     color: Colors.white,
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.arrow_forward_rounded,
-                                    size: 12, color: Colors.white),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 3),
-                        minimumSize: Size.zero,
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      child: const Text(
-                        'Back to Subscription',
-                        style: TextStyle(fontSize: 10, color: Color(0xFF64748B)),
                       ),
                     ),
                   ],
@@ -783,6 +766,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
   }
 
   void _navigateToTargetScreen(String source) {
+    if (!_db.isSubscribed) {
+      if (Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      return;
+    }
+
     if (widget.onNavigateToFeature != null) {
       widget.onNavigateToFeature!(source);
       if (Navigator.canPop(context)) {
@@ -896,35 +886,41 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
 
                   // 2. Main Content Area filling remaining space
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Hero Header Section with 3D Illustration
-                        _buildHeroSection(),
+                    child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // Hero Header Section with 3D Illustration
+                          _buildHeroSection(),
+                          const SizedBox(height: 12),
 
-                        // Features White Card Box
-                        _buildFeaturesCard(),
+                          // Features White Card Box
+                          _buildFeaturesCard(),
+                          const SizedBox(height: 12),
 
-                        // 2-Tier Pricing Cards (Yearly 20% OFF & Monthly)
-                        _buildPricingTiers(),
+                          // 2-Tier Pricing Cards (Yearly 20% OFF & Monthly)
+                          _buildPricingTiers(),
+                          const SizedBox(height: 12),
 
-                        // Action Buttons
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // Primary Blue CTA: "Upgrade to Pro Suite →"
-                            _buildPrimaryCtaButton(),
-                            const SizedBox(height: 8),
+                          // Action Buttons
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              // Primary Blue CTA: "Upgrade to Pro Suite →"
+                              _buildPrimaryCtaButton(),
+                              const SizedBox(height: 8),
 
-                            // Secondary Outlined CTA: "▶ I am Interested for Demo"
-                            _buildSecondaryActionButton(),
-                          ],
-                        ),
+                              // Secondary Outlined CTA: "▶ I am Interested for Demo"
+                              _buildSecondaryActionButton(),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
 
-                        // Footer Links & Promo Code
-                        _buildFooterLinks(),
-                      ],
+                          // Footer Links & Promo Code
+                          _buildFooterLinks(),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -1519,8 +1515,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
         const SizedBox(height: 8),
 
         // Restore Purchases, Terms, Privacy Policy
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 6,
+          runSpacing: 4,
           children: [
             GestureDetector(
               onTap: () {
@@ -1537,7 +1536,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                 style: TextStyle(color: Color(0xFF64748B), fontSize: 10.5),
               ),
             ),
-            const Text('   •   ',
+            const Text('•',
                 style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5)),
             GestureDetector(
               onTap: () {},
@@ -1550,7 +1549,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen>
                 ),
               ),
             ),
-            const Text('   •   ',
+            const Text('•',
                 style: TextStyle(color: Color(0xFF94A3B8), fontSize: 10.5)),
             GestureDetector(
               onTap: () {},

@@ -117,7 +117,7 @@ class WindowsPrinterService {
   String? _cachedSavedPrinterName;
   bool _isScanning = false;
 
-  bool get isSupported => !kIsWeb && Platform.isWindows;
+  bool get isSupported => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
   List<WindowsPrinterInfo> get cachedPrinters => _cachedPrinters ?? [];
   String? get cachedSavedPrinterName => _cachedSavedPrinterName;
 

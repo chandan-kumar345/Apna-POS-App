@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -14,25 +13,30 @@ class ResponsiveLayoutHelper {
   static const double mobileBreakpoint = 600.0;
   static const double tabletBreakpoint = 680.0;
 
+  static bool get _isDesktopOS =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux);
+
   /// Returns true if running as a Desktop application (Windows, macOS, Linux) on a widescreen display.
   static bool isDesktop(BuildContext context) {
     if (kIsWeb) return MediaQuery.of(context).size.width >= desktopBreakpoint;
-    final bool isDesktopOS = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-    return isDesktopOS && MediaQuery.of(context).size.width >= desktopBreakpoint;
+    return _isDesktopOS && MediaQuery.of(context).size.width >= desktopBreakpoint;
   }
 
   /// Returns true specifically for Windows Executable desktop mode with wide screen
   static bool isWindowsDesktop(BuildContext context) {
     if (kIsWeb) return false;
-    return Platform.isWindows && MediaQuery.of(context).size.width >= desktopBreakpoint;
+    return defaultTargetPlatform == TargetPlatform.windows &&
+        MediaQuery.of(context).size.width >= desktopBreakpoint;
   }
 
   /// Returns true if running on a tablet device or in tablet view width
   static bool isTablet(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     if (kIsWeb) return width >= 600 && width < desktopBreakpoint;
-    final bool isDesktopOS = Platform.isWindows || Platform.isMacOS || Platform.isLinux;
-    if (isDesktopOS) {
+    if (_isDesktopOS) {
       return width >= 600 && width < desktopBreakpoint;
     }
     return width >= 600;
@@ -46,7 +50,10 @@ class ResponsiveLayoutHelper {
   /// Returns true if running on Android or in a mobile narrow screen format
   static bool isMobileOrAndroid(BuildContext context) {
     if (kIsWeb) return MediaQuery.of(context).size.width < desktopBreakpoint;
-    if (Platform.isAndroid || Platform.isIOS) return true;
+    if (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS) {
+      return true;
+    }
     return MediaQuery.of(context).size.width < desktopBreakpoint;
   }
 

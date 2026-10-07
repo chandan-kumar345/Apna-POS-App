@@ -139,7 +139,7 @@ class SocketService {
   broadcastToBusiness(businessId, event, data) {
     if (!this.io || !businessId) return;
     const cleanId = businessId.toString();
-    this.io.to(`business_${cleanId}`).to(`business:${cleanId}`).emit(event, data);
+    this.io.to(`business_${cleanId}`).emit(event, data);
   }
 
   /**
@@ -154,7 +154,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'table:updated', payload);
-    this.broadcastToBusiness(businessId, 'table_status_updated', payload);
   }
 
   /**
@@ -169,7 +168,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'tables:batch_updated', payload);
-    this.broadcastToBusiness(businessId, 'tables_synced', payload);
   }
 
   /**
@@ -213,7 +211,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'order:settled', payload);
-    this.broadcastToBusiness(businessId, 'order_settled', payload);
   }
 
   /**
@@ -228,7 +225,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'order:updated', payload);
-    this.broadcastToBusiness(businessId, 'order_updated', payload);
   }
 
   /**
@@ -243,7 +239,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'order:created', payload);
-    this.broadcastToBusiness(businessId, 'order_created', payload);
   }
 
   /**
@@ -258,7 +253,6 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'order:deleted', payload);
-    this.broadcastToBusiness(businessId, 'order_deleted', payload);
   }
 
   /**
@@ -274,13 +268,8 @@ class SocketService {
     };
     if (businessId) {
       this.broadcastToBusiness(businessId, 'subscription:updated', payload);
-      this.broadcastToBusiness(businessId, 'subscription_updated', payload);
-    }
-    // Also broadcast globally so all active sessions get real-time notice
-    if (this.io) {
+    } else if (this.io) {
       this.io.emit('subscription:updated', payload);
-      this.io.emit('subscription_updated', payload);
-      this.io.emit('subscription:changed', payload);
     }
   }
 

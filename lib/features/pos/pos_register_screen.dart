@@ -93,13 +93,35 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
 
     if (draftKey != null && draftKey.isNotEmpty) {
+      final currentSubtotal = _cartItems.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.item.effectivePrice * e.quantity),
+      );
+
       if (_cartItems.isNotEmpty) {
         db.setLiveTableCart(draftKey, List.from(_cartItems));
-        db.setLiveCartTotal(draftKey, cartTotal);
+        db.setLiveCartTotal(draftKey, currentSubtotal - _discountAmount.clamp(0, currentSubtotal));
       } else {
         db.setLiveTableCart(draftKey, []);
         db.setLiveCartTotal(draftKey, 0.0);
       }
+
+      // Save customer info in draft
+      db.setLiveCustomerInfo(draftKey, name: _customerName, phone: _customerPhone);
+
+      // Save delivery info in draft if delivery
+      if (_selectedOrderType == OrderType.delivery) {
+        db.setLiveDeliveryInfo(
+          draftKey,
+          address: _deliveryAddress,
+          landmark: _deliveryLandmark,
+          city: _deliveryCity,
+          state: _deliveryState,
+          pincode: _deliveryPincode,
+        );
+      }
+
+      // Save discount in draft
       db.setLiveTableDiscount(
         draftKey,
         coupon: _appliedCoupon,
@@ -107,6 +129,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         discountMode: _discountMode,
         discountAmount: computedDiscountAmount,
       );
+
+      // If dine-in, ensure table status is occupied if cart has items
+      if (_selectedOrderType == OrderType.dineIn) {
+        final tbl = db.tables.where((t) => isSameTable(t.name, draftKey)).firstOrNull;
+        if (tbl != null) {
+          if (_cartItems.isNotEmpty && (tbl.status == TableStatus.free || tbl.occupiedSince == null)) {
+            db.updateTableStatus(tbl.id, TableStatus.occupied, occupiedSince: tbl.occupiedSince ?? DateTime.now().toIso8601String());
+          }
+        }
+      }
     }
   }
 
@@ -212,10 +244,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     db.addListener(_onDbChange);
     _chotuService.addActionListener(_onChotuCommandReceived);
     _initLoyaltyStatus();
-    if (widget.initialOrderType != null && widget.initialOrderType != OrderType.dineIn) {
-      _switchOrderType(widget.initialOrderType!);
-    } else if (widget.initialTable != null) {
+    if (widget.initialTable != null) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
+    } else if (widget.initialOrderType != null && widget.initialOrderType != OrderType.dineIn) {
+      _switchOrderType(widget.initialOrderType!);
     }
   }
 
@@ -323,16 +355,19 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   @override
   void didUpdateWidget(PosRegisterScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.initialOrderType != null &&
-        (widget.initialOrderType != oldWidget.initialOrderType ||
-         widget.tableSelectionToken != oldWidget.tableSelectionToken)) {
-      _switchOrderType(widget.initialOrderType!);
-    } else if (widget.initialTable != null &&
-        (widget.initialTable != oldWidget.initialTable ||
-         widget.tableSelectionToken != oldWidget.tableSelectionToken ||
-         _selectedTable != widget.initialTable ||
-         _cartItems.isEmpty)) {
+    final bool tokenChanged = widget.tableSelectionToken != null &&
+        widget.tableSelectionToken != oldWidget.tableSelectionToken;
+
+    if (widget.initialTable != null &&
+        (tokenChanged ||
+         widget.initialTable != oldWidget.initialTable ||
+         _selectedTable != widget.initialTable)) {
       _loadCartForTable(widget.initialTable!, openCartModal: true);
+    } else if (widget.initialOrderType != null &&
+        (tokenChanged ||
+         widget.initialOrderType != oldWidget.initialOrderType ||
+         _selectedOrderType != widget.initialOrderType)) {
+      _switchOrderType(widget.initialOrderType!);
     }
   }
 
@@ -351,6 +386,11 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _activeRunningOrderNumber = null;
       _customerName = '';
       _customerPhone = '';
+      _deliveryAddress = '';
+      _deliveryLandmark = '';
+      _deliveryCity = '';
+      _deliveryState = '';
+      _deliveryPincode = '';
 
       final tbl = db.tables.where((t) =>
         isSameTable(t.name, tableName) ||
@@ -383,6 +423,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             _cartItems.addAll(savedCartByName.map((i) => i.clone()));
           }
         }
+
+        final savedCust = db.getLiveCustomerInfo(tableName) ??
+            (tbl != null ? db.getLiveCustomerInfo(tbl.name) : null);
+        if (savedCust != null) {
+          _customerName = savedCust['name'] ?? '';
+          _customerPhone = savedCust['phone'] ?? '';
+        }
       }
 
       final savedDiscount = db.getLiveTableDiscount(tableName) ??
@@ -397,6 +444,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         _discountAmount = activeOrder.discountAmount;
       }
     });
+
+    _checkCustomerLoyalty();
 
     if (openCartModal && _cartItems.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -626,6 +675,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           }
         }
       }
+    } else {
+      final key = _selectedOrderType == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+      final draftKey = _activeRunningOrderId ?? key;
+      final cartTotal = _cartItems.fold<double>(
+        0.0,
+        (sum, e) => sum + (e.item.effectivePrice * e.quantity),
+      );
+      db.setLiveCartTotal(draftKey, cartTotal - _discountAmount.clamp(0, cartTotal));
+      db.setLiveTableCart(draftKey, _cartItems);
     }
   }
 
@@ -3629,6 +3687,15 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         try {
           CartApiService().clearCart(tableNumber: targetTable, orderType: 'dineIn');
         } catch (_) {}
+      } else {
+        final key = _selectedOrderType == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+        db.clearTableCartAndFree(key);
+        if (activeId != null && activeId.isNotEmpty) {
+          db.clearTableCartAndFree(activeId);
+        }
+        try {
+          CartApiService().clearCart(orderType: _selectedOrderType.name);
+        } catch (_) {}
       }
     });
   }
@@ -4078,7 +4145,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       _handleTableSelection(
                                         dialogCtx: modalCtx,
                                         targetTable: table,
-                                        isShiftMode: hasActiveOrderOrCart,
+                                        isShiftMode: false,
                                         hasActiveOrderOrCart: hasActiveOrderOrCart,
                                         currentTable: currentTable,
                                         setStateCart: setStateModal,
@@ -4232,7 +4299,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       builder: (dialogCtx) {
         String activeFloorTab = 'All';
         String searchQuery = '';
-        bool isShiftMode = hasActiveOrderOrCart;
+        bool isShiftMode = false;
 
         return BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
@@ -7209,6 +7276,13 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       _activeRunningOrderNumber = null;
       _cartItems.clear();
       _resetDiscountAndPromoState();
+      _customerName = '';
+      _customerPhone = '';
+      _deliveryAddress = '';
+      _deliveryLandmark = '';
+      _deliveryCity = '';
+      _deliveryState = '';
+      _deliveryPincode = '';
 
       if (type == OrderType.dineIn) {
         if (_selectedTable == null || _selectedTable!.isEmpty) {
@@ -7216,12 +7290,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           _selectedTable = nextTable?.name ?? 'T-1';
         }
         final targetTable = _selectedTable!;
+        final tbl = db.tables.where((t) =>
+          isSameTable(t.name, targetTable) ||
+          isSameTable(t.tableNumber.toString(), targetTable) ||
+          isSameTable('T-${t.tableNumber}', targetTable)
+        ).firstOrNull;
+
         final activeOrder = db.orders.where((o) =>
-          isSameTable(o.tableNumber, targetTable) &&
+          (isSameTable(o.tableNumber, targetTable) ||
+           (tbl != null && (isSameTable(o.tableNumber, tbl.name) ||
+                            isSameTable(o.tableNumber, tbl.tableNumber.toString()) ||
+                            isSameTable(o.tableNumber, 'T-${tbl.tableNumber}') ||
+                            (tbl.currentOrderId != null && (o.id == tbl.currentOrderId || o.orderNumber == tbl.currentOrderId))))) &&
           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
         ).firstOrNull;
+
         if (activeOrder != null && activeOrder.items.isNotEmpty) {
-          _cartItems.addAll(activeOrder.items);
+          _cartItems.addAll(activeOrder.items.map((i) => i.clone()));
           _activeRunningOrderId = activeOrder.id;
           _activeRunningOrderNumber = activeOrder.orderNumber;
           _customerName = activeOrder.customerName ?? '';
@@ -7229,10 +7314,23 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         } else {
           final savedCart = db.getLiveTableCart(targetTable);
           if (savedCart.isNotEmpty) {
-            _cartItems.addAll(savedCart);
+            _cartItems.addAll(savedCart.map((i) => i.clone()));
+          } else if (tbl != null) {
+            final savedCartByName = db.getLiveTableCart(tbl.name);
+            if (savedCartByName.isNotEmpty) {
+              _cartItems.addAll(savedCartByName.map((i) => i.clone()));
+            }
+          }
+
+          final savedCust = db.getLiveCustomerInfo(targetTable) ??
+              (tbl != null ? db.getLiveCustomerInfo(tbl.name) : null);
+          if (savedCust != null) {
+            _customerName = savedCust['name'] ?? '';
+            _customerPhone = savedCust['phone'] ?? '';
           }
         }
-        final savedDiscount = db.getLiveTableDiscount(targetTable);
+        final savedDiscount = db.getLiveTableDiscount(targetTable) ??
+            (tbl != null ? db.getLiveTableDiscount(tbl.name) : null);
         if (savedDiscount != null) {
           _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
           _promoCodeController.text = _appliedCoupon;
@@ -7245,10 +7343,45 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       } else {
         _selectedTable = null;
         final key = type == OrderType.takeaway ? 'Takeaway' : 'Delivery';
-        final savedCart = db.getLiveTableCart(key);
-        if (savedCart.isNotEmpty) {
-          _cartItems.addAll(savedCart);
+
+        final activeOrder = db.orders.where((o) =>
+          o.orderType == type &&
+          (o.status == OrderStatus.pending || o.status == OrderStatus.preparing)
+        ).firstOrNull;
+
+        if (activeOrder != null && activeOrder.items.isNotEmpty) {
+          _cartItems.addAll(activeOrder.items.map((i) => i.clone()));
+          _activeRunningOrderId = activeOrder.id;
+          _activeRunningOrderNumber = activeOrder.orderNumber;
+          _customerName = activeOrder.customerName ?? '';
+          _customerPhone = activeOrder.customerPhone ?? '';
+          if (type == OrderType.delivery && activeOrder.deliveryAddress != null) {
+            _setDeliveryAddressFromCustomer(activeOrder.deliveryAddress!);
+          }
+        } else {
+          final savedCart = db.getLiveTableCart(key);
+          if (savedCart.isNotEmpty) {
+            _cartItems.addAll(savedCart.map((i) => i.clone()));
+          }
+
+          final savedCust = db.getLiveCustomerInfo(key);
+          if (savedCust != null) {
+            _customerName = savedCust['name'] ?? '';
+            _customerPhone = savedCust['phone'] ?? '';
+          }
+
+          if (type == OrderType.delivery) {
+            final savedDelivery = db.getLiveDeliveryInfo(key);
+            if (savedDelivery != null) {
+              _deliveryAddress = savedDelivery['address'] ?? '';
+              _deliveryLandmark = savedDelivery['landmark'] ?? '';
+              _deliveryCity = savedDelivery['city'] ?? '';
+              _deliveryState = savedDelivery['state'] ?? '';
+              _deliveryPincode = savedDelivery['pincode'] ?? '';
+            }
+          }
         }
+
         final savedDiscount = db.getLiveTableDiscount(key);
         if (savedDiscount != null) {
           _appliedCoupon = savedDiscount['coupon']?.toString() ?? '';
@@ -7256,6 +7389,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           _discountInputValue = (savedDiscount['discountInput'] as num?)?.toDouble() ?? 0.0;
           _discountMode = savedDiscount['discountMode']?.toString() ?? 'percent';
           _discountAmount = (savedDiscount['discountAmount'] as num?)?.toDouble() ?? 0.0;
+        } else if (activeOrder != null && activeOrder.discountAmount > 0) {
+          _discountAmount = activeOrder.discountAmount;
         }
       }
     }
@@ -7264,6 +7399,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       setStateCart(updateState);
     }
     setState(updateState);
+    _checkCustomerLoyalty();
   }
 
   Widget _buildDesktopSegmentItem(String title, OrderType type, StateSetter setStateCart) {
@@ -7531,10 +7667,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             );
           }
 
-          // Robustly free table on settlement
+          // Robustly free table / clear draft on settlement
           final targetTableStr = _selectedTable ?? completedOrder.tableNumber;
           if (targetTableStr != null && targetTableStr.isNotEmpty) {
             db.clearTableCartAndFree(targetTableStr);
+          } else {
+            final key = completedOrder.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery';
+            db.clearTableCartAndFree(key);
+            if (completedOrder.id.isNotEmpty) {
+              db.clearTableCartAndFree(completedOrder.id);
+            }
           }
 
           // Deduct redeemed loyalty points asynchronously in background (non-blocking)
@@ -8118,7 +8260,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
             if (_selectedTable != null && _selectedTable!.isNotEmpty) ...[
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7FAFD),
                   borderRadius: BorderRadius.circular(16),
@@ -8143,18 +8285,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   style: const TextStyle(
                     color: Color(0xFF0F2B48),
                     fontWeight: FontWeight.w900,
-                    fontSize: 12.5,
+                    fontSize: 12.0,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
             const Spacer(),
-            // TABLES BUTTON (Deep Navy Pill matching reference UI)
-            SizedBox(
-              height: 36,
+            // TABLES BUTTON (Deep Navy Pill matching reference UI with enhanced width)
+            ConstrainedBox(
+              constraints: BoxConstraints(
+                minWidth: isDesktop ? 115 : 95,
+                minHeight: 38,
+              ),
               child: ElevatedButton.icon(
                 onPressed: () => _openTablesSelectionDialog(),
-                icon: const Icon(Icons.table_restaurant_outlined, color: Colors.white, size: 18),
+                icon: const Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 17),
                 label: const Text(
                   'Tables',
                   style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
@@ -8163,20 +8309,20 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   backgroundColor: const Color(0xFF0F2B48),
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 12, vertical: 0),
                   elevation: 2,
                   shadowColor: const Color(0xFF0F2B48).withValues(alpha: 0.35),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             // ADD ITEM BUTTON (Soft Neumorphic Pill button matching reference UI)
             InkWell(
               onTap: _showInputManuallyDialog,
               borderRadius: BorderRadius.circular(20),
               child: Container(
                 height: 36,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7FAFD),
                   borderRadius: BorderRadius.circular(20),
@@ -8199,14 +8345,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 child: const Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_circle, size: 18, color: Color(0xFF0F2B48)),
-                    SizedBox(width: 5),
+                    Icon(Icons.add_circle, size: 16, color: Color(0xFF0F2B48)),
+                    SizedBox(width: 4),
                     Text(
                       'Add Item',
                       style: TextStyle(
                         color: Color(0xFF0F2B48),
                         fontWeight: FontWeight.w800,
-                        fontSize: 12.5,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],

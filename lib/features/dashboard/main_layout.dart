@@ -127,7 +127,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/staff_profile.png',
         iconColor: const Color(0xFF2563EB),
         iconBgColor: const Color(0xFFEFF6FF),
-        getBadge: (db) => null,
+        getBadge: (db) => db.isSubscribed ? 'PRO' : null,
         canAccess: (user) => true,
       ),
       NavItemDef(
@@ -187,7 +187,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/inventory.png',
         iconColor: const Color(0xFFEA580C),
         iconBgColor: const Color(0xFFFFEDD5),
-        isPremium: true,
+        isPremium: !db.isSubscribed,
         getBadge: (db) => null,
         canAccess: (user) => _canAccessTab(5),
       ),
@@ -218,7 +218,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/Loyalty.png',
         iconColor: const Color(0xFFD97706),
         iconBgColor: const Color(0xFFFEF08A),
-        isPremium: true,
+        isPremium: !db.isSubscribed,
         getBadge: (db) => null,
         canAccess: (user) => _canAccessTab(8),
       ),
@@ -229,7 +229,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/campaign.png',
         iconColor: const Color(0xFFEA580C),
         iconBgColor: const Color(0xFFFFE4E6),
-        isPremium: true,
+        isPremium: !db.isSubscribed,
         getBadge: (db) => null,
         canAccess: (user) => _canAccessTab(9),
       ),
@@ -1989,7 +1989,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         return;
       }
 
-      if (isPremium) {
+      final bool requiresSubscriptionUnlock = isPremium && !db.isSubscribed;
+      if (requiresSubscriptionUnlock) {
         if (isSmallScreen) _closeSidebar();
         Navigator.push(
           context,
@@ -2156,26 +2157,57 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                       )
                                     else if (badge != null && badge != '0')
                                       Positioned(
-                                        top: -2,
-                                        right: -3,
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFF1D61E7),
-                                            borderRadius: BorderRadius.circular(10),
-                                          ),
-                                          constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
-                                          alignment: Alignment.center,
-                                          child: Text(
-                                            badge,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 9,
-                                              fontWeight: FontWeight.w900,
-                                              height: 1,
-                                            ),
-                                          ),
-                                        ),
+                                        top: badge == 'PRO' ? -3 : -2,
+                                        right: badge == 'PRO' ? -3 : -3,
+                                        child: badge == 'PRO'
+                                            ? Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 1.5),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFFF1F5F9),
+                                                  borderRadius: BorderRadius.circular(8),
+                                                  boxShadow: const [
+                                                    BoxShadow(
+                                                      color: Colors.white,
+                                                      offset: Offset(-1, -1),
+                                                      blurRadius: 2,
+                                                    ),
+                                                    BoxShadow(
+                                                      color: Color(0x281E293B),
+                                                      offset: Offset(1.5, 1.5),
+                                                      blurRadius: 3,
+                                                    ),
+                                                  ],
+                                                  border: Border.all(color: const Color(0xFFDBEAFE), width: 0.8),
+                                                ),
+                                                child: const Text(
+                                                  'PRO',
+                                                  style: TextStyle(
+                                                    color: Color(0xFF1D4ED8),
+                                                    fontSize: 8.5,
+                                                    fontWeight: FontWeight.w900,
+                                                    letterSpacing: 0.4,
+                                                    height: 1,
+                                                  ),
+                                                ),
+                                              )
+                                            : Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF1D61E7),
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                                constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                                                alignment: Alignment.center,
+                                                child: Text(
+                                                  badge,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w900,
+                                                    height: 1,
+                                                  ),
+                                                ),
+                                              ),
                                       ),
                                   ],
                                 ),
@@ -2240,32 +2272,37 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                           ),
                                         )
                                       : (badge != null && badge != '0')
-                                          ? Container(
-                                              padding: EdgeInsets.symmetric(
-                                                horizontal: isSmallScreen ? 9 : 9,
-                                                vertical: isSmallScreen ? 3 : 3,
-                                              ),
-                                              decoration: BoxDecoration(
-                                                color: isSelected
-                                                    ? const Color(0xFF1D61E7)
-                                                    : const Color(0xFFEFF6FF),
-                                                borderRadius: BorderRadius.circular(12),
-                                                border: Border.all(
-                                                  color: isSelected
-                                                      ? const Color(0xFF1D61E7)
-                                                      : const Color(0xFFDBEAFE),
-                                                  width: 1.0,
-                                                ),
-                                              ),
-                                              child: Text(
-                                                badge,
-                                                style: TextStyle(
-                                                  color: isSelected ? Colors.white : const Color(0xFF1D61E7),
-                                                  fontSize: isSmallScreen ? 11.5 : 11.5,
-                                                  fontWeight: FontWeight.w900,
-                                                ),
-                                              ),
-                                            )
+                                          ? (badge == 'PRO'
+                                              ? _buildNeumorphicProBadge(
+                                                  isSelected: isSelected,
+                                                  isSmallScreen: isSmallScreen,
+                                                )
+                                              : Container(
+                                                  padding: EdgeInsets.symmetric(
+                                                    horizontal: isSmallScreen ? 9 : 9,
+                                                    vertical: isSmallScreen ? 3 : 3,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: isSelected
+                                                        ? const Color(0xFF1D61E7)
+                                                        : const Color(0xFFEFF6FF),
+                                                    borderRadius: BorderRadius.circular(12),
+                                                    border: Border.all(
+                                                      color: isSelected
+                                                          ? const Color(0xFF1D61E7)
+                                                          : const Color(0xFFDBEAFE),
+                                                      width: 1.0,
+                                                    ),
+                                                  ),
+                                                  child: Text(
+                                                    badge,
+                                                    style: TextStyle(
+                                                      color: isSelected ? Colors.white : const Color(0xFF1D61E7),
+                                                      fontSize: isSmallScreen ? 11.5 : 11.5,
+                                                      fontWeight: FontWeight.w900,
+                                                    ),
+                                                  ),
+                                                ))
                                           : const SizedBox.shrink(),
                             ),
                           ),
@@ -2290,6 +2327,112 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Neumorphic PRO Badge with dual-layer soft elevation and crown accent
+  Widget _buildNeumorphicProBadge({
+    bool isSelected = false,
+    bool isSmallScreen = false,
+  }) {
+    if (isSelected) {
+      return Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: isSmallScreen ? 7.5 : 8.5,
+          vertical: isSmallScreen ? 2.5 : 3.0,
+        ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1D4ED8),
+          borderRadius: BorderRadius.circular(10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.35),
+              offset: const Offset(-1.5, -1.5),
+              blurRadius: 3,
+            ),
+            BoxShadow(
+              color: const Color(0xFF0F172A).withValues(alpha: 0.35),
+              offset: const Offset(2, 2),
+              blurRadius: 4,
+            ),
+          ],
+          border: Border.all(
+            color: const Color(0xFF93C5FD).withValues(alpha: 0.7),
+            width: 0.9,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            const Text(
+              '👑',
+              style: TextStyle(fontSize: 10.5, height: 1.1),
+            ),
+            const SizedBox(width: 3.5),
+            Text(
+              'PRO',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: isSmallScreen ? 10.0 : 10.5,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.6,
+                height: 1,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isSmallScreen ? 7.5 : 8.5,
+        vertical: isSmallScreen ? 2.5 : 3.0,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9), // Soft Neumorphic Surface Plate
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          // Soft top-left light highlight
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+          // Soft bottom-right dark shadow
+          BoxShadow(
+            color: Color(0x281E293B),
+            offset: Offset(2, 2),
+            blurRadius: 4,
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 0.9,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            '👑',
+            style: TextStyle(fontSize: 10.5, height: 1.1),
+          ),
+          const SizedBox(width: 3.5),
+          Text(
+            'PRO',
+            style: TextStyle(
+              color: const Color(0xFF1D4ED8),
+              fontSize: isSmallScreen ? 10.0 : 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+              height: 1,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2320,7 +2463,6 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
   late final Animation<double> _scaleAnimation;
   late int _currentIndex;
   final Set<int> _activatedTabs = {};
-  final Map<int, Widget> _cachedTabWidgets = {};
 
   @override
   void initState() {
@@ -2377,24 +2519,21 @@ class _SmoothAnimatedIndexedStackState extends State<SmoothAnimatedIndexedStack>
     _activatedTabs.add(_currentIndex);
     final children = List<Widget>.generate(widget.tabBuilders.length, (i) {
       if (_activatedTabs.contains(i)) {
-        final tabWidget = _cachedTabWidgets.putIfAbsent(
-          i,
-          () => RepaintBoundary(
-            key: ValueKey('tab_boundary_$i'),
-            child: widget.tabBuilders[i](context),
-          ),
-        );
         final bool isCurrentTab = (i == _currentIndex);
         return TickerMode(
           enabled: isCurrentTab,
           child: Offstage(
             offstage: !isCurrentTab,
-            child: tabWidget,
+            child: RepaintBoundary(
+              key: ValueKey('tab_boundary_$i'),
+              child: widget.tabBuilders[i](context),
+            ),
           ),
         );
       }
       return const SizedBox.shrink();
     });
+
 
     return FadeTransition(
       opacity: _fadeAnimation,

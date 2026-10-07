@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' show File;
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -74,7 +74,7 @@ class BluetoothPrinterService {
 
   /// Request runtime Bluetooth and Location permissions safely for Android
   Future<void> requestPermissions({bool force = false}) async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux)) {
       return;
     }
     if (_permissionsRequestedOnce && !force) return;
@@ -93,7 +93,7 @@ class BluetoothPrinterService {
 
   /// Check if Bluetooth is powered ON on the mobile device with quick timeout
   Future<bool> isBluetoothOn() async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux)) {
       return true;
     }
     try {
@@ -108,11 +108,11 @@ class BluetoothPrinterService {
 
   /// Check if Bluetooth printer is currently connected with quick timeout
   Future<bool> isConnected() async {
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final defaultPrinter = await WindowsPrinterService().getActiveDefaultPrinter();
       return defaultPrinter != null;
     }
-    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux)) {
       return false;
     }
     try {
@@ -145,7 +145,7 @@ class BluetoothPrinterService {
 
   /// Get list of paired Bluetooth devices on the mobile device with caching & timeout protection
   Future<List<BluetoothInfo>> getBondedDevices({bool forceRefresh = false}) async {
-    if (!kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux)) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.windows || defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.linux)) {
       return [];
     }
     if (!forceRefresh && _cachedBondedDevices != null) {
@@ -165,7 +165,7 @@ class BluetoothPrinterService {
 
   /// Auto-reconnect to saved printer if available
   Future<bool> autoConnectSavedPrinter({bool forceScan = false}) async {
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final defaultPrinter = await WindowsPrinterService().getActiveDefaultPrinter();
       return defaultPrinter != null;
     }
@@ -261,7 +261,7 @@ class BluetoothPrinterService {
 
   /// Print test receipt (Bill or KOT sample)
   Future<bool> printTestReceipt({RestaurantModel? restaurant, bool isKot = false, WindowsPrinterInfo? windowsPrinter}) async {
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
       if (target == null) return false;
 
@@ -464,13 +464,15 @@ class BluetoothPrinterService {
 
       if (photoPath.isNotEmpty) {
         // 1. Local filesystem path check (handles Windows / Android absolute paths & file:// URIs)
-        try {
-          final cleanPath = photoPath.replaceFirst('file://', '');
-          final file = File(cleanPath);
-          if (file.existsSync()) {
-            imageBytes = await file.readAsBytes();
-          }
-        } catch (_) {}
+        if (!kIsWeb) {
+          try {
+            final cleanPath = photoPath.replaceFirst('file://', '');
+            final file = File(cleanPath);
+            if (file.existsSync()) {
+              imageBytes = await file.readAsBytes();
+            }
+          } catch (_) {}
+        }
 
         // 2. Base64 encoded image check
         if (imageBytes == null && (photoPath.startsWith('data:image') || (photoPath.length > 60 && !photoPath.startsWith('http') && !photoPath.startsWith('/') && !photoPath.contains('\\')))) {
@@ -814,7 +816,7 @@ class BluetoothPrinterService {
     WindowsPrinterInfo? windowsPrinter,
   }) async {
     // --- Windows Native / Bluetooth Flow ---
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
       if (target == null) {
         if (kDebugMode) print('[printBill] No Windows or Bluetooth printer available.');
@@ -1063,7 +1065,7 @@ class BluetoothPrinterService {
     WindowsPrinterInfo? windowsPrinter,
   }) async {
     // --- Windows Native / Bluetooth Flow ---
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
       if (target == null) {
         if (kDebugMode) print('[printKOT] No Windows or Bluetooth printer available.');
@@ -1144,7 +1146,7 @@ class BluetoothPrinterService {
     WindowsPrinterInfo? windowsPrinter,
   }) async {
     // --- Windows Native / Bluetooth Flow ---
-    if (!kIsWeb && Platform.isWindows) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       final target = windowsPrinter ?? await WindowsPrinterService().getActiveDefaultPrinter();
       if (target == null) {
         if (kDebugMode) print('[printStaffIdCard] No Windows or Bluetooth printer available.');

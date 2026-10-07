@@ -416,4 +416,178 @@ Every collection is indexed with `businessId` as the leading compound index pref
    - Upon reconnect, `DatabaseService.syncUnsyncedOrders()` pushes offline bills using transactional idempotency keys (`idempotencyKey: "${businessId}_${orderNumber}_${timestamp}"`), preventing duplicate bill creation.
 
 ---
+
+## 9. Multi-Order & Multi-Table Draft Isolation Architecture
+
+### 9.1 The Concurrent Multi-Order Taking Problem
+In high-volume restaurant, cafe, and QSR environments, cashiers and floor captains handle multiple simultaneous customer interactions:
+1. **Dine-In Table 1 (Customer A):** Server selects Table 1 and begins punching items, applying specific customer discounts, and recording customer name/phone.
+2. **Dine-In Table 2 (Customer B):** While Table 1's party is deciding on desserts, another customer at Table 2 places an order.
+3. **Takeaway & Counter Orders (Customer C):** Concurrently, a walk-in customer requests a quick takeaway order.
+4. **Doorstep Delivery (Customer D):** A phone order is taken requiring customer delivery address, landmark, and pincode.
+
+```mermaid
+flowchart TD
+    subgraph Multi_Draft_Pool["🔒 DatabaseService In-Memory & Persistent Draft Space"]
+        T1["Draft T-1 (Customer A)\nItems: [Pizza, Coke]\nDiscount: 10%\nCustomer: Alice / 9876500001"]
+        T2["Draft T-2 (Customer B)\nItems: [Burger, Fries]\nDiscount: 0%\nCustomer: Bob / 9876500002"]
+        TW["Draft Takeaway (Customer C)\nItems: [Cold Coffee]\nCustomer: Charlie / 9876500003"]
+        DL["Draft Delivery (Customer D)\nItems: [Biryani Combo]\nCustomer: David / 9876500004\nAddress: 123 Main St, Central"]
+    end
+
+    POS["🖥️ POS Register Screen (pos_register_screen.dart)"]
+    
+    POS <-->|"Switch to Table 1 (auto-saves previous & loads T-1)"| T1
+    POS <-->|"Switch to Table 2 (auto-saves T-1 & loads T-2)"| T2
+    POS <-->|"Switch to Takeaway (auto-saves T-2 & loads TW)"| TW
+    POS <-->|"Switch to Delivery (auto-saves TW & loads DL)"| DL
+```
+
+### 9.2 Key Invariants & Architectural Rules
+1. **Isolated Draft State Containers in `DatabaseService`:**
+   - `_liveTableCarts`: `Map<String, List<CartItem>>` — Maps normalized table/order key to list of active cart line items.
+   - `_liveDraftCustomerInfo`: `Map<String, Map<String, dynamic>>` — Maps normalized key to customer details (`name`, `phone`, `appliedCoupon`, `couponDiscount`, `customDiscount`, `customDiscountType`, `loyaltyRedeemed`).
+   - `_liveDraftDeliveryInfo`: `Map<String, Map<String, dynamic>>` — Maps normalized key to delivery address fields (`address`, `landmark`, `city`, `state`, `pincode`).
+2. **Normalized Key Resolution Protocol (`isSameTable`):**
+   Table identifiers are normalized across formats (`T-1`, `T1`, `Table 1`, `1`) to prevent key fragmentation:
+   - Dine-In: Target table normalized key matching via `isSameTable(tableA, tableB)`.
+   - Takeaway: Active Order ID or default `'Takeaway'`.
+   - Delivery: Active Order ID or default `'Delivery'`.
+3. **Table Switch vs Table Shift Contract:**
+   - **Switch Table (Default Action on Table Tap):** Tapping any table card in the table management grid or floor modal triggers a *context switch*. The active draft is saved via `_saveCurrentDraft()`, and the destination table draft is loaded via `_loadCartForTable(newTable)`. Both tables remain active/occupied with zero data loss or item transfer.
+   - **Shift Table (Explicit Action Only):** Table shifting is strictly restricted to an explicit user interaction via the "Shift Order" button. Invoking `DatabaseService.shiftTableData(sourceTable, targetTable)` migrates active orders, cart items, customer metadata, and discounts from source to destination, freeing the source table immediately.
+4. **Independent Order Settlement & Release:**
+   Settling or clearing Table 1 frees *only* Table 1 (`clearTableCartAndFree`) and purges its draft entry from memory and local storage, leaving Table 2, Takeaway, and Delivery drafts 100% intact.
+5. **Offline Durability & Session Resilience (`SharedPreferences`):**
+   Live table drafts are serialized to `apna_pos_biz_{bizId}_live_table_carts`. When the application restarts or crashes, all active table carts, customer names, phones, delivery addresses, and applied discounts are restored without data loss.
+
+---
+
+## 10. Unified Premium Subscription Architecture (Loyalty, Campaign, Inventory & Zero-Lock Login Protocol)
+
+### 10.1 Unified Architecture Principles
+To deliver a streamlined enterprise billing experience and eliminate friction across premium modules, **Loyalty Programs**, **Marketing Campaigns**, and **Advanced Inventory** are managed collectively under a single authoritative schema and collection: **`premiumSubscription`** (`premiumsubscriptions` in MongoDB).
+
+```mermaid
+flowchart TD
+    subgraph Backend_Collection["🍃 MongoDB: premiumsubscriptions"]
+        DOC["PremiumSubscription Document\n• businessId / userId\n• isSubscriptionActive: true\n• isActive: true / isSubscribed: true\n• hasLoyalty: true\n• hasCampaign: true\n• hasInventory: true\n• features: ['pos', 'inventory', 'loyalty', 'campaign', 'reports', 'staff', 'crm']"]
+    end
+
+    subgraph Client_State["📱 Flutter Client Tier (DatabaseService & Models)"]
+        DS["DatabaseService.isSubscribed\n(In-Memory + Disk Key: is_subscription_active)"]
+        RM["RestaurantModel.isSubscribed"]
+    end
+
+    subgraph Features["🚀 Seamless Feature Access (Zero Lockout on Login)"]
+        F1["📦 Inventory Screen\n(Direct Tab 5 Navigation)"]
+        F2["👑 Loyalty Hub\n(Direct Tab 8 Navigation)"]
+        F3["📢 Marketing Campaigns\n(Direct Tab 9 Navigation)"]
+        BAR["🔒 SubscriptionLockedBarrier\n(isActuallyLocked: false -> Renders Child)"]
+    end
+
+    DOC <-->|"Realtime Socket.IO + REST /api/v1/subscription/status"| DS
+    DS --> RM
+    DS -->|"isSubscriptionActive == true"| F1 & F2 & F3
+    DS -->|"isSubscriptionActive == true"| BAR
+```
+
+### 10.2 Architectural Rules & Security Invariants
+1. **Zero Lockout on Profile Login:**
+   - When a tenant or cashier logs in or switches user profiles, `DatabaseService` checks `isSubscribed` / `isSubscriptionActive` synchronously from memory and persistent disk caches (`is_subscription_active`, `is_subscribed`, `business_is_subscribed`, `restaurant.isSubscribed`).
+   - `SubscriptionLockedBarrier` evaluates `isActuallyLocked = isLocked && !DatabaseService().isSubscribed`. When subscription is active (`true`), no lock screen or blur overlay is rendered on startup.
+2. **Unified Feature Unlocking:**
+   - In `MainLayout`, navigation items for **Inventory**, **Loyalty**, and **Campaign** evaluate `isPremium: !db.isSubscribed`.
+   - When `isSubscriptionActive == true`:
+     - PRO lock badges and gold borders are removed.
+     - Tapping any of these tabs directly selects and renders the screen without intercepting or pushing `SubscriptionScreen`.
+3. **Strict Paywall Security & Lead Inquiry Disconnection:**
+   - Submitting an "I'm Interested" lead inquiry in `SubscriptionScreen` records the lead in MongoDB (`SubscriptionLead` model) and notifies sales (`sooftcode@gmail.com`).
+   - Lead submission **MUST NEVER** expose or trigger a bypass button ("Open Loyalty Hub" / "Open Inventory") that navigates to locked feature screens. The confirmation modal displays a clean "Got It" dismissal button, and `_navigateToTargetScreen` verifies `_db.isSubscribed` before routing.
+
+### 10.3 Neumorphic PRO Badge Architecture
+1. **Dynamic Navigation Badge Resolution:**
+   - In `MainLayout._getAvailableNavItems()`, the `Staff Profile` nav item dynamically computes its badge via `getBadge: (db) => db.isSubscribed ? 'PRO' : null`.
+2. **Dual-Layer Soft UI (Neumorphism) Geometry:**
+   - The PRO badge renders with a soft raised plate:
+     - **Unselected / Normal Surface:** Background `Color(0xFFF1F5F9)` with top-left highlight `BoxShadow(color: Colors.white, offset: Offset(-1.5, -1.5), blurRadius: 3)` and bottom-right dark shadow `BoxShadow(color: Color(0x281E293B), offset: Offset(2, 2), blurRadius: 4)` enclosed by subtle border `Border.all(color: Color(0xFFE2E8F0), width: 0.9)`.
+     - **Selected Active State:** Background `Color(0xFF1D4ED8)` with dual ambient highlights `BoxShadow(color: Colors.white38, offset: Offset(-1.5, -1.5))` and soft drop shadow `BoxShadow(color: Color(0xFF0F172A).withOpacity(0.35), offset: Offset(2, 2))`.
+   - **Content:** Crown accent emoji `👑` + bold typography `'PRO'` (`FontWeight.w900`, letter spacing `0.6`).
+3. **Cross-Platform & Responsive Consistency:**
+   - Renders uniformly across desktop navigation rail, expanded sidebar, mobile drawer overlay, and the `StaffProfileScreen` header card.
+
+### 10.4 Owner Registration Date Tracking & Per-User Subscription Activation Architecture
+1. **Default Inactive Subscription State on Owner Registration:**
+   - When a new restaurant owner registers via `/api/v1/auth/register`, a corresponding record in `premiumsubscriptions` (`Subscription` model) is automatically initialized with:
+     - `userCreatedAt: user.createdAt` (explicitly persisted registration timestamp).
+     - `isSubscriptionActive: false`, `isActive: false`, `isSubscribed: false`, `status: 'inactive'`.
+     - `hasLoyalty: false`, `hasCampaign: false`, `hasInventory: false`.
+   - All newly onboarded owner users start with an inactive subscription by default, preventing accidental grant of PRO capabilities before activation.
+
+2. **Per-User Subscription Activation & Tenant Isolation:**
+   - Super Admin web console (`SuperAdminApiService`, `SuperAdminUsersScreen`, `SuperAdminSubscriptionsScreen`) provides targeted 1-click PRO activation for specific individual owner users.
+   - Endpoint: `PATCH /api/v1/superadmin/users/:id/subscription` updates *only* the targeted user (`User.findByIdAndUpdate`) and atomically synchronizes the corresponding record in `Subscription.findOneAndUpdate({ userId })`.
+   - Real-time updates via Socket.IO emit `subscription_status_changed` strictly to the target business room (`business_${bizId}`), guaranteeing zero cross-tenant bleeding.
+
+3. **Super Admin Platform UI Integration:**
+   - **Registered Date Display:** Displays formatted date & time (`userCreatedAt` / `createdAt`) for every owner account.
+   - **Interactive PRO Switch & Badge:** Real-time Neumorphic badge (`👑 PRO` vs `FREE (Inactive)`) with an instant toggle switch and star action to activate/deactivate PRO per user.
+
+---
+
+## 11. Staff Multi-Tenant Isolation & Zero Cross-Tenant Leakage Architecture
+
+### 11.1 Problem Statement & Root Cause Remediation
+In multi-tenant SaaS environments, staff members created in Business A must never be visible, merged, or cached inside Business B. Prior to this release:
+1. `DatabaseService.syncStaffList(remoteStaff)` retained in-memory staff from a previous business session when merging remote API results.
+2. `StaffService.syncUnsyncedStaff()` pushed local unsynced staff (`st_...`) to whichever active backend endpoint was logged in without verifying tenant match.
+3. SharedPreferences lacked strict primary key isolation for `apna_pos_biz_{bizId}_staff_list` and omitted `businessId` boundary verification.
+
+### 11.2 Architectural Invariants & Data Flow
+
+```mermaid
+flowchart TD
+    subgraph MultiTenant_Isolation["🏢 Strict Multi-Tenant Staff Boundary"]
+        subgraph TenantA["Tenant Alpha (businessId: BUS-A)"]
+            SA["Staff Alpha 1, Staff Alpha 2"]
+            KA["Cache Key: apna_pos_biz_BUS-A_staff_list"]
+        end
+        
+        subgraph TenantB["Tenant Beta (businessId: BUS-B)"]
+            SB["Staff Beta 1, Staff Beta 2"]
+            KB["Cache Key: apna_pos_biz_BUS-B_staff_list"]
+        end
+        
+        DS["DatabaseService\n(Runtime In-Memory State)"]
+        
+        SWITCH["Account / Tenant Switch\n(loadUserDataForActiveUser / clearUserDataForNewAccount)"]
+        
+        SWITCH -->|"1. staffList.clear()\n2. Purge role/branch caches"| DS
+        DS -->|"3. Load strictly matching businessId"| KB
+    end
+```
+
+1. **Staff Data Model Tagging (`StaffModel.businessId`):**
+   - Every `StaffModel` instance carries a mandatory `businessId` property.
+   - Serialized in `toJson()` and deserialized in `fromJson()`.
+   - Creation in `DatabaseService.addStaff` / `StaffService.createStaff` automatically stamps `_db.currentBusinessId` if empty.
+
+2. **Authoritative Business Key Storage (`_businessKey('staff_list')`):**
+   - Primary persistent key: `apna_pos_biz_${currentBusinessId}_staff_list`.
+   - During `_loadStaffFromPrefs()`, `staffList.clear()` is executed immediately. Any records where `s.businessId.isNotEmpty && s.businessId != activeBizId` are rejected.
+
+3. **Authoritative Remote Sync (`syncStaffList`):**
+   - Remote staff list is filtered to match `currentBusinessId`.
+   - Local unsynced staff (`st_...`) are retained **ONLY** if their `businessId == activeBizId`. Lingering staff from prior sessions are purged.
+
+4. **Session Switch & New Account Cleanup (`loadUserDataForActiveUser` / `clearUserDataForNewAccount`):**
+   - On login, account switch, or new registration:
+     - In-memory `staffList`, `_customStaffRoles`, and `_customBusinessBranches` are immediately cleared.
+     - Business-scoped keys for new accounts are removed from storage.
+     - Fresh staff dataset for the targeted business is loaded without contamination from previous sessions.
+
+---
 *Architected and certified by Apna POS Systems Engineering Team.*
+
+
+

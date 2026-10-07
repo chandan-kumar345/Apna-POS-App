@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -150,8 +149,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       }
     }
 
-    final bool isDesktopPlatform =
-        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final bool isDesktopPlatform = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
     final Widget defaultAuthFallback =
         isDesktopPlatform ? const LoginScreen() : const GetStartedScreen();
 
@@ -206,8 +207,10 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _navigated = true;
     _fallbackTimer?.cancel();
 
-    final bool isDesktopPlatform =
-        !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+    final bool isDesktopPlatform = !kIsWeb &&
+        (defaultTargetPlatform == TargetPlatform.windows ||
+            defaultTargetPlatform == TargetPlatform.macOS ||
+            defaultTargetPlatform == TargetPlatform.linux);
     final Widget targetScreen = _resolvedTargetScreen ??
         (isDesktopPlatform ? const LoginScreen() : const GetStartedScreen());
 

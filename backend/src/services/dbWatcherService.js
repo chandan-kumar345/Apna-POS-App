@@ -49,9 +49,9 @@ class DbWatcherService {
                 isActive = doc.status === 'active';
               }
 
-              console.log(`[Compass Real-Time Update] Subscription modified: ${doc._id}, isSubscriptionActive: ${isActive}, target: ${doc.targetType}`);
+              console.log(`[Compass Real-Time Update] Subscription modified: ${doc._id}, isActive: ${isActive}, target: ${doc.targetType}`);
 
-              // Broadcast instant socket event to all clients
+              // Broadcast real-time socket event
               socketService.emitSubscriptionUpdated(doc.businessId, {
                 subscriptionId: doc._id,
                 businessId: doc.businessId,
@@ -66,22 +66,30 @@ class DbWatcherService {
                 expiresAt: doc.expiresAt,
               });
 
-              // Keep Business & User models in sync
+              // Keep Business & User models in sync ONLY if state actually differs to prevent infinite circular streams
               if (doc.businessId) {
-                await Business.findByIdAndUpdate(doc.businessId, {
-                  $set: {
-                    'subscription.isActive': isActive,
-                    'subscription.status': isActive ? 'active' : 'inactive',
-                  },
-                });
+                const b = await Business.findById(doc.businessId, 'subscription').lean();
+                if (b && (b.subscription?.isActive !== isActive || b.subscription?.status !== (isActive ? 'active' : 'inactive'))) {
+                  await Business.findByIdAndUpdate(doc.businessId, {
+                    $set: {
+                      'subscription.isActive': isActive,
+                      'subscription.isSubscriptionActive': isActive,
+                      'subscription.status': isActive ? 'active' : 'inactive',
+                    },
+                  });
+                }
               }
               if (doc.userId) {
-                await User.findByIdAndUpdate(doc.userId, {
-                  $set: {
-                    'subscription.isActive': isActive,
-                    'subscription.status': isActive ? 'active' : 'inactive',
-                  },
-                });
+                const u = await User.findById(doc.userId, 'subscription').lean();
+                if (u && (u.subscription?.isActive !== isActive || u.subscription?.status !== (isActive ? 'active' : 'inactive'))) {
+                  await User.findByIdAndUpdate(doc.userId, {
+                    $set: {
+                      'subscription.isActive': isActive,
+                      'subscription.isSubscriptionActive': isActive,
+                      'subscription.status': isActive ? 'active' : 'inactive',
+                    },
+                  });
+                }
               }
             }
           }
@@ -111,30 +119,41 @@ class DbWatcherService {
                 ? Boolean(doc.subscription.isActive)
                 : (doc.subscription.status === 'active');
 
-              console.log(`[Compass Real-Time Update] Business ${doc._id} subscription modified: isActive = ${isActive}`);
+              // Check if Subscription collection already matches before updating to prevent infinite ping-pong loop!
+              const existingSub = await Subscription.findOne({ businessId: doc._id }).lean();
+              if (existingSub) {
+                const subActive = existingSub.isActive !== undefined
+                  ? Boolean(existingSub.isActive)
+                  : (existingSub.status === 'active');
+                if (subActive !== isActive) {
+                  console.log(`[Compass Real-Time Update] Business ${doc._id} subscription modified: isActive = ${isActive}`);
+                  await Subscription.findOneAndUpdate(
+                    { businessId: doc._id },
+                    {
+                      $set: {
+                        isActive,
+                        isSubscriptionActive: isActive,
+                        isSubscribed: isActive,
+                        status: isActive ? 'active' : 'inactive',
+                        ...(doc.subscription.plan && { plan: doc.subscription.plan }),
+                        ...(doc.subscription.amount && { amount: Number(doc.subscription.amount) }),
+                        ...(doc.subscription.expiresAt && { expiresAt: new Date(doc.subscription.expiresAt) }),
+                      },
+                    }
+                  );
 
-              // Update or sync with Subscription collection
-              await Subscription.findOneAndUpdate(
-                { businessId: doc._id },
-                {
-                  $set: {
+                  socketService.emitSubscriptionUpdated(doc._id, {
+                    businessId: doc._id,
+                    userId: doc.ownerId,
                     isActive,
+                    isSubscriptionActive: isActive,
+                    isSubscribed: isActive,
                     status: isActive ? 'active' : 'inactive',
-                    ...(doc.subscription.plan && { plan: doc.subscription.plan }),
-                    ...(doc.subscription.amount && { amount: Number(doc.subscription.amount) }),
-                    ...(doc.subscription.expiresAt && { expiresAt: new Date(doc.subscription.expiresAt) }),
-                  },
+                    plan: doc.subscription.plan || 'standard',
+                    expiresAt: doc.subscription.expiresAt,
+                  });
                 }
-              );
-
-              socketService.emitSubscriptionUpdated(doc._id, {
-                businessId: doc._id,
-                userId: doc.ownerId,
-                isActive,
-                status: isActive ? 'active' : 'inactive',
-                plan: doc.subscription.plan || 'standard',
-                expiresAt: doc.subscription.expiresAt,
-              });
+              }
             }
           }
         } catch (err) {
@@ -159,14 +178,35 @@ class DbWatcherService {
                 ? Boolean(doc.subscription.isActive)
                 : (doc.subscription.status === 'active');
 
-              console.log(`[Compass Real-Time Update] User ${doc._id} subscription modified: isActive = ${isActive}`);
+              const existingSub = await Subscription.findOne({ userId: doc._id }).lean();
+              if (existingSub) {
+                const subActive = existingSub.isActive !== undefined
+                  ? Boolean(existingSub.isActive)
+                  : (existingSub.status === 'active');
+                if (subActive !== isActive) {
+                  console.log(`[Compass Real-Time Update] User ${doc._id} subscription modified: isActive = ${isActive}`);
+                  await Subscription.findOneAndUpdate(
+                    { userId: doc._id },
+                    {
+                      $set: {
+                        isActive,
+                        isSubscriptionActive: isActive,
+                        isSubscribed: isActive,
+                        status: isActive ? 'active' : 'inactive',
+                      },
+                    }
+                  );
 
-              socketService.emitSubscriptionUpdated(doc.businessId, {
-                businessId: doc.businessId,
-                userId: doc._id,
-                isActive,
-                status: isActive ? 'active' : 'inactive',
-              });
+                  socketService.emitSubscriptionUpdated(doc.businessId, {
+                    businessId: doc.businessId,
+                    userId: doc._id,
+                    isActive,
+                    isSubscriptionActive: isActive,
+                    isSubscribed: isActive,
+                    status: isActive ? 'active' : 'inactive',
+                  });
+                }
+              }
             }
           }
         } catch (err) {}
@@ -200,13 +240,19 @@ class DbWatcherService {
             currentActive = sub.status === 'active';
           }
 
+          // Initial seeding: avoid false-positive update trigger on server boot
+          if (!this._lastSubState.has(key)) {
+            this._lastSubState.set(key, currentActive);
+            continue;
+          }
+
           const previousActive = this._lastSubState.get(key);
-          if (previousActive !== undefined && previousActive !== currentActive) {
+          if (previousActive !== currentActive) {
             console.log(
               `[Compass Polling Fallback] Subscription ${key} active state changed: ${previousActive} -> ${currentActive}`
             );
 
-            // Broadcast instant real-time socket event
+            // Broadcast real-time socket event
             socketService.emitSubscriptionUpdated(sub.businessId, {
               subscriptionId: sub._id,
               businessId: sub.businessId,
@@ -221,24 +267,30 @@ class DbWatcherService {
               expiresAt: sub.expiresAt,
             });
 
-            // Keep Business & User models in sync
+            // Keep Business & User models in sync only if different
             if (sub.businessId) {
-              await Business.findByIdAndUpdate(sub.businessId, {
-                $set: {
-                  'subscription.isActive': currentActive,
-                  'subscription.isSubscriptionActive': currentActive,
-                  'subscription.status': currentActive ? 'active' : 'inactive',
-                },
-              });
+              const b = await Business.findById(sub.businessId, 'subscription').lean();
+              if (b && (b.subscription?.isActive !== currentActive || b.subscription?.status !== (currentActive ? 'active' : 'inactive'))) {
+                await Business.findByIdAndUpdate(sub.businessId, {
+                  $set: {
+                    'subscription.isActive': currentActive,
+                    'subscription.isSubscriptionActive': currentActive,
+                    'subscription.status': currentActive ? 'active' : 'inactive',
+                  },
+                });
+              }
             }
             if (sub.userId) {
-              await User.findByIdAndUpdate(sub.userId, {
-                $set: {
-                  'subscription.isActive': currentActive,
-                  'subscription.isSubscriptionActive': currentActive,
-                  'subscription.status': currentActive ? 'active' : 'inactive',
-                },
-              });
+              const u = await User.findById(sub.userId, 'subscription').lean();
+              if (u && (u.subscription?.isActive !== currentActive || u.subscription?.status !== (currentActive ? 'active' : 'inactive'))) {
+                await User.findByIdAndUpdate(sub.userId, {
+                  $set: {
+                    'subscription.isActive': currentActive,
+                    'subscription.isSubscriptionActive': currentActive,
+                    'subscription.status': currentActive ? 'active' : 'inactive',
+                  },
+                });
+              }
             }
           }
           this._lastSubState.set(key, currentActive);
@@ -246,7 +298,7 @@ class DbWatcherService {
       } catch (err) {
         // Silently continue polling
       }
-    }, 1500);
+    }, 5000);
   }
 }
 

@@ -35,13 +35,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _noteInputController = TextEditingController();
 
-  // Signature Theme Colors (Lighter shade of top navy header Color(0xFF051C48))
+  // Signature Theme Colors & Neumorphic Palette
   static const Color headerNavy = Color(0xFF051C48);
   static const Color primaryNavy = Color(0xFF0A2B66); // Lighter header color for buttons & active boxes
+  static const Color primaryNavyLight = Color(0xFF133E8D);
   static const Color textDark = Color(0xFF0F172A);
   static const Color textSubtle = Color(0xFF64748B);
-  static const Color boxBorder = Color(0xFFCBD5E1);
-  static const Color boxBg = Color(0xFFF8FAFC);
+
+  // Neumorphic Styling Constants
+  static const Color neuCanvas = Color(0xFFEFF4FA);
+  static const Color neuSurface = Color(0xFFF6F9FD);
+  static const Color neuDarkShadow = Color(0xFFC7D7E8);
+  static const Color neuLightShadow = Colors.white;
+  static const Color neuInsetBg = Color(0xFFE5EDF6);
 
   // State Variables
   String _selectedStageTab = 'All';
@@ -657,57 +663,217 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     try {
       final confirmed = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Schedule Follow-up', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textDark)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Date: ${DateFormat('dd MMM yyyy').format(pickedDate)}',
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: primaryNavy),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: noteCtrl,
-                maxLines: 2,
-                style: const TextStyle(fontSize: 12.5, color: textDark),
-                decoration: InputDecoration(
-                  labelText: 'Follow-up Reason / Notes',
-                  labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
-                  hintText: 'e.g. Call to confirm catering order',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  isDense: true,
-                  filled: true,
-                  fillColor: boxBg,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: neuLightShadow, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.85),
+                  offset: const Offset(6, 8),
+                  blurRadius: 16,
                 ),
-              ),
-            ],
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-6, -6),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.6),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.alarm_rounded, size: 18, color: primaryNavy),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        'Schedule Follow-up',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: textDark,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx, false),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: neuSurface,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: neuLightShadow, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.5),
+                              offset: const Offset(1.5, 1.5),
+                              blurRadius: 3,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 16, color: textSubtle),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: neuInsetBg,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFD6E2EE)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_month_rounded, size: 14, color: primaryNavy),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Date: ${DateFormat('dd MMM yyyy').format(pickedDate)}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: primaryNavy),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: neuInsetBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: neuDarkShadow.withValues(alpha: 0.45),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-1.5, -1.5),
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: noteCtrl,
+                    maxLines: 2,
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                    decoration: const InputDecoration(
+                      labelText: 'Follow-up Reason / Notes',
+                      labelStyle: TextStyle(color: textSubtle, fontSize: 12, fontWeight: FontWeight.w600),
+                      hintText: 'e.g. Call to confirm catering order',
+                      hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => Navigator.pop(ctx, false),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: neuSurface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: neuLightShadow, width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: neuDarkShadow.withValues(alpha: 0.6),
+                                offset: const Offset(2, 2.5),
+                                blurRadius: 4,
+                              ),
+                              const BoxShadow(
+                                color: neuLightShadow,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => Navigator.pop(ctx, true),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                                offset: const Offset(2.5, 3.5),
+                                blurRadius: 6,
+                              ),
+                              BoxShadow(
+                                color: neuLightShadow.withValues(alpha: 0.6),
+                                offset: const Offset(-1.5, -1.5),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          actions: [
-            OutlinedButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: boxBorder),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Cancel', style: TextStyle(color: textSubtle)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryNavy,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save'),
-            ),
-          ],
         ),
       );
 
@@ -857,59 +1023,202 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     try {
       final saved = await showDialog<bool>(
         context: context,
-        builder: (ctx) => AlertDialog(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Text(
-            lead.address.isNotEmpty ? 'Edit Delivery Address' : 'Add Delivery Address',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: textDark),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Customer: ${lead.name} (${lead.phone})',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: addrCtrl,
-                maxLines: 3,
-                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
-                decoration: InputDecoration(
-                  labelText: 'Delivery Address / Area / Landmark',
-                  labelStyle: const TextStyle(color: textSubtle, fontSize: 12),
-                  hintText: 'e.g. Flat 302, Green Valley Apts, Sector 62, Noida',
-                  hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
-                  filled: true,
-                  fillColor: boxBg,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+        builder: (ctx) => Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 420),
+            padding: const EdgeInsets.all(22),
+            decoration: BoxDecoration(
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: neuLightShadow, width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.85),
+                  offset: const Offset(6, 8),
+                  blurRadius: 16,
                 ),
-              ),
-            ],
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-6, -6),
+                  blurRadius: 14,
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.6),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.location_on_rounded, size: 18, color: primaryNavy),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        lead.address.isNotEmpty ? 'Edit Delivery Address' : 'Add Delivery Address',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: textDark,
+                          letterSpacing: -0.2,
+                        ),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx, false),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: neuSurface,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: neuLightShadow, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.5),
+                              offset: const Offset(1.5, 1.5),
+                              blurRadius: 3,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 16, color: textSubtle),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Customer: ${lead.name} (${lead.phone})',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: neuInsetBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: neuDarkShadow.withValues(alpha: 0.45),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-1.5, -1.5),
+                        blurRadius: 3,
+                      ),
+                    ],
+                  ),
+                  child: TextField(
+                    controller: addrCtrl,
+                    maxLines: 3,
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                    decoration: const InputDecoration(
+                      labelText: 'Delivery Address / Area / Landmark',
+                      labelStyle: TextStyle(color: textSubtle, fontSize: 12, fontWeight: FontWeight.w600),
+                      hintText: 'e.g. Flat 302, Green Valley Apts, Sector 62, Noida',
+                      hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.all(12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => Navigator.pop(ctx, false),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: neuSurface,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: neuLightShadow, width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: neuDarkShadow.withValues(alpha: 0.6),
+                                offset: const Offset(2, 2.5),
+                                blurRadius: 4,
+                              ),
+                              const BoxShadow(
+                                color: neuLightShadow,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: InkWell(
+                        onTap: () => Navigator.pop(ctx, true),
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                                offset: const Offset(2.5, 3.5),
+                                blurRadius: 6,
+                              ),
+                              BoxShadow(
+                                color: neuLightShadow.withValues(alpha: 0.6),
+                                offset: const Offset(-1.5, -1.5),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          alignment: Alignment.center,
+                          child: const Text('Save Address', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-          actions: [
-            OutlinedButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: boxBorder),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              child: const Text('Cancel', style: TextStyle(color: textSubtle)),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryNavy,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-              onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Save Address'),
-            ),
-          ],
         ),
       );
 
@@ -1035,12 +1344,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             }
 
             return Dialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
               insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: Container(
                 constraints: const BoxConstraints(maxWidth: 420),
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(22),
+                decoration: BoxDecoration(
+                  color: neuSurface,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: neuLightShadow, width: 1.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.85),
+                      offset: const Offset(6, 8),
+                      blurRadius: 16,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-6, -6),
+                      blurRadius: 14,
+                    ),
+                  ],
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1049,10 +1375,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     Row(
                       children: [
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(9),
                           decoration: BoxDecoration(
-                            color: primaryNavy.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(10),
+                            color: neuSurface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: neuLightShadow, width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: neuDarkShadow.withValues(alpha: 0.6),
+                                offset: const Offset(2, 2.5),
+                                blurRadius: 5,
+                              ),
+                              const BoxShadow(
+                                color: neuLightShadow,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                            ],
                           ),
                           child: const Icon(Icons.date_range_rounded, size: 20, color: primaryNavy),
                         ),
@@ -1067,6 +1406,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
                                   color: textDark,
+                                  letterSpacing: -0.2,
                                 ),
                               ),
                               SizedBox(height: 2),
@@ -1077,16 +1417,35 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                             ],
                           ),
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          icon: const Icon(Icons.close_rounded, size: 18, color: textSubtle),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
+                        InkWell(
+                          onTap: () => Navigator.pop(ctx),
+                          borderRadius: BorderRadius.circular(16),
+                          child: Container(
+                            padding: const EdgeInsets.all(5),
+                            decoration: BoxDecoration(
+                              color: neuSurface,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: neuLightShadow, width: 1),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: neuDarkShadow.withValues(alpha: 0.5),
+                                  offset: const Offset(1.5, 1.5),
+                                  blurRadius: 3,
+                                ),
+                                const BoxShadow(
+                                  color: neuLightShadow,
+                                  offset: Offset(-1.5, -1.5),
+                                  blurRadius: 3,
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.close_rounded, size: 16, color: textSubtle),
+                          ),
                         ),
                       ],
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
                     // Preset Chips
                     const Text(
@@ -1109,14 +1468,38 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                         return InkWell(
                           onTap: () => applyPreset(preset),
                           borderRadius: BorderRadius.circular(10),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 150),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7.5),
                             decoration: BoxDecoration(
-                              color: isSelected ? primaryNavy : const Color(0xFFF1F5F9),
+                              gradient: isSelected
+                                  ? const LinearGradient(
+                                      colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                    )
+                                  : null,
+                              color: isSelected ? null : neuSurface,
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isSelected ? primaryNavy : const Color(0xFFE2E8F0),
+                                color: isSelected ? primaryNavyLight : neuLightShadow,
+                                width: 1,
                               ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: isSelected
+                                      ? const Color(0xFF0A2B66).withValues(alpha: 0.3)
+                                      : neuDarkShadow.withValues(alpha: 0.6),
+                                  offset: const Offset(2, 2.5),
+                                  blurRadius: 4,
+                                ),
+                                if (!isSelected)
+                                  const BoxShadow(
+                                    color: neuLightShadow,
+                                    offset: Offset(-2, -2),
+                                    blurRadius: 4,
+                                  ),
+                              ],
                             ),
                             child: Text(
                               preset,
@@ -1131,7 +1514,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       }).toList(),
                     ),
 
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 18),
 
                     // Custom Date Inputs (From - To)
                     const Text(
@@ -1172,20 +1555,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                                 });
                               }
                             },
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
                               decoration: BoxDecoration(
-                                color: boxBg,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: boxBorder),
+                                color: neuInsetBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neuDarkShadow.withValues(alpha: 0.5),
+                                    offset: const Offset(1.5, 2),
+                                    blurRadius: 3,
+                                  ),
+                                  const BoxShadow(
+                                    color: neuLightShadow,
+                                    offset: Offset(-1.5, -1.5),
+                                    blurRadius: 3,
+                                  ),
+                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
                                     'FROM',
-                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
                                   ),
                                   const SizedBox(height: 3),
                                   Row(
@@ -1212,7 +1607,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                           ),
                         ),
 
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 10),
 
                         // End Date
                         Expanded(
@@ -1242,20 +1637,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                                 });
                               }
                             },
-                            borderRadius: BorderRadius.circular(10),
+                            borderRadius: BorderRadius.circular(12),
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                              padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
                               decoration: BoxDecoration(
-                                color: boxBg,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: boxBorder),
+                                color: neuInsetBg,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neuDarkShadow.withValues(alpha: 0.5),
+                                    offset: const Offset(1.5, 2),
+                                    blurRadius: 3,
+                                  ),
+                                  const BoxShadow(
+                                    color: neuLightShadow,
+                                    offset: Offset(-1.5, -1.5),
+                                    blurRadius: 3,
+                                  ),
+                                ],
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   const Text(
                                     'TO',
-                                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
+                                    style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: Color(0xFF94A3B8)),
                                   ),
                                   const SizedBox(height: 3),
                                   Row(
@@ -1284,14 +1691,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       ],
                     ),
 
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 22),
 
                     // Action Buttons
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
-                            onPressed: () {
+                          child: InkWell(
+                            onTap: () {
                               Navigator.pop(ctx);
                               setState(() {
                                 _selectedDateRange = null;
@@ -1301,18 +1708,35 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                               _loadLeadsFromBackend();
                               _showSnackBar('Date filter reset (All Time)');
                             },
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: boxBorder),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 11),
+                              decoration: BoxDecoration(
+                                color: neuSurface,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: neuLightShadow, width: 1),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: neuDarkShadow.withValues(alpha: 0.6),
+                                    offset: const Offset(2.5, 3),
+                                    blurRadius: 5,
+                                  ),
+                                  const BoxShadow(
+                                    color: neuLightShadow,
+                                    offset: Offset(-2.5, -2.5),
+                                    blurRadius: 5,
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text('Reset All', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
                             ),
-                            child: const Text('Reset All', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
                           ),
                         ),
-                        const SizedBox(width: 10),
+                        const SizedBox(width: 12),
                         Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
+                          child: InkWell(
+                            onTap: () {
                               if (tempStart != null && tempEnd != null) {
                                 setState(() {
                                   _selectedDateRange = DateTimeRange(start: tempStart!, end: tempEnd!);
@@ -1333,13 +1757,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                               }
                               Navigator.pop(ctx);
                             },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: primaryNavy,
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 11),
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                                    offset: const Offset(2.5, 3.5),
+                                    blurRadius: 6,
+                                  ),
+                                  BoxShadow(
+                                    color: neuLightShadow.withValues(alpha: 0.6),
+                                    offset: const Offset(-1.5, -1.5),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              alignment: Alignment.center,
+                              child: const Text('Apply Filter', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
                             ),
-                            child: const Text('Apply Filter', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
                           ),
                         ),
                       ],
@@ -1451,7 +1894,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         decoration: BoxDecoration(
           color: avatarColor.withValues(alpha: 0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: neuDarkShadow.withValues(alpha: 0.5),
+              offset: const Offset(1.5, 2),
+              blurRadius: 3,
+            ),
+            const BoxShadow(
+              color: neuLightShadow,
+              offset: Offset(-1.5, -1.5),
+              blurRadius: 3,
+            ),
+          ],
         ),
         child: ClipOval(
           child: Image.network(
@@ -1481,7 +1936,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         decoration: BoxDecoration(
           color: avatarColor.withValues(alpha: 0.15),
           shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: neuDarkShadow.withValues(alpha: 0.5),
+              offset: const Offset(1.5, 2),
+              blurRadius: 3,
+            ),
+            const BoxShadow(
+              color: neuLightShadow,
+              offset: Offset(-1.5, -1.5),
+              blurRadius: 3,
+            ),
+          ],
         ),
         child: ClipOval(
           child: Image.file(
@@ -1510,6 +1977,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       decoration: BoxDecoration(
         color: avatarColor,
         shape: BoxShape.circle,
+        border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: neuDarkShadow.withValues(alpha: 0.5),
+            offset: const Offset(1.5, 2),
+            blurRadius: 3,
+          ),
+          const BoxShadow(
+            color: neuLightShadow,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: Text(
@@ -1526,7 +2006,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: neuCanvas,
       body: SafeArea(
         child: LayoutBuilder(
           builder: (context, constraints) {
@@ -1613,7 +2093,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   fontSize: isMobile ? 20 : 24,
                   fontWeight: FontWeight.w800,
                   color: textDark,
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.4,
                 ),
               ),
               const SizedBox(height: 2),
@@ -1633,14 +2113,14 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
         const SizedBox(width: 8),
 
-        // Action Buttons: Import, + Add Lead (Styled with primaryNavy)
+        // Action Buttons: Import, + Add Lead (Styled with Neumorphic dual shadows)
         Wrap(
           spacing: 8,
           runSpacing: 6,
           alignment: WrapAlignment.end,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            // Import Button
+            // Import Button (Tactile Raised Pill)
             InkWell(
               onTap: _showImportModal,
               borderRadius: BorderRadius.circular(10),
@@ -1650,9 +2130,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   vertical: isMobile ? 7 : 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: neuSurface,
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: boxBorder, width: 1),
+                  border: Border.all(color: neuLightShadow, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.65),
+                      offset: const Offset(2.5, 3),
+                      blurRadius: 5,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-2.5, -2.5),
+                      blurRadius: 5,
+                    ),
+                  ],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -1672,7 +2164,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               ),
             ),
 
-            // + Add New Lead Button (Primary Header Navy Tone)
+            // + Add New Lead Button (Primary Navy Tactile Extruded Button)
             InkWell(
               onTap: () => _showAddEditLeadModal(context),
               borderRadius: BorderRadius.circular(10),
@@ -1682,13 +2174,22 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   vertical: isMobile ? 7.5 : 8.5,
                 ),
                 decoration: BoxDecoration(
-                  color: primaryNavy,
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                   borderRadius: BorderRadius.circular(10),
-                  boxShadow: const [
+                  boxShadow: [
                     BoxShadow(
-                      color: Color(0x180A2B66),
-                      blurRadius: 5,
-                      offset: Offset(0, 2),
+                      color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                      blurRadius: 7,
+                      offset: const Offset(2.5, 3.5),
+                    ),
+                    BoxShadow(
+                      color: neuLightShadow.withValues(alpha: 0.6),
+                      blurRadius: 4,
+                      offset: const Offset(-1.5, -1.5),
                     ),
                   ],
                 ),
@@ -1810,22 +2311,27 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           _applyLocalFilter();
         });
       },
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         height: isMobile ? 78 : 86,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(14),
+          color: isSelected ? Colors.white : neuSurface,
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: isSelected ? primaryNavy : const Color(0xFFF1F5F9),
+            color: isSelected ? primaryNavy : neuLightShadow,
             width: isSelected ? 1.8 : 1.2,
           ),
           boxShadow: [
             BoxShadow(
-              color: isSelected ? primaryNavy.withValues(alpha: 0.12) : const Color(0x06000000),
-              blurRadius: isSelected ? 8 : 6,
-              offset: const Offset(0, 2),
+              color: isSelected ? primaryNavy.withValues(alpha: 0.18) : neuDarkShadow.withValues(alpha: 0.75),
+              blurRadius: isSelected ? 10 : 8,
+              offset: const Offset(3.5, 4.5),
+            ),
+            const BoxShadow(
+              color: neuLightShadow,
+              blurRadius: 7,
+              offset: Offset(-3.5, -3.5),
             ),
           ],
         ),
@@ -1855,6 +2361,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     decoration: BoxDecoration(
                       color: data.iconBgColor,
                       shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: neuDarkShadow.withValues(alpha: 0.5),
+                          offset: const Offset(1.5, 2),
+                          blurRadius: 3,
+                        ),
+                        const BoxShadow(
+                          color: neuLightShadow,
+                          offset: Offset(-1.5, -1.5),
+                          blurRadius: 3,
+                        ),
+                      ],
                     ),
                     alignment: Alignment.center,
                     child: data.iconWidget,
@@ -1964,18 +2483,41 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 });
               },
               borderRadius: BorderRadius.circular(10),
-              child: Container(
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
                 padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 10 : 12,
-                  vertical: isMobile ? 6 : 7,
+                  horizontal: isMobile ? 11 : 13,
+                  vertical: isMobile ? 6.5 : 7.5,
                 ),
                 decoration: BoxDecoration(
-                  color: isSelected ? primaryNavy : Colors.white,
+                  gradient: isSelected
+                      ? const LinearGradient(
+                          colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        )
+                      : null,
+                  color: isSelected ? null : neuSurface,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
-                    color: isSelected ? primaryNavy : boxBorder,
+                    color: isSelected ? primaryNavyLight : neuLightShadow,
                     width: 1,
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: isSelected
+                          ? const Color(0xFF0A2B66).withValues(alpha: 0.32)
+                          : neuDarkShadow.withValues(alpha: 0.65),
+                      offset: const Offset(2.5, 3),
+                      blurRadius: 5,
+                    ),
+                    if (!isSelected)
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-2.5, -2.5),
+                        blurRadius: 4,
+                      ),
+                  ],
                 ),
                 child: Text(
                   '$tab ($count)',
@@ -2003,19 +2545,31 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       runSpacing: 8,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        // Sources Dropdown (Curved Shape Box with High Visibility Text)
+        // Sources Dropdown (Tactile Raised Shape Box with High Visibility Text)
         Container(
           height: 36,
           padding: const EdgeInsets.symmetric(horizontal: 10),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: neuSurface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: boxBorder, width: 1),
+            border: Border.all(color: neuLightShadow, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.6),
+                offset: const Offset(2, 2.5),
+                blurRadius: 4,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-2, -2),
+                blurRadius: 4,
+              ),
+            ],
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
               value: _selectedSourceFilter,
-              dropdownColor: Colors.white,
+              dropdownColor: neuSurface,
               borderRadius: BorderRadius.circular(12),
               icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Color(0xFF475569)),
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark),
@@ -2041,7 +2595,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // Redesigned Date Filter Popup Button (Curved Shape Box)
+        // Redesigned Date Filter Popup Button (Tactile Raised Shape Box)
         InkWell(
           onTap: _showDateFilterPopup,
           borderRadius: BorderRadius.circular(10),
@@ -2049,12 +2603,26 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: _selectedDateRange != null ? primaryNavy.withValues(alpha: 0.08) : Colors.white,
+              color: _selectedDateRange != null ? primaryNavy.withValues(alpha: 0.08) : neuSurface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: _selectedDateRange != null ? primaryNavy : boxBorder,
+                color: _selectedDateRange != null ? primaryNavy : neuLightShadow,
                 width: 1,
               ),
+              boxShadow: [
+                BoxShadow(
+                  color: _selectedDateRange != null
+                      ? primaryNavy.withValues(alpha: 0.15)
+                      : neuDarkShadow.withValues(alpha: 0.6),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -2084,7 +2652,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // Reset Filter Action Button (Curved Shape Box)
+        // Reset Filter Action Button (Tactile Raised Shape Box)
         InkWell(
           onTap: () {
             _searchController.clear();
@@ -2102,9 +2670,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             height: 36,
             padding: const EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: neuSurface,
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: boxBorder, width: 1),
+              border: Border.all(color: neuLightShadow, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.6),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -2133,14 +2713,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   Widget _buildTableCard({required bool isMobile}) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-        boxShadow: const [
+        color: neuSurface,
+        borderRadius: BorderRadius.circular(isMobile ? 14 : 18),
+        border: Border.all(color: neuLightShadow, width: 1.5),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: neuDarkShadow.withValues(alpha: 0.8),
+            blurRadius: 12,
+            offset: const Offset(5, 6),
+          ),
+          const BoxShadow(
+            color: neuLightShadow,
+            blurRadius: 10,
+            offset: Offset(-5, -5),
           ),
         ],
       ),
@@ -2148,14 +2733,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Top Search Bar inside card
+          // Top Search Bar inside card (Debossed / Inset Field)
           Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: isMobile ? 12 : 16,
-              vertical: isMobile ? 8 : 12,
+            margin: EdgeInsets.symmetric(
+              horizontal: isMobile ? 10 : 14,
+              vertical: isMobile ? 8 : 10,
             ),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1.2)),
+            padding: EdgeInsets.symmetric(
+              horizontal: isMobile ? 12 : 14,
+              vertical: isMobile ? 7 : 8,
+            ),
+            decoration: BoxDecoration(
+              color: neuInsetBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.45),
+                  offset: const Offset(1.5, 2),
+                  blurRadius: 3,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-1.5, -1.5),
+                  blurRadius: 3,
+                ),
+              ],
             ),
             child: Row(
               children: [
@@ -2234,7 +2837,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
           // Dynamic Pagination: ONLY rendered if leads are present!
           if (_filteredLeads.isNotEmpty) ...[
-            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const Divider(height: 1, color: Color(0xFFE2ECF7)),
             _buildPaginationBar(isMobile: isMobile),
           ],
         ],
@@ -2252,7 +2855,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       physics: const NeverScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(vertical: 8),
       itemCount: leadsToShow.length,
-      separatorBuilder: (_, _) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+      separatorBuilder: (_, _) => const SizedBox(height: 4),
       itemBuilder: (context, index) {
         final lead = leadsToShow[index];
         final isSelected = _selectedLead?.id == lead.id;
@@ -2261,28 +2864,36 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     );
   }
 
-  // --- Mobile Lead Card Item (Optimized Area Management & Standalone Action Icons) ---
+  // --- Mobile Lead Card Item (Tactile Raised Card with Dual Shadows) ---
   Widget _buildMobileLeadCardItem(CrmLeadModel lead, bool isSelected) {
     final interactionDate = DateFormat('dd MMM').format(lead.lastVisit ?? lead.createdAt);
 
     return InkWell(
       onTap: () => _onSelectLead(lead),
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
         margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFEFF6FF) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: isSelected ? const Color(0xFFE8F1FC) : neuSurface,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isSelected ? primaryNavy : const Color(0xFFE2E8F0),
+            color: isSelected ? primaryNavy : neuLightShadow,
             width: isSelected ? 1.5 : 1,
           ),
-          boxShadow: const [
+          boxShadow: [
             BoxShadow(
-              color: Color(0x04000000),
+              color: isSelected
+                  ? primaryNavy.withValues(alpha: 0.15)
+                  : neuDarkShadow.withValues(alpha: 0.65),
+              blurRadius: isSelected ? 6 : 5,
+              offset: const Offset(2.5, 3),
+            ),
+            const BoxShadow(
+              color: neuLightShadow,
               blurRadius: 4,
-              offset: Offset(0, 1),
+              offset: Offset(-2.5, -2.5),
             ),
           ],
         ),
@@ -2582,8 +3193,8 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                   decoration: const BoxDecoration(
-                    color: Color(0xFFF8FAFC),
-                    border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9), width: 1)),
+                    color: Color(0xFFEAF1F8),
+                    border: Border(bottom: BorderSide(color: Color(0xFFD9E5F2), width: 1)),
                   ),
                   child: Row(
                     children: const [
@@ -2677,11 +3288,15 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     return InkWell(
       onTap: () => _onSelectLead(lead),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9.5),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF1F5F9) : Colors.white,
-          border: const Border(bottom: BorderSide(color: Color(0xFFF8FAFC), width: 1)),
+          color: isSelected ? const Color(0xFFE4EFFB) : Colors.transparent,
+          border: Border(
+            bottom: const BorderSide(color: Color(0xFFE4EDF7), width: 1),
+            left: isSelected ? const BorderSide(color: primaryNavy, width: 3.5) : BorderSide.none,
+          ),
         ),
         child: Row(
           children: [
@@ -2973,11 +3588,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       : null,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: neuSurface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: boxBorder),
+                      border: Border.all(color: neuLightShadow),
+                      boxShadow: [
+                        BoxShadow(
+                          color: neuDarkShadow.withValues(alpha: 0.5),
+                          offset: const Offset(1.5, 2),
+                          blurRadius: 3,
+                        ),
+                        const BoxShadow(
+                          color: neuLightShadow,
+                          offset: Offset(-1.5, -1.5),
+                          blurRadius: 3,
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -3023,11 +3650,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       : null,
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: neuSurface,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: boxBorder),
+                      border: Border.all(color: neuLightShadow),
+                      boxShadow: [
+                        BoxShadow(
+                          color: neuDarkShadow.withValues(alpha: 0.5),
+                          offset: const Offset(1.5, 2),
+                          blurRadius: 3,
+                        ),
+                        const BoxShadow(
+                          color: neuLightShadow,
+                          offset: Offset(-1.5, -1.5),
+                          blurRadius: 3,
+                        ),
+                      ],
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -3085,9 +3724,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: neuSurface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: boxBorder),
+                    border: Border.all(color: neuLightShadow),
+                    boxShadow: [
+                      BoxShadow(
+                        color: neuDarkShadow.withValues(alpha: 0.5),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-1.5, -1.5),
+                        blurRadius: 3,
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -3125,15 +3776,38 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                       });
                     },
                     borderRadius: BorderRadius.circular(8),
-                    child: Container(
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
                       width: 30,
                       height: 30,
                       decoration: BoxDecoration(
-                        color: isActive ? primaryNavy : Colors.white,
+                        gradient: isActive
+                            ? const LinearGradient(
+                                colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isActive ? null : neuSurface,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: isActive ? primaryNavy : boxBorder,
+                          color: isActive ? primaryNavyLight : neuLightShadow,
                         ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isActive
+                                ? const Color(0xFF0A2B66).withValues(alpha: 0.3)
+                                : neuDarkShadow.withValues(alpha: 0.5),
+                            offset: const Offset(1.5, 2),
+                            blurRadius: 3,
+                          ),
+                          if (!isActive)
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                        ],
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -3163,9 +3837,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: neuSurface,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: boxBorder),
+                    border: Border.all(color: neuLightShadow),
+                    boxShadow: [
+                      BoxShadow(
+                        color: neuDarkShadow.withValues(alpha: 0.5),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-1.5, -1.5),
+                        blurRadius: 3,
+                      ),
+                    ],
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -3204,9 +3890,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       return Container(
         padding: EdgeInsets.all(isMobile ? 16 : 24),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
-          border: Border.all(color: const Color(0xFFF1F5F9)),
+          color: neuSurface,
+          borderRadius: BorderRadius.circular(isMobile ? 14 : 18),
+          border: Border.all(color: neuLightShadow, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: neuDarkShadow.withValues(alpha: 0.8),
+              blurRadius: 12,
+              offset: const Offset(5, 6),
+            ),
+            const BoxShadow(
+              color: neuLightShadow,
+              blurRadius: 10,
+              offset: Offset(-5, -5),
+            ),
+          ],
         ),
         child: const Center(
           child: Text(
@@ -3220,14 +3918,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return Container(
       padding: EdgeInsets.all(isMobile ? 14 : 18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(isMobile ? 12 : 16),
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-        boxShadow: const [
+        color: neuSurface,
+        borderRadius: BorderRadius.circular(isMobile ? 14 : 18),
+        border: Border.all(color: neuLightShadow, width: 1.5),
+        boxShadow: [
           BoxShadow(
-            color: Color(0x06000000),
-            blurRadius: 8,
-            offset: Offset(0, 2),
+            color: neuDarkShadow.withValues(alpha: 0.8),
+            blurRadius: 12,
+            offset: const Offset(5, 6),
+          ),
+          const BoxShadow(
+            color: neuLightShadow,
+            blurRadius: 10,
+            offset: Offset(-5, -5),
           ),
         ],
       ),
@@ -3330,26 +4033,53 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           // Secondary Navigation Tabs (Overview, Activity, Notes, Orders, Follow-ups)
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
             child: Row(
               children: ['Overview', 'Activity', 'Notes', 'Orders', 'Follow-ups'].map((tab) {
                 final isActive = _activeDetailTab == tab;
                 return Padding(
-                  padding: const EdgeInsets.only(right: 5),
+                  padding: const EdgeInsets.only(right: 6),
                   child: InkWell(
                     onTap: () {
                       setState(() {
                         _activeDetailTab = tab;
                       });
                     },
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(9),
                     child: Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: isMobile ? 10 : 12,
-                        vertical: isMobile ? 5.5 : 6,
+                        vertical: isMobile ? 5.5 : 6.5,
                       ),
                       decoration: BoxDecoration(
-                        color: isActive ? primaryNavy : const Color(0xFFF1F5F9),
-                        borderRadius: BorderRadius.circular(8),
+                        gradient: isActive
+                            ? const LinearGradient(
+                                colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: isActive ? null : neuSurface,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: isActive ? primaryNavyLight : neuLightShadow,
+                          width: 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: isActive
+                                ? const Color(0xFF0A2B66).withValues(alpha: 0.35)
+                                : neuDarkShadow.withValues(alpha: 0.55),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          if (!isActive)
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-2, -2),
+                              blurRadius: 4,
+                            ),
+                        ],
                       ),
                       child: Text(
                         tab,
@@ -3466,12 +4196,25 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             const SizedBox(width: 6),
             InkWell(
               onTap: () => _showAddressDialog(lead),
-              borderRadius: BorderRadius.circular(6),
+              borderRadius: BorderRadius.circular(8),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
                 decoration: BoxDecoration(
-                  color: primaryNavy.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(6),
+                  color: neuSurface,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: neuLightShadow, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.5),
+                      offset: const Offset(1.5, 1.5),
+                      blurRadius: 3,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-1.5, -1.5),
+                      blurRadius: 3,
+                    ),
+                  ],
                 ),
                 child: Text(
                   lead.address.isNotEmpty ? 'Edit' : '+ Add Address',
@@ -3496,13 +4239,25 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
         const SizedBox(height: 12),
 
-        // Quick Stats Strip: Total Spent, Orders, Returns
+        // Quick Stats Strip (Debossed Inset Container)
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
-            color: boxBg,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFFE2E8F0)),
+            color: neuInsetBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.45),
+                offset: const Offset(1.5, 2),
+                blurRadius: 3,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-1.5, -1.5),
+                blurRadius: 3,
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -3517,7 +4272,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   ],
                 ),
               ),
-              Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+              Container(width: 1, height: 28, color: const Color(0xFFCBD5E1)),
               const SizedBox(width: 10),
               // Orders
               Expanded(
@@ -3530,7 +4285,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   ],
                 ),
               ),
-              Container(width: 1, height: 28, color: const Color(0xFFE2E8F0)),
+              Container(width: 1, height: 28, color: const Color(0xFFCBD5E1)),
               const SizedBox(width: 10),
               // Visits
               Expanded(
@@ -3549,7 +4304,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
         const SizedBox(height: 12),
 
-        // Source and Stage Dynamic Change Row with Curved Dropdown Box
+        // Source and Stage Dynamic Change Row with Tactile Dropdown Box
         Wrap(
           spacing: 12,
           runSpacing: 8,
@@ -3598,17 +4353,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 ),
                 const SizedBox(width: 8),
                 Container(
-                  height: 30,
+                  height: 32,
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: boxBorder),
+                    color: neuSurface,
+                    borderRadius: BorderRadius.circular(9),
+                    border: Border.all(color: neuLightShadow, width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: neuDarkShadow.withValues(alpha: 0.55),
+                        offset: const Offset(1.5, 2),
+                        blurRadius: 3,
+                      ),
+                      const BoxShadow(
+                        color: neuLightShadow,
+                        offset: Offset(-1.5, -1.5),
+                        blurRadius: 3,
+                      ),
+                    ],
                   ),
                   child: DropdownButtonHideUnderline(
                     child: DropdownButton<String>(
                       value: _allStages.contains(lead.stage) ? lead.stage : _allStages.first,
-                      dropdownColor: Colors.white,
+                      dropdownColor: neuSurface,
                       borderRadius: BorderRadius.circular(10),
                       icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 15, color: Color(0xFF475569)),
                       style: TextStyle(
@@ -3694,9 +4461,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     return Container(
       padding: EdgeInsets.all(isMobile ? 10 : 12),
       decoration: BoxDecoration(
-        color: boxBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: neuSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: neuLightShadow, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: neuDarkShadow.withValues(alpha: 0.5),
+            offset: const Offset(2, 2.5),
+            blurRadius: 4,
+          ),
+          const BoxShadow(
+            color: neuLightShadow,
+            offset: Offset(-2, -2),
+            blurRadius: 4,
+          ),
+        ],
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3762,31 +4541,37 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
         const SizedBox(height: 6),
-        TextField(
-          controller: _noteInputController,
-          maxLines: 2,
-          style: TextStyle(
-            fontSize: isMobile ? 11.5 : 12.5,
-            fontWeight: FontWeight.w600,
-            color: textDark,
+        Container(
+          decoration: BoxDecoration(
+            color: neuInsetBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.45),
+                offset: const Offset(1.5, 2),
+                blurRadius: 3,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-1.5, -1.5),
+                blurRadius: 3,
+              ),
+            ],
           ),
-          decoration: InputDecoration(
-            hintText: 'Write a note...',
-            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-            filled: true,
-            fillColor: boxBg,
-            contentPadding: const EdgeInsets.all(10),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: boxBorder),
+          child: TextField(
+            controller: _noteInputController,
+            maxLines: 2,
+            style: TextStyle(
+              fontSize: isMobile ? 11.5 : 12.5,
+              fontWeight: FontWeight.w600,
+              color: textDark,
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: boxBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: primaryNavy, width: 1.2),
+            decoration: const InputDecoration(
+              hintText: 'Write a note...',
+              hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.all(10),
             ),
           ),
         ),
@@ -3799,8 +4584,24 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 14, vertical: isMobile ? 6 : 7),
               decoration: BoxDecoration(
-                color: primaryNavy,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                    offset: const Offset(2, 2.5),
+                    blurRadius: 4,
+                  ),
+                  BoxShadow(
+                    color: neuLightShadow.withValues(alpha: 0.6),
+                    offset: const Offset(-1, -1),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               child: Text(
                 'Save Note',
@@ -3833,11 +4634,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 : '';
             return Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(9),
               decoration: BoxDecoration(
-                color: boxBg,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
+                color: neuSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: neuLightShadow, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: neuDarkShadow.withValues(alpha: 0.45),
+                    offset: const Offset(1.5, 2),
+                    blurRadius: 3,
+                  ),
+                  const BoxShadow(
+                    color: neuLightShadow,
+                    offset: Offset(-1.5, -1.5),
+                    blurRadius: 3,
+                  ),
+                ],
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3861,9 +4674,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: boxBg,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: neuLightShadow, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.45),
+                  offset: const Offset(1.5, 2),
+                  blurRadius: 3,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-1.5, -1.5),
+                  blurRadius: 3,
+                ),
+              ],
             ),
             child: Text(
               lead.notes,
@@ -3896,8 +4721,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(10),
+                  color: neuSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: neuLightShadow, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.55),
+                      offset: const Offset(2, 2.5),
+                      blurRadius: 4,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4,
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3920,8 +4758,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
-                  borderRadius: BorderRadius.circular(10),
+                  color: neuSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: neuLightShadow, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.55),
+                      offset: const Offset(2, 2.5),
+                      blurRadius: 4,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4,
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3944,8 +4795,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               child: Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFF3E8FF),
-                  borderRadius: BorderRadius.circular(10),
+                  color: neuSurface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: neuLightShadow, width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.55),
+                      offset: const Offset(2, 2.5),
+                      blurRadius: 4,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4,
+                    ),
+                  ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -4019,14 +4883,19 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: const Color(0xFFE2E8F0)),
-                boxShadow: const [
+                color: neuSurface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: neuLightShadow, width: 1),
+                boxShadow: [
                   BoxShadow(
-                    color: Color(0x04000000),
+                    color: neuDarkShadow.withValues(alpha: 0.55),
+                    offset: const Offset(2, 2.5),
                     blurRadius: 4,
-                    offset: Offset(0, 1),
+                  ),
+                  const BoxShadow(
+                    color: neuLightShadow,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
                   ),
                 ],
               ),
@@ -4102,9 +4971,9 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: boxBg,
+                        color: neuInsetBg,
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: const Color(0xFFF1F5F9)),
+                        border: Border.all(color: const Color(0xFFD6E2EE)),
                       ),
                       child: Row(
                         children: [
@@ -4158,11 +5027,23 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       children: [
         if (lead.followupDate != null) ...[
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFFBEB),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFDE68A)),
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: neuLightShadow, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.55),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4216,17 +5097,39 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
         ],
 
         Center(
-          child: OutlinedButton.icon(
-            onPressed: () => _scheduleFollowup(lead),
-            icon: const Icon(Icons.calendar_month_rounded, size: 15),
-            label: Text(
-              lead.followupDate != null ? 'Reschedule Follow-up' : 'Schedule Follow-up',
-              style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w700),
-            ),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: primaryNavy,
-              side: const BorderSide(color: primaryNavy),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          child: InkWell(
+            onTap: () => _scheduleFollowup(lead),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 14, vertical: isMobile ? 7 : 8),
+              decoration: BoxDecoration(
+                color: neuSurface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: neuLightShadow, width: 1),
+                boxShadow: [
+                  BoxShadow(
+                    color: neuDarkShadow.withValues(alpha: 0.6),
+                    offset: const Offset(2, 2.5),
+                    blurRadius: 4,
+                  ),
+                  const BoxShadow(
+                    color: neuLightShadow,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.calendar_month_rounded, size: 15, color: primaryNavy),
+                  const SizedBox(width: 6),
+                  Text(
+                    lead.followupDate != null ? 'Reschedule Follow-up' : 'Schedule Follow-up',
+                    style: TextStyle(fontSize: isMobile ? 11 : 12, fontWeight: FontWeight.w700, color: primaryNavy),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -4240,19 +5143,31 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
       spacing: 8,
       runSpacing: 8,
       children: [
-        // WhatsApp Button
+        // WhatsApp Button (Tactile Raised)
         InkWell(
           onTap: () => _openWhatsApp(lead.phone),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 10 : 12,
               vertical: isMobile ? 7 : 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: neuLightShadow, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.6),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -4272,19 +5187,31 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // Call Button with Custom Green Call Icon
+        // Call Button with Custom Green Call Icon (Tactile Raised)
         InkWell(
           onTap: () => _makePhoneCall(lead.phone),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(10),
           child: Container(
             padding: EdgeInsets.symmetric(
               horizontal: isMobile ? 10 : 12,
               vertical: isMobile ? 7 : 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: neuLightShadow, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.6),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -4304,9 +5231,9 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
           ),
         ),
 
-        // More Options
+        // More Options (Tactile Raised)
         PopupMenuButton<String>(
-          color: Colors.white,
+          color: neuSurface,
           surfaceTintColor: Colors.transparent,
           elevation: 6,
           onSelected: (val) {
@@ -4322,7 +5249,7 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               _exportLeadsToCsv();
             }
           },
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           itemBuilder: (ctx) => [
             const PopupMenuItem(
               value: 'edit',
@@ -4366,9 +5293,21 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               vertical: isMobile ? 7 : 8,
             ),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: boxBorder, width: 1.2),
+              color: neuSurface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: neuLightShadow, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: neuDarkShadow.withValues(alpha: 0.6),
+                  offset: const Offset(2, 2.5),
+                  blurRadius: 4,
+                ),
+                const BoxShadow(
+                  color: neuLightShadow,
+                  offset: Offset(-2, -2),
+                  blurRadius: 4,
+                ),
+              ],
             ),
             child: const Text(
               '••• More',
@@ -4435,12 +5374,29 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 460),
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: neuSurface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: neuLightShadow, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.85),
+                offset: const Offset(6, 8),
+                blurRadius: 16,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-6, -6),
+                blurRadius: 14,
+              ),
+            ],
+          ),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -4448,21 +5404,67 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
               children: [
                 // Modal Title & Close
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      isEditing ? 'Edit Customer Lead' : 'Add New Lead',
-                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.6),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isEditing ? Icons.edit_note_rounded : Icons.person_add_rounded,
+                        size: 18,
+                        color: primaryNavy,
+                      ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      icon: const Icon(Icons.close_rounded, size: 18, color: textSubtle),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        isEditing ? 'Edit Customer Lead' : 'Add New Lead',
+                        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark, letterSpacing: -0.2),
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: neuSurface,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: neuLightShadow, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.5),
+                              offset: const Offset(1.5, 1.5),
+                              blurRadius: 3,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 16, color: textSubtle),
+                      ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
+                const SizedBox(height: 16),
 
                 // Name Input
                 _buildModalTextField(
@@ -4498,66 +5500,98 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                 ),
                 const SizedBox(height: 10),
 
-                // Source & Stage Dropdowns (Curved boxes with visible text)
+                // Source & Stage Dropdowns (Curved boxes with debossed background)
                 Row(
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _allSources.contains(sourceCtrl.text) && sourceCtrl.text != 'All Sources'
-                            ? sourceCtrl.text
-                            : 'POS',
-                        dropdownColor: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
-                        decoration: InputDecoration(
-                          labelText: 'Source',
-                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
-                          filled: true,
-                          fillColor: boxBg,
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: neuInsetBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.45),
+                              offset: const Offset(1.5, 2),
+                              blurRadius: 3,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                          ],
                         ),
-                        items: ['POS', 'Online', 'WhatsApp', 'Social Media', 'Referral', 'Website']
-                            .map((s) => DropdownMenuItem(
-                                  value: s,
-                                  child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
-                                ))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) sourceCtrl.text = val;
-                        },
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _allSources.contains(sourceCtrl.text) && sourceCtrl.text != 'All Sources'
+                              ? sourceCtrl.text
+                              : 'POS',
+                          dropdownColor: neuSurface,
+                          borderRadius: BorderRadius.circular(12),
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                          decoration: const InputDecoration(
+                            labelText: 'Source',
+                            labelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSubtle),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                          ),
+                          items: ['POS', 'Online', 'WhatsApp', 'Social Media', 'Referral', 'Website']
+                              .map((s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
+                                  ))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) sourceCtrl.text = val;
+                          },
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _allStages.contains(stageCtrl.text) ? stageCtrl.text : 'New Lead',
-                        dropdownColor: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
-                        decoration: InputDecoration(
-                          labelText: 'Stage',
-                          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
-                          filled: true,
-                          fillColor: boxBg,
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: neuInsetBg,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.45),
+                              offset: const Offset(1.5, 2),
+                              blurRadius: 3,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-1.5, -1.5),
+                              blurRadius: 3,
+                            ),
+                          ],
                         ),
-                        items: _allStages
-                            .map((s) => DropdownMenuItem(
-                                  value: s,
-                                  child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
-                                ))
-                            .toList(),
-                        onChanged: (val) {
-                          if (val != null) stageCtrl.text = val;
-                        },
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                        child: DropdownButtonFormField<String>(
+                          initialValue: _allStages.contains(stageCtrl.text) ? stageCtrl.text : 'New Lead',
+                          dropdownColor: neuSurface,
+                          borderRadius: BorderRadius.circular(12),
+                          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                          decoration: const InputDecoration(
+                            labelText: 'Stage',
+                            labelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textSubtle),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 4),
+                          ),
+                          items: _allStages
+                              .map((s) => DropdownMenuItem(
+                                    value: s,
+                                    child: Text(s, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textDark)),
+                                  ))
+                              .toList(),
+                          onChanged: (val) {
+                            if (val != null) stageCtrl.text = val;
+                          },
+                        ),
                       ),
                     ),
                   ],
@@ -4580,30 +5614,41 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                   maxLines: 2,
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 20),
 
                 // Dialog Buttons
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: boxBorder),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    InkWell(
+                      onTap: () => Navigator.pop(ctx),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: neuSurface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: neuLightShadow, width: 1),
+                          boxShadow: [
+                            BoxShadow(
+                              color: neuDarkShadow.withValues(alpha: 0.6),
+                              offset: const Offset(2, 2.5),
+                              blurRadius: 4,
+                            ),
+                            const BoxShadow(
+                              color: neuLightShadow,
+                              offset: Offset(-2, -2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
                       ),
-                      child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
                     ),
                     const SizedBox(width: 10),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primaryNavy,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                      ),
-                      onPressed: () async {
+                    InkWell(
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () async {
                         final name = nameCtrl.text.trim();
                         final phone = phoneCtrl.text.trim();
                         if (phone.isEmpty) {
@@ -4653,9 +5698,32 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
                           }
                         } catch (_) {}
                       },
-                      child: Text(
-                        isEditing ? 'Update Customer' : 'Add Lead',
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                              offset: const Offset(2.5, 3.5),
+                              blurRadius: 6,
+                            ),
+                            BoxShadow(
+                              color: neuLightShadow.withValues(alpha: 0.6),
+                              offset: const Offset(-1.5, -1.5),
+                              blurRadius: 4,
+                            ),
+                          ],
+                        ),
+                        child: Text(
+                          isEditing ? 'Update Customer' : 'Add Lead',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -4684,35 +5752,42 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
     TextInputType keyboardType = TextInputType.text,
     int maxLines = 1,
   }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      style: const TextStyle(
-        fontSize: 12.5,
-        fontWeight: FontWeight.w600,
-        color: textDark,
+    return Container(
+      decoration: BoxDecoration(
+        color: neuInsetBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: neuDarkShadow.withValues(alpha: 0.45),
+            offset: const Offset(1.5, 2),
+            blurRadius: 3,
+          ),
+          const BoxShadow(
+            color: neuLightShadow,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+        ],
       ),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: textSubtle),
-        hintText: hint,
-        hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
-        filled: true,
-        fillColor: boxBg,
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: boxBorder),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      child: TextField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w600,
+          color: textDark,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: boxBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: primaryNavy, width: 1.5),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: textSubtle),
+          hintText: hint,
+          hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 6),
         ),
       ),
     );
@@ -4723,92 +5798,222 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text(
-          'Import Customers',
-          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark),
-        ),
-        content: SizedBox(
-          width: 420,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 440),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: neuSurface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: neuLightShadow, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.85),
+                offset: const Offset(6, 8),
+                blurRadius: 16,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-6, -6),
+                blurRadius: 14,
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: neuSurface,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: neuLightShadow, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: neuDarkShadow.withValues(alpha: 0.6),
+                          offset: const Offset(2, 2.5),
+                          blurRadius: 4,
+                        ),
+                        const BoxShadow(
+                          color: neuLightShadow,
+                          offset: Offset(-2, -2),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.file_upload_outlined, size: 18, color: primaryNavy),
+                  ),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Text(
+                      'Import Customers',
+                      style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17, color: textDark, letterSpacing: -0.2),
+                    ),
+                  ),
+                  InkWell(
+                    onTap: () => Navigator.pop(ctx),
+                    borderRadius: BorderRadius.circular(16),
+                    child: Container(
+                      padding: const EdgeInsets.all(5),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.5),
+                            offset: const Offset(1.5, 1.5),
+                            blurRadius: 3,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-1.5, -1.5),
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(Icons.close_rounded, size: 16, color: textSubtle),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
               const Text(
                 'Paste comma-separated leads (Name, Phone, Source, Stage):',
-                style: TextStyle(fontSize: 12, color: textSubtle),
+                style: TextStyle(fontSize: 12, color: textSubtle, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 10),
-              TextField(
-                controller: textCtrl,
-                maxLines: 4,
-                style: const TextStyle(fontSize: 12.5, color: textDark),
-                decoration: InputDecoration(
-                  hintText: 'Aarav Kumar, 9876543211, POS, New Lead\nSimran Kaur, 9811223344, Online, Prospect',
-                  hintStyle: const TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
-                  filled: true,
-                  fillColor: boxBg,
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: boxBorder)),
-                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: primaryNavy, width: 1.5)),
+              Container(
+                decoration: BoxDecoration(
+                  color: neuInsetBg,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFD6E2EE), width: 1),
+                  boxShadow: [
+                    BoxShadow(
+                      color: neuDarkShadow.withValues(alpha: 0.45),
+                      offset: const Offset(1.5, 2),
+                      blurRadius: 3,
+                    ),
+                    const BoxShadow(
+                      color: neuLightShadow,
+                      offset: Offset(-1.5, -1.5),
+                      blurRadius: 3,
+                    ),
+                  ],
                 ),
+                child: TextField(
+                  controller: textCtrl,
+                  maxLines: 4,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: textDark),
+                  decoration: const InputDecoration(
+                    hintText: 'Aarav Kumar, 9876543211, POS, New Lead\nSimran Kaur, 9811223344, Online, Prospect',
+                    hintStyle: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                    border: InputBorder.none,
+                    contentPadding: EdgeInsets.all(12),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  InkWell(
+                    onTap: () => Navigator.pop(ctx),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.6),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () {
+                      final raw = textCtrl.text.trim();
+                      if (raw.isEmpty) return;
+
+                      final lines = raw.split('\n');
+                      int count = 0;
+                      for (final line in lines) {
+                        final parts = line.split(',');
+                        if (parts.length >= 2) {
+                          final rawSource = parts.length > 2 ? parts[2].trim() : 'POS';
+                          final lead = CrmLeadModel(
+                            id: DateTime.now().millisecondsSinceEpoch.toString() + count.toString(),
+                            name: parts[0].trim(),
+                            phone: parts[1].trim(),
+                            source: _normalizeLeadSource(rawSource),
+                            stage: parts.length > 3 ? parts[3].trim() : 'New Lead',
+                            status: parts.length > 3 ? parts[3].trim() : 'New Lead',
+                            customerType: 'New Customer',
+                            createdAt: DateTime.now(),
+                            lastVisit: DateTime.now(),
+                          );
+                          final enriched = _enrichLeadWithOrders(lead);
+                          _allLeads.insert(0, enriched);
+                          count++;
+                          _crmService.createLead(enriched.toJson()).catchError((_) => enriched);
+                        }
+                      }
+
+                      Navigator.pop(ctx);
+                      _applyLocalFilter();
+                      _showSnackBar('Imported $count customers successfully');
+                      _loadLeadsFromBackend();
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFF0D3478), Color(0xFF071F4E)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0A2B66).withValues(alpha: 0.35),
+                            offset: const Offset(2.5, 3.5),
+                            blurRadius: 6,
+                          ),
+                          BoxShadow(
+                            color: neuLightShadow.withValues(alpha: 0.6),
+                            offset: const Offset(-1.5, -1.5),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Text('Import Leads', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         ),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: boxBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: primaryNavy,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () {
-              final raw = textCtrl.text.trim();
-              if (raw.isEmpty) return;
-
-              final lines = raw.split('\n');
-              int count = 0;
-              for (final line in lines) {
-                final parts = line.split(',');
-                if (parts.length >= 2) {
-                  final rawSource = parts.length > 2 ? parts[2].trim() : 'POS';
-                  final lead = CrmLeadModel(
-                    id: DateTime.now().millisecondsSinceEpoch.toString() + count.toString(),
-                    name: parts[0].trim(),
-                    phone: parts[1].trim(),
-                    source: _normalizeLeadSource(rawSource),
-                    stage: parts.length > 3 ? parts[3].trim() : 'New Lead',
-                    status: parts.length > 3 ? parts[3].trim() : 'New Lead',
-                    customerType: 'New Customer',
-                    createdAt: DateTime.now(),
-                    lastVisit: DateTime.now(),
-                  );
-                  final enriched = _enrichLeadWithOrders(lead);
-                  _allLeads.insert(0, enriched);
-                  count++;
-                  _crmService.createLead(enriched.toJson()).catchError((_) => enriched);
-                }
-              }
-
-              Navigator.pop(ctx);
-              _applyLocalFilter();
-              _showSnackBar('Imported $count customers successfully');
-              _loadLeadsFromBackend();
-            },
-            child: const Text('Import Leads'),
-          ),
-        ],
       ),
     ).whenComplete(() => textCtrl.dispose());
   }
@@ -4816,44 +6021,148 @@ class _CrmLeadsScreenState extends State<CrmLeadsScreen> {
   void _confirmDeleteLead(CrmLeadModel lead) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Delete ${lead.name}?', style: const TextStyle(fontWeight: FontWeight.w800, color: textDark)),
-        content: const Text('Are you sure you want to delete this customer lead? This action cannot be undone.', style: TextStyle(fontSize: 12.5, color: textSubtle)),
-        actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: OutlinedButton.styleFrom(
-              side: const BorderSide(color: boxBorder),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            child: const Text('Cancel', style: TextStyle(color: textSubtle)),
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 400),
+          padding: const EdgeInsets.all(22),
+          decoration: BoxDecoration(
+            color: neuSurface,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: neuLightShadow, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: neuDarkShadow.withValues(alpha: 0.85),
+                offset: const Offset(6, 8),
+                blurRadius: 16,
+              ),
+              const BoxShadow(
+                color: neuLightShadow,
+                offset: Offset(-6, -6),
+                blurRadius: 14,
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              setState(() {
-                _allLeads.removeWhere((l) => l.id == lead.id);
-                if (_selectedLead?.id == lead.id) {
-                  _selectedLead = _allLeads.isNotEmpty ? _allLeads.first : null;
-                }
-                _applyLocalFilter();
-              });
-              _showSnackBar('Customer lead deleted');
-              try {
-                await _crmService.deleteLead(lead.id);
-                _loadLeadsFromBackend();
-              } catch (_) {}
-            },
-            child: const Text('Delete'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEE2E2),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: neuLightShadow, width: 1),
+                      boxShadow: [
+                        BoxShadow(
+                          color: neuDarkShadow.withValues(alpha: 0.5),
+                          offset: const Offset(1.5, 2),
+                          blurRadius: 3,
+                        ),
+                        const BoxShadow(
+                          color: neuLightShadow,
+                          offset: Offset(-1.5, -1.5),
+                          blurRadius: 3,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFDC2626)),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Delete ${lead.name}?',
+                      style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16, color: textDark, letterSpacing: -0.2),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Are you sure you want to delete this customer lead? This action cannot be undone.',
+                style: TextStyle(fontSize: 12.5, color: textSubtle, height: 1.3),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  InkWell(
+                    onTap: () => Navigator.pop(ctx),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: neuSurface,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: neuLightShadow, width: 1),
+                        boxShadow: [
+                          BoxShadow(
+                            color: neuDarkShadow.withValues(alpha: 0.6),
+                            offset: const Offset(2, 2.5),
+                            blurRadius: 4,
+                          ),
+                          const BoxShadow(
+                            color: neuLightShadow,
+                            offset: Offset(-2, -2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Text('Cancel', style: TextStyle(color: textSubtle, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _allLeads.removeWhere((l) => l.id == lead.id);
+                        if (_selectedLead?.id == lead.id) {
+                          _selectedLead = _allLeads.isNotEmpty ? _allLeads.first : null;
+                        }
+                        _applyLocalFilter();
+                      });
+                      _showSnackBar('Customer lead deleted');
+                      try {
+                        await _crmService.deleteLead(lead.id);
+                        _loadLeadsFromBackend();
+                      } catch (_) {}
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFEF4444), Color(0xFFDC2626)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFDC2626).withValues(alpha: 0.35),
+                            offset: const Offset(2.5, 3.5),
+                            blurRadius: 6,
+                          ),
+                          BoxShadow(
+                            color: neuLightShadow.withValues(alpha: 0.6),
+                            offset: const Offset(-1.5, -1.5),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

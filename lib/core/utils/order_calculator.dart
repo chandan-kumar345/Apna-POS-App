@@ -325,7 +325,7 @@ class OrderCalculator {
     }
 
     if (kDebugMode) {
-      debugPrint('[OrderCalculator] Subtotal: ₹\$grossSubtotal | PromoDisc: ₹\$orderDiscount (\${appliedCouponPercent > 0 ? "\$appliedCouponPercent%" : "custom"}) | TaxableBase: ₹\$taxableAmount | GST: ₹\$taxAmount (Taxable: ₹\$taxableSubtotal, Non-Taxable: ₹\$nonTaxableSubtotal) | Tip: ₹\$cleanTip | Total: ₹\$finalTotal');
+      debugPrint('[OrderCalculator] Subtotal: ₹$grossSubtotal | PromoDisc: ₹$orderDiscount (${appliedCouponPercent > 0 ? "$appliedCouponPercent%" : "custom"}) | TaxableBase: ₹$taxableAmount | GST: ₹$taxAmount (Taxable: ₹$taxableSubtotal, Non-Taxable: ₹$nonTaxableSubtotal) | Tip: ₹$cleanTip | Total: ₹$finalTotal');
     }
 
     return OrderCalculationResult(

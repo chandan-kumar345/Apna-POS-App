@@ -46,7 +46,8 @@ class SpeechRecognitionService extends ChangeNotifier {
   Future<bool> requestMicrophonePermission() async {
     if (kIsWeb) return true;
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
+      if (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS) {
         final status = await Permission.microphone.request();
         if (status.isGranted) {
           return true;
@@ -95,10 +96,10 @@ class SpeechRecognitionService extends ChangeNotifier {
       }
     });
 
-    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+    if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
       // Use on-device Android/iOS Speech-to-Text plugin
       await _startMobileSpeechRecognition();
-    } else if (!kIsWeb && Platform.isWindows) {
+    } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
       // Use Python Voice Engine with native PowerShell fallback on Windows
       final pythonSuccess = await _tryStartPythonVoiceEngine();
       if (!pythonSuccess) {

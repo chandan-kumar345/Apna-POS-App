@@ -183,18 +183,15 @@ class _SuperAdminDashboardScreenState extends State<SuperAdminDashboardScreen> {
 
   Widget _buildTimeFilterDropdown() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: SuperAdminTheme.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: SuperAdminTheme.border),
-        boxShadow: SuperAdminTheme.flatCardShadow,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: SuperAdminTheme.neumorphicBox(
+        radius: 14,
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedTimeFilter,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: SuperAdminTheme.textSecondary),
-          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: SuperAdminTheme.textPrimary),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: SuperAdminTheme.primary),
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: SuperAdminTheme.textPrimary),
           items: const [
             DropdownMenuItem(value: 'Today', child: Text('Today')),
             DropdownMenuItem(value: 'Yesterday', child: Text('Yesterday')),

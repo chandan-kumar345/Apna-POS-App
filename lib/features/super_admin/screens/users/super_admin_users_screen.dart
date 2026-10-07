@@ -148,9 +148,9 @@ class _SuperAdminUsersScreenState extends State<SuperAdminUsersScreen> {
                             DataColumn(label: Text('PHONE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
                             DataColumn(label: Text('BUSINESS', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
                             DataColumn(label: Text('ROLE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
+                            DataColumn(label: Text('REGISTERED DATE', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
+                            DataColumn(label: Text('PRO SUBSCRIPTION', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
                             DataColumn(label: Text('STATUS', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
-                            DataColumn(label: Text('PLAN', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
-                            DataColumn(label: Text('CREATED', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
                             DataColumn(label: Text('ACTIONS', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11, color: SuperAdminTheme.textMuted))),
                           ],
                           rows: filteredUsers.map((user) {
@@ -184,13 +184,80 @@ class _SuperAdminUsersScreenState extends State<SuperAdminUsersScreen> {
                                     child: Text(user.role, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: SuperAdminTheme.textSecondary)),
                                   ),
                                 ),
-                                DataCell(_buildStatusBadge(user.status)),
-                                DataCell(Text(user.subscriptionPlan, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: SuperAdminTheme.textPrimary))),
-                                DataCell(Text(user.createdAt.toString().split(' ').first, style: const TextStyle(fontSize: 11.5, color: SuperAdminTheme.textMuted))),
+                                DataCell(
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        user.userCreatedAt.toString().split(' ').first,
+                                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: SuperAdminTheme.textPrimary),
+                                      ),
+                                      Text(
+                                        '${user.userCreatedAt.hour.toString().padLeft(2, '0')}:${user.userCreatedAt.minute.toString().padLeft(2, '0')}',
+                                        style: const TextStyle(fontSize: 10.5, color: SuperAdminTheme.textMuted),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 DataCell(
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
+                                      _buildSubscriptionBadge(user.isSubscribed, user.subscriptionPlan),
+                                      const SizedBox(width: 8),
+                                      Transform.scale(
+                                        scale: 0.75,
+                                        child: Switch(
+                                          value: user.isSubscribed,
+                                          activeColor: const Color(0xFF6366F1),
+                                          onChanged: (newVal) {
+                                            api.toggleUserSubscription(user.id, newVal);
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  newVal
+                                                      ? 'PRO Subscription ACTIVATED for ${user.name}'
+                                                      : 'PRO Subscription DEACTIVATED for ${user.name}',
+                                                ),
+                                                backgroundColor: newVal ? SuperAdminTheme.success : SuperAdminTheme.warning,
+                                                duration: const Duration(seconds: 2),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                DataCell(_buildStatusBadge(user.status)),
+                                DataCell(
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      IconButton(
+                                        icon: Icon(
+                                          user.isSubscribed ? Icons.stars_rounded : Icons.star_border_rounded,
+                                          size: 18,
+                                          color: user.isSubscribed ? Colors.amber : SuperAdminTheme.textMuted,
+                                        ),
+                                        tooltip: user.isSubscribed ? 'Deactivate PRO' : 'Activate PRO Subscription',
+                                        onPressed: () {
+                                          final nextState = !user.isSubscribed;
+                                          api.toggleUserSubscription(user.id, nextState);
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                nextState
+                                                    ? 'PRO Subscription ACTIVATED for ${user.name}'
+                                                    : 'PRO Subscription DEACTIVATED for ${user.name}',
+                                              ),
+                                              backgroundColor: nextState ? SuperAdminTheme.success : SuperAdminTheme.warning,
+                                              duration: const Duration(seconds: 2),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                       IconButton(
                                         icon: const Icon(Icons.visibility_rounded, size: 17, color: SuperAdminTheme.primary),
                                         tooltip: 'View Profile',
@@ -232,6 +299,62 @@ class _SuperAdminUsersScreenState extends State<SuperAdminUsersScreen> {
         );
       },
     );
+  }
+
+  Widget _buildSubscriptionBadge(bool isSubscribed, String plan) {
+    if (isSubscribed) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.35),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.stars_rounded, color: Colors.amber, size: 13),
+            SizedBox(width: 4),
+            Text(
+              '👑 PRO',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+                letterSpacing: 0.3,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: SuperAdminTheme.bg,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: SuperAdminTheme.border),
+        ),
+        child: const Text(
+          'FREE (Inactive)',
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+            color: SuperAdminTheme.textMuted,
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildStatusBadge(String status) {

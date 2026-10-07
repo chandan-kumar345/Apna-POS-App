@@ -5005,7 +5005,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                 try {
                                   Directory? targetDir;
                                   try {
-                                    if (Platform.isAndroid) {
+                                    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
                                       final downloadDir = Directory('/storage/emulated/0/Download');
                                       if (await downloadDir.exists()) {
                                         targetDir = downloadDir;
@@ -5030,7 +5030,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                                   final file = File(filePath);
                                   await file.writeAsString(sampleCsv);
 
-                                  if (!kIsWeb && !Platform.isWindows) {
+                                  if (!kIsWeb && defaultTargetPlatform != TargetPlatform.windows) {
                                     try {
                                       await SharePlus.instance.share(
                                         ShareParams(
@@ -5495,7 +5495,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       final file = File('${dir.path}/Apna_POS_Menu_Export_${DateTime.now().millisecondsSinceEpoch}.csv');
       await file.writeAsString(buffer.toString());
 
-      if (!kIsWeb && Platform.isWindows) {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
         try {
           await Process.run('cmd', ['/c', 'start', '', file.path]);
         } catch (_) {}

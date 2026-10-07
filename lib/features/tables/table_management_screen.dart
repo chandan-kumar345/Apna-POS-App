@@ -524,73 +524,446 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                       ),
                                     ],
                                   ),
-                                  trailing: InkWell(
-                                    key: ValueKey('delete_table_${tbl.id}'),
-                                    onTap: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (confirmCtx) {
-                                          return AlertDialog(
-                                            backgroundColor: const Color(0xFFEFF4FA),
-                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                            title: const Text('Delete Table?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
-                                            content: Text('Are you sure you want to delete table "${tbl.name}"?', style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569))),
-                                            actions: [
-                                              TextButton(
-                                                onPressed: () => Navigator.pop(confirmCtx, false),
-                                                child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
-                                              ),
-                                              ElevatedButton(
-                                                onPressed: () => Navigator.pop(confirmCtx, true),
-                                                style: ElevatedButton.styleFrom(
-                                                  backgroundColor: const Color(0xFFEF4444),
-                                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                                                ),
-                                                child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                              ),
-                                            ],
-                                          );
+                                  trailing: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      InkWell(
+                                        key: ValueKey('edit_table_${tbl.id}'),
+                                        onTap: () {
+                                          _showEditTableDialog(tbl, onUpdated: () {
+                                            setListState(() {});
+                                            setParentState(() {});
+                                          });
                                         },
-                                      );
-
-                                      if (confirm == true) {
-                                        final deletedName = tbl.name;
-                                        await db.deleteTable(tbl.id);
-                                        setListState(() {});
-                                        setParentState(() {});
-                                        if (parentCtx.mounted) {
-                                          ScaffoldMessenger.of(parentCtx).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Table "$deletedName" deleted successfully'),
-                                              backgroundColor: const Color(0xFF0B2253),
-                                              behavior: SnackBarBehavior.floating,
-                                              duration: const Duration(seconds: 2),
-                                            ),
-                                          );
-                                        }
-                                      }
-                                    },
-                                    borderRadius: BorderRadius.circular(10),
-                                    child: Container(
-                                      width: 32,
-                                      height: 32,
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFFEE2E2),
                                         borderRadius: BorderRadius.circular(10),
-                                        border: Border.all(color: const Color(0xFFFECACA)),
+                                        child: Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFE2EDFB),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                                          ),
+                                          child: const Icon(
+                                            Icons.edit_outlined,
+                                            color: Color(0xFF1E40AF),
+                                            size: 16,
+                                          ),
+                                        ),
                                       ),
-                                      child: const Icon(
-                                        Icons.delete_outline_rounded,
-                                        color: Color(0xFFEF4444),
-                                        size: 16,
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        key: ValueKey('delete_table_${tbl.id}'),
+                                        onTap: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (confirmCtx) {
+                                              return AlertDialog(
+                                                backgroundColor: const Color(0xFFEFF4FA),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                                title: const Text('Delete Table?', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+                                                content: Text('Are you sure you want to delete table "${tbl.name}"?', style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569))),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () => Navigator.pop(confirmCtx, false),
+                                                    child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+                                                  ),
+                                                  ElevatedButton(
+                                                    onPressed: () => Navigator.pop(confirmCtx, true),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: const Color(0xFFEF4444),
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                                    ),
+                                                    child: const Text('Delete', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+
+                                          if (confirm == true) {
+                                            final deletedName = tbl.name;
+                                            await db.deleteTable(tbl.id);
+                                            setListState(() {});
+                                            setParentState(() {});
+                                            if (parentCtx.mounted) {
+                                              ScaffoldMessenger.of(parentCtx).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Table "$deletedName" deleted successfully'),
+                                                  backgroundColor: const Color(0xFF0B2253),
+                                                  behavior: SnackBarBehavior.floating,
+                                                  duration: const Duration(seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        borderRadius: BorderRadius.circular(10),
+                                        child: Container(
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFFEE2E2),
+                                            borderRadius: BorderRadius.circular(10),
+                                            border: Border.all(color: const Color(0xFFFECACA)),
+                                          ),
+                                          child: const Icon(
+                                            Icons.delete_outline_rounded,
+                                            color: Color(0xFFEF4444),
+                                            size: 16,
+                                          ),
+                                        ),
                                       ),
-                                    ),
+                                    ],
                                   ),
                                 ),
                               );
                             },
                           ),
                         ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showEditTableDialog(TableModel table, {VoidCallback? onUpdated}) {
+    final nameCtrl = TextEditingController(text: table.name);
+    String selectedFloor = table.floor.trim().isNotEmpty ? table.floor.trim() : 'Ground Floor';
+    int selectedCapacity = table.capacity > 0 ? table.capacity : 4;
+    final editFloorCtrl = TextEditingController(text: selectedFloor);
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+            final availableFloors = db.allFloors;
+            if (!availableFloors.contains(selectedFloor) && availableFloors.isNotEmpty) {
+              selectedFloor = availableFloors.first;
+              editFloorCtrl.text = selectedFloor;
+            }
+
+            return Dialog(
+              backgroundColor: const Color(0xFFEFF4FA),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(26)),
+              elevation: 16,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 400 : screenWidth * 0.90,
+                  minWidth: 280,
+                  maxHeight: MediaQuery.of(context).size.height * 0.88,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            width: 38,
+                            height: 38,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2EDFB),
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFFCBD5E1).withValues(alpha: 0.7),
+                                  blurRadius: 5,
+                                  offset: const Offset(1.5, 2.5),
+                                ),
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 5,
+                                  offset: Offset(-1.5, -1.5),
+                                ),
+                              ],
+                            ),
+                            child: const Icon(Icons.edit_note_rounded, color: Color(0xFF0B2253), size: 20),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Edit Table (${table.name})',
+                                  style: const TextStyle(
+                                    color: Color(0xFF0F172A),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: 15.5,
+                                  ),
+                                ),
+                                const SizedBox(height: 1.5),
+                                const Text(
+                                  'Update table name, floor area, or seating capacity',
+                                  style: TextStyle(color: Color(0xFF64748B), fontSize: 11, fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+
+                      // Content
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // 1. Table Name Field
+                              Row(
+                                children: const [
+                                  Text(
+                                    'Table Name',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                  ),
+                                  Text(
+                                    ' *',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFFEF4444)),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFFD6E2F0).withValues(alpha: 0.6),
+                                      blurRadius: 4,
+                                      offset: const Offset(1, 2),
+                                    ),
+                                    const BoxShadow(
+                                      color: Colors.white,
+                                      blurRadius: 4,
+                                      offset: Offset(-1, -1),
+                                    ),
+                                  ],
+                                ),
+                                child: TextField(
+                                  controller: nameCtrl,
+                                  style: const TextStyle(color: Color(0xFF0F172A), fontSize: 13, fontWeight: FontWeight.w700),
+                                  decoration: InputDecoration(
+                                    border: InputBorder.none,
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                    prefixIcon: Container(
+                                      margin: const EdgeInsets.only(left: 6, right: 8, top: 6, bottom: 6),
+                                      padding: const EdgeInsets.all(4),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE2EDFB),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: const Icon(Icons.table_restaurant_rounded, color: Color(0xFF0B2253), size: 15),
+                                    ),
+                                    hintText: 'e.g. T-1, Window 2, VIP 1',
+                                    hintStyle: const TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+
+                              // 2. Floor Selection
+                              const Text(
+                                'Floor / Dining Area',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final fl in availableFloors)
+                                    InkWell(
+                                      onTap: () {
+                                        setDialogState(() {
+                                          selectedFloor = fl;
+                                          editFloorCtrl.text = fl;
+                                        });
+                                      },
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                                        decoration: BoxDecoration(
+                                          color: selectedFloor == fl ? const Color(0xFF0B2253) : const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: selectedFloor == fl ? const Color(0xFF0B2253) : const Color(0xFFE2E8F0),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: selectedFloor == fl
+                                                  ? const Color(0xFF0B2253).withValues(alpha: 0.3)
+                                                  : const Color(0xFFD6E2F0).withValues(alpha: 0.5),
+                                              blurRadius: 3,
+                                              offset: const Offset(1, 1.5),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          fl,
+                                          style: TextStyle(
+                                            color: selectedFloor == fl ? Colors.white : const Color(0xFF475569),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 11.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 14),
+
+                              // 3. Seating Capacity
+                              const Text(
+                                'Seating Capacity',
+                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                              ),
+                              const SizedBox(height: 6),
+                              Row(
+                                children: [2, 4, 6, 8, 10].map((cap) {
+                                  final isSel = selectedCapacity == cap;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: InkWell(
+                                      onTap: () {
+                                        setDialogState(() => selectedCapacity = cap);
+                                      },
+                                      borderRadius: BorderRadius.circular(10),
+                                      child: Container(
+                                        width: 44,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: isSel ? const Color(0xFF0B2253) : const Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: isSel ? const Color(0xFF0B2253) : const Color(0xFFE2E8F0),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: isSel
+                                                  ? const Color(0xFF0B2253).withValues(alpha: 0.3)
+                                                  : const Color(0xFFD6E2F0).withValues(alpha: 0.5),
+                                              blurRadius: 3,
+                                              offset: const Offset(1, 1.5),
+                                            ),
+                                          ],
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          '$cap',
+                                          style: TextStyle(
+                                            color: isSel ? Colors.white : const Color(0xFF475569),
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12.5,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              onTap: () => Navigator.pop(dialogCtx),
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold, fontSize: 12.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: InkWell(
+                              key: const ValueKey('save_table_edit_button'),
+                              onTap: () async {
+                                final cleanName = nameCtrl.text.trim().isEmpty ? table.name : nameCtrl.text.trim();
+                                final cleanFloor = selectedFloor.trim().isEmpty ? table.floor : selectedFloor.trim();
+
+                                final updated = table.copyWith(
+                                  name: cleanName,
+                                  floor: cleanFloor,
+                                  capacity: selectedCapacity,
+                                );
+
+                                await db.updateTable(updated);
+                                if (mounted) setState(() {});
+                                onUpdated?.call();
+
+                                if (dialogCtx.mounted) {
+                                  Navigator.pop(dialogCtx);
+                                }
+
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Table "$cleanName" updated successfully'),
+                                      backgroundColor: const Color(0xFF0B2253),
+                                      behavior: SnackBarBehavior.floating,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(14),
+                              child: Container(
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0B2253),
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: const Color(0xFF0B2253).withValues(alpha: 0.35),
+                                      blurRadius: 5,
+                                      offset: const Offset(0, 2.5),
+                                    ),
+                                  ],
+                                ),
+                                alignment: Alignment.center,
+                                child: const Text(
+                                  'Save Changes',
+                                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),

@@ -26,6 +26,8 @@ class SocketService {
   bool _isConnecting = false;
 
   final SecureStorageService _storage = SecureStorageService();
+  bool? _lastHandledSubscriptionState;
+  DateTime? _lastHandledSubscriptionTime;
 
   // Callbacks registered by DatabaseService
   TableUpdateCallback? onTableUpdated;
@@ -138,11 +140,9 @@ class SocketService {
       
       // Single table updated (status, order total, occupancy, etc.)
       socket.on('table:updated', (data) => _handleSingleTableUpdate(data));
-      socket.on('table_status_updated', (data) => _handleSingleTableUpdate(data));
 
       // Batch tables updated (e.g., table shifting or bulk count sync)
       socket.on('tables:batch_updated', (data) => _handleBatchTablesUpdate(data));
-      socket.on('tables_synced', (data) => _handleBatchTablesUpdate(data));
 
       // Table created
       socket.on('table:created', (data) => _handleTableCreated(data));
@@ -152,15 +152,11 @@ class SocketService {
 
       // Order settled & updated events
       socket.on('order:settled', (data) => _handleOrderSettled(data));
-      socket.on('order_settled', (data) => _handleOrderSettled(data));
       socket.on('order:updated', (data) => _handleOrderUpdated(data));
-      socket.on('order_updated', (data) => _handleOrderUpdated(data));
       socket.on('order:deleted', (data) => _handleOrderDeleted(data));
-      socket.on('order_deleted', (data) => _handleOrderDeleted(data));
 
       // Subscription updated events (real-time toggle from MongoDB Compass or API)
       socket.on('subscription:updated', (data) => _handleSubscriptionUpdated(data));
-      socket.on('subscription_updated', (data) => _handleSubscriptionUpdated(data));
 
       socket.connect();
     } catch (e) {
@@ -294,6 +290,29 @@ class SocketService {
     try {
       if (data == null) return;
       final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+
+      bool? newState;
+      if (rawMap['isSubscriptionActive'] != null) {
+        newState = rawMap['isSubscriptionActive'] == true;
+      } else if (rawMap['isActive'] != null) {
+        newState = rawMap['isActive'] == true;
+      } else if (rawMap['isSubscribed'] != null) {
+        newState = rawMap['isSubscribed'] == true;
+      } else if (rawMap['status'] != null) {
+        newState = rawMap['status'] == 'active';
+      }
+
+      final now = DateTime.now();
+      if (_lastHandledSubscriptionState == newState &&
+          _lastHandledSubscriptionTime != null &&
+          now.difference(_lastHandledSubscriptionTime!).inMilliseconds < 1500) {
+        // Drop identical duplicate subscription events within 1.5s
+        return;
+      }
+
+      _lastHandledSubscriptionState = newState;
+      _lastHandledSubscriptionTime = now;
+
       debugPrint('[SocketService] Received subscription:updated event: $rawMap');
       onSubscriptionUpdated?.call(rawMap);
     } catch (e) {

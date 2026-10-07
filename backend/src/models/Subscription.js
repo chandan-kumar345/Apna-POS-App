@@ -45,10 +45,15 @@ const subscriptionSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    userCreatedAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
     plan: {
       type: String,
       enum: ['starter', 'standard', 'growth', 'pro', 'enterprise'],
-      default: 'standard',
+      default: 'starter',
     },
     billingCycle: {
       type: String,
@@ -57,7 +62,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     amount: {
       type: Number,
-      default: 300,
+      default: 0,
     },
     currency: {
       type: String,
@@ -65,23 +70,23 @@ const subscriptionSchema = new mongoose.Schema(
     },
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
       index: true,
     },
     isSubscriptionActive: {
       type: Boolean,
-      default: true,
+      default: false,
       index: true,
     },
     isSubscribed: {
       type: Boolean,
-      default: true,
+      default: false,
       index: true,
     },
     status: {
       type: String,
       enum: ['active', 'inactive', 'expired', 'trial', 'cancelled', 'pending'],
-      default: 'active',
+      default: 'inactive',
       index: true,
     },
     upiId: {
@@ -100,15 +105,28 @@ const subscriptionSchema = new mongoose.Schema(
     },
     activatedAt: {
       type: Date,
-      default: Date.now,
+      default: null,
     },
     expiresAt: {
       type: Date,
       index: true,
+      default: null,
     },
     features: {
       type: [String],
-      default: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff'],
+      default: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff', 'crm'],
+    },
+    hasLoyalty: {
+      type: Boolean,
+      default: false,
+    },
+    hasCampaign: {
+      type: Boolean,
+      default: false,
+    },
+    hasInventory: {
+      type: Boolean,
+      default: false,
     },
     allowedStaffCount: {
       type: Number,
@@ -200,6 +218,9 @@ subscriptionSchema.index({ userEmail: 1, isSubscriptionActive: 1 });
 subscriptionSchema.index({ userEmail: 1, isActive: 1 });
 subscriptionSchema.index({ targetType: 1, isActive: 1 });
 
-const Subscription = mongoose.model('Subscription', subscriptionSchema);
+const Subscription = mongoose.model('Subscription', subscriptionSchema, 'premiumsubscriptions');
+const PremiumSubscription = Subscription;
 
 module.exports = Subscription;
+module.exports.Subscription = Subscription;
+module.exports.PremiumSubscription = PremiumSubscription;

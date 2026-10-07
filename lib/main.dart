@@ -13,7 +13,6 @@ import 'features/dashboard/main_layout.dart';
 import 'features/notifications/services/notification_permission_helper.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:video_player_win/video_player_win.dart';
 import 'features/super_admin/screens/auth/super_admin_login_screen.dart';
@@ -21,7 +20,7 @@ import 'features/super_admin/widgets/super_admin_layout.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb && Platform.isWindows) {
+  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
     try {
       WindowsVideoPlayer.registerWith();
     } catch (e) {

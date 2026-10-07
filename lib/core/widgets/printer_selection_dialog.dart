@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' show Process;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
@@ -69,7 +69,7 @@ class _PrinterSelectionDialogState extends State<PrinterSelectionDialog> {
 
   final TextEditingController _macInputController = TextEditingController();
 
-  bool get _isWindows => !kIsWeb && Platform.isWindows;
+  bool get _isWindows => !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   void initState() {

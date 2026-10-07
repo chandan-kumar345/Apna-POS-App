@@ -84,6 +84,7 @@ class RestaurantModel {
         'enableChotuVoice': enableChotuVoice,
         'logoUrl': logoUrl,
         'isSubscribed': isSubscribed,
+        'isSubscriptionActive': isSubscribed,
       };
 
   factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
@@ -102,8 +103,18 @@ class RestaurantModel {
         tableCount: json['tableCount'] ?? 12,
         isOnboarded: json['isOnboarded'] ?? false,
         isSubscribed: json['isSubscribed'] == true ||
+            json['isSubscriptionActive'] == true ||
+            json['isActive'] == true ||
             (json['subscription'] is Map &&
-                (json['subscription']['isActive'] == true || json['subscription']['status'] == 'active')),
+                (json['subscription']['isSubscriptionActive'] == true ||
+                 json['subscription']['isActive'] == true ||
+                 json['subscription']['isSubscribed'] == true ||
+                 json['subscription']['status'] == 'active')) ||
+            (json['premiumSubscription'] is Map &&
+                (json['premiumSubscription']['isSubscriptionActive'] == true ||
+                 json['premiumSubscription']['isActive'] == true ||
+                 json['premiumSubscription']['isSubscribed'] == true ||
+                 json['premiumSubscription']['status'] == 'active')),
         services: (json['services'] as List?)?.map((e) => e.toString()).toList() ?? const ['Dine In'],
         billingType: json['billingType'] ?? 'GST',
         gstNumber: json['gstNumber'] ?? '',

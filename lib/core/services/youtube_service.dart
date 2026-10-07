@@ -352,7 +352,7 @@ class YouTubeService {
   static Future<String?> _downloadRemoteVideo(String remoteUrl, File targetFile) async {
     try {
       var fetchUrl = remoteUrl;
-      if (!kIsWeb && Platform.isWindows && fetchUrl.contains('localhost:')) {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows && fetchUrl.contains('localhost:')) {
         fetchUrl = fetchUrl.replaceAll('localhost:', '127.0.0.1:');
       }
 

@@ -751,7 +751,8 @@ class SubscriptionLockedBarrier extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (!isLocked) return child;
+    final bool isActuallyLocked = isLocked && !DatabaseService().isSubscribed;
+    if (!isActuallyLocked) return child;
 
     return Stack(
       children: [

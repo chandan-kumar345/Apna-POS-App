@@ -224,7 +224,85 @@ class SuperAdminApiService extends ChangeNotifier {
     }
   }
 
+  void toggleSubscriptionStatus(String businessId, bool isActive) {
+    final subIdx = _subscriptions.indexWhere((s) => s.businessId == businessId);
+    if (subIdx != -1) {
+      final oldSub = _subscriptions[subIdx];
+      final newStatus = isActive ? SubscriptionStatus.active : SubscriptionStatus.expired;
+      _subscriptions[subIdx] = oldSub.copyWith(subscriptionStatus: newStatus);
+
+      final bIdx = _businesses.indexWhere((b) => b.id == businessId);
+      if (bIdx != -1) {
+        _businesses[bIdx] = _businesses[bIdx].copyWith(
+          status: isActive ? BusinessStatus.active : BusinessStatus.expired,
+        );
+      }
+
+      // Update associated user
+      final uIdx = _users.indexWhere((u) => u.businessId == businessId);
+      if (uIdx != -1) {
+        _users[uIdx] = _users[uIdx].copyWith(
+          isSubscribed: isActive,
+          status: isActive ? 'paid' : 'active',
+        );
+      }
+
+      logAudit(
+        action: isActive ? 'Activated Subscription' : 'Deactivated Subscription',
+        targetType: AuditTargetType.subscription,
+        targetName: oldSub.businessName,
+        targetId: oldSub.id,
+        details: 'Changed subscription status to ${isActive ? "ACTIVE (PRO)" : "EXPIRED/INACTIVE"} for ${oldSub.businessName}',
+        previousValue: oldSub.subscriptionStatus.label,
+        newValue: newStatus.label,
+      );
+      notifyListeners();
+    }
+  }
+
   // --- User Actions ---
+  void toggleUserSubscription(String userId, bool isSubscribed) {
+    final idx = _users.indexWhere((u) => u.id == userId);
+    if (idx != -1) {
+      final oldUser = _users[idx];
+      _users[idx] = oldUser.copyWith(
+        isSubscribed: isSubscribed,
+        status: isSubscribed ? 'paid' : 'active',
+        subscriptionPlan: isSubscribed ? (oldUser.subscriptionPlan == 'Free' || oldUser.subscriptionPlan == 'Free Trial' ? 'Growth Pro' : oldUser.subscriptionPlan) : 'Free',
+      );
+
+      // Sync business status and subscription if linked
+      if (oldUser.businessId.isNotEmpty) {
+        final bIdx = _businesses.indexWhere((b) => b.id == oldUser.businessId);
+        if (bIdx != -1) {
+          final oldBiz = _businesses[bIdx];
+          _businesses[bIdx] = oldBiz.copyWith(
+            status: isSubscribed ? BusinessStatus.active : BusinessStatus.expired,
+          );
+        }
+
+        final sIdx = _subscriptions.indexWhere((s) => s.businessId == oldUser.businessId);
+        if (sIdx != -1) {
+          final oldSub = _subscriptions[sIdx];
+          _subscriptions[sIdx] = oldSub.copyWith(
+            subscriptionStatus: isSubscribed ? SubscriptionStatus.active : SubscriptionStatus.expired,
+          );
+        }
+      }
+
+      logAudit(
+        action: isSubscribed ? 'Activated Pro Subscription' : 'Deactivated Pro Subscription',
+        targetType: AuditTargetType.subscription,
+        targetName: oldUser.name,
+        targetId: oldUser.id,
+        details: 'Toggled PRO subscription to ${isSubscribed ? "ACTIVE (PRO)" : "INACTIVE (FREE)"} for user ${oldUser.name} (${oldUser.email}). Registered date: ${oldUser.createdAt.toString().split(' ').first}',
+        previousValue: oldUser.isSubscribed ? 'PRO (Active)' : 'FREE (Inactive)',
+        newValue: isSubscribed ? 'PRO (Active)' : 'FREE (Inactive)',
+      );
+      notifyListeners();
+    }
+  }
+
   void suspendUser(String userId, String reason) {
     final idx = _users.indexWhere((u) => u.id == userId);
     if (idx != -1) {
@@ -677,16 +755,16 @@ class SuperAdminApiService extends ChangeNotifier {
 
     // 3. Platform Users
     _users = [
-      PlatformUser(id: 'usr_001', name: 'Amit Sharma', email: 'amit.sharma@royalbiryani.in', phone: '+91 98765 43210', businessId: 'biz_101', businessName: 'Royal Biryani House', role: 'Owner / Super Admin', status: 'paid', subscriptionPlan: 'Growth Pro', createdAt: now.subtract(const Duration(days: 120)), lastLogin: now.subtract(const Duration(minutes: 18))),
-      PlatformUser(id: 'usr_002', name: 'Deepak Rao', email: 'deepak.billing@royalbiryani.in', phone: '+91 98765 43211', businessId: 'biz_101', businessName: 'Royal Biryani House', role: 'Head Cashier', status: 'active', subscriptionPlan: 'Growth Pro', createdAt: now.subtract(const Duration(days: 110)), lastLogin: now.subtract(const Duration(hours: 2))),
-      PlatformUser(id: 'usr_003', name: 'Priya Verma', email: 'priya@chaiandco.com', phone: '+91 98111 22334', businessId: 'biz_102', businessName: 'Chai & Co. Cafe', role: 'Owner', status: 'paid', subscriptionPlan: 'Starter Launch', createdAt: now.subtract(const Duration(days: 60)), lastLogin: now.subtract(const Duration(minutes: 45))),
-      PlatformUser(id: 'usr_004', name: 'Rohan Mehta', email: 'rohan@urbanwok.in', phone: '+91 99200 88776', businessId: 'biz_103', businessName: 'Urban Wok Cloud Kitchen', role: 'Owner / Managing Director', status: 'paid', subscriptionPlan: 'Enterprise Scale', createdAt: now.subtract(const Duration(days: 210)), lastLogin: now.subtract(const Duration(minutes: 10))),
-      PlatformUser(id: 'usr_005', name: 'Kavita Nair', email: 'kavita.ops@urbanwok.in', phone: '+91 99200 88777', businessId: 'biz_103', businessName: 'Urban Wok Cloud Kitchen', role: 'Operations Manager', status: 'active', subscriptionPlan: 'Enterprise Scale', createdAt: now.subtract(const Duration(days: 180)), lastLogin: now.subtract(const Duration(hours: 1))),
-      PlatformUser(id: 'usr_006', name: 'Harpreet Singh', email: 'harpreet@spicegarden.co', phone: '+91 97800 11223', businessId: 'biz_104', businessName: 'Spice Garden Dhaba', role: 'Owner', status: 'active', subscriptionPlan: 'Growth Pro', createdAt: now.subtract(const Duration(days: 26)), lastLogin: now.subtract(const Duration(days: 1))),
-      PlatformUser(id: 'usr_007', name: 'Ananya Gupta', email: 'ananya@crustpizzeria.in', phone: '+91 96540 99887', businessId: 'biz_105', businessName: 'The Crust Pizzeria', role: 'Owner', status: 'trial', subscriptionPlan: 'Free Trial', createdAt: now.subtract(const Duration(days: 6)), lastLogin: now.subtract(const Duration(hours: 3))),
-      PlatformUser(id: 'usr_008', name: 'Vikram Joshi', email: 'vikram@bitebox.in', phone: '+91 98450 66554', businessId: 'biz_106', businessName: 'BiteBox Burgers', role: 'Owner', status: 'expired', subscriptionPlan: 'Starter Launch', createdAt: now.subtract(const Duration(days: 45)), lastLogin: now.subtract(const Duration(days: 12))),
-      PlatformUser(id: 'usr_009', name: 'Karan Kapoor', email: 'karan@moonlightbar.com', phone: '+91 98200 33445', businessId: 'biz_107', businessName: 'Moonlight Restobar', role: 'Owner', status: 'suspended', subscriptionPlan: 'Growth Pro', createdAt: now.subtract(const Duration(days: 80)), lastLogin: now.subtract(const Duration(days: 6))),
-      PlatformUser(id: 'usr_010', name: 'Sunil Chettri', email: 'sunil@momoking.in', phone: '+91 97110 55443', businessId: 'biz_108', businessName: 'Momo King Express', role: 'Manager', status: 'trial', subscriptionPlan: 'Free Trial', createdAt: now.subtract(const Duration(days: 2)), lastLogin: now.subtract(const Duration(hours: 5))),
+      PlatformUser(id: 'usr_001', name: 'Amit Sharma', email: 'amit.sharma@royalbiryani.in', phone: '+91 98765 43210', businessId: 'biz_101', businessName: 'Royal Biryani House', role: 'Owner / Super Admin', status: 'paid', subscriptionPlan: 'Growth Pro', isSubscribed: true, createdAt: now.subtract(const Duration(days: 120)), lastLogin: now.subtract(const Duration(minutes: 18))),
+      PlatformUser(id: 'usr_002', name: 'Deepak Rao', email: 'deepak.billing@royalbiryani.in', phone: '+91 98765 43211', businessId: 'biz_101', businessName: 'Royal Biryani House', role: 'Head Cashier', status: 'active', subscriptionPlan: 'Growth Pro', isSubscribed: true, createdAt: now.subtract(const Duration(days: 110)), lastLogin: now.subtract(const Duration(hours: 2))),
+      PlatformUser(id: 'usr_003', name: 'Priya Verma', email: 'priya@chaiandco.com', phone: '+91 98111 22334', businessId: 'biz_102', businessName: 'Chai & Co. Cafe', role: 'Owner', status: 'paid', subscriptionPlan: 'Starter Launch', isSubscribed: true, createdAt: now.subtract(const Duration(days: 60)), lastLogin: now.subtract(const Duration(minutes: 45))),
+      PlatformUser(id: 'usr_004', name: 'Rohan Mehta', email: 'rohan@urbanwok.in', phone: '+91 99200 88776', businessId: 'biz_103', businessName: 'Urban Wok Cloud Kitchen', role: 'Owner / Managing Director', status: 'paid', subscriptionPlan: 'Enterprise Scale', isSubscribed: true, createdAt: now.subtract(const Duration(days: 210)), lastLogin: now.subtract(const Duration(minutes: 10))),
+      PlatformUser(id: 'usr_005', name: 'Kavita Nair', email: 'kavita.ops@urbanwok.in', phone: '+91 99200 88777', businessId: 'biz_103', businessName: 'Urban Wok Cloud Kitchen', role: 'Operations Manager', status: 'active', subscriptionPlan: 'Enterprise Scale', isSubscribed: true, createdAt: now.subtract(const Duration(days: 180)), lastLogin: now.subtract(const Duration(hours: 1))),
+      PlatformUser(id: 'usr_006', name: 'Harpreet Singh', email: 'harpreet@spicegarden.co', phone: '+91 97800 11223', businessId: 'biz_104', businessName: 'Spice Garden Dhaba', role: 'Owner', status: 'active', subscriptionPlan: 'Growth Pro', isSubscribed: true, createdAt: now.subtract(const Duration(days: 26)), lastLogin: now.subtract(const Duration(days: 1))),
+      PlatformUser(id: 'usr_007', name: 'Ananya Gupta', email: 'ananya@crustpizzeria.in', phone: '+91 96540 99887', businessId: 'biz_105', businessName: 'The Crust Pizzeria', role: 'Owner', status: 'trial', subscriptionPlan: 'Free Trial', isSubscribed: false, createdAt: now.subtract(const Duration(days: 6)), lastLogin: now.subtract(const Duration(hours: 3))),
+      PlatformUser(id: 'usr_008', name: 'Vikram Joshi', email: 'vikram@bitebox.in', phone: '+91 98450 66554', businessId: 'biz_106', businessName: 'BiteBox Burgers', role: 'Owner', status: 'expired', subscriptionPlan: 'Starter Launch', isSubscribed: false, createdAt: now.subtract(const Duration(days: 45)), lastLogin: now.subtract(const Duration(days: 12))),
+      PlatformUser(id: 'usr_009', name: 'Karan Kapoor', email: 'karan@moonlightbar.com', phone: '+91 98200 33445', businessId: 'biz_107', businessName: 'Moonlight Restobar', role: 'Owner', status: 'suspended', subscriptionPlan: 'Growth Pro', isSubscribed: false, createdAt: now.subtract(const Duration(days: 80)), lastLogin: now.subtract(const Duration(days: 6))),
+      PlatformUser(id: 'usr_010', name: 'Sunil Chettri', email: 'sunil@momoking.in', phone: '+91 97110 55443', businessId: 'biz_108', businessName: 'Momo King Express', role: 'Manager', status: 'trial', subscriptionPlan: 'Free Trial', isSubscribed: false, createdAt: now.subtract(const Duration(days: 2)), lastLogin: now.subtract(const Duration(hours: 5))),
     ];
 
     // 4. Subscriptions

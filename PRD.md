@@ -94,6 +94,16 @@ This document outlines the product requirements and operational specifications f
 4. **State: `Reserved` (Advance Booking - `#8B5CF6` Purple)**
    * **Definition:** Table reserved in advance by management.
 
+### 3.3 Concurrent Multi-Order & Multi-Table Draft Isolation
+* **Requirement 3.3.1 (Simultaneous Multi-Order Taking):** Cashiers and servers must be able to seamlessly switch between multiple Dine-In tables (e.g. Table 1, Table 2), Takeaway counter orders, and Delivery orders for different customers.
+* **Requirement 3.3.2 (Zero State Bleed & Independent Cart Retention):** Adding products to Table 1, switching to Table 2, adding different products, switching to Takeaway or Delivery, and returning to Table 1 must preserve the exact cart items, quantities, add-ons, and pricing for each table without cross-contamination.
+* **Requirement 3.3.3 (Customer & Delivery Metadata Scoping):** Customer details (Name, Phone number), applied coupons, manual discounts, and delivery specifics (Street address, landmark, city, state, pincode) are strictly scoped to the active table or order draft. Switching tables or order channels must restore the respective draft's customer data without leaking into other tables.
+* **Requirement 3.3.4 (Table Switch vs Table Shift Action Distinction):**
+  - *Table Switch (Default):* Tapping any table card in the table manager or floor dialog immediately switches the active POS context to that table, preserving all existing items on both tables.
+  - *Table Shift (Explicit):* Only triggered when the user explicitly taps "Shift Order". Transfers all items, active orders, and customer details from source to target table, clearing the source table.
+* **Requirement 3.3.5 (Independent Order Settlement):** Settling or completing payment on Table 1 immediately marks Table 1 as `Free` and purges its draft, while leaving Table 2, Takeaway, and Delivery active, occupied, and unchanged.
+* **Requirement 3.3.6 (Persistent Offline Storage):** All active drafts across tables and non-dine-in channels serialize to local persistent storage (`SharedPreferences`), surviving app closure and device reboots.
+
 ---
 
 ## 4. Payment Method Screen Redesign
@@ -213,6 +223,10 @@ This document outlines the product requirements and operational specifications f
    - [x] Table A is freed immediately; Table B becomes `runningKot` or `occupied`.
 5. **Cross-Platform Compatibility:**
    - [x] 100% test pass rate across unit, widget, and integration tests.
+6. **Concurrent Multi-Order & Multi-Table Draft Isolation:**
+   - [x] Taking order on Table 1, switching to Table 2, and switching to Takeaway/Delivery maintains separate draft carts, customer names/phones, and discounts.
+   - [x] Tapping a free table in table modal loads the table draft instead of shifting.
+   - [x] Settling Table 1 frees only Table 1, keeping Table 2 and Takeaway/Delivery intact.
 
 ---
 
@@ -262,4 +276,45 @@ This document outlines the product requirements and operational specifications f
   - **Tab 2: Work Settings:** Shift assignment, salary compensation, joining date picker, and internal notes.
   - **Tab 3: Security:** 4-digit PIN access manager, force password change switch, and welcome email credentials switch.
   - **Tab 4: Activity:** Live staff audit trail and event activity timeline.
+
+---
+
+## 13. Multi-Order & Multi-Table Draft Isolation Standards
+
+### 13.1 Concurrent Order State Separation
+* **Requirement 13.1.1 (Independent Table Drafts):** Each dine-in table maintains an isolated, independent cart draft in `DatabaseService` (`_liveTableCarts`). Punched items for Table 1 must never leak, merge, or overwrite Table 2, 3, or other tables.
+* **Requirement 13.1.2 (Separate Customer & Delivery Isolation):** Customer metadata (name, phone, coupon discounts, custom percentage/flat discounts) and delivery addresses are isolated per-table in `_liveDraftCustomerInfo` and `_liveDraftDeliveryInfo`.
+* **Requirement 13.1.3 (Concurrent Takeaway & Delivery Drafts):** Takeaway and Delivery channels support simultaneous order taking for separate customers without conflicting with active dine-in table carts.
+* **Requirement 13.1.4 (Selective Table Settlement):** Settling or voiding an order on Table 1 frees only Table 1 and cleans only Table 1's draft state, leaving Table 2, Takeaway, and Delivery drafts intact.
+
+---
+
+## 14. Unified Premium Subscription Architecture (Loyalty, Campaign, Inventory)
+
+### 14.1 Unified Collection & Schema (`premiumSubscription`)
+* **Requirement 14.1.1 (Single Schema & Collection):** Loyalty, Marketing Campaigns, and Advanced Inventory are governed under the unified `premiumSubscription` collection (`premiumsubscriptions` in MongoDB) and model.
+* **Requirement 14.1.2 (Feature Flags & Status Sync):** The document maintains `isSubscriptionActive`, `isActive`, `isSubscribed`, `hasLoyalty: true`, `hasCampaign: true`, and `hasInventory: true`.
+
+### 14.2 Zero-Lock Screen Login Experience
+* **Requirement 14.2.1 (Instant Startup Access):** If `isSubscriptionActive == true` (or `isSubscribed == true`), the app must NEVER render or flash the `SubscriptionLockedBarrier` / subscription lock screen on user login or profile switch.
+* **Requirement 14.2.2 (Direct Feature Tab Access):** When `isSubscriptionActive == true`, tapping **Inventory**, **Loyalty**, or **Campaign** in the navigation bar navigates directly to the feature screens (`_selectTab(5)`, `_selectTab(8)`, `_selectTab(9)`) without intercepting or pushing the `SubscriptionScreen`.
+
+### 14.3 Paywall & Lead Inquiry Security
+* **Requirement 14.3.1 (No Bypass on Inquiry Submission):** Submitting an "I'm Interested" lead form records the inquiry in MongoDB and notifies sales, but must NEVER expose a bypass button ("Open Loyalty Hub" / "Open Inventory") that navigates to locked feature screens.
+* **Requirement 14.3.2 (Authoritative Guard):** `_navigateToTargetScreen` and feature routes strictly verify `DatabaseService.isSubscribed` before routing to premium screens.
+
+### 14.4 Neumorphic PRO Badge Specification
+* **Requirement 14.4.1 (Dynamic Staff Profile Badge):** When `isSubscriptionActive == true` / `db.isSubscribed == true`, the `Staff Profile` nav item in the sidebar and mobile navigation drawer dynamically displays an authentic **Neumorphic PRO badge** (`👑 PRO`).
+* **Requirement 14.4.2 (Dual-Layer Soft UI Shadows):** The badge is styled with dual-layer soft elevation shadows (top-left white highlight `#FFFFFF` and bottom-right soft slate shadow `#1E293B` / `#0F172A`), rounded pill borders (`BorderRadius.circular(10)`), and crisp high-contrast typography (`FontWeight.w900`, letter spacing `0.6`).
+* **Requirement 14.4.3 (Profile Screen Alignment):** The `StaffProfileScreen` header card displays the Neumorphic PRO badge alongside the staff active status pill when the tenant subscription is active.
+
+### 14.5 Owner User Registration Date & Per-User Subscription Control
+* **Requirement 14.5.1 (Persisted Registration Date):** Every restaurant owner user record in the `premiumsubscriptions` (`Subscription`) collection and `User` model stores the exact registration timestamp (`userCreatedAt` / `createdAt`).
+* **Requirement 14.5.2 (Default Inactive State):** All newly registered owner accounts default to `isSubscriptionActive: false`, `isActive: false`, `isSubscribed: false`, and `status: 'inactive'`.
+* **Requirement 14.5.3 (Targeted Per-User Activation):** Super Admin console allows activating or deactivating the PRO subscription (`true` or `false`) strictly for a particular targeted user (`PATCH /api/v1/superadmin/users/:id/subscription`), updating only that specific user/business without cross-tenant side effects.
+* **Requirement 14.5.4 (Super Admin UI Visibility):** The Super Admin Users and Subscriptions dashboards display the registered date for every owner user, show an active/inactive PRO status badge, and provide an interactive toggle switch for instant per-user subscription management.
+
+
+
+
 

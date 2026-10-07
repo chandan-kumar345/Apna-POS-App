@@ -175,9 +175,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Pro Inventory Upgrade Banner
-                    _buildInventoryProBanner(),
-                    const SizedBox(height: 12),
+                    // Pro Inventory Upgrade Banner (only if not yet subscribed)
+                    if (!db.isSubscribed) ...[
+                      _buildInventoryProBanner(),
+                      const SizedBox(height: 12),
+                    ],
 
                     // Low Stock Alert Banner
                     if (lowStockItems.isNotEmpty) ...[
@@ -409,17 +411,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFF59E0B),
+                    color: db.isSubscribed ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Row(
+                  child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.workspace_premium_rounded, color: Colors.white, size: 14),
-                      SizedBox(width: 4),
+                      Icon(db.isSubscribed ? Icons.verified_rounded : Icons.workspace_premium_rounded, color: Colors.white, size: 14),
+                      const SizedBox(width: 4),
                       Text(
-                        'Plans 👑',
-                        style: TextStyle(
+                        db.isSubscribed ? 'Active PRO' : 'Plans 👑',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,

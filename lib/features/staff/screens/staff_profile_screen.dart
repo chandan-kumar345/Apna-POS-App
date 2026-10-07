@@ -360,6 +360,57 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
     );
   }
 
+  // --- Neumorphic PRO Badge Helper ---
+  Widget _buildNeumorphicProBadge({bool compact = false}) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 7.5 : 9.0,
+        vertical: compact ? 2.5 : 3.5,
+      ),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.white,
+            offset: Offset(-1.5, -1.5),
+            blurRadius: 3,
+          ),
+          BoxShadow(
+            color: Color(0x241E293B),
+            offset: Offset(2, 2),
+            blurRadius: 4,
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 0.9,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            '👑',
+            style: TextStyle(fontSize: compact ? 9.5 : 11, height: 1.1),
+          ),
+          const SizedBox(width: 3.5),
+          Text(
+            'PRO',
+            style: TextStyle(
+              color: const Color(0xFF1D4ED8),
+              fontSize: compact ? 9.5 : 10.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+              height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- ID Card Wrapper (Neumorphic Card enclosing the Badge) ---
   Widget _buildIdCardWrapper({
     required StaffModel staff,
@@ -592,7 +643,16 @@ class _StaffProfileScreenState extends State<StaffProfileScreen> {
           icon: Icons.person_rounded,
           iconColor: const Color(0xFF2563EB),
           iconBgColor: const Color(0xFFEFF6FF),
-          trailing: _buildActiveStatusBadge(staff.status),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (DatabaseService().isSubscribed) ...[
+                _buildNeumorphicProBadge(),
+                const SizedBox(width: 8),
+              ],
+              _buildActiveStatusBadge(staff.status),
+            ],
+          ),
           child: LayoutBuilder(
             builder: (context, constraints) {
               final isTwoCol = constraints.maxWidth >= 420;

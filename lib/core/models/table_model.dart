@@ -90,6 +90,7 @@ class TableModel {
   }
 
   TableModel copyWith({
+    String? id,
     String? name,
     String? floor,
     int? capacity,
@@ -106,7 +107,7 @@ class TableModel {
     final isNowFree = effectiveStatus == TableStatus.free;
 
     return TableModel(
-      id: id,
+      id: id ?? this.id,
       tableNumber: tableNumber ?? this.tableNumber,
       name: name ?? this.name,
       floor: floor ?? this.floor,
@@ -203,21 +204,39 @@ String formatRunningDuration(Duration duration) {
   }
 }
 
+/// Robustly normalizes table identifiers (e.g. 'Table 1', 'T-1', 'T1', '1', 'Table 01' -> 'table_1')
+String normalizeTableIdentifier(String input) {
+  var s = input.trim().toLowerCase();
+  s = s.replaceAll(RegExp(r'^[^a-z0-9]+|[^a-z0-9]+$'), '');
+
+  final tablePrefixRegex = RegExp(r'^(table|tab|tbl|t)[\s\-_]*(\d+)$');
+  final match = tablePrefixRegex.firstMatch(s);
+  if (match != null) {
+    final num = int.tryParse(match.group(2)!);
+    if (num != null) return 'table_$num';
+  }
+
+  final pureNum = int.tryParse(s);
+  if (pureNum != null) {
+    return 'table_$pureNum';
+  }
+
+  return s.replaceAll(RegExp(r'\s+'), ' ');
+}
+
 /// Helper function to match table names across formats (e.g. 'T-1', 'T1', '1', 'Table 1')
 bool isSameTable(String? a, String? b) {
   if (a == null || b == null) return false;
-  final cleanA = a.trim().toLowerCase();
-  final cleanB = b.trim().toLowerCase();
+  final cleanA = a.trim();
+  final cleanB = b.trim();
   if (cleanA.isEmpty || cleanB.isEmpty) return false;
-  if (cleanA == cleanB) return true;
+  if (cleanA.toLowerCase() == cleanB.toLowerCase()) return true;
 
-  final digitsA = cleanA.replaceAll(RegExp(r'[^0-9]'), '');
-  final digitsB = cleanB.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digitsA.isNotEmpty && digitsA == digitsB) return true;
-
-  if (cleanA == 't-$cleanB' || cleanB == 't-$cleanA') return true;
-  if (cleanA == 't$cleanB' || cleanB == 't$cleanA') return true;
-  if (cleanA == 'table $cleanB' || cleanB == 'table $cleanA') return true;
-
+  final normA = normalizeTableIdentifier(cleanA);
+  final normB = normalizeTableIdentifier(cleanB);
+  if (normA.isNotEmpty && normB.isNotEmpty) {
+    return normA == normB;
+  }
   return false;
 }
+

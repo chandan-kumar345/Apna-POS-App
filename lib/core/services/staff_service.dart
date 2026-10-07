@@ -107,10 +107,14 @@ class StaffService {
       final isAuth = await _authService.isAuthenticated();
       if (!isAuth) return;
 
+      final currentBizId = _db.currentBusinessId.trim();
+
       for (final s in List<StaffModel>.from(_db.staffList)) {
-        if (s.id.startsWith('st_')) {
+        // STRICT TENANT ISOLATION: Only sync local items belonging to the active business
+        if (s.id.startsWith('st_') && (s.businessId.isEmpty || s.businessId == currentBizId)) {
           try {
-            final payload = s.toJson();
+            final stamped = s.businessId.isEmpty ? s.copyWith(businessId: currentBizId) : s;
+            final payload = stamped.toJson();
             final response = await _apiClient.post(
               ApiEndpoints.staff,
               data: payload,
@@ -166,13 +170,16 @@ class StaffService {
 
   /// Create a new staff member dynamically via API and save to local DB
   Future<StaffModel?> createStaff(StaffModel staff) async {
+    final currentBizId = _db.currentBusinessId.trim();
+    final stampedStaff = staff.businessId.isEmpty ? staff.copyWith(businessId: currentBizId) : staff;
+
     // 1. Immediately store in local database so it is guaranteed to persist and show in UI
-    _db.addStaff(staff);
+    _db.addStaff(stampedStaff);
 
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        final payload = staff.toJson();
+        final payload = stampedStaff.toJson();
         final response = await _apiClient.post(
           ApiEndpoints.staff,
           data: payload,
@@ -200,19 +207,22 @@ class StaffService {
       debugPrint('[StaffService] createStaff API error: $e. Saved locally.');
     }
 
-    return staff;
+    return stampedStaff;
   }
 
   /// Update an existing staff member dynamically via API
   Future<StaffModel?> updateStaff(StaffModel staff) async {
-    _db.updateStaff(staff);
+    final currentBizId = _db.currentBusinessId.trim();
+    final stampedStaff = staff.businessId.isEmpty ? staff.copyWith(businessId: currentBizId) : staff;
+
+    _db.updateStaff(stampedStaff);
 
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        final payload = staff.toJson();
+        final payload = stampedStaff.toJson();
         final response = await _apiClient.put(
-          ApiEndpoints.staffById(staff.id),
+          ApiEndpoints.staffById(stampedStaff.id),
           data: payload,
         );
 

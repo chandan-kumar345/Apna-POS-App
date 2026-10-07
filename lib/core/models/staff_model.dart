@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 class StaffModel {
   final String id;
+  final String businessId;
   final String name;
   final String employeeId;
   final String phone;
@@ -30,6 +31,7 @@ class StaffModel {
 
   const StaffModel({
     required this.id,
+    this.businessId = '',
     required this.name,
     required this.employeeId,
     this.phone = '',
@@ -119,6 +121,7 @@ class StaffModel {
 
   StaffModel copyWith({
     String? id,
+    String? businessId,
     String? name,
     String? employeeId,
     String? phone,
@@ -147,6 +150,7 @@ class StaffModel {
   }) {
     return StaffModel(
       id: id ?? this.id,
+      businessId: businessId ?? this.businessId,
       name: name ?? this.name,
       employeeId: employeeId ?? this.employeeId,
       phone: phone ?? this.phone,
@@ -178,6 +182,7 @@ class StaffModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      if (businessId.isNotEmpty) 'businessId': businessId,
       'name': name,
       'employeeId': employeeId,
       'phone': phone,
@@ -270,6 +275,7 @@ class StaffModel {
 
     return StaffModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
+      businessId: json['businessId']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Staff Member',
       employeeId: json['employeeId']?.toString() ?? '',
       phone: json['phone']?.toString() ?? '',

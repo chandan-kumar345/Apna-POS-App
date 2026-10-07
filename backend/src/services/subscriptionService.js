@@ -238,7 +238,7 @@ class SubscriptionService {
     const targetUserId = user?._id || userId;
     const targetStaffId = staff?._id || staffId;
 
-    // 1. Primary Authority: Check the new "subscriptions" collection
+    // 1. Primary Authority: Check the unified "premiumsubscriptions" collection
     let subDoc = null;
     if (targetStaffId) {
       subDoc = await Subscription.findOne({ staffId: targetStaffId }).sort({ createdAt: -1 });
@@ -252,13 +252,10 @@ class SubscriptionService {
     if (!subDoc && user?.email) {
       subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ createdAt: -1 });
     }
-    if (!subDoc) {
-      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
-    }
 
     let isSubscribed = false;
-    let plan = 'standard';
-    let amount = 300;
+    let plan = 'starter';
+    let amount = 0;
     let upiId = '9709593705@ybl';
     let paymentRef = '';
     let activatedAt = null;
@@ -266,7 +263,7 @@ class SubscriptionService {
     let targetType = 'business';
 
     if (subDoc) {
-      // Document found in the new subscriptions collection
+      // Document found in the subscriptions collection for this specific tenant/user
       if (subDoc.isSubscriptionActive !== undefined && subDoc.isSubscriptionActive !== null) {
         isSubscribed = Boolean(subDoc.isSubscriptionActive);
       } else if (subDoc.isActive !== undefined && subDoc.isActive !== null) {
@@ -282,15 +279,15 @@ class SubscriptionService {
         isSubscribed = false;
       }
 
-      plan = subDoc.plan || 'standard';
-      amount = subDoc.amount || 300;
+      plan = subDoc.plan || 'starter';
+      amount = subDoc.amount || 0;
       upiId = subDoc.upiId || '9709593705@ybl';
       paymentRef = subDoc.paymentRef || '';
       activatedAt = subDoc.activatedAt || subDoc.createdAt || null;
       expiresAt = subDoc.expiresAt || null;
       targetType = subDoc.targetType || (targetStaffId ? 'staff' : 'business');
     } else {
-      // Fallback to legacy embedded business/user/staff subscription
+      // Fallback to legacy embedded business/user/staff subscription strictly for this user/business
       const bizSub = business?.subscription || {};
       const userSub = user?.subscription || {};
       const staffSub = staff?.subscription || {};
@@ -311,8 +308,8 @@ class SubscriptionService {
         isSubscribed = Boolean(staffSub.isActive);
       }
 
-      plan = bizSub.plan || userSub.plan || staffSub.plan || 'standard';
-      amount = bizSub.amount || 300;
+      plan = bizSub.plan || userSub.plan || staffSub.plan || 'starter';
+      amount = bizSub.amount || 0;
       upiId = bizSub.upiId || '9709593705@ybl';
       paymentRef = bizSub.paymentRef || userSub.paymentRef || '';
       activatedAt = bizSub.activatedAt || userSub.startDate || null;
@@ -330,15 +327,19 @@ class SubscriptionService {
             userName: user?.name || business?.profile?.name || staff?.name || '',
             businessName: business?.profile?.companyName || 'My Restaurant',
             phone: user?.phone || business?.profile?.phone || staff?.phone || '',
+            userCreatedAt: user?.createdAt || new Date(),
             plan,
             amount,
             isSubscriptionActive: isSubscribed,
             isActive: isSubscribed,
             isSubscribed,
             status: isSubscribed ? 'active' : 'inactive',
+            hasLoyalty: isSubscribed,
+            hasCampaign: isSubscribed,
+            hasInventory: isSubscribed,
             upiId,
             paymentRef,
-            activatedAt: activatedAt || new Date(),
+            activatedAt: activatedAt || null,
             expiresAt: expiresAt || null,
           });
         } catch (_) {}
@@ -352,6 +353,10 @@ class SubscriptionService {
       isActive: isSubscribed,
       isSubscribed,
       status: isSubscribed ? 'active' : 'inactive',
+      hasLoyalty: isSubscribed,
+      hasCampaign: isSubscribed,
+      hasInventory: isSubscribed,
+      features: subDoc?.features || ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff', 'crm'],
       plan,
       amount,
       upiId,
@@ -429,7 +434,10 @@ class SubscriptionService {
         paymentMethod: paymentData.paymentMethod || 'upi',
         activatedAt: now,
         expiresAt: expiry,
-        features: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff'],
+        features: ['pos', 'tables', 'orders', 'reports', 'inventory', 'loyalty', 'campaign', 'staff', 'crm'],
+        hasLoyalty: true,
+        hasCampaign: true,
+        hasInventory: true,
       },
       { upsert: true, new: true }
     );
@@ -599,15 +607,6 @@ class SubscriptionService {
       : (subData.isActive !== undefined ? Boolean(subData.isActive) : (subData.status === 'active'));
     const status = isActive ? 'active' : (subData.status || 'inactive');
 
-    if (!business && !user && !subData.subscriptionId) {
-      business = await Business.findOne().sort({ createdAt: -1 });
-      if (business) {
-        user = await User.findById(business.ownerId);
-      } else {
-        user = await User.findOne().sort({ createdAt: -1 });
-      }
-    }
-
     let subDoc = null;
     if (subData.subscriptionId) {
       subDoc = await Subscription.findById(subData.subscriptionId);
@@ -616,25 +615,26 @@ class SubscriptionService {
     } else if (user?._id) {
       subDoc = await Subscription.findOne({ userId: user._id }).sort({ updatedAt: -1, createdAt: -1 });
     }
-    if (!subDoc) {
-      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
-    }
 
     if (subDoc) {
       subDoc.isSubscriptionActive = isActive;
       subDoc.isActive = isActive;
       subDoc.isSubscribed = isActive;
       subDoc.status = status;
+      subDoc.hasLoyalty = isActive;
+      subDoc.hasCampaign = isActive;
+      subDoc.hasInventory = isActive;
       if (business?._id && !subDoc.businessId) subDoc.businessId = business._id;
       if (user?._id && !subDoc.userId) subDoc.userId = user._id;
+      if (user?.createdAt && !subDoc.userCreatedAt) subDoc.userCreatedAt = user.createdAt;
       if (isActive && (!subDoc.expiresAt || new Date(subDoc.expiresAt) < new Date())) {
         subDoc.expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
       }
       if (subData.plan) subDoc.plan = subData.plan;
-      if (subData.amount) subDoc.amount = Number(subData.amount);
+      if (subData.amount !== undefined) subDoc.amount = Number(subData.amount);
       if (subData.expiresAt) subDoc.expiresAt = new Date(subData.expiresAt);
       await subDoc.save();
-    } else {
+    } else if (business || user) {
       subDoc = await Subscription.create({
         businessId: business?._id || null,
         userId: user?._id || null,
@@ -642,12 +642,16 @@ class SubscriptionService {
         userName: user?.name || business?.profile?.name || 'Administrator',
         businessName: business?.profile?.companyName || 'My Restaurant',
         phone: user?.phone || business?.profile?.phone || '',
+        userCreatedAt: user?.createdAt || new Date(),
         isSubscriptionActive: isActive,
         isActive,
         isSubscribed: isActive,
         status,
-        plan: subData.plan || 'standard',
-        amount: Number(subData.amount) || 300,
+        hasLoyalty: isActive,
+        hasCampaign: isActive,
+        hasInventory: isActive,
+        plan: subData.plan || 'starter',
+        amount: Number(subData.amount) || (isActive ? 300 : 0),
         expiresAt: subData.expiresAt
           ? new Date(subData.expiresAt)
           : (isActive ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null),
@@ -661,7 +665,7 @@ class SubscriptionService {
       business.subscription.isSubscriptionActive = isActive;
       business.subscription.status = status;
       if (subData.plan) business.subscription.plan = subData.plan;
-      if (subData.amount) business.subscription.amount = Number(subData.amount);
+      if (subData.amount !== undefined) business.subscription.amount = Number(subData.amount);
       if (subData.expiresAt) business.subscription.expiresAt = new Date(subData.expiresAt);
       await business.save();
     }
@@ -680,26 +684,103 @@ class SubscriptionService {
 
     try {
       const socketService = require('./socketService');
-      socketService.emitSubscriptionUpdated(business?._id, {
-        ...result,
-        isSubscriptionActive: isActive,
-        isActive,
-        isSubscribed: isActive,
-        status,
-      });
+      if (business?._id) {
+        socketService.emitSubscriptionUpdated(business._id, {
+          ...result,
+          isSubscriptionActive: isActive,
+          isActive,
+          isSubscribed: isActive,
+          status,
+        });
+      }
     } catch (_) {}
 
     return result;
   }
 
   /**
+   * Sync all registered Owner Users into the unified "premiumsubscriptions" collection
+   * Ensuring each owner appears with their registration date (userCreatedAt),
+   * and default isSubscriptionActive = false unless explicitly activated.
+   */
+  async syncAllOwnerUsers() {
+    try {
+      const owners = await User.find({ role: { $ne: 'staff' } }).lean();
+      for (const owner of owners) {
+        let business = null;
+        if (owner.businessId) {
+          business = await Business.findById(owner.businessId).lean();
+        }
+        if (!business) {
+          business = await Business.findOne({ ownerId: owner._id }).lean();
+        }
+
+        const existingSub = await Subscription.findOne({
+          $or: [
+            { userId: owner._id },
+            { userEmail: owner.email.toLowerCase().trim() },
+            ...(business?._id ? [{ businessId: business._id }] : []),
+          ],
+        });
+
+        const isOwnerSubscribed = Boolean(
+          owner.subscription?.isActive && (owner.subscription?.status === 'active' || owner.subscription?.isSubscriptionActive)
+        );
+
+        if (!existingSub) {
+          await Subscription.create({
+            businessId: business?._id || null,
+            userId: owner._id,
+            targetType: 'business',
+            userEmail: owner.email,
+            userName: business?.profile?.name || owner.email.split('@')[0],
+            businessName: business?.profile?.companyName || 'My Restaurant',
+            phone: owner.phone || business?.profile?.phone || '',
+            userCreatedAt: owner.createdAt || new Date(),
+            createdAt: owner.createdAt || new Date(),
+            plan: owner.subscription?.plan || 'starter',
+            isSubscriptionActive: isOwnerSubscribed,
+            isActive: isOwnerSubscribed,
+            isSubscribed: isOwnerSubscribed,
+            status: isOwnerSubscribed ? 'active' : 'inactive',
+            hasLoyalty: isOwnerSubscribed,
+            hasCampaign: isOwnerSubscribed,
+            hasInventory: isOwnerSubscribed,
+            amount: isOwnerSubscribed ? 300 : 0,
+          });
+        } else {
+          let needsSave = false;
+          if (!existingSub.userCreatedAt && owner.createdAt) {
+            existingSub.userCreatedAt = owner.createdAt;
+            needsSave = true;
+          }
+          if (existingSub.userEmail !== owner.email) {
+            existingSub.userEmail = owner.email;
+            needsSave = true;
+          }
+          if (needsSave) {
+            await existingSub.save();
+          }
+        }
+      }
+      console.log(`[SubscriptionService] Verified and synchronized ${owners.length} owner users in premiumsubscriptions collection.`);
+    } catch (err) {
+      console.warn(`[SubscriptionService.syncAllOwnerUsers Notice] ${err.message}`);
+    }
+  }
+
+  /**
    * Get all subscriptions for Admin/Compass list view
    */
   async getAllSubscriptions(query = {}) {
+    // Proactively sync all owner users so newly registered owners appear
+    await this.syncAllOwnerUsers();
+
     const filter = {};
     if (query.targetType) filter.targetType = query.targetType;
     if (query.status) filter.status = query.status;
     if (query.isActive !== undefined) filter.isActive = query.isActive === 'true' || query.isActive === true;
+    if (query.isSubscriptionActive !== undefined) filter.isSubscriptionActive = query.isSubscriptionActive === 'true' || query.isSubscriptionActive === true;
     if (query.search) {
       filter.$or = [
         { userName: { $regex: query.search, $options: 'i' } },
@@ -715,7 +796,7 @@ class SubscriptionService {
     const skip = (page - 1) * limit;
 
     const [subscriptions, total] = await Promise.all([
-      Subscription.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Subscription.find(filter).sort({ userCreatedAt: -1, createdAt: -1 }).skip(skip).limit(limit),
       Subscription.countDocuments(filter),
     ]);
 

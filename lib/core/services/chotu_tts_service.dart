@@ -66,29 +66,32 @@ class ChotuTtsService extends ChangeNotifier {
       ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
-        final tempDir = await getTemporaryDirectory();
-        final tempFile =
-            File('${tempDir.path}/chotu_voice_${DateTime.now().millisecondsSinceEpoch}.mp3');
-        await tempFile.writeAsBytes(response.bodyBytes, flush: true);
-
         final completer = Completer<void>();
         _playerCompleteSub?.cancel();
         _playerCompleteSub = _audioPlayer.onPlayerComplete.listen((_) {
           if (!completer.isCompleted) completer.complete();
         });
 
-        await _audioPlayer.play(DeviceFileSource(tempFile.path));
+        if (kIsWeb) {
+          await _audioPlayer.play(BytesSource(response.bodyBytes));
+        } else {
+          final tempDir = await getTemporaryDirectory();
+          final tempFile =
+              File('${tempDir.path}/chotu_voice_${DateTime.now().millisecondsSinceEpoch}.mp3');
+          await tempFile.writeAsBytes(response.bodyBytes, flush: true);
+          await _audioPlayer.play(DeviceFileSource(tempFile.path));
+
+          // Cleanup temporary audio file asynchronously after completion
+          completer.future.then((_) {
+            try {
+              if (tempFile.existsSync()) tempFile.deleteSync();
+            } catch (_) {}
+          });
+        }
 
         // Wait for audio completion or safe timeout based on length
         final maxDuration = Duration(milliseconds: (cleanText.length * 90).clamp(1500, 8000));
         await completer.future.timeout(maxDuration, onTimeout: () {});
-
-        // Cleanup temporary audio file
-        try {
-          if (await tempFile.exists()) {
-            await tempFile.delete();
-          }
-        } catch (_) {}
 
         playedOnline = true;
       }
@@ -99,7 +102,7 @@ class ChotuTtsService extends ChangeNotifier {
     // 2. Fallback to Platform Native Speech Synthesis if online TTS was unavailable
     if (!playedOnline) {
       try {
-        if (!kIsWeb && Platform.isWindows) {
+        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
           final escaped = cleanText.replaceAll("'", "''");
           final psCommand =
               "& { Add-Type -AssemblyName System.Speech; \$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; \$s.Rate = 1; \$s.Speak('$escaped') }";

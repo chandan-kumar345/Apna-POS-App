@@ -1,4 +1,4 @@
-import 'dart:io';
+import 'dart:io' show File;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -86,9 +86,11 @@ class ReceiptDialog extends StatelessWidget {
     buffer.writeln('  Thank you! Visit Again!  ');
     buffer.writeln('   Powered by Apna POS    ');
 
-    Share.share(
-      buffer.toString(),
-      subject: 'Bill Receipt #${order.orderNumber} - $restName',
+    SharePlus.instance.share(
+      ShareParams(
+        text: buffer.toString(),
+        subject: 'Bill Receipt #${order.orderNumber} - $restName',
+      ),
     );
   }
 
@@ -111,7 +113,7 @@ class ReceiptDialog extends StatelessWidget {
               width: 58,
               height: 58,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
+              errorBuilder: (context, error, stackTrace) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
             ),
           ),
         );
@@ -133,7 +135,7 @@ class ReceiptDialog extends StatelessWidget {
                 width: 58,
                 height: 58,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
+                errorBuilder: (context, error, stackTrace) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
               ),
             ),
           );
@@ -153,32 +155,30 @@ class ReceiptDialog extends StatelessWidget {
               width: 58,
               height: 58,
               fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
+              errorBuilder: (context, error, stackTrace) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
             ),
           ),
         );
-      } else {
+      } else if (!kIsWeb && File(photoPath).existsSync()) {
         final file = File(photoPath);
-        if (file.existsSync()) {
-          return Container(
-            width: 58,
-            height: 58,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: const Color(0xFF051C48), width: 2),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+        return Container(
+          width: 58,
+          height: 58,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: const Color(0xFF051C48), width: 2),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
+          ),
+          child: ClipOval(
+            child: Image.file(
+              file,
+              width: 58,
+              height: 58,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
             ),
-            child: ClipOval(
-              child: Image.file(
-                file,
-                width: 58,
-                height: 58,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _buildFallbackLogo(rest?.name ?? user?.companyName ?? 'POS'),
-              ),
-            ),
-          );
-        }
+          ),
+        );
       }
     }
 
@@ -569,7 +569,7 @@ class ReceiptDialog extends StatelessWidget {
                         final currentUser = dbInstance.currentUser;
 
                         // 1. Windows Native / Bluetooth Flow
-                        if (!kIsWeb && Platform.isWindows) {
+                        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
                           final windowsService = WindowsPrinterService();
                           final printers = await windowsService.getInstalledPrinters();
                           final activeDefault = await windowsService.getActiveDefaultPrinter();
