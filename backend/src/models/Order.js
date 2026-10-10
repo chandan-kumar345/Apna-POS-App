@@ -355,7 +355,13 @@ const orderSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    ebill: {
+      enabled: { type: Boolean, default: false },
+      latestEbillId: { type: mongoose.Schema.Types.ObjectId, ref: 'EBill', default: null },
+      lastSentAt: { type: Date, default: null },
+    },
   },
+
   {
     timestamps: true,
     toJSON: {

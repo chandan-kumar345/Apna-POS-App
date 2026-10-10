@@ -22,6 +22,9 @@ const subscriptionRoutes = require('./subscriptionRoutes');
 const chotuRoutes = require('./chotuRoutes');
 const staffRoutes = require('./staffRoutes');
 const superadminRoutes = require('./superadminRoutes');
+const ebillRoutes = require('./ebillRoutes');
+const walletRoutes = require('./walletRoutes');
+const whatsappRoutes = require('./whatsappRoutes');
 
 const router = express.Router();
 
@@ -61,5 +64,9 @@ router.use('/subscriptions', subscriptionRoutes);
 router.use('/chotu', chotuRoutes);
 router.use('/staff', staffRoutes);
 router.use('/superadmin', superadminRoutes);
+router.use('/ebill', ebillRoutes);
+router.use('/wallet', walletRoutes);
+router.use('/whatsapp', whatsappRoutes);
 
 module.exports = router;
+

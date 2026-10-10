@@ -99,8 +99,10 @@ app.get(['/admin', '/admin/*', '/dashboard', '/dashboard/*'], (req, res) => {
   res.sendFile(path.join(adminPublicPath, 'index.html'));
 });
 
-// 7. Mount Versioned APIs under /api/v1
+// 7. Mount Versioned APIs under /api/v1 and /api
 app.use('/api/v1', routes);
+app.use('/api', routes);
+
 
 // 7. Root ping
 app.get('/', (req, res) => {

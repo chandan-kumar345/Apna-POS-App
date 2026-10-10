@@ -62,4 +62,14 @@ module.exports = {
   R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
   R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'apna-pos-media',
   R2_PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || '',
+
+  // WhatsApp Cloud API & eBill Configuration
+  WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '1391578214040423',
+  WHATSAPP_ACCESS_TOKEN: process.env.WHATSAPP_ACCESS_TOKEN || '',
+  WHATSAPP_API_VERSION: process.env.WHATSAPP_API_VERSION || 'v21.0',
+  WHATSAPP_WEBHOOK_VERIFY_TOKEN: process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || 'apna_pos_ebill_verify_token',
+  WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || '',
+  WHATSAPP_EBILL_TEMPLATE: process.env.WHATSAPP_EBILL_TEMPLATE || 'pos_ebill_receipt',
+  EBILL_CHARGE_INR: process.env.EBILL_CHARGE_INR ? Number(process.env.EBILL_CHARGE_INR) : 2.00,
 };
+

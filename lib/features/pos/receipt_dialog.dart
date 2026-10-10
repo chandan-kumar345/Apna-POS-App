@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'dart:io' show File;
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
@@ -10,9 +10,23 @@ import '../../core/models/user_model.dart';
 import '../../core/models/restaurant_model.dart';
 import '../../core/services/bluetooth_printer_service.dart';
 import '../../core/services/windows_printer_service.dart';
+import '../../core/services/ebill_service.dart';
+import '../../core/services/order_service.dart';
+import '../../core/services/network_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 
-class ReceiptDialog extends StatelessWidget {
+enum EbillUiStatus {
+  loading,
+  ready,
+  missingPhone,
+  insufficientBalance,
+  processing,
+  sent,
+  delivered,
+  failed,
+}
+
+class ReceiptDialog extends StatefulWidget {
   final OrderModel order;
   final String currency;
 
@@ -22,6 +36,34 @@ class ReceiptDialog extends StatelessWidget {
     required this.currency,
   });
 
+  @override
+  State<ReceiptDialog> createState() => _ReceiptDialogState();
+}
+
+class _ReceiptDialogState extends State<ReceiptDialog> {
+  late OrderModel _currentOrder;
+  EbillUiStatus _ebillStatus = EbillUiStatus.loading;
+  String _statusMessage = 'Checking eBill eligibility...';
+  double _walletBalance = 0.0;
+  double _ebillFee = 2.0;
+  String? _activeEbillId;
+  Timer? _pollingTimer;
+  bool _isDisposed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentOrder = widget.order;
+    _checkEligibilityAndWallet();
+  }
+
+  @override
+  void dispose() {
+    _pollingTimer?.cancel();
+    _isDisposed = true;
+    super.dispose();
+  }
+
   String _formatAmount(double val) {
     if (val % 1 == 0) {
       return val.toInt().toString();
@@ -29,69 +71,198 @@ class ReceiptDialog extends StatelessWidget {
     return val.toStringAsFixed(2);
   }
 
-  void _shareBillReceipt(BuildContext context) {
-    final db = DatabaseService();
-    final rest = db.restaurant;
-    final restName = rest?.name.isNotEmpty == true ? rest!.name : 'Apna POS Store';
-    final restPhone = rest?.phone.isNotEmpty == true ? rest!.phone : '';
-    final restAddress = rest?.address.isNotEmpty == true ? rest!.address : '';
-    final gstNumber = rest?.gstNumber.isNotEmpty == true ? rest!.gstNumber : '';
+  /// Check business wallet balance and customer phone presence
+  Future<void> _checkEligibilityAndWallet() async {
+    final phone = (_currentOrder.customerPhone ?? '').trim();
 
-    final buffer = StringBuffer();
-    buffer.writeln('================================');
-    buffer.writeln('       ${restName.toUpperCase()}       ');
-    if (restAddress.isNotEmpty) buffer.writeln(restAddress);
-    if (restPhone.isNotEmpty) buffer.writeln('Mob: $restPhone');
-    if (gstNumber.isNotEmpty) buffer.writeln('GST: #$gstNumber');
-    buffer.writeln('================================');
-    buffer.writeln('Bill No: #${order.orderNumber}');
-    buffer.writeln('Invoice: #INV-${order.orderNumber}');
-    buffer.writeln('Date: ${order.createdAt.isNotEmpty ? order.createdAt : DateTime.now().toString()}');
-    if (order.customerName != null && order.customerName!.isNotEmpty) {
-      buffer.writeln('Customer: ${order.customerName}');
+    // 1. Check if customer phone number is missing
+    if (phone.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _ebillStatus = EbillUiStatus.missingPhone;
+          _statusMessage = "Please add the customer's mobile number to send the bill through WhatsApp.";
+        });
+      }
+      // Load current wallet balance for informational display
+      final balance = await EbillService().getWalletBalance();
+      if (mounted && balance != null) {
+        setState(() {
+          _walletBalance = balance;
+        });
+      }
+      return;
     }
-    if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty) {
-      buffer.writeln('Table: ${order.tableNumber}');
-    }
-    if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) {
-      buffer.writeln('Delivery Address:\n${order.deliveryAddress}');
-    }
-    buffer.writeln('--------------------------------');
-    buffer.writeln('ITEMS:');
-    for (var item in order.items) {
-      buffer.writeln(item.item.name);
-      buffer.writeln('  Qty: ${item.quantity} x $currency${_formatAmount(item.item.price)} = $currency${_formatAmount(item.totalPrice)}');
-    }
-    buffer.writeln('--------------------------------');
-    buffer.writeln('Subtotal: $currency${_formatAmount(order.subtotal)}');
-    if (order.discountAmount > 0) {
-      buffer.writeln('Discount: -$currency${_formatAmount(order.discountAmount)}');
-    }
-    if (order.taxAmount > 0) {
-      buffer.writeln('Tax (GST): $currency${_formatAmount(order.taxAmount)}');
-    }
-    if (order.tipAmount > 0) {
-      buffer.writeln('Tip: +$currency${_formatAmount(order.tipAmount)}');
-    }
-    if (order.deliveryCharge > 0) {
-      buffer.writeln('Delivery Charge: +$currency${_formatAmount(order.deliveryCharge)}');
-    }
-    if (order.roundOff.abs() > 0.001) {
-      final sign = order.roundOff >= 0 ? '+' : '';
-      buffer.writeln('Round Off: $sign$currency${_formatAmount(order.roundOff)}');
-    }
-    buffer.writeln('GRAND TOTAL: $currency${_formatAmount(order.totalAmount)}');
-    buffer.writeln('Payment Method: ${order.paymentMethod}');
-    buffer.writeln('================================');
-    buffer.writeln('  Thank you! Visit Again!  ');
-    buffer.writeln('   Powered by Apna POS    ');
 
-    SharePlus.instance.share(
-      ShareParams(
-        text: buffer.toString(),
-        subject: 'Bill Receipt #${order.orderNumber} - $restName',
-      ),
-    );
+    // 2. Fetch authoritative eligibility from backend if online
+    if (NetworkService().isOnline) {
+      final billId = _currentOrder.id.isNotEmpty ? _currentOrder.id : _currentOrder.orderNumber;
+      final eligibility = await EbillService().checkEligibility(billId);
+      if (!mounted) return;
+
+      setState(() {
+        _walletBalance = eligibility.walletBalance;
+        _ebillFee = eligibility.ebillCharge;
+
+        if (!eligibility.customerPhonePresent) {
+          _ebillStatus = EbillUiStatus.missingPhone;
+          _statusMessage = "Please add the customer's mobile number to send the bill through WhatsApp.";
+        } else if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
+          _ebillStatus = EbillUiStatus.insufficientBalance;
+          _statusMessage = "Insufficient wallet balance. Please recharge your wallet to send the eBill.";
+        } else {
+          _ebillStatus = EbillUiStatus.ready;
+          _statusMessage = "Ready to send via WhatsApp";
+        }
+      });
+    } else {
+      // Offline fallback: prompt that eBill requires network
+      if (mounted) {
+        setState(() {
+          _ebillStatus = EbillUiStatus.ready;
+          _statusMessage = "Offline mode. eBill will sync once connected.";
+        });
+      }
+    }
+  }
+
+  /// Execute Save & eBill workflow
+  Future<void> _handleSaveAndEbill() async {
+    if (_ebillStatus == EbillUiStatus.processing) return;
+
+    final phone = (_currentOrder.customerPhone ?? '').trim();
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please add the customer's mobile number to send the bill through WhatsApp."),
+          backgroundColor: Colors.amber,
+        ),
+      );
+      return;
+    }
+
+    if (!NetworkService().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("eBill requires an active internet connection. Bill is safely stored locally."),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _ebillStatus = EbillUiStatus.processing;
+      _statusMessage = "Saving bill & sending eBill via WhatsApp...";
+    });
+
+    try {
+      // 1. Ensure bill is persisted to database if not already saved/synced
+      OrderModel finalOrder = _currentOrder;
+      if (!_currentOrder.isSynced || _currentOrder.id.isEmpty) {
+        try {
+          finalOrder = await OrderService().createOrder(_currentOrder);
+          _currentOrder = finalOrder;
+        } catch (saveErr) {
+          debugPrint('[ReceiptDialog] Note on order creation: $saveErr');
+        }
+      }
+
+      final billId = finalOrder.id.isNotEmpty ? finalOrder.id : finalOrder.orderNumber;
+
+      // 2. Submit eBill send request to backend
+      final result = await EbillService().sendEbill(
+        billId: billId,
+        customerId: finalOrder.customerId,
+        customerPhone: phone,
+      );
+
+      if (!mounted) return;
+
+      if (result.success) {
+        setState(() {
+          _activeEbillId = result.ebillId;
+          _walletBalance = result.walletBalance;
+          _ebillStatus = EbillUiStatus.sent;
+          _statusMessage = "WhatsApp Status: Sent to customer";
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("✓ eBill sent successfully to $phone!"),
+            backgroundColor: const Color(0xFF166534),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+
+        // 3. Briefly poll webhook status for live delivery confirmation (DELIVERED)
+        _startDeliveryPolling(result.ebillId);
+      } else {
+        setState(() {
+          _ebillStatus = EbillUiStatus.failed;
+          _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.message),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      final cleanError = e.toString().replaceAll('Exception:', '').trim();
+      setState(() {
+        _ebillStatus = EbillUiStatus.failed;
+        _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("WhatsApp Delivery Alert: $cleanError"),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Poll eBill delivery status from WhatsApp webhook updates
+  void _startDeliveryPolling(String? ebillId) {
+    if (ebillId == null || ebillId.isEmpty) return;
+    _pollingTimer?.cancel();
+    int pollAttempts = 0;
+
+    _pollingTimer = Timer.periodic(const Duration(seconds: 3), (timer) async {
+      pollAttempts++;
+      if (pollAttempts > 10 || _isDisposed) {
+        timer.cancel();
+        return;
+      }
+
+      final statusData = await EbillService().getStatus(ebillId);
+      if (!mounted || statusData == null) return;
+
+      final deliveryStatus = (statusData['deliveryStatus'] ?? '').toString().toUpperCase();
+      if (deliveryStatus == 'DELIVERED') {
+        setState(() {
+          _ebillStatus = EbillUiStatus.delivered;
+          _statusMessage = "WhatsApp Status: Delivered to customer";
+        });
+        timer.cancel();
+      } else if (deliveryStatus == 'FAILED') {
+        setState(() {
+          _ebillStatus = EbillUiStatus.failed;
+          _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
+        });
+        timer.cancel();
+      }
+    });
+  }
+
+  bool get _isSaveAndEbillEnabled {
+    final phone = (_currentOrder.customerPhone ?? '').trim();
+    if (phone.isEmpty) return false;
+    if (_ebillStatus == EbillUiStatus.insufficientBalance) return false;
+    if (_ebillStatus == EbillUiStatus.processing) return false;
+    return true;
   }
 
   Widget _buildReceiptLogo(UserModel? user, RestaurantModel? rest) {
@@ -182,7 +353,6 @@ class ReceiptDialog extends StatelessWidget {
       }
     }
 
-    // Do NOT show default Apna POS logo, show custom restaurant / business initials badge
     return _buildFallbackLogo(rest?.name ?? user?.companyName ?? user?.name ?? 'POS');
   }
 
@@ -205,11 +375,193 @@ class ReceiptDialog extends StatelessWidget {
       child: Text(
         initials.isNotEmpty ? initials : 'POS',
         style: const TextStyle(
-          color: Color(0xFFD4AF37), // Gold accent
+          color: Color(0xFFD4AF37),
           fontWeight: FontWeight.bold,
           fontSize: 18,
           letterSpacing: 1.2,
         ),
+      ),
+    );
+  }
+
+  /// eBill and Business Wallet Summary Card
+  Widget _buildEbillWalletSummaryCard() {
+    final phone = (_currentOrder.customerPhone ?? '').trim();
+    final remainingBalance = (_walletBalance - _ebillFee).clamp(0.0, double.infinity);
+
+    Color statusBadgeColor;
+    Color statusTextColor;
+    IconData statusIcon;
+
+    switch (_ebillStatus) {
+      case EbillUiStatus.ready:
+        statusBadgeColor = const Color(0xFFEFF6FF);
+        statusTextColor = const Color(0xFF1D4ED8);
+        statusIcon = Icons.mark_chat_read_rounded;
+        break;
+      case EbillUiStatus.missingPhone:
+        statusBadgeColor = const Color(0xFFFEF3C7);
+        statusTextColor = const Color(0xFF92400E);
+        statusIcon = Icons.phone_missed_rounded;
+        break;
+      case EbillUiStatus.insufficientBalance:
+        statusBadgeColor = const Color(0xFFFEE2E2);
+        statusTextColor = const Color(0xFF991B1B);
+        statusIcon = Icons.account_balance_wallet_outlined;
+        break;
+      case EbillUiStatus.processing:
+        statusBadgeColor = const Color(0xFFE0F2FE);
+        statusTextColor = const Color(0xFF0369A1);
+        statusIcon = Icons.hourglass_top_rounded;
+        break;
+      case EbillUiStatus.sent:
+        statusBadgeColor = const Color(0xFFECFDF5);
+        statusTextColor = const Color(0xFF047857);
+        statusIcon = Icons.check_circle_outline_rounded;
+        break;
+      case EbillUiStatus.delivered:
+        statusBadgeColor = const Color(0xFFDCFCE7);
+        statusTextColor = const Color(0xFF15803D);
+        statusIcon = Icons.done_all_rounded;
+        break;
+      case EbillUiStatus.failed:
+        statusBadgeColor = const Color(0xFFFEF2F2);
+        statusTextColor = const Color(0xFFB91C1C);
+        statusIcon = Icons.error_outline_rounded;
+        break;
+      case EbillUiStatus.loading:
+        statusBadgeColor = const Color(0xFFF1F5F9);
+        statusTextColor = const Color(0xFF475569);
+        statusIcon = Icons.sync_rounded;
+        break;
+    }
+
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    const Icon(Icons.account_balance_wallet_rounded, size: 16, color: Color(0xFF051C48)),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Business Wallet: ${widget.currency}${_formatAmount(_walletBalance)}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF051C48),
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE0E7FF),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  'eBill Fee: ${widget.currency}${_formatAmount(_ebillFee)}',
+                  style: const TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF3730A3),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Balance After: ${widget.currency}${_formatAmount(remainingBalance)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF64748B),
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (phone.isNotEmpty)
+                Text(
+                  'Mobile: $phone',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+            ],
+          ),
+
+          if (_activeEbillId != null && _activeEbillId!.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'eBill Ref: #$_activeEbillId',
+              style: const TextStyle(
+                fontSize: 10,
+                color: Color(0xFF64748B),
+                fontFamily: 'monospace',
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+
+          // Dynamic WhatsApp Status Banner
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: statusBadgeColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: statusTextColor.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                if (_ebillStatus == EbillUiStatus.processing)
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0369A1)),
+                  )
+                else
+                  Icon(statusIcon, size: 15, color: statusTextColor),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    _statusMessage,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: statusTextColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -219,6 +571,7 @@ class ReceiptDialog extends StatelessWidget {
     final db = DatabaseService();
     final rest = db.restaurant;
     final user = db.currentUser;
+    final order = _currentOrder;
 
     final String restName = rest?.name.isNotEmpty == true ? rest!.name : 'cafe de feasto';
     final String restAddress = rest?.address.isNotEmpty == true
@@ -235,11 +588,12 @@ class ReceiptDialog extends StatelessWidget {
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 440,
-          maxHeight: MediaQuery.of(context).size.height * 0.88,
+          maxHeight: MediaQuery.of(context).size.height * 0.90,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Header
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: const BoxDecoration(
@@ -271,15 +625,16 @@ class ReceiptDialog extends StatelessWidget {
                 ],
               ),
             ),
+            // Body: Thermal bill scrollable view
             Flexible(
               child: Container(
                 color: const Color(0xFFF1F5F9),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 child: SingleChildScrollView(
                   child: Center(
                     child: Container(
                       width: 360,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         borderRadius: BorderRadius.circular(4),
@@ -398,13 +753,14 @@ class ReceiptDialog extends StatelessWidget {
                             return Padding(
                               padding: const EdgeInsets.symmetric(vertical: 3),
                               child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Expanded(
                                     flex: 3,
                                     child: Text(
                                       cartItem.item.name,
                                       style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
                                   Expanded(
@@ -412,23 +768,23 @@ class ReceiptDialog extends StatelessWidget {
                                     child: Text(
                                       '${cartItem.quantity}',
                                       textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 10.5, color: Color(0xFF000000)),
+                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
                                     ),
                                   ),
                                   Expanded(
                                     flex: 2,
                                     child: Text(
-                                      '$currency${_formatAmount(cartItem.item.price)}',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(fontSize: 10.5, color: Color(0xFF000000)),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      '$currency${_formatAmount(cartItem.totalPrice)}',
+                                      '${widget.currency}${_formatAmount(cartItem.item.effectivePrice > 0 ? cartItem.item.effectivePrice : cartItem.item.price)}',
                                       textAlign: TextAlign.right,
                                       style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    flex: 2,
+                                    child: Text(
+                                      '${widget.currency}${_formatAmount(cartItem.totalPrice)}',
+                                      textAlign: TextAlign.right,
+                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
                                     ),
                                   ),
                                 ],
@@ -438,48 +794,37 @@ class ReceiptDialog extends StatelessWidget {
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
-                          _buildReceiptRow('Sub Total', '$currency${_formatAmount(order.subtotal)}'),
-                          if (order.discountAmount > 0) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('Discount', '- $currency${_formatAmount(order.discountAmount)}', textColor: const Color(0xFF15803D)),
-                          ],
+                          _buildReceiptRow('Sub Total :', '${widget.currency}${_formatAmount(order.subtotal)}'),
+                          if (order.discountAmount > 0)
+                            _buildReceiptRow('Discount :', '-${widget.currency}${_formatAmount(order.discountAmount)}', textColor: Colors.green),
                           if (order.taxAmount > 0) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('CGST', '$currency${_formatAmount(cgstAmount)}'),
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('SGST', '$currency${_formatAmount(sgstAmount)}'),
+                            _buildReceiptRow('CGST (2.5%) :', '${widget.currency}${_formatAmount(cgstAmount)}'),
+                            _buildReceiptRow('SGST (2.5%) :', '${widget.currency}${_formatAmount(sgstAmount)}'),
                           ],
-                          if (order.tipAmount > 0) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('Tip', '+ $currency${_formatAmount(order.tipAmount)}'),
-                          ],
-                          if (order.deliveryCharge > 0) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('Delivery Charge', '+ $currency${_formatAmount(order.deliveryCharge)}'),
-                          ],
-                          if (order.roundOff.abs() > 0.001) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow(
-                              'Round Off',
-                              '${order.roundOff >= 0 ? '+' : ''}$currency${_formatAmount(order.roundOff)}',
-                            ),
-                          ],
+                          if (order.tipAmount > 0)
+                            _buildReceiptRow('Tip :', '+${widget.currency}${_formatAmount(order.tipAmount)}'),
+                          if (order.deliveryCharge > 0)
+                            _buildReceiptRow('Delivery Charge :', '+${widget.currency}${_formatAmount(order.deliveryCharge)}'),
+                          if (order.roundOff.abs() > 0.001)
+                            _buildReceiptRow('Round Off :', '${order.roundOff >= 0 ? "+" : ""}${widget.currency}${_formatAmount(order.roundOff)}'),
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
-                          _buildReceiptRow('Total Amount', '$currency${_formatAmount(order.totalAmount)}', isBold: true),
+                          _buildReceiptRow('Total :', '${widget.currency}${_formatAmount(order.totalAmount)}', isBold: true),
                           const SizedBox(height: 6),
                           _buildDashedLine(),
                           const SizedBox(height: 6),
-                          _buildReceiptRow('Payment Method', order.paymentMethod.toUpperCase(), isBold: true),
-                          const SizedBox(height: 3),
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              const Text(
-                                'Payment Status',
-                                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                              Expanded(
+                                child: Text(
+                                  'Payment: ${order.paymentMethod}',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                                ),
                               ),
+                              const SizedBox(width: 6),
                               Builder(
                                 builder: (_) {
                                   final bool isBillPaid = order.isPaid ||
@@ -488,14 +833,10 @@ class ReceiptDialog extends StatelessWidget {
                                   return Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: isBillPaid
-                                          ? const Color(0xFFDCFCE7)
-                                          : const Color(0xFFFEF3C7),
+                                      color: isBillPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
                                       borderRadius: BorderRadius.circular(4),
                                       border: Border.all(
-                                        color: isBillPaid
-                                            ? const Color(0xFF16A34A)
-                                            : const Color(0xFFD97706),
+                                        color: isBillPaid ? const Color(0xFF16A34A) : const Color(0xFFD97706),
                                         width: 1,
                                       ),
                                     ),
@@ -504,9 +845,7 @@ class ReceiptDialog extends StatelessWidget {
                                       style: TextStyle(
                                         fontSize: 10,
                                         fontWeight: FontWeight.bold,
-                                        color: isBillPaid
-                                            ? const Color(0xFF166534)
-                                            : const Color(0xFF92400E),
+                                        color: isBillPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
                                       ),
                                     ),
                                   );
@@ -514,6 +853,7 @@ class ReceiptDialog extends StatelessWidget {
                               ),
                             ],
                           ),
+
                           if (order.printCount > 0) ...[
                             const SizedBox(height: 3),
                             _buildReceiptRow('Print Version', '#${order.printCount}'),
@@ -521,10 +861,8 @@ class ReceiptDialog extends StatelessWidget {
                           const SizedBox(height: 8),
                           _buildCenterLine(),
                           const SizedBox(height: 6),
-
                           // Dynamic Payment QR Code Section
                           _buildDynamicPaymentQrSection(context),
-
                           const SizedBox(height: 6),
                           _buildCenterLine(),
                           const SizedBox(height: 8),
@@ -546,8 +884,9 @@ class ReceiptDialog extends StatelessWidget {
                 ),
               ),
             ),
+            // Bottom Action Bar with eBill Summary and Actions
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(
@@ -558,129 +897,152 @@ class ReceiptDialog extends StatelessWidget {
                   BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2)),
                 ],
               ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () async {
-                        final printerService = BluetoothPrinterService();
-                        final dbInstance = DatabaseService();
-                        final rest = dbInstance.restaurant;
-                        final currentUser = dbInstance.currentUser;
+                  // Business Wallet & eBill Status Section
+                  _buildEbillWalletSummaryCard(),
+                  const SizedBox(height: 12),
+                  // Action Buttons: Print Thermal + Save & eBill
+                  Row(
+                    children: [
+                      // Print Thermal Button (unchanged)
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final printerService = BluetoothPrinterService();
+                            final dbInstance = DatabaseService();
+                            final rest = dbInstance.restaurant;
+                            final currentUser = dbInstance.currentUser;
 
-                        // 1. Windows Native / Bluetooth Flow
-                        if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-                          final windowsService = WindowsPrinterService();
-                          final printers = await windowsService.getInstalledPrinters();
-                          final activeDefault = await windowsService.getActiveDefaultPrinter();
+                            // 1. Windows Native / Bluetooth Flow
+                            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+                              final windowsService = WindowsPrinterService();
+                              final printers = await windowsService.getInstalledPrinters();
+                              final activeDefault = await windowsService.getActiveDefaultPrinter();
 
-                          if (printers.isEmpty) {
-                            if (context.mounted) {
-                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
+                              if (printers.isEmpty) {
+                                if (context.mounted) {
+                                  PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+                                }
+                                return;
+                              }
+
+                              if (printers.length == 1 || (activeDefault != null && windowsService.cachedSavedPrinterName != null)) {
+                                final target = activeDefault ?? printers.first;
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Printing to ${target.name}...'),
+                                      backgroundColor: const Color(0xFF051C48),
+                                      duration: const Duration(seconds: 1),
+                                    ),
+                                  );
+                                }
+                                final success = await printerService.printBill(
+                                  order: order,
+                                  restaurant: rest,
+                                  user: currentUser,
+                                  currency: widget.currency,
+                                  windowsPrinter: target,
+                                );
+                                if (!context.mounted) return;
+                                if (success) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Bill printed successfully on ${target.name}!'),
+                                      backgroundColor: Colors.green,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                } else {
+                                  PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+                                }
+                                return;
+                              }
+
+                              if (context.mounted) {
+                                PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+                              }
+                              return;
                             }
-                            return;
-                          }
 
-                          // If 1 printer OR user has a saved default printer -> print immediately (0ms delay)
-                          if (printers.length == 1 || (activeDefault != null && windowsService.cachedSavedPrinterName != null)) {
-                            final target = activeDefault ?? printers.first;
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Printing to ${target.name}...'),
-                                  backgroundColor: const Color(0xFF051C48),
-                                  duration: const Duration(seconds: 1),
-                                ),
+                            // 2. Mobile Android / iOS Bluetooth Flow
+                            bool isConn = await printerService.isConnected();
+                            if (!isConn) {
+                              isConn = await printerService.autoConnectSavedPrinter();
+                            }
+
+                            if (isConn) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Printing Thermal Bill...'),
+                                    backgroundColor: Color(0xFF051C48),
+                                    duration: Duration(seconds: 1),
+                                  ),
+                                );
+                              }
+                              final success = await printerService.printBill(
+                                order: order,
+                                restaurant: rest,
+                                user: currentUser,
+                                currency: widget.currency,
                               );
+                              if (!context.mounted) return;
+                              if (success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Bill printed successfully!'),
+                                    backgroundColor: Colors.green,
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              } else {
+                                PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+                              }
+                            } else if (context.mounted) {
+                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
                             }
-                            final success = await printerService.printBill(
-                              order: order,
-                              restaurant: rest,
-                              user: currentUser,
-                              currency: currency,
-                              windowsPrinter: target,
-                            );
-                            if (!context.mounted) return;
-                            if (success) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Bill printed successfully on ${target.name}!'),
-                                  backgroundColor: Colors.green,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            } else {
-                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                            }
-                            return;
-                          }
-
-                          // Multiple printers and no default set yet -> open selection popup
-                          if (context.mounted) {
-                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                          }
-                          return;
-                        }
-
-                        // 2. Mobile Android / iOS Bluetooth Flow
-                        bool isConn = await printerService.isConnected();
-                        if (!isConn) {
-                          isConn = await printerService.autoConnectSavedPrinter();
-                        }
-
-                        if (isConn) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Printing Thermal Bill...'),
-                                backgroundColor: Color(0xFF051C48),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                          }
-                          final success = await printerService.printBill(
-                            order: order,
-                            restaurant: rest,
-                            user: currentUser,
-                            currency: currency,
-                          );
-                          if (!context.mounted) return;
-                          if (success) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Bill printed successfully!'),
-                                backgroundColor: Colors.green,
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          } else {
-                            PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                          }
-                        } else if (context.mounted) {
-                          PrinterSelectionDialog.show(context, orderToPrint: order, currency: currency);
-                        }
-                      },
-                      icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
-                      label: const Text('Print Bill', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF051C48),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                          },
+                          icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
+                          label: const Text(
+                            'Print Thermal',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF051C48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _shareBillReceipt(context),
-                      icon: const Icon(Icons.share_rounded, size: 18, color: Color(0xFF051C48)),
-                      label: const Text('Share Bill', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Color(0xFF051C48))),
-                      style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: Color(0xFF051C48), width: 1.5),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      const SizedBox(width: 10),
+                      // Save & eBill Button
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isSaveAndEbillEnabled ? _handleSaveAndEbill : null,
+                          icon: _ebillStatus == EbillUiStatus.processing
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+                          label: Text(
+                            _ebillStatus == EbillUiStatus.processing ? 'Sending...' : 'Save & eBill',
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF25D366), // WhatsApp brand green
+                            disabledBackgroundColor: Colors.grey.shade400,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            elevation: _isSaveAndEbillEnabled ? 2 : 0,
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   ),
                 ],
               ),
@@ -737,6 +1099,7 @@ class ReceiptDialog extends StatelessWidget {
 
   Widget _buildDynamicPaymentQrSection(BuildContext context) {
     final rest = DatabaseService().restaurant;
+    final order = _currentOrder;
     final String upiId = (rest?.upiId ?? '').trim();
     final String qrPayload = (order.qrIntentUrl != null && order.qrIntentUrl!.isNotEmpty)
         ? order.qrIntentUrl!
@@ -777,7 +1140,7 @@ class ReceiptDialog extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Amount: $currency${_formatAmount(order.totalAmount)}',
+            'Amount: ${widget.currency}${_formatAmount(order.totalAmount)}',
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,

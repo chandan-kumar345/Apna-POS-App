@@ -374,7 +374,18 @@ class ApiEndpoints {
   static const String paymentStatus = '/payments/status';
   static const String printLogs = '/print-logs';
 
+  // eBill & WhatsApp endpoints
+  static const String ebillSend = '/ebill/send';
+  static String ebillEligibility(String billId) => '/ebill/eligibility?billId=$billId';
+  static String ebillStatus(String ebillId) => '/ebill/$ebillId/status';
+
+  // Business Wallet endpoints
+  static const String walletBalance = '/wallet/balance';
+  static const String walletRecharge = '/wallet/recharge';
+  static const String walletTransactions = '/wallet/transactions';
+
   // Sales & Reports endpoints
+
   static const String sales = '/sales';
   static const String salesSummary = '/sales/summary';
   static const String salesReport = '/sales/report';
