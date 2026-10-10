@@ -303,7 +303,7 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
   describe('5. WhatsApp Meta Webhook Integration (/api/v1/whatsapp/webhook)', () => {
     it('should verify Meta Webhook GET challenge with correct verify token', async () => {
       const res = await request(app)
-        .get('/api/v1/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=apna_pos_ebill_verify_token&hub.challenge=test_challenge_123');
+        .get('/api/v1/whatsapp/webhook?hub.mode=subscribe&hub.verify_token=softcode_whatsapp_webhook_verify_2026&hub.challenge=test_challenge_123');
 
       expect(res.status).toBe(200);
       expect(res.text).toBe('test_challenge_123');
