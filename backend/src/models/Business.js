@@ -114,6 +114,15 @@ const businessSchema = new mongoose.Schema(
         default: true,
       },
     },
+    whatsappSettings: {
+      enabled: { type: Boolean, default: false },
+      phoneNumberId: { type: String, default: '', trim: true },
+      phoneNumber: { type: String, default: '', trim: true },
+      wabaId: { type: String, default: '', trim: true },
+      accessToken: { type: String, default: '', trim: true },
+      webhookVerifyToken: { type: String, default: '', trim: true },
+      connectedAt: { type: Date, default: null },
+    },
     subscription: {
       isActive: { type: Boolean, default: false }, // false for new user until unlocked/paid!
       status: {

@@ -10,8 +10,10 @@ const Wallet = require('../src/models/Wallet');
 const WalletTransaction = require('../src/models/WalletTransaction');
 const EBill = require('../src/models/EBill');
 const tokenService = require('../src/services/tokenService');
+const whatsappConfig = require('../src/config/whatsapp.config');
 
 describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1/wallet, /api/v1/whatsapp)', () => {
+  const expectedFee = whatsappConfig.defaultEbillCharge || 2.0;
   let userA, businessA, tokenA;
   let userB, businessB, tokenB;
   let orderWithPhone, orderWithoutPhone;
@@ -99,7 +101,7 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.balance).toBeGreaterThanOrEqual(100);
-      expect(res.body.data.ebillCharge).toBe(2.0);
+      expect(res.body.data.ebillCharge).toBe(expectedFee);
     });
 
     it('should recharge business wallet and create an auditable CREDIT transaction', async () => {
@@ -132,8 +134,8 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       expect(res.status).toBe(200);
       expect(res.body.eligible).toBe(true);
       expect(res.body.customerPhonePresent).toBe(true);
-      expect(res.body.ebillCharge).toBe(2.0);
-      expect(res.body.walletBalance).toBeGreaterThanOrEqual(2.0);
+      expect(res.body.ebillCharge).toBe(expectedFee);
+      expect(res.body.walletBalance).toBeGreaterThanOrEqual(expectedFee);
     });
 
     it('should report eligible: false with CUSTOMER_PHONE_REQUIRED when customer phone is missing', async () => {
@@ -151,7 +153,7 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       // Drain Tenant A wallet
       await Wallet.findOneAndUpdate(
         { businessId: businessA._id },
-        { balance: 0.5, isActive: true },
+        { balance: 0.0, isActive: true },
         { upsert: true, new: true }
       );
 
@@ -181,12 +183,12 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('SENT');
       expect(res.body.data.deliveryStatus).toBe('SENT');
-      expect(res.body.data.amountCharged).toBe(2.0);
+      expect(res.body.data.amountCharged).toBe(expectedFee);
       expect(res.body.data.whatsappMessageId).toMatch(/^wamid\./);
 
       // Verify wallet deduction
       const updatedWallet = await Wallet.findOne({ businessId: businessA._id });
-      expect(updatedWallet.balance).toBe(initialBalance - 2.0);
+      expect(updatedWallet.balance).toBe(initialBalance - expectedFee);
 
       // Verify wallet transaction ledger
       const tx = await WalletTransaction.findOne({
@@ -196,13 +198,13 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       });
       expect(tx).not.toBeNull();
       expect(tx.type).toBe('DEBIT');
-      expect(tx.amount).toBe(2.0);
+      expect(tx.amount).toBe(expectedFee);
 
       // Verify EBill record
       const ebill = await EBill.findOne({ billId: orderWithPhone._id });
       expect(ebill).not.toBeNull();
       expect(ebill.status).toBe('SENT');
-      expect(ebill.whatsappPhoneNumberId).toBe('1391578214040423');
+      expect(ebill.whatsappPhoneNumberId).toBe(whatsappConfig.phoneNumberId || '1284061438133660');
 
       // Verify Order model updated
       const updatedOrder = await Order.findById(orderWithPhone._id);
@@ -260,7 +262,7 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       // Drain wallet
       await Wallet.findOneAndUpdate(
         { businessId: businessA._id },
-        { balance: 1.0, isActive: true },
+        { balance: 0.0, isActive: true },
         { upsert: true, new: true }
       );
 
@@ -282,9 +284,9 @@ describe('Save & eBill, Wallet, and WhatsApp Integration (/api/v1/ebill, /api/v1
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INSUFFICIENT_WALLET_BALANCE');
 
-      // Balance remains 1.0
+      // Balance remains 0.0
       const wallet = await Wallet.findOne({ businessId: businessA._id });
-      expect(wallet.balance).toBe(1.0);
+      expect(wallet.balance).toBe(0.0);
     });
   });
 

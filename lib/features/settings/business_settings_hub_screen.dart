@@ -12,6 +12,8 @@ import '../../core/widgets/printer_selection_dialog.dart';
 import '../onboarding/business_settings_screen.dart';
 import 'print_logs_screen.dart';
 import 'superadmin_order_deletion_screen.dart';
+import '../chat/meta_whatsapp_chat_screen.dart';
+import '../../core/services/whatsapp_chat_service.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -3386,19 +3388,24 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   // ==========================================
-  // MODAL 12: META CHATS (MESSENGER & INSTAGRAM DMS)
+  // MODAL 12: META CHATS (WHATSAPP LIVE INBOX & META APIS)
   // ==========================================
   void _showMetaChatsModal() {
     bool isEnabled = db.isMetaChatsEnabled;
+    final phoneIdCtrl = TextEditingController(text: db.whatsAppPhoneId);
+    final phoneNumCtrl = TextEditingController(text: db.whatsAppPhoneNumber);
+    final accessTokenCtrl = TextEditingController(text: db.whatsAppAccessToken);
+    bool obscureToken = true;
+
     bool autoWelcome = db.isMetaChatsAutoWelcomeEnabled;
     final welcomeCtrl = TextEditingController(text: db.metaChatsWelcomeMessage);
     bool leadCapture = db.isMetaChatsLeadCaptureEnabled;
     final handoverCtrl = TextEditingController(text: db.metaChatsHumanHandoverKeyword);
     final awayCtrl = TextEditingController(text: db.metaChatsAwayMessage);
+
+    bool isConnecting = false;
     bool isSaving = false;
-    bool isTesting = false;
     String? modalError;
-    String? testSuccessMessage;
 
     showDialog(
       context: context,
@@ -3409,6 +3416,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
           builder: (context, setModalState) {
             final screenWidth = MediaQuery.of(context).size.width;
             final dialogWidth = screenWidth >= 650 ? 580.0 : (screenWidth * 0.94);
+            final bool isConnected = phoneIdCtrl.text.trim().isNotEmpty || db.whatsAppPhoneId.isNotEmpty;
 
             return Dialog(
               backgroundColor: Colors.transparent,
@@ -3430,28 +3438,28 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         Row(
                           children: [
                             _buildNeumorphicIconBadge(
-                              icon: Icons.forum_rounded,
-                              accentColor: const Color(0xFF0084FF),
-                              size: 44,
+                              icon: Icons.chat_bubble_rounded,
+                              accentColor: const Color(0xFF25D366),
+                              size: 38,
                             ),
-                            const SizedBox(width: 14),
+                            const SizedBox(width: 10),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: const [
                                   Text(
-                                    'Meta Chats',
+                                    'Meta WhatsApp',
                                     style: TextStyle(
-                                      fontSize: 18,
+                                      fontSize: 15.5,
                                       fontWeight: FontWeight.w900,
                                       color: _NeumorphicTheme.textDark,
                                     ),
                                   ),
-                                  SizedBox(height: 2),
+                                  SizedBox(height: 1),
                                   Text(
-                                    'Messenger & Instagram Direct Automated Inboxes',
+                                    'Live 2-Way Customer Inbox',
                                     style: TextStyle(
-                                      fontSize: 11.5,
+                                      fontSize: 11,
                                       fontWeight: FontWeight.w600,
                                       color: _NeumorphicTheme.textMuted,
                                     ),
@@ -3461,163 +3469,282 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             ),
                             IconButton(
                               onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
-                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                              icon: const Icon(Icons.close_rounded, size: 20, color: _NeumorphicTheme.textMuted),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
                         const Divider(color: Color(0xFFD3DFEE), height: 1),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 10),
 
                         if (modalError != null) ...[
                           _buildNeumorphicErrorAlert(modalError!),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: 10),
                         ],
 
-                        if (testSuccessMessage != null) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: const Color(0xFF22C55E), width: 1.2),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 18),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    testSuccessMessage!,
-                                    style: const TextStyle(
-                                      color: Color(0xFF15803D),
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
+                        // SECTION 1: META INTEGRATED NUMBER & PHONE NUMBER ID
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF0FDF4),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF86EFAC), width: 1.1),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  const Icon(Icons.link_rounded, color: Color(0xFF16A34A), size: 18),
+                                  const SizedBox(width: 6),
+                                  const Expanded(
+                                    child: Text(
+                                      'Meta API Credentials',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF14532D),
+                                      ),
                                     ),
                                   ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: isConnected ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                                      borderRadius: BorderRadius.circular(6),
+                                    ),
+                                    child: Text(
+                                      isConnected ? 'Connected' : 'Setup',
+                                      style: const TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Enter your Meta Phone Number ID to sync live chats.',
+                                style: TextStyle(fontSize: 11, color: Color(0xFF166534), height: 1.2),
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Phone Number ID Input
+                              _buildNeumorphicInputField(
+                                controller: phoneIdCtrl,
+                                label: 'Phone Number ID *',
+                                hint: 'e.g. 1284061438133660',
+                                prefixIcon: Icons.badge_rounded,
+                                isNumeric: true,
+                              ),
+                              const SizedBox(height: 10),
+
+                              // Business Phone Number Input
+                              _buildNeumorphicInputField(
+                                controller: phoneNumCtrl,
+                                label: 'WhatsApp Mobile Number',
+                                hint: 'e.g. 91709593705',
+                                prefixIcon: Icons.phone_android_rounded,
+                              ),
+                              const SizedBox(height: 10),
+
+                              // System User Token Input (optional)
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Expanded(
+                                        child: Text(
+                                          'Access Token (Optional)',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF334155),
+                                          ),
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: () => setModalState(() => obscureToken = !obscureToken),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              obscureToken ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                              size: 13,
+                                              color: const Color(0xFF64748B),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              obscureToken ? 'Show' : 'Hide',
+                                              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: _NeumorphicTheme.sunkenSurface,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1),
+                                    ),
+                                    child: TextField(
+                                      controller: accessTokenCtrl,
+                                      obscureText: obscureToken,
+                                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _NeumorphicTheme.textDark),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Leave empty for server default',
+                                        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                                        prefixIcon: Icon(Icons.vpn_key_rounded, color: _NeumorphicTheme.navyBrand, size: 16),
+                                        border: InputBorder.none,
+                                        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+
+                              // PRIMARY BUTTON: Connect & Open WhatsApp Live Chats
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: isConnecting
+                                      ? null
+                                      : () async {
+                                          final phoneId = phoneIdCtrl.text.trim();
+                                          if (phoneId.isEmpty) {
+                                            setModalState(() {
+                                              modalError = 'Please enter Phone Number ID';
+                                            });
+                                            return;
+                                          }
+
+                                          setModalState(() {
+                                            isConnecting = true;
+                                            modalError = null;
+                                          });
+
+                                          try {
+                                            // 1. Save connection on backend
+                                            await WhatsAppChatService().saveConnection(
+                                              phoneNumberId: phoneId,
+                                              phoneNumber: phoneNumCtrl.text.trim(),
+                                              accessToken: accessTokenCtrl.text.trim(),
+                                            );
+
+                                            // 2. Save settings in local database
+                                            await db.saveWhatsAppIntegrationSettings(
+                                              enabled: true,
+                                              provider: 'meta_cloud',
+                                              phoneNumber: phoneNumCtrl.text.trim(),
+                                              phoneId: phoneId,
+                                              wabaId: db.whatsAppWabaId,
+                                              accessToken: accessTokenCtrl.text.trim(),
+                                              webhookToken: db.whatsAppWebhookToken,
+                                            );
+
+                                            await db.saveMetaChatsSettings(
+                                              enabled: true,
+                                              autoWelcome: autoWelcome,
+                                              welcomeMessage: welcomeCtrl.text,
+                                              leadCapture: leadCapture,
+                                              humanHandoverKeyword: handoverCtrl.text,
+                                              awayMessage: awayCtrl.text,
+                                            );
+
+                                            if (dialogCtx.mounted) {
+                                              Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                            }
+                                            _refreshState();
+
+                                            // 3. Open Meta WhatsApp Chat Screen
+                                            if (context.mounted) {
+                                              Navigator.of(context).push(
+                                                MaterialPageRoute(
+                                                  builder: (_) => const MetaWhatsAppChatScreen(),
+                                                ),
+                                              );
+                                            }
+                                          } catch (err) {
+                                            setModalState(() {
+                                              isConnecting = false;
+                                              modalError = 'Connection failed: $err';
+                                            });
+                                          }
+                                        },
+                                  icon: isConnecting
+                                      ? const SizedBox(
+                                          width: 14,
+                                          height: 14,
+                                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.forum_rounded, color: Colors.white, size: 17),
+                                  label: Text(
+                                    isConnecting ? 'Connecting...' : 'Connect & Open Chats',
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF16A34A),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(vertical: 11),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    elevation: 1,
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 12),
-                        ],
+                        ),
+                        const SizedBox(height: 14),
+
+                        // SECTION 2: AUTOMATION & MESSAGING CONTROLS
+                        const Text(
+                          'Automations (Optional)',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF334155),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
 
                         // Master Toggle
                         _buildNeumorphicToggleTile(
-                          title: 'Enable Meta Chats Automation',
-                          subtitle: 'Automatically manage incoming Facebook & Instagram DMs',
+                          title: 'Inbound Chat Processing',
+                          subtitle: 'Receive incoming WhatsApp messages',
                           value: isEnabled,
                           accentColor: const Color(0xFF0084FF),
                           onChanged: (val) => setModalState(() => isEnabled = val),
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 8),
 
                         // Auto Welcome Toggle
                         _buildNeumorphicToggleTile(
                           title: 'Auto Welcome Greeting',
-                          subtitle: 'Instantly reply when a user messages on IG or Facebook',
+                          subtitle: 'Reply on customer first message',
                           value: autoWelcome,
                           accentColor: const Color(0xFF0084FF),
                           onChanged: (val) => setModalState(() => autoWelcome = val),
                         ),
-                        const SizedBox(height: 10),
+                        const SizedBox(height: 8),
 
                         // Welcome Message Text
                         _buildNeumorphicInputField(
                           controller: welcomeCtrl,
-                          label: 'Direct Message Welcome Text',
-                          hint: 'Hello! Thanks for connecting with {restaurant_name}...',
+                          label: 'Welcome Greeting Text',
+                          hint: 'Hello! How can we help you?',
                           prefixIcon: Icons.chat_bubble_outline_rounded,
                           maxLines: 2,
                         ),
                         const SizedBox(height: 14),
 
-                        // Lead Capture Toggle
-                        _buildNeumorphicToggleTile(
-                          title: 'Social Lead Capture',
-                          subtitle: 'Automatically prompt for customer mobile number to sync with CRM',
-                          value: leadCapture,
-                          accentColor: const Color(0xFF10B981),
-                          onChanged: (val) => setModalState(() => leadCapture = val),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Human Handover Keyword
-                        _buildNeumorphicInputField(
-                          controller: handoverCtrl,
-                          label: 'Staff / Human Handover Trigger Keywords',
-                          hint: 'agent, human, help, support, talk to manager',
-                          prefixIcon: Icons.support_agent_rounded,
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Away Message
-                        _buildNeumorphicInputField(
-                          controller: awayCtrl,
-                          label: 'Off-Hours / Away Auto-Reply',
-                          hint: 'We are currently closed. Our team will get back to you...',
-                          prefixIcon: Icons.schedule_rounded,
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Test Meta Ping
-                        Container(
-                          decoration: BoxDecoration(
-                            color: _NeumorphicTheme.surface,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFF0084FF).withValues(alpha: 0.4), width: 1.2),
-                            boxShadow: _NeumorphicTheme.softRaisedShadows,
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: isTesting
-                                  ? null
-                                  : () async {
-                                      setModalState(() {
-                                        isTesting = true;
-                                        testSuccessMessage = null;
-                                        modalError = null;
-                                      });
-                                      await Future.delayed(const Duration(milliseconds: 600));
-                                      setModalState(() {
-                                        isTesting = false;
-                                        testSuccessMessage = '✓ Messenger & Instagram webhook endpoints active and ready!';
-                                      });
-                                    },
-                              borderRadius: BorderRadius.circular(12),
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    if (isTesting)
-                                      const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0084FF)),
-                                      )
-                                    else
-                                      const Icon(Icons.flash_on_rounded, color: Color(0xFF0084FF), size: 18),
-                                    const SizedBox(width: 8),
-                                    const Text(
-                                      'Test Meta Webhook Handshake',
-                                      style: TextStyle(
-                                        color: Color(0xFF0084FF),
-                                        fontWeight: FontWeight.w800,
-                                        fontSize: 12.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-
-                        // Action Buttons
+                        // Save & Cancel Buttons
                         Row(
                           children: [
                             Expanded(
@@ -3627,11 +3754,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                 onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
                               ),
                             ),
-                            const SizedBox(width: 12),
+                            const SizedBox(width: 10),
                             Expanded(
                               flex: 2,
                               child: _buildNeumorphicButton(
-                                label: isSaving ? 'Saving...' : 'Save Meta Chats',
+                                label: isSaving ? 'Saving...' : 'Save Settings',
                                 icon: Icons.check_rounded,
                                 isLoading: isSaving,
                                 onPressed: isSaving
@@ -3642,20 +3769,45 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                           modalError = null;
                                         });
 
-                                        await db.saveMetaChatsSettings(
-                                          enabled: isEnabled,
-                                          autoWelcome: autoWelcome,
-                                          welcomeMessage: welcomeCtrl.text,
-                                          leadCapture: leadCapture,
-                                          humanHandoverKeyword: handoverCtrl.text,
-                                          awayMessage: awayCtrl.text,
-                                        );
+                                        try {
+                                          if (phoneIdCtrl.text.trim().isNotEmpty) {
+                                            await WhatsAppChatService().saveConnection(
+                                              phoneNumberId: phoneIdCtrl.text.trim(),
+                                              phoneNumber: phoneNumCtrl.text.trim(),
+                                              accessToken: accessTokenCtrl.text.trim(),
+                                            );
+                                          }
 
-                                        if (dialogCtx.mounted) {
-                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                          await db.saveWhatsAppIntegrationSettings(
+                                            enabled: true,
+                                            provider: 'meta_cloud',
+                                            phoneNumber: phoneNumCtrl.text.trim(),
+                                            phoneId: phoneIdCtrl.text.trim(),
+                                            wabaId: db.whatsAppWabaId,
+                                            accessToken: accessTokenCtrl.text.trim(),
+                                            webhookToken: db.whatsAppWebhookToken,
+                                          );
+
+                                          await db.saveMetaChatsSettings(
+                                            enabled: isEnabled,
+                                            autoWelcome: autoWelcome,
+                                            welcomeMessage: welcomeCtrl.text,
+                                            leadCapture: leadCapture,
+                                            humanHandoverKeyword: handoverCtrl.text,
+                                            awayMessage: awayCtrl.text,
+                                          );
+
+                                          if (dialogCtx.mounted) {
+                                            Navigator.of(dialogCtx, rootNavigator: true).pop();
+                                          }
+                                          _refreshState();
+                                          _showSuccessSnackBar('WhatsApp settings saved!');
+                                        } catch (e) {
+                                          setModalState(() {
+                                            isSaving = false;
+                                            modalError = 'Save error: $e';
+                                          });
                                         }
-                                        _refreshState();
-                                        _showSuccessSnackBar('Meta Chats settings saved successfully!');
                                       },
                               ),
                             ),
@@ -4201,11 +4353,20 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Meta Chats',
-                            subtitle: db.isMetaChatsEnabled ? 'Messenger & DMs Connected' : 'Messenger & IG DMs',
-                            icon: Icons.forum_rounded,
-                            accentColor: const Color(0xFF0084FF),
-                            badgeText: db.isMetaChatsEnabled ? 'Active' : 'DMs',
-                            onTap: _showMetaChatsModal,
+                            subtitle: db.whatsAppPhoneId.isNotEmpty ? 'WhatsApp Live Inbox' : 'Connect Meta Phone ID',
+                            icon: Icons.chat_bubble_rounded,
+                            accentColor: const Color(0xFF25D366),
+                            badgeText: db.whatsAppPhoneId.isNotEmpty ? 'Live' : 'Connect',
+                            onTap: () {
+                              if (db.whatsAppPhoneId.isNotEmpty) {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (_) => const MetaWhatsAppChatScreen()),
+                                );
+                              } else {
+                                _showMetaChatsModal();
+                              }
+                            },
                           ),
                         ],
                       ),

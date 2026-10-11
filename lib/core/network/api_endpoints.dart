@@ -378,6 +378,13 @@ class ApiEndpoints {
   static const String ebillSend = '/ebill/send';
   static String ebillEligibility(String billId) => '/ebill/eligibility?billId=$billId';
   static String ebillStatus(String ebillId) => '/ebill/$ebillId/status';
+  static const String whatsappChats = '/whatsapp/chats';
+  static String whatsappChatMessages(String chatId) => '/whatsapp/chats/$chatId/messages';
+  static String whatsappSendMessage(String chatId) => '/whatsapp/chats/$chatId/messages';
+  static const String whatsappNewChat = '/whatsapp/chats/new';
+  static const String whatsappConnect = '/whatsapp/chats/connect';
+  static const String whatsappConnectionStatus = '/whatsapp/chats/connection';
+  static String whatsappMarkChatRead(String chatId) => '/whatsapp/chats/$chatId/read';
 
   // Business Wallet endpoints
   static const String walletBalance = '/wallet/balance';

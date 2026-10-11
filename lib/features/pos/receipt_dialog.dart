@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io' show File;
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -43,7 +44,6 @@ class ReceiptDialog extends StatefulWidget {
 class _ReceiptDialogState extends State<ReceiptDialog> {
   late OrderModel _currentOrder;
   EbillUiStatus _ebillStatus = EbillUiStatus.loading;
-  String _statusMessage = 'Checking eBill eligibility...';
   double _walletBalance = 0.0;
   double _ebillFee = 2.0;
   String? _activeEbillId;
@@ -71,29 +71,58 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     return val.toStringAsFixed(2);
   }
 
+  void _showInsufficientBalanceSnackbar() {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.account_balance_wallet_outlined, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _walletBalance > 0
+                    ? 'Insufficient wallet balance (${widget.currency}${_formatAmount(_walletBalance)}). Please recharge your wallet to send eBill.'
+                    : 'Insufficient wallet balance to send eBill. Please recharge your business wallet.',
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFFDC2626),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 4),
+      ),
+    );
+  }
+
   /// Check business wallet balance and customer phone presence
   Future<void> _checkEligibilityAndWallet() async {
     final phone = (_currentOrder.customerPhone ?? '').trim();
 
-    // 1. Check if customer phone number is missing
-    if (phone.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _ebillStatus = EbillUiStatus.missingPhone;
-          _statusMessage = "Please add the customer's mobile number to send the bill through WhatsApp.";
-        });
-      }
-      // Load current wallet balance for informational display
+    // 1. Fetch wallet balance
+    try {
       final balance = await EbillService().getWalletBalance();
       if (mounted && balance != null) {
         setState(() {
           _walletBalance = balance;
         });
       }
+    } catch (_) {}
+
+    // 2. Check if customer phone number is missing
+    if (phone.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _ebillStatus = EbillUiStatus.missingPhone;
+        });
+      }
       return;
     }
 
-    // 2. Fetch authoritative eligibility from backend if online
+    // 3. Fetch authoritative eligibility from backend if online
     if (NetworkService().isOnline) {
       final billId = _currentOrder.id.isNotEmpty ? _currentOrder.id : _currentOrder.orderNumber;
       final eligibility = await EbillService().checkEligibility(billId);
@@ -105,21 +134,21 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
 
         if (!eligibility.customerPhonePresent) {
           _ebillStatus = EbillUiStatus.missingPhone;
-          _statusMessage = "Please add the customer's mobile number to send the bill through WhatsApp.";
         } else if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
           _ebillStatus = EbillUiStatus.insufficientBalance;
-          _statusMessage = "Insufficient wallet balance. Please recharge your wallet to send the eBill.";
         } else {
           _ebillStatus = EbillUiStatus.ready;
-          _statusMessage = "Ready to send via WhatsApp";
         }
       });
+
+      if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
+        _showInsufficientBalanceSnackbar();
+      }
     } else {
       // Offline fallback: prompt that eBill requires network
       if (mounted) {
         setState(() {
           _ebillStatus = EbillUiStatus.ready;
-          _statusMessage = "Offline mode. eBill will sync once connected.";
         });
       }
     }
@@ -131,20 +160,55 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
 
     final phone = (_currentOrder.customerPhone ?? '').trim();
     if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please add the customer's mobile number to send the bill through WhatsApp."),
-          backgroundColor: Colors.amber,
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.phone_missed_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "Please add the customer's mobile number to send the bill through WhatsApp.",
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: const Color(0xFFD97706),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 3),
         ),
       );
       return;
     }
 
+    if (_ebillStatus == EbillUiStatus.insufficientBalance ||
+        (_walletBalance > 0 && _walletBalance < _ebillFee)) {
+      _showInsufficientBalanceSnackbar();
+      return;
+    }
+
     if (!NetworkService().isOnline) {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("eBill requires an active internet connection. Bill is safely stored locally."),
-          backgroundColor: Colors.orange,
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  "eBill requires an active internet connection. Bill is safely stored locally.",
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange.shade800,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
       return;
@@ -152,7 +216,6 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
 
     setState(() {
       _ebillStatus = EbillUiStatus.processing;
-      _statusMessage = "Saving bill & sending eBill via WhatsApp...";
     });
 
     try {
@@ -183,42 +246,102 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
           _activeEbillId = result.ebillId;
           _walletBalance = result.walletBalance;
           _ebillStatus = EbillUiStatus.sent;
-          _statusMessage = "WhatsApp Status: Sent to customer";
         });
 
+        final refText = _activeEbillId != null && _activeEbillId!.isNotEmpty
+            ? " (Ref: #$_activeEbillId)"
+            : "";
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("✓ eBill sent successfully to $phone!"),
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    "✓ eBill sent successfully via WhatsApp to $phone!$refText",
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
             backgroundColor: const Color(0xFF166534),
-            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 3),
           ),
         );
 
         // 3. Briefly poll webhook status for live delivery confirmation (DELIVERED)
         _startDeliveryPolling(result.ebillId);
       } else {
+        final isBalanceError = result.message.toLowerCase().contains('balance') ||
+            result.message.toLowerCase().contains('wallet');
         setState(() {
-          _ebillStatus = EbillUiStatus.failed;
-          _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
+          _ebillStatus = isBalanceError ? EbillUiStatus.insufficientBalance : EbillUiStatus.failed;
         });
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result.message),
-            backgroundColor: Colors.red,
+            content: Row(
+              children: [
+                Icon(
+                  isBalanceError ? Icons.account_balance_wallet_outlined : Icons.error_outline_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isBalanceError
+                        ? "Insufficient wallet balance to send eBill. Please recharge your wallet."
+                        : result.message,
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: isBalanceError ? const Color(0xFFDC2626) : Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
     } catch (e) {
       if (!mounted) return;
       final cleanError = e.toString().replaceAll('Exception:', '').trim();
+      final isBalanceError = cleanError.toLowerCase().contains('balance') ||
+          cleanError.toLowerCase().contains('wallet');
       setState(() {
-        _ebillStatus = EbillUiStatus.failed;
-        _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
+        _ebillStatus = isBalanceError ? EbillUiStatus.insufficientBalance : EbillUiStatus.failed;
       });
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text("WhatsApp Delivery Alert: $cleanError"),
-          backgroundColor: Colors.red,
+          content: Row(
+            children: [
+              Icon(
+                isBalanceError ? Icons.account_balance_wallet_outlined : Icons.error_outline_rounded,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  isBalanceError
+                      ? "Insufficient wallet balance to send eBill. Please recharge your wallet."
+                      : "WhatsApp Delivery Alert: $cleanError",
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: isBalanceError ? const Color(0xFFDC2626) : Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          duration: const Duration(seconds: 4),
         ),
       );
     }
@@ -244,13 +367,11 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
       if (deliveryStatus == 'DELIVERED') {
         setState(() {
           _ebillStatus = EbillUiStatus.delivered;
-          _statusMessage = "WhatsApp Status: Delivered to customer";
         });
         timer.cancel();
       } else if (deliveryStatus == 'FAILED') {
         setState(() {
           _ebillStatus = EbillUiStatus.failed;
-          _statusMessage = "Bill saved, but WhatsApp delivery failed. Please retry.";
         });
         timer.cancel();
       }
@@ -258,11 +379,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
   }
 
   bool get _isSaveAndEbillEnabled {
-    final phone = (_currentOrder.customerPhone ?? '').trim();
-    if (phone.isEmpty) return false;
-    if (_ebillStatus == EbillUiStatus.insufficientBalance) return false;
-    if (_ebillStatus == EbillUiStatus.processing) return false;
-    return true;
+    return _ebillStatus != EbillUiStatus.processing;
   }
 
   Widget _buildReceiptLogo(UserModel? user, RestaurantModel? rest) {
@@ -384,186 +501,593 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     );
   }
 
-  /// eBill and Business Wallet Summary Card
-  Widget _buildEbillWalletSummaryCard() {
-    final phone = (_currentOrder.customerPhone ?? '').trim();
-    final remainingBalance = (_walletBalance - _ebillFee).clamp(0.0, double.infinity);
-
-    Color statusBadgeColor;
-    Color statusTextColor;
-    IconData statusIcon;
-
-    switch (_ebillStatus) {
-      case EbillUiStatus.ready:
-        statusBadgeColor = const Color(0xFFEFF6FF);
-        statusTextColor = const Color(0xFF1D4ED8);
-        statusIcon = Icons.mark_chat_read_rounded;
-        break;
-      case EbillUiStatus.missingPhone:
-        statusBadgeColor = const Color(0xFFFEF3C7);
-        statusTextColor = const Color(0xFF92400E);
-        statusIcon = Icons.phone_missed_rounded;
-        break;
-      case EbillUiStatus.insufficientBalance:
-        statusBadgeColor = const Color(0xFFFEE2E2);
-        statusTextColor = const Color(0xFF991B1B);
-        statusIcon = Icons.account_balance_wallet_outlined;
-        break;
-      case EbillUiStatus.processing:
-        statusBadgeColor = const Color(0xFFE0F2FE);
-        statusTextColor = const Color(0xFF0369A1);
-        statusIcon = Icons.hourglass_top_rounded;
-        break;
-      case EbillUiStatus.sent:
-        statusBadgeColor = const Color(0xFFECFDF5);
-        statusTextColor = const Color(0xFF047857);
-        statusIcon = Icons.check_circle_outline_rounded;
-        break;
-      case EbillUiStatus.delivered:
-        statusBadgeColor = const Color(0xFFDCFCE7);
-        statusTextColor = const Color(0xFF15803D);
-        statusIcon = Icons.done_all_rounded;
-        break;
-      case EbillUiStatus.failed:
-        statusBadgeColor = const Color(0xFFFEF2F2);
-        statusTextColor = const Color(0xFFB91C1C);
-        statusIcon = Icons.error_outline_rounded;
-        break;
-      case EbillUiStatus.loading:
-        statusBadgeColor = const Color(0xFFF1F5F9);
-        statusTextColor = const Color(0xFF475569);
-        statusIcon = Icons.sync_rounded;
-        break;
-    }
-
-
+  Widget _buildDialogHeader(BuildContext context, OrderModel order) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Color(0xFF051C48),
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(18),
+          topRight: Radius.circular(18),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Row(
-                  children: [
-                    const Icon(Icons.account_balance_wallet_rounded, size: 16, color: Color(0xFF051C48)),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        'Business Wallet: ${widget.currency}${_formatAmount(_walletBalance)}',
-                        style: const TextStyle(
-                          fontSize: 12,
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.receipt_long_rounded,
+                    color: Colors.white,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Thermal Bill Preview',
+                        style: TextStyle(
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF051C48),
+                          fontSize: 15,
+                          letterSpacing: 0.3,
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE0E7FF),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  'eBill Fee: ${widget.currency}${_formatAmount(_ebillFee)}',
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF3730A3),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Text(
-                  'Balance After: ${widget.currency}${_formatAmount(remainingBalance)}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xFF64748B),
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              if (phone.isNotEmpty)
-                Text(
-                  'Mobile: $phone',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-            ],
-          ),
-
-          if (_activeEbillId != null && _activeEbillId!.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              'eBill Ref: #$_activeEbillId',
-              style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFF64748B),
-                fontFamily: 'monospace',
-              ),
-            ),
-          ],
-          const SizedBox(height: 8),
-
-          // Dynamic WhatsApp Status Banner
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusBadgeColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: statusTextColor.withValues(alpha: 0.3)),
-            ),
-            child: Row(
-              children: [
-                if (_ebillStatus == EbillUiStatus.processing)
-                  const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0369A1)),
-                  )
-                else
-                  Icon(statusIcon, size: 15, color: statusTextColor),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    _statusMessage,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: statusTextColor,
-                    ),
+                      if (order.orderNumber.isNotEmpty)
+                        Text(
+                          '#${order.orderNumber}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontWeight: FontWeight.w500,
+                            fontSize: 11,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          Material(
+            color: Colors.white.withValues(alpha: 0.15),
+            shape: const CircleBorder(),
+            clipBehavior: Clip.antiAlias,
+            child: IconButton(
+              onPressed: () => Navigator.pop(context),
+              icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: 'Close',
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  Widget _buildThermalPaperReceipt({
+    required BuildContext context,
+    required OrderModel order,
+    required UserModel? user,
+    required RestaurantModel? rest,
+    required String restName,
+    required String restAddress,
+    required String restPhone,
+    required String gstNumber,
+    required double cgstAmount,
+    required double sgstAmount,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(6),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x18000000),
+            blurRadius: 16,
+            offset: Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Color(0x0A000000),
+            blurRadius: 4,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Store Logo
+          _buildReceiptLogo(user, rest),
+          const SizedBox(height: 10),
+
+          // Restaurant Name (Uppercase, bold, receipt style)
+          Text(
+            restName.toUpperCase(),
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF000000),
+              letterSpacing: 0.6,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 5),
+
+          // Address & Mob
+          Text(
+            restAddress,
+            style: const TextStyle(fontSize: 10.5, color: Color(0xFF334155), height: 1.3),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Mob: $restPhone',
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+
+          // Order Type & Table
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              order.orderType == OrderType.dineIn
+                  ? (order.tableNumber != null && order.tableNumber!.isNotEmpty
+                      ? 'Dine In - Table ${order.tableNumber!.replaceAll('T-', '')}'
+                      : 'DineIn')
+                  : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery'),
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+                letterSpacing: 0.3,
+              ),
+            ),
+          ),
+
+          // Delivery Address if delivery
+          if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: const Color(0xFFCBD5E1), width: 0.8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'DELIVERY ADDRESS:',
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    order.deliveryAddress!,
+                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w500, color: Color(0xFF1E293B), height: 1.25),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+
+          // Customer details
+          if (order.customerName != null && order.customerName!.isNotEmpty)
+            Text(
+              'Customer Name: ${order.customerName!.toUpperCase()}',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+            ),
+          if (order.customerPhone != null && order.customerPhone!.isNotEmpty)
+            Text(
+              'Customer Mobile: ${order.customerPhone}',
+              style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+            ),
+          const SizedBox(height: 4),
+
+          // Bill Metadata
+          Text(
+            order.createdAt.isNotEmpty ? order.createdAt : '07/08/2026 09:20:58 PM',
+            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
+          ),
+          const SizedBox(height: 4),
+          Text('Bill: #${order.orderNumber}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
+          Text('Invoice: #INV-${order.orderNumber}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000))),
+          Text('Order No: #${order.id.isNotEmpty ? order.id : order.orderNumber}', style: const TextStyle(fontSize: 10, color: Color(0xFF334155))),
+          Text('GST: #$gstNumber', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
+          const SizedBox(height: 4),
+          Text('Pay To : $restName', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
+          const SizedBox(height: 8),
+
+          _buildDashedLine(),
+          const SizedBox(height: 5),
+
+          // Table Header
+          const Row(
+            children: [
+              Expanded(flex: 3, child: Text('ITEM', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
+              Expanded(flex: 1, child: Text('QTY', textAlign: TextAlign.center, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
+              Expanded(flex: 2, child: Text('RATE', textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
+              Expanded(flex: 2, child: Text('TOTAL', textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
+            ],
+          ),
+          const SizedBox(height: 4),
+          _buildDashedLine(),
+          const SizedBox(height: 5),
+
+          // Items List
+          ...order.items.map((cartItem) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: Text(
+                      cartItem.item.name,
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Expanded(
+                    flex: 1,
+                    child: Text(
+                      '${cartItem.quantity}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${widget.currency}${_formatAmount(cartItem.item.effectivePrice > 0 ? cartItem.item.effectivePrice : cartItem.item.price)}',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 2,
+                    child: Text(
+                      '${widget.currency}${_formatAmount(cartItem.totalPrice)}',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+          const SizedBox(height: 5),
+          _buildDashedLine(),
+          const SizedBox(height: 6),
+
+          // Calculations Breakdown
+          _buildReceiptRow('Sub Total :', '${widget.currency}${_formatAmount(order.subtotal)}'),
+          if (order.discountAmount > 0)
+            _buildReceiptRow('Discount :', '-${widget.currency}${_formatAmount(order.discountAmount)}', textColor: const Color(0xFF16A34A)),
+          if (order.taxAmount > 0) ...[
+            _buildReceiptRow('CGST (2.5%) :', '${widget.currency}${_formatAmount(cgstAmount)}'),
+            _buildReceiptRow('SGST (2.5%) :', '${widget.currency}${_formatAmount(sgstAmount)}'),
+          ],
+          if (order.tipAmount > 0)
+            _buildReceiptRow('Tip :', '+${widget.currency}${_formatAmount(order.tipAmount)}'),
+          if (order.deliveryCharge > 0)
+            _buildReceiptRow('Delivery Charge :', '+${widget.currency}${_formatAmount(order.deliveryCharge)}'),
+          if (order.roundOff.abs() > 0.001)
+            _buildReceiptRow('Round Off :', '${order.roundOff >= 0 ? "+" : ""}${widget.currency}${_formatAmount(order.roundOff)}'),
+          const SizedBox(height: 6),
+          _buildDashedLine(),
+          const SizedBox(height: 6),
+
+          // Grand Total
+          _buildReceiptRow('Total :', '${widget.currency}${_formatAmount(order.totalAmount)}', isBold: true, fontSize: 13),
+          const SizedBox(height: 6),
+          _buildDashedLine(),
+          const SizedBox(height: 6),
+
+          // Payment Status
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Payment: ${order.paymentMethod}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+                ),
+              ),
+              const SizedBox(width: 6),
+              Builder(
+                builder: (_) {
+                  final bool isBillPaid = order.isPaid ||
+                      order.paymentStatus.toLowerCase() == 'paid' ||
+                      order.status == OrderStatus.completed;
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: isBillPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: isBillPaid ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                        width: 1,
+                      ),
+                    ),
+                    child: Text(
+                      isBillPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING',
+                      style: TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.bold,
+                        color: isBillPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+
+          if (order.printCount > 0) ...[
+            const SizedBox(height: 3),
+            _buildReceiptRow('Print Version', '#${order.printCount}'),
+          ],
+          const SizedBox(height: 8),
+          _buildCenterLine(),
+          const SizedBox(height: 6),
+
+          // Dynamic QR Code Section
+          _buildDynamicPaymentQrSection(context),
+          const SizedBox(height: 6),
+          _buildCenterLine(),
+          const SizedBox(height: 8),
+
+          // Thank you footer
+          const Text(
+            'Thank you! Visit Again!',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 3),
+          const Text(
+            'Powered by Apna POS',
+            style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Color(0xFF64748B)),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomActionBar(
+    BuildContext context,
+    OrderModel order,
+    RestaurantModel? rest,
+    UserModel? currentUser,
+  ) {
+    final isProcessing = _ebillStatus == EbillUiStatus.processing;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(18),
+          bottomRight: Radius.circular(18),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0x14000000),
+            blurRadius: 10,
+            offset: Offset(0, -3),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // 1. Print Thermal Button
+          Expanded(
+            child: SizedBox(
+              height: 46,
+              child: ElevatedButton.icon(
+                onPressed: () => _handlePrintThermal(context, order, rest, currentUser),
+                icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
+                label: const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Print Thermal',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF051C48),
+                  foregroundColor: Colors.white,
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // 2. Save & eBill Button
+          Expanded(
+            child: SizedBox(
+              height: 46,
+              child: ElevatedButton.icon(
+                onPressed: _isSaveAndEbillEnabled ? _handleSaveAndEbill : null,
+                icon: isProcessing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded, size: 18, color: Colors.white),
+                label: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    isProcessing ? 'Sending...' : 'Save & eBill',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366), // WhatsApp brand green
+                  foregroundColor: Colors.white,
+                  disabledBackgroundColor: const Color(0xFF86EFAC),
+                  elevation: 1,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handlePrintThermal(
+    BuildContext context,
+    OrderModel order,
+    RestaurantModel? rest,
+    UserModel? currentUser,
+  ) async {
+    final printerService = BluetoothPrinterService();
+    final dbInstance = DatabaseService();
+    final currentRest = rest ?? dbInstance.restaurant;
+    final user = currentUser ?? dbInstance.currentUser;
+
+    // 1. Windows Native / Bluetooth Flow
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      final windowsService = WindowsPrinterService();
+      final printers = await windowsService.getInstalledPrinters();
+      final activeDefault = await windowsService.getActiveDefaultPrinter();
+
+      if (printers.isEmpty) {
+        if (context.mounted) {
+          PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+        }
+        return;
+      }
+
+      if (printers.length == 1 || (activeDefault != null && windowsService.cachedSavedPrinterName != null)) {
+        final target = activeDefault ?? printers.first;
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Printing to ${target.name}...'),
+              backgroundColor: const Color(0xFF051C48),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+        final success = await printerService.printBill(
+          order: order,
+          restaurant: currentRest,
+          user: user,
+          currency: widget.currency,
+          windowsPrinter: target,
+        );
+        if (!context.mounted) return;
+        if (success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Bill printed successfully on ${target.name}!'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        } else {
+          PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+        }
+        return;
+      }
+
+      if (context.mounted) {
+        PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+      }
+      return;
+    }
+
+    // 2. Mobile Android / iOS Bluetooth Flow
+    bool isConn = await printerService.isConnected();
+    if (!isConn) {
+      isConn = await printerService.autoConnectSavedPrinter();
+    }
+
+    if (isConn) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Printing Thermal Bill...'),
+            backgroundColor: Color(0xFF051C48),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+      final success = await printerService.printBill(
+        order: order,
+        restaurant: currentRest,
+        user: user,
+        currency: widget.currency,
+      );
+      if (!context.mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bill printed successfully!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      } else {
+        PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+      }
+    } else if (context.mounted) {
+      PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
+    }
   }
 
   @override
@@ -573,7 +1097,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     final user = db.currentUser;
     final order = _currentOrder;
 
-    final String restName = rest?.name.isNotEmpty == true ? rest!.name : 'cafe de feasto';
+    final String restName = rest?.name.isNotEmpty == true ? rest!.name : 'Cafe De Feasto';
     final String restAddress = rest?.address.isNotEmpty == true
         ? rest!.address
         : 'Dakshin Jagaddal, Narendrapur, Kolkata, West Bengal, India - 700149';
@@ -582,472 +1106,101 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     final double cgstAmount = order.taxAmount / 2;
     final double sgstAmount = order.taxAmount / 2;
 
+    final mediaQuery = MediaQuery.of(context);
+    final screenSize = mediaQuery.size;
+    final isSmallPhone = screenSize.width < 380;
+    final isLandscape = screenSize.width > screenSize.height;
+
+    // Responsive dialog constraints across all device types
+    final double dialogMaxWidth = screenSize.width < 500
+        ? math.max(280.0, screenSize.width - (isSmallPhone ? 16.0 : 28.0))
+        : 440.0;
+
+    final double dialogMaxHeight = isLandscape
+        ? screenSize.height * 0.94
+        : math.min(screenSize.height * 0.90, 860.0);
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: 440,
-          maxHeight: MediaQuery.of(context).size.height * 0.90,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: const BoxDecoration(
-                color: Color(0xFF051C48),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.receipt_long_rounded, color: Colors.white, size: 20),
-                      SizedBox(width: 8),
-                      Text(
-                        'Thermal Bill Preview',
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
-                      ),
-                    ],
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 22),
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
-                ],
-              ),
+      elevation: 0,
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: isSmallPhone ? 8.0 : 16.0,
+        vertical: isSmallPhone ? 10.0 : 18.0,
+      ),
+      child: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: dialogMaxWidth,
+              maxHeight: dialogMaxHeight,
             ),
-            // Body: Thermal bill scrollable view
-            Flexible(
-              child: Container(
+            child: Container(
+              decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                child: SingleChildScrollView(
-                  child: Center(
-                    child: Container(
-                      width: 360,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 22),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(4),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Color(0x1F000000),
-                            blurRadius: 14,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          _buildReceiptLogo(user, rest),
-                          const SizedBox(height: 10),
-                          Text(
-                            restName.toLowerCase(),
-                            style: const TextStyle(
-                              fontFamily: 'monospace',
-                              fontSize: 18,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF000000),
-                              letterSpacing: 0.5,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            restAddress,
-                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF1E293B), height: 1.3),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Mob: $restPhone',
-                            style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            order.orderType == OrderType.dineIn
-                                ? 'DineIn'
-                                : (order.orderType == OrderType.takeaway ? 'Takeaway' : 'Delivery'),
-                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                          ),
-                          if (order.orderType == OrderType.dineIn && order.tableNumber != null && order.tableNumber!.isNotEmpty)
-                            Text(
-                              'Dine In - Table ${order.tableNumber!.replaceAll('T-', '')}',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                            ),
-                          if (order.orderType == OrderType.delivery && order.deliveryAddress != null && order.deliveryAddress!.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF1F5F9),
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF94A3B8), width: 0.8),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'DELIVERY ADDRESS:',
-                                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    order.deliveryAddress!,
-                                    style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000), height: 1.25),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 6),
-                          if (order.customerName != null && order.customerName!.isNotEmpty)
-                            Text(
-                              'Customer Name: ${order.customerName!.toUpperCase()}',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                            ),
-                          if (order.customerPhone != null && order.customerPhone!.isNotEmpty)
-                            Text(
-                              'Customer Mobile: ${order.customerPhone}',
-                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                            ),
-                          const SizedBox(height: 4),
-                          Text(
-                            order.createdAt.isNotEmpty ? order.createdAt : '07/08/2026 09:20:58 PM',
-                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
-                          ),
-                          const SizedBox(height: 6),
-                          Text('Bill: #${order.orderNumber}', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
-                          Text('Invoice: #INV-${order.orderNumber}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000))),
-                          Text('Order No: #${order.id.isNotEmpty ? order.id : order.orderNumber}', style: const TextStyle(fontSize: 10, color: Color(0xFF000000))),
-                          Text('GST: #$gstNumber', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
-                          const SizedBox(height: 6),
-                          Text('Pay To : $restName', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000))),
-                          const SizedBox(height: 8),
-                          _buildDashedLine(),
-                          const SizedBox(height: 6),
-                          const Row(
-                            children: [
-                              Expanded(flex: 3, child: Text('ITEM', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
-                              Expanded(flex: 1, child: Text('QTY', textAlign: TextAlign.center, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
-                              Expanded(flex: 2, child: Text('RATE', textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
-                              Expanded(flex: 2, child: Text('TOTAL', textAlign: TextAlign.right, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)))),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          _buildDashedLine(),
-                          const SizedBox(height: 6),
-                          ...order.items.map((cartItem) {
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 3),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    flex: 3,
-                                    child: Text(
-                                      cartItem.item.name,
-                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 1,
-                                    child: Text(
-                                      '${cartItem.quantity}',
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      '${widget.currency}${_formatAmount(cartItem.item.effectivePrice > 0 ? cartItem.item.effectivePrice : cartItem.item.price)}',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: Color(0xFF000000)),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    flex: 2,
-                                    child: Text(
-                                      '${widget.currency}${_formatAmount(cartItem.totalPrice)}',
-                                      textAlign: TextAlign.right,
-                                      style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }),
-                          const SizedBox(height: 6),
-                          _buildDashedLine(),
-                          const SizedBox(height: 6),
-                          _buildReceiptRow('Sub Total :', '${widget.currency}${_formatAmount(order.subtotal)}'),
-                          if (order.discountAmount > 0)
-                            _buildReceiptRow('Discount :', '-${widget.currency}${_formatAmount(order.discountAmount)}', textColor: Colors.green),
-                          if (order.taxAmount > 0) ...[
-                            _buildReceiptRow('CGST (2.5%) :', '${widget.currency}${_formatAmount(cgstAmount)}'),
-                            _buildReceiptRow('SGST (2.5%) :', '${widget.currency}${_formatAmount(sgstAmount)}'),
-                          ],
-                          if (order.tipAmount > 0)
-                            _buildReceiptRow('Tip :', '+${widget.currency}${_formatAmount(order.tipAmount)}'),
-                          if (order.deliveryCharge > 0)
-                            _buildReceiptRow('Delivery Charge :', '+${widget.currency}${_formatAmount(order.deliveryCharge)}'),
-                          if (order.roundOff.abs() > 0.001)
-                            _buildReceiptRow('Round Off :', '${order.roundOff >= 0 ? "+" : ""}${widget.currency}${_formatAmount(order.roundOff)}'),
-                          const SizedBox(height: 6),
-                          _buildDashedLine(),
-                          const SizedBox(height: 6),
-                          _buildReceiptRow('Total :', '${widget.currency}${_formatAmount(order.totalAmount)}', isBold: true),
-                          const SizedBox(height: 6),
-                          _buildDashedLine(),
-                          const SizedBox(height: 6),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'Payment: ${order.paymentMethod}',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              Builder(
-                                builder: (_) {
-                                  final bool isBillPaid = order.isPaid ||
-                                      order.paymentStatus.toLowerCase() == 'paid' ||
-                                      order.status == OrderStatus.completed;
-                                  return Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(
-                                      color: isBillPaid ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(
-                                        color: isBillPaid ? const Color(0xFF16A34A) : const Color(0xFFD97706),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: Text(
-                                      isBillPaid ? 'PAID (COMPLETED)' : 'UNPAID / RUNNING',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.bold,
-                                        color: isBillPaid ? const Color(0xFF166534) : const Color(0xFF92400E),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ],
-                          ),
-
-                          if (order.printCount > 0) ...[
-                            const SizedBox(height: 3),
-                            _buildReceiptRow('Print Version', '#${order.printCount}'),
-                          ],
-                          const SizedBox(height: 8),
-                          _buildCenterLine(),
-                          const SizedBox(height: 6),
-                          // Dynamic Payment QR Code Section
-                          _buildDynamicPaymentQrSection(context),
-                          const SizedBox(height: 6),
-                          _buildCenterLine(),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Thank you! Visit Again!',
-                            style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF000000)),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 4),
-                          const Text(
-                            'Powered by Apna POS',
-                            style: TextStyle(fontSize: 10.5, fontStyle: FontStyle.italic, color: Color(0xFF64748B)),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x38000000),
+                    blurRadius: 28,
+                    spreadRadius: 2,
+                    offset: Offset(0, 10),
                   ),
-                ),
-              ),
-            ),
-            // Bottom Action Bar with eBill Summary and Actions
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                boxShadow: [
-                  BoxShadow(color: Colors.black12, blurRadius: 8, offset: Offset(0, -2)),
                 ],
               ),
+              clipBehavior: Clip.antiAlias,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Business Wallet & eBill Status Section
-                  _buildEbillWalletSummaryCard(),
-                  const SizedBox(height: 12),
-                  // Action Buttons: Print Thermal + Save & eBill
-                  Row(
-                    children: [
-                      // Print Thermal Button (unchanged)
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () async {
-                            final printerService = BluetoothPrinterService();
-                            final dbInstance = DatabaseService();
-                            final rest = dbInstance.restaurant;
-                            final currentUser = dbInstance.currentUser;
+                  // 1. Sleek Modern Header
+                  _buildDialogHeader(context, order),
 
-                            // 1. Windows Native / Bluetooth Flow
-                            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-                              final windowsService = WindowsPrinterService();
-                              final printers = await windowsService.getInstalledPrinters();
-                              final activeDefault = await windowsService.getActiveDefaultPrinter();
-
-                              if (printers.isEmpty) {
-                                if (context.mounted) {
-                                  PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
-                                }
-                                return;
-                              }
-
-                              if (printers.length == 1 || (activeDefault != null && windowsService.cachedSavedPrinterName != null)) {
-                                final target = activeDefault ?? printers.first;
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Printing to ${target.name}...'),
-                                      backgroundColor: const Color(0xFF051C48),
-                                      duration: const Duration(seconds: 1),
-                                    ),
-                                  );
-                                }
-                                final success = await printerService.printBill(
+                  // 2. Body: Responsive Thermal Bill Slip in ScrollView
+                  Flexible(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final double maxPaperWidth = math.min(
+                          360.0,
+                          constraints.maxWidth - (isSmallPhone ? 12.0 : 24.0),
+                        );
+                        return Container(
+                          width: double.infinity,
+                          color: const Color(0xFFF1F5F9),
+                          child: SingleChildScrollView(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: isSmallPhone ? 6 : 14,
+                              vertical: 14,
+                            ),
+                            child: Center(
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxWidth: maxPaperWidth,
+                                ),
+                                child: _buildThermalPaperReceipt(
+                                  context: context,
                                   order: order,
-                                  restaurant: rest,
-                                  user: currentUser,
-                                  currency: widget.currency,
-                                  windowsPrinter: target,
-                                );
-                                if (!context.mounted) return;
-                                if (success) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Bill printed successfully on ${target.name}!'),
-                                      backgroundColor: Colors.green,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                } else {
-                                  PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
-                                }
-                                return;
-                              }
-
-                              if (context.mounted) {
-                                PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
-                              }
-                              return;
-                            }
-
-                            // 2. Mobile Android / iOS Bluetooth Flow
-                            bool isConn = await printerService.isConnected();
-                            if (!isConn) {
-                              isConn = await printerService.autoConnectSavedPrinter();
-                            }
-
-                            if (isConn) {
-                              if (context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Printing Thermal Bill...'),
-                                    backgroundColor: Color(0xFF051C48),
-                                    duration: Duration(seconds: 1),
-                                  ),
-                                );
-                              }
-                              final success = await printerService.printBill(
-                                order: order,
-                                restaurant: rest,
-                                user: currentUser,
-                                currency: widget.currency,
-                              );
-                              if (!context.mounted) return;
-                              if (success) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Bill printed successfully!'),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              } else {
-                                PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
-                              }
-                            } else if (context.mounted) {
-                              PrinterSelectionDialog.show(context, orderToPrint: order, currency: widget.currency);
-                            }
-                          },
-                          icon: const Icon(Icons.print_rounded, size: 18, color: Colors.white),
-                          label: const Text(
-                            'Print Thermal',
-                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                                  user: user,
+                                  rest: rest,
+                                  restName: restName,
+                                  restAddress: restAddress,
+                                  restPhone: restPhone,
+                                  gstNumber: gstNumber,
+                                  cgstAmount: cgstAmount,
+                                  sgstAmount: sgstAmount,
+                                ),
+                              ),
+                            ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF051C48),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      // Save & eBill Button
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _isSaveAndEbillEnabled ? _handleSaveAndEbill : null,
-                          icon: _ebillStatus == EbillUiStatus.processing
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                )
-                              : const Icon(Icons.send_rounded, size: 18, color: Colors.white),
-                          label: Text(
-                            _ebillStatus == EbillUiStatus.processing ? 'Sending...' : 'Save & eBill',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF25D366), // WhatsApp brand green
-                            disabledBackgroundColor: Colors.grey.shade400,
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            elevation: _isSaveAndEbillEnabled ? 2 : 0,
-                          ),
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                   ),
+
+                  // 3. Redesigned Clean Bottom Action Bar
+                  _buildBottomActionBar(context, order, rest, user),
                 ],
               ),
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -1073,14 +1226,14 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
     );
   }
 
-  Widget _buildReceiptRow(String title, String val, {bool isBold = false, Color? textColor}) {
+  Widget _buildReceiptRow(String title, String val, {bool isBold = false, Color? textColor, double? fontSize}) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
           title,
           style: TextStyle(
-            fontSize: isBold ? 11.5 : 11,
+            fontSize: fontSize ?? (isBold ? 11.5 : 10.5),
             fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
             color: textColor ?? const Color(0xFF000000),
           ),
@@ -1088,7 +1241,7 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
         Text(
           val,
           style: TextStyle(
-            fontSize: isBold ? 11.5 : 11,
+            fontSize: fontSize ?? (isBold ? 11.5 : 10.5),
             fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
             color: textColor ?? const Color(0xFF000000),
           ),

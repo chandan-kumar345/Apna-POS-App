@@ -87,7 +87,7 @@ void main() {
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('ReceiptDialog disables Save & eBill and shows warning when customer phone is missing', (WidgetTester tester) async {
+  testWidgets('ReceiptDialog removes wallet card and shows snackbar when customer phone is missing and Save & eBill tapped', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
 
     await tester.pumpWidget(
@@ -103,24 +103,29 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Check warning message for missing customer mobile
+    // Verify wallet summary card is REMOVED from the preview body
+    expect(find.textContaining('Business Wallet:'), findsNothing);
+    expect(find.textContaining('eBill Fee:'), findsNothing);
+
+    // Verify Save & eBill button is present
+    final saveAndEbillButtonFinder = find.widgetWithText(ElevatedButton, 'Save & eBill');
+    expect(saveAndEbillButtonFinder, findsOneWidget);
+
+    // Tap Save & eBill to trigger phone missing snackbar
+    await tester.tap(saveAndEbillButtonFinder);
+    await tester.pump();
+
+    // Verify SnackBar warning for missing customer mobile is shown
     expect(
       find.text("Please add the customer's mobile number to send the bill through WhatsApp."),
       findsOneWidget,
     );
 
-    // Verify Save & eBill button is disabled
-    final saveAndEbillButtonFinder = find.widgetWithText(ElevatedButton, 'Save & eBill');
-    expect(saveAndEbillButtonFinder, findsOneWidget);
-
-    final ElevatedButton button = tester.widget(saveAndEbillButtonFinder);
-    expect(button.onPressed, isNull); // Disabled!
-
     // Flush any pending network check timers
     await tester.pump(const Duration(seconds: 2));
   });
 
-  testWidgets('ReceiptDialog enables Save & eBill and displays wallet info when customer phone is valid', (WidgetTester tester) async {
+  testWidgets('ReceiptDialog removes wallet card and renders redesigned thermal preview cleanly', (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(800, 1000));
 
     await tester.pumpWidget(
@@ -136,15 +141,17 @@ void main() {
 
     await tester.pumpAndSettle();
 
-    // Customer mobile displayed
-    expect(find.text('Mobile: 9876543210'), findsOneWidget);
+    // Customer mobile displayed in redesigned thermal receipt
+    expect(find.text('Customer Mobile: 9876543210'), findsOneWidget);
 
-    // Wallet information displayed
-    expect(find.textContaining('Business Wallet:'), findsOneWidget);
-    expect(find.textContaining('eBill Fee:'), findsOneWidget);
+    // Wallet card is REMOVED
+    expect(find.textContaining('Business Wallet:'), findsNothing);
+    expect(find.textContaining('eBill Fee:'), findsNothing);
 
-    // Save & eBill button is enabled
+    // Save & eBill and Print Thermal buttons are enabled and present
+    final printThermalFinder = find.widgetWithText(ElevatedButton, 'Print Thermal');
     final saveAndEbillButtonFinder = find.widgetWithText(ElevatedButton, 'Save & eBill');
+    expect(printThermalFinder, findsOneWidget);
     expect(saveAndEbillButtonFinder, findsOneWidget);
 
     final ElevatedButton button = tester.widget(saveAndEbillButtonFinder);
@@ -152,5 +159,39 @@ void main() {
 
     // Flush any pending network check timers
     await tester.pump(const Duration(seconds: 2));
+  });
+
+  testWidgets('ReceiptDialog wraps and renders without overflow across multiple device screen sizes', (WidgetTester tester) async {
+    final deviceSizes = [
+      const Size(320, 480),   // Small legacy mobile
+      const Size(360, 640),   // Standard Android mobile
+      const Size(412, 915),   // Large modern smartphone
+      const Size(600, 960),   // 7-inch mini tablet
+      const Size(800, 1280),  // 10-inch standard tablet
+      const Size(1920, 1080), // Desktop / POS terminal
+    ];
+
+    for (final size in deviceSizes) {
+      await tester.binding.setSurfaceSize(size);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ReceiptDialog(
+              order: orderWithPhone,
+              currency: '₹',
+            ),
+          ),
+        ),
+      );
+
+      await tester.pumpAndSettle();
+
+      // Ensure key elements are visible and no RenderFlex overflow occurs
+      expect(find.text('Thermal Bill Preview'), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Print Thermal'), findsOneWidget);
+      expect(find.widgetWithText(ElevatedButton, 'Save & eBill'), findsOneWidget);
+      expect(tester.takeException(), isNull); // ZERO layout overflow exceptions!
+    }
   });
 }
