@@ -220,4 +220,47 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
 
     expect(resB.status).toBe(404);
   });
+
+  it('6. Successfully uploads chat image and sends WhatsApp image message with mediaUrl', async () => {
+    // 1. Test image upload to /api/v1/upload/image?folder=whatsapp
+    const uploadRes = await request(app)
+      .post('/api/v1/upload/image?folder=whatsapp')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('image', Buffer.from('fake-image-bytes-jpeg'), {
+        filename: 'menu_preview.jpg',
+        contentType: 'image/jpeg',
+      });
+
+    expect(uploadRes.status).toBe(201);
+    expect(uploadRes.body.success).toBe(true);
+    expect(uploadRes.body.data.imageUrl).toBeDefined();
+    expect(uploadRes.body.data.folder).toBe('whatsapp');
+
+    const uploadedUrl = uploadRes.body.data.imageUrl;
+
+    // 2. Locate or create chat
+    const chat = await WhatsAppChat.create({
+      businessId: businessA._id,
+      customerPhone: '919876543210',
+      customerName: 'Anjali Sharma',
+      lastMessage: 'Send me photo',
+      lastMessageAt: new Date(),
+      lastMessageDirection: 'INCOMING',
+    });
+
+    // 3. Send image message
+    const sendRes = await request(app)
+      .post(`/api/v1/whatsapp/chats/${chat._id}/messages`)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        text: 'Here is our special today!',
+        messageType: 'image',
+        mediaUrl: uploadedUrl,
+      });
+
+    expect(sendRes.status).toBe(200);
+    expect(sendRes.body.data.message.messageType).toBe('image');
+    expect(sendRes.body.data.message.mediaUrl).toBe(uploadedUrl);
+    expect(sendRes.body.data.message.text).toBe('Here is our special today!');
+  });
 });

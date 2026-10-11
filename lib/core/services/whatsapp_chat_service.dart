@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -237,6 +238,54 @@ class WhatsAppChatService {
       return null;
     } catch (e) {
       debugPrint('[WhatsAppChatService] sendMessage error: $e');
+      rethrow;
+    }
+  }
+
+  /// Upload a chat image file (via file path or raw bytes) to server storage
+  Future<String?> uploadChatImage({
+    String? filePath,
+    Uint8List? fileBytes,
+    String? fileName,
+  }) async {
+    try {
+      MultipartFile multipartFile;
+      final safeName = fileName ?? 'wa_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+      if (fileBytes != null && fileBytes.isNotEmpty) {
+        multipartFile = MultipartFile.fromBytes(
+          fileBytes,
+          filename: safeName,
+        );
+      } else if (filePath != null && filePath.isNotEmpty) {
+        multipartFile = await MultipartFile.fromFile(
+          filePath,
+          filename: safeName,
+        );
+      } else {
+        throw Exception('No image file or bytes provided for upload');
+      }
+
+      final formData = FormData.fromMap({
+        'image': multipartFile,
+      });
+
+      final response = await _apiClient.post(
+        ApiEndpoints.uploadImage,
+        data: formData,
+        queryParameters: {'folder': 'whatsapp'},
+      );
+
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final imageUrl = data['imageUrl']?.toString() ?? data['url']?.toString();
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          return imageUrl;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] uploadChatImage error: $e');
       rethrow;
     }
   }

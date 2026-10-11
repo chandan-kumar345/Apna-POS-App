@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const path = require('path');
+const fs = require('fs');
 const whatsappConfig = require('../config/whatsapp.config');
 const ApiError = require('../utils/ApiError');
 
@@ -295,18 +297,76 @@ class WhatsAppService {
 
     const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
     const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
+
+    let imagePayload = null;
+    if (isImage) {
+      let isLocalOrPrivate = false;
+      let localDiskPath = null;
+
+      // Check if mediaUrl is a local disk file path
+      if (fs.existsSync(mediaUrl)) {
+        isLocalOrPrivate = true;
+        localDiskPath = mediaUrl;
+      } else if (typeof mediaUrl === 'string' && (mediaUrl.startsWith('/uploads/') || mediaUrl.includes('/uploads/'))) {
+        const relPath = mediaUrl.substring(mediaUrl.indexOf('/uploads/'));
+        const diskPath = path.join(__dirname, '../../public', relPath);
+        if (fs.existsSync(diskPath)) {
+          isLocalOrPrivate = true;
+          localDiskPath = diskPath;
+        }
+      } else if (typeof mediaUrl === 'string' && /^(https?:\/\/)?(localhost|127\.0\.0\.1|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|10\.)/i.test(mediaUrl)) {
+        isLocalOrPrivate = true;
+      }
+
+      if (isLocalOrPrivate) {
+        try {
+          let buffer = null;
+          let mime = 'image/jpeg';
+          let name = 'image.jpg';
+
+          if (localDiskPath && fs.existsSync(localDiskPath)) {
+            buffer = fs.readFileSync(localDiskPath);
+            name = path.basename(localDiskPath);
+            const ext = path.extname(name).toLowerCase();
+            if (ext === '.png') mime = 'image/png';
+            else if (ext === '.webp') mime = 'image/webp';
+          } else if (typeof mediaUrl === 'string' && mediaUrl.startsWith('http')) {
+            const res = await fetch(mediaUrl);
+            const arrayBuf = await res.arrayBuffer();
+            buffer = Buffer.from(arrayBuf);
+          }
+
+          if (buffer) {
+            const metaMediaId = await this.uploadMediaToMeta({
+              fileBuffer: buffer,
+              mimeType: mime,
+              fileName: name,
+              phoneNumberId: activePhoneNumberId,
+              accessToken: activeAccessToken,
+            });
+            imagePayload = { id: metaMediaId };
+          }
+        } catch (uploadErr) {
+          console.warn('[WhatsAppService] Direct Meta media upload attempt failed, falling back to link:', uploadErr.message);
+        }
+      }
+
+      if (!imagePayload) {
+        imagePayload = { link: mediaUrl };
+      }
+
+      if (text && text.trim()) {
+        imagePayload.caption = text.trim();
+      }
+    }
+
     const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: normalizedPhone,
       type: isImage ? 'image' : 'text',
       ...(isImage
-        ? {
-            image: {
-              link: mediaUrl,
-              ...(text && text.trim() ? { caption: text.trim() } : {}),
-            },
-          }
+        ? { image: imagePayload }
         : { text: { preview_url: false, body: text || '' } }),
     };
 
@@ -320,6 +380,52 @@ class WhatsAppService {
     });
 
     let data = await response.json().catch(() => ({}));
+
+    // If Meta failed on link download, attempt fallback via direct Meta Media API upload
+    if (!response.ok && isImage && imagePayload?.link && !imagePayload?.id) {
+      try {
+        console.log('[WhatsAppService] Retrying image send via direct Meta Media API upload...');
+        const fetchRes = await fetch(mediaUrl);
+        if (fetchRes.ok) {
+          const arrayBuf = await fetchRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
+          const metaMediaId = await this.uploadMediaToMeta({
+            fileBuffer: buffer,
+            mimeType: fetchRes.headers.get('content-type') || 'image/jpeg',
+            fileName: 'whatsapp_image.jpg',
+            phoneNumberId: activePhoneNumberId,
+            accessToken: activeAccessToken,
+          });
+
+          const retryPayload = {
+            messaging_product: 'whatsapp',
+            recipient_type: 'individual',
+            to: normalizedPhone,
+            type: 'image',
+            image: {
+              id: metaMediaId,
+              ...(text && text.trim() ? { caption: text.trim() } : {}),
+            },
+          };
+
+          const retryResponse = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${activeAccessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(retryPayload),
+          });
+
+          if (retryResponse.ok) {
+            response = retryResponse;
+            data = await retryResponse.json().catch(() => ({}));
+          }
+        }
+      } catch (retryErr) {
+        console.warn('[WhatsAppService] Media retry failed:', retryErr.message);
+      }
+    }
 
     if (!response.ok) {
       let errorMsg = data?.error?.message || `WhatsApp API error: ${response.statusText}`;
@@ -339,6 +445,44 @@ class WhatsAppService {
       recipient: normalizedPhone,
       isSimulated: false,
     };
+  }
+
+  /**
+   * Upload image buffer directly to Meta WhatsApp Cloud API Media endpoint
+   * POST https://graph.facebook.com/v21.0/{phone_number_id}/media
+   */
+  async uploadMediaToMeta({
+    fileBuffer,
+    mimeType = 'image/jpeg',
+    fileName = 'image.jpg',
+    phoneNumberId = null,
+    accessToken = null,
+  }) {
+    const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
+    const activeAccessToken = accessToken || this.accessToken;
+
+    const formData = new FormData();
+    formData.append('messaging_product', 'whatsapp');
+    formData.append('type', mimeType);
+    const blob = new Blob([fileBuffer], { type: mimeType });
+    formData.append('file', blob, fileName);
+
+    const uploadUrl = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/media`;
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${activeAccessToken}`,
+      },
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      console.error('[WhatsAppService] Meta media upload failed:', data);
+      throw new Error(data?.error?.message || `Meta media upload failed: ${res.statusText}`);
+    }
+
+    return data.id;
   }
 
   /**

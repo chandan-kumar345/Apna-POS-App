@@ -10,7 +10,7 @@ class UploadController {
       }
 
       const folder = req.query.folder || 'products';
-      const allowedFolders = ['products', 'profiles', 'outlets', 'receipts'];
+      const allowedFolders = ['products', 'profiles', 'outlets', 'receipts', 'whatsapp', 'chat'];
       const targetFolder = allowedFolders.includes(folder) ? folder : 'products';
 
       let imageUrl = await storageService.uploadImage(

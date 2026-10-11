@@ -2770,10 +2770,16 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         source: source,
         maxWidth: 1024,
         maxHeight: 1024,
-        imageQuality: 75,
+        imageQuality: 80,
       );
       if (pickedFile != null && mounted) {
-        _showImagePreviewDialog(imagePath: pickedFile.path, isLocal: true);
+        final bytes = await pickedFile.readAsBytes();
+        _showImagePreviewDialog(
+          imagePath: pickedFile.path,
+          pickedBytes: bytes,
+          fileName: pickedFile.name,
+          isLocal: true,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -2788,34 +2794,53 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Send Image URL', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
+        title: const Text('Send Image URL', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: urlCtrl,
+          style: const TextStyle(fontSize: 12),
           decoration: const InputDecoration(
             hintText: 'https://example.com/image.jpg',
+            hintStyle: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
             border: OutlineInputBorder(),
             isDense: true,
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B))),
+          ),
           ElevatedButton(
             onPressed: () {
               final url = urlCtrl.text.trim();
               if (url.isNotEmpty) {
                 Navigator.pop(ctx);
-                _showImagePreviewDialog(imagePath: url, isLocal: false);
+                _showImagePreviewDialog(
+                  imagePath: url,
+                  pickedBytes: null,
+                  fileName: null,
+                  isLocal: false,
+                );
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
-            child: const Text('Preview', style: TextStyle(color: Colors.white)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            ),
+            child: const Text('Preview', style: TextStyle(color: Colors.white, fontSize: 11.5, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
   }
 
-  void _showImagePreviewDialog({required String imagePath, required bool isLocal}) {
+  void _showImagePreviewDialog({
+    required String imagePath,
+    Uint8List? pickedBytes,
+    String? fileName,
+    required bool isLocal,
+  }) {
     final captionCtrl = TextEditingController();
     bool isSendingImage = false;
 
@@ -2823,95 +2848,210 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       context: context,
       builder: (previewCtx) => StatefulBuilder(
         builder: (context, setPreviewState) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 380),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Send Image',
-                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
-                      ),
-                      IconButton(
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                        icon: const Icon(Icons.close_rounded, size: 18),
-                        onPressed: () => Navigator.pop(previewCtx),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Image Thumbnail Preview
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      height: 180,
-                      color: const Color(0xFFF1F5F9),
-                      child: isLocal && !kIsWeb
-                          ? Image.file(
-                              File(imagePath),
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Center(
-                                child: Icon(Icons.broken_image_rounded, size: 40, color: Color(0xFF94A3B8)),
-                              ),
-                            )
-                          : Image.network(
-                              imagePath,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) => const Center(
-                                child: Icon(Icons.broken_image_rounded, size: 40, color: Color(0xFF94A3B8)),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 320),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x1F000000),
+                  blurRadius: 24,
+                  offset: Offset(0, 10),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 28,
+                          height: 28,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFDCFCE7),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.image_rounded, size: 15, color: Color(0xFF059669)),
+                        ),
+                        const SizedBox(width: 8),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Text(
+                              'Send Image',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF0F172A),
                               ),
                             ),
+                            Text(
+                              'WhatsApp Media',
+                              style: TextStyle(
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w500,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  // Caption Field
-                  TextField(
-                    controller: captionCtrl,
-                    style: const TextStyle(fontSize: 12.5),
-                    decoration: InputDecoration(
-                      hintText: 'Add a caption... (optional)',
-                      hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                      filled: true,
-                      fillColor: const Color(0xFFF8FAFC),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                    InkWell(
+                      onTap: () => Navigator.pop(previewCtx),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 26,
+                        height: 26,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF1F5F9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF64748B)),
                       ),
                     ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+
+                // Image Thumbnail Preview with clean wrapped rounded frame
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    height: 160,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                    ),
+                    child: pickedBytes != null && pickedBytes.isNotEmpty
+                        ? Image.memory(
+                            pickedBytes,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Center(
+                              child: Icon(Icons.broken_image_rounded, size: 36, color: Color(0xFF94A3B8)),
+                            ),
+                          )
+                        : (isLocal && !kIsWeb
+                            ? Image.file(
+                                File(imagePath),
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => const Center(
+                                  child: Icon(Icons.broken_image_rounded, size: 36, color: Color(0xFF94A3B8)),
+                                ),
+                              )
+                            : Image.network(
+                                imagePath,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) => const Center(
+                                  child: Icon(Icons.broken_image_rounded, size: 36, color: Color(0xFF94A3B8)),
+                                ),
+                              )),
                   ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
+                ),
+                const SizedBox(height: 10),
+
+                // Caption Field (compact, smaller texts)
+                TextField(
+                  controller: captionCtrl,
+                  style: const TextStyle(fontSize: 11.5, color: Color(0xFF0F172A)),
+                  decoration: InputDecoration(
+                    hintText: 'Add a caption... (optional)',
+                    hintStyle: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    prefixIcon: const Icon(Icons.edit_note_rounded, size: 16, color: Color(0xFF94A3B8)),
+                    prefixIconConstraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: const BorderSide(color: Color(0xFF059669), width: 1.2),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Action Buttons (Cancel / Send)
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 36,
                         child: OutlinedButton(
-                          onPressed: () => Navigator.pop(previewCtx),
-                          child: const Text('Cancel'),
+                          onPressed: isSendingImage ? null : () => Navigator.pop(previewCtx),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            side: const BorderSide(color: Color(0xFFCBD5E1), width: 0.8),
+                            backgroundColor: const Color(0xFFF8FAFC),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                          ),
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF475569),
+                            ),
+                          ),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton.icon(
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: SizedBox(
+                        height: 36,
+                        child: ElevatedButton(
                           onPressed: isSendingImage
                               ? null
                               : () async {
                                   setPreviewState(() => isSendingImage = true);
                                   try {
                                     final caption = captionCtrl.text.trim();
+                                    String finalMediaUrl = imagePath;
+
+                                    // 1. If local image, upload first to server storage to obtain public URL
+                                    if (isLocal) {
+                                      final uploadedUrl = await _chatService.uploadChatImage(
+                                        filePath: imagePath,
+                                        fileBytes: pickedBytes,
+                                        fileName: fileName,
+                                      );
+                                      if (uploadedUrl == null || uploadedUrl.isEmpty) {
+                                        throw Exception('Could not upload image to server storage.');
+                                      }
+                                      finalMediaUrl = uploadedUrl;
+                                    }
+
+                                    // 2. Send outgoing WhatsApp message with the verified media URL
                                     final msg = await _chatService.sendMessage(
                                       _selectedChat!.id,
                                       caption,
                                       messageType: 'image',
-                                      mediaUrl: imagePath,
+                                      mediaUrl: finalMediaUrl,
                                     );
+
                                     if (previewCtx.mounted) Navigator.pop(previewCtx);
                                     if (msg != null && mounted) {
                                       setState(() {
@@ -2924,24 +3064,47 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                     if (mounted) _showErrorSnackBar('Failed to send image: $e');
                                   }
                                 },
-                          icon: isSendingImage
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                )
-                              : const Icon(Icons.send_rounded, size: 15),
-                          label: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           style: ElevatedButton.styleFrom(
+                            padding: EdgeInsets.zero,
                             backgroundColor: const Color(0xFF059669),
                             foregroundColor: Colors.white,
+                            elevation: 1.5,
+                            shadowColor: const Color(0x33059669),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                           ),
+                          child: isSendingImage
+                              ? Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    SizedBox(
+                                      width: 12,
+                                      height: 12,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 1.8),
+                                    ),
+                                    SizedBox(width: 5),
+                                    Text(
+                                      'Sending...',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+                                    ),
+                                  ],
+                                )
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.send_rounded, size: 13, color: Colors.white),
+                                    SizedBox(width: 5),
+                                    Text(
+                                      'Send',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ),
-                    ],
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),
