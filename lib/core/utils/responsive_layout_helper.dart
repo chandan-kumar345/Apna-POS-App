@@ -107,16 +107,17 @@ class ResponsiveLayoutHelper {
         }
       } else {
         if (availableWidth >= 1200) {
-          return 2.20;
+          return 1.30;
         } else if (availableWidth >= 900) {
-          return 1.95;
+          return 1.15;
         } else if (availableWidth >= 680) {
           // Tablet view 6 columns without images
-          return 1.65;
+          return 0.95;
         } else if (availableWidth >= 500) {
-          return 1.60;
+          return 0.94;
         } else {
-          return 1.55;
+          // Standard mobile 3 columns
+          return 0.92;
         }
       }
     }

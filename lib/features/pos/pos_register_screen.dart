@@ -8292,16 +8292,16 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
             ],
             const Spacer(),
-            // EQUALIZED BUTTON 1: TABLES (Deep Navy Pill)
+            // COMPACT BUTTON 1: TABLES (Deep Navy Pill)
             InkWell(
               onTap: () => _openTablesSelectionDialog(),
               borderRadius: BorderRadius.circular(20),
               child: Container(
-                height: 38,
+                height: 35,
                 constraints: BoxConstraints(
-                  minWidth: isDesktop ? 112 : 98,
+                  minWidth: isDesktop ? 92 : 78,
                 ),
-                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 9 : 7),
                 decoration: BoxDecoration(
                   color: const Color(0xFF0F2B48),
                   borderRadius: BorderRadius.circular(20),
@@ -8309,7 +8309,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     BoxShadow(
                       color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
                       offset: const Offset(0, 2),
-                      blurRadius: 5,
+                      blurRadius: 4,
                     ),
                   ],
                 ),
@@ -8317,31 +8317,31 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 16),
-                    SizedBox(width: 5),
+                    Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 14.5),
+                    SizedBox(width: 3.5),
                     Text(
                       'Tables',
                       style: TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
-            // EQUALIZED BUTTON 2: ADD ITEMS (Soft Neumorphic Pill)
+            const SizedBox(width: 6),
+            // COMPACT BUTTON 2: ADD ITEMS (Soft Neumorphic Pill)
             InkWell(
               onTap: _showInputManuallyDialog,
               borderRadius: BorderRadius.circular(20),
               child: Container(
-                height: 38,
+                height: 35,
                 constraints: BoxConstraints(
-                  minWidth: isDesktop ? 112 : 98,
+                  minWidth: isDesktop ? 92 : 78,
                 ),
-                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 9 : 7),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7FAFD),
                   borderRadius: BorderRadius.circular(20),
@@ -8349,14 +8349,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   boxShadow: const [
                     BoxShadow(
                       color: Colors.white,
-                      offset: Offset(-2.5, -2.5),
-                      blurRadius: 5,
+                      offset: Offset(-2, -2),
+                      blurRadius: 4,
                       spreadRadius: 1,
                     ),
                     BoxShadow(
                       color: Color(0xFFC0D2E6),
-                      offset: Offset(2.5, 2.5),
-                      blurRadius: 6,
+                      offset: Offset(2, 2),
+                      blurRadius: 5,
                       spreadRadius: 1,
                     ),
                   ],
@@ -8365,14 +8365,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.add_circle, size: 16, color: Color(0xFF0F2B48)),
-                    SizedBox(width: 5),
+                    Icon(Icons.add_circle, size: 14.5, color: Color(0xFF0F2B48)),
+                    SizedBox(width: 3.5),
                     Text(
                       'Add Items',
                       style: TextStyle(
                         color: Color(0xFF0F2B48),
                         fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                        fontSize: 11.5,
                       ),
                     ),
                   ],
@@ -8543,8 +8543,45 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     required int variantsCount,
     required bool isDiscounted,
     required double discountPct,
+    bool isDesktop = false,
   }) {
-    if (qty > 0) {
+    if (hasVariants) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F2B48).withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          '$variantsCount Variants',
+          style: const TextStyle(
+            color: Color(0xFF0F2B48),
+            fontSize: 8.0,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+    }
+
+    if (isDiscounted && discountPct > 0) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4.5, vertical: 2),
+        decoration: BoxDecoration(
+          color: const Color(0xFF10B981),
+          borderRadius: BorderRadius.circular(5),
+        ),
+        child: Text(
+          '${discountPct.toStringAsFixed(0)}% OFF',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 7.5,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      );
+    }
+
+    if (isDesktop && qty > 0) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
         decoration: BoxDecoration(
@@ -8568,42 +8605,6 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
             ),
           ],
-        ),
-      );
-    }
-
-    if (hasVariants) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF051C48).withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          '$variantsCount Variants',
-          style: const TextStyle(
-            color: Color(0xFF051C48),
-            fontSize: 8.0,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
-    }
-
-    if (isDiscounted && discountPct > 0) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1.5),
-        decoration: BoxDecoration(
-          color: const Color(0xFF10B981),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          '${discountPct.toStringAsFixed(0)}% OFF',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 7.5,
-            fontWeight: FontWeight.w900,
-          ),
         ),
       );
     }
@@ -8692,98 +8693,181 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           borderRadius: BorderRadius.circular(16),
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
-            onTap: handleItemTap,
+            onTap: isDesktop ? handleItemTap : null,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 1. Top Header: Veg/Non-Veg Icon + Qty/Variant/Discount Badge
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      _buildFoodTypeIcon(item.itemType),
-                      const Spacer(),
-                      _buildWithoutImageTopRightBadge(
-                        qty: qty,
-                        hasVariants: hasVariants,
-                        variantsCount: item.variants.length,
-                        isDiscounted: isDiscounted,
-                        discountPct: displayDiscountPct,
-                      ),
-                    ],
-                  ),
-
-                  // 2. Center: Product Name (Multi-line with smaller readable typography)
+                  // Upper clickable area
                   Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          item.name,
-                          textAlign: TextAlign.start,
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: isDesktop ? 12.0 : 11.5,
-                            color: const Color(0xFF0F172A),
-                            height: 1.15,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: !isDesktop ? handleItemTap : null,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // 1. Top Header: Veg/Non-Veg Icon + Variant/Discount Badge
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              _buildFoodTypeIcon(item.itemType),
+                              const Spacer(),
+                              _buildWithoutImageTopRightBadge(
+                                qty: qty,
+                                hasVariants: hasVariants,
+                                variantsCount: item.variants.length,
+                                isDiscounted: isDiscounted,
+                                discountPct: displayDiscountPct,
+                                isDesktop: isDesktop,
+                              ),
+                            ],
                           ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                          const SizedBox(height: 3),
+
+                          // 2. Product Name (Decreased font size to 10.5 so 2 lines fit cleanly without clashing)
+                          Text(
+                            item.name,
+                            textAlign: TextAlign.start,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: isDesktop ? 11.0 : 10.5,
+                              color: const Color(0xFF0F172A),
+                              height: 1.18,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 2),
+
+                          // 3. Price and Variant indicator
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              if (isDiscounted) ...[
+                                Text(
+                                  '$currency${displaySalePrice.toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    color: const Color(0xFF0F2B48),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: isDesktop ? 11.5 : 11.5,
+                                  ),
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  '$currency${displayOriginalPrice.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 9.0,
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
+                                ),
+                              ] else ...[
+                                Text(
+                                  '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
+                                  style: TextStyle(
+                                    color: const Color(0xFF0F2B48),
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: isDesktop ? 11.5 : 11.5,
+                                  ),
+                                ),
+                              ],
+                              if (hasVariants) ...[
+                                const SizedBox(width: 3),
+                                const Text(
+                                  'onwards',
+                                  style: TextStyle(
+                                    color: Color(0xFF94A3B8),
+                                    fontSize: 8.0,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ),
 
-                  // 3. Bottom: Price and Variant indicator
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    children: [
-                      if (isDiscounted) ...[
-                        Text(
-                          '$currency${displaySalePrice.toStringAsFixed(0)}',
-                          style: TextStyle(
-                            color: const Color(0xFF0F2B48),
-                            fontWeight: FontWeight.w900,
-                            fontSize: isDesktop ? 12.5 : 12.0,
+                  // 4. Bottom Add / Stepper Button Row (Same as with-image view)
+                  if (!isDesktop) ...[
+                    const SizedBox(height: 4),
+                    if (item.variants.isNotEmpty)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 26,
+                        child: ElevatedButton(
+                          onPressed: () => _showVariantsSelectionDialog(item),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0F2B48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                            padding: EdgeInsets.zero,
+                            elevation: 0,
+                          ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.shopping_cart_rounded, color: Colors.white, size: 14.0),
+                                const SizedBox(width: 4),
+                                Text(
+                                  qty > 0 ? '$qty Added' : 'Add',
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.0),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                        const SizedBox(width: 3),
-                        Text(
-                          '$currency${displayOriginalPrice.toStringAsFixed(0)}',
-                          style: const TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 9.5,
-                            decoration: TextDecoration.lineThrough,
+                      )
+                    else if (qty > 0)
+                      SizedBox(
+                        width: double.infinity,
+                        height: 26,
+                        child: _buildPillQuantityStepper(
+                          quantity: qty,
+                          onDecrement: () => _decrementCartItem(item),
+                          onIncrement: () => _addToCart(item),
+                          width: double.infinity,
+                          height: 26,
+                          buttonSize: 22,
+                          iconSize: 15,
+                          fontSize: 12.5,
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                      )
+                    else
+                      SizedBox(
+                        width: double.infinity,
+                        height: 26,
+                        child: ElevatedButton(
+                          onPressed: () => _addToCart(item),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF0F2B48),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+                            padding: EdgeInsets.zero,
+                            elevation: 0,
+                          ),
+                          child: const FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.shopping_cart_rounded, color: Colors.white, size: 14.0),
+                                SizedBox(width: 4),
+                                Text('Add', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.0)),
+                              ],
+                            ),
                           ),
                         ),
-                      ] else ...[
-                        Text(
-                          '$currency${(hasVariants ? (firstVariant?.price ?? 0.0) : item.price).toStringAsFixed(0)}',
-                          style: TextStyle(
-                            color: const Color(0xFF0F2B48),
-                            fontWeight: FontWeight.w900,
-                            fontSize: isDesktop ? 12.5 : 12.0,
-                          ),
-                        ),
-                      ],
-                      if (hasVariants) ...[
-                        const SizedBox(width: 3),
-                        const Text(
-                          'onwards',
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 8.5,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -8959,14 +9043,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                         ),
                         const SizedBox(height: 4),
 
-                        // Product Name (2 Lines for full display)
+                        // Product Name (Decreased font size so 2 lines fit cleanly)
                         Text(
                           item.name,
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: isDesktop ? 11.0 : 11.5,
+                            fontSize: isDesktop ? 10.5 : 10.5,
                             color: const Color(0xFF0F172A),
-                            height: 1.15,
+                            height: 1.18,
                           ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
