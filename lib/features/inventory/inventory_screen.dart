@@ -22,8 +22,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
   final RestaurantInventoryService _inventoryService = RestaurantInventoryService();
 
   // Neumorphic Design System Palette
-  static const Color _midnightNavyStart = Color(0xFF031024);
-  static const Color _midnightNavyEnd = Color(0xFF072146);
   static const Color _primaryNavy = Color(0xFF082559);
   static const Color _neumorphicBase = Color(0xFFEFF2F7);
   static const Color _neumorphicCard = Color(0xFFFFFFFF);
@@ -321,6 +319,170 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   // ===========================================================================
+  // NEUMORPHIC BUTTON & FILTER HELPERS
+  // ===========================================================================
+
+  Widget _buildNeumorphicButton({
+    required VoidCallback? onPressed,
+    required String label,
+    IconData? icon,
+    Color backgroundColor = _primaryNavy,
+    Color textColor = Colors.white,
+    double fontSize = 10.5,
+    EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+    double radius = 8,
+    bool isSecondary = false,
+  }) {
+    final bool isEnabled = onPressed != null;
+
+    if (isSecondary) {
+      return InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(radius),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: _neumorphicBase,
+            borderRadius: BorderRadius.circular(radius),
+            border: Border.all(color: Colors.white, width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.white,
+                offset: Offset(-2, -2),
+                blurRadius: 4,
+              ),
+              BoxShadow(
+                color: Color(0x14000000),
+                offset: Offset(2, 2),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, size: fontSize + 2.5, color: _textMuted),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: fontSize,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF475569),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(radius),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: padding,
+        decoration: BoxDecoration(
+          color: isEnabled ? backgroundColor : backgroundColor.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+          boxShadow: [
+            if (isEnabled) ...[
+              BoxShadow(
+                color: backgroundColor.withValues(alpha: 0.35),
+                offset: const Offset(0, 3),
+                blurRadius: 6,
+              ),
+              const BoxShadow(
+                color: Colors.white24,
+                offset: Offset(-1, -1),
+                blurRadius: 2,
+              ),
+            ],
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: fontSize + 2.5, color: textColor),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.w700,
+                color: textColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNeumorphicFilterPill({
+    required String label,
+    required bool isSelected,
+    required VoidCallback onTap,
+    Color activeColor = _primaryNavy,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 5),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(7),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isSelected ? activeColor : _neumorphicBase,
+            borderRadius: BorderRadius.circular(7),
+            border: Border.all(
+              color: isSelected ? activeColor : Colors.white.withValues(alpha: 0.9),
+              width: 1,
+            ),
+            boxShadow: [
+              if (isSelected)
+                BoxShadow(
+                  color: activeColor.withValues(alpha: 0.35),
+                  offset: const Offset(0, 2),
+                  blurRadius: 5,
+                )
+              else ...[
+                const BoxShadow(
+                  color: Colors.white,
+                  offset: Offset(-1.5, -1.5),
+                  blurRadius: 3,
+                ),
+                const BoxShadow(
+                  color: Color(0x14000000),
+                  offset: Offset(1.5, 1.5),
+                  blurRadius: 3,
+                ),
+              ],
+            ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 9.8,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+              color: isSelected ? Colors.white : const Color(0xFF475569),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ===========================================================================
   // UI BUILD
   // ===========================================================================
 
@@ -331,7 +493,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildMidnightNavyHeader(),
             _buildNavigationTabBar(),
             Expanded(
               child: _isLoading && _rawMaterials.isEmpty
@@ -347,138 +508,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }
 
   // ===========================================================================
-  // 1. SIGNATURE MIDNIGHT NAVY HEADER (COMPACT & WRAPPED)
-  // ===========================================================================
-
-  Widget _buildMidnightNavyHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [_midnightNavyStart, _midnightNavyEnd],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x33000000),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          if (widget.onBack != null || Navigator.canPop(context))
-            InkWell(
-              onTap: () {
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else {
-                  Navigator.pop(context);
-                }
-              },
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                ),
-                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 15),
-              ),
-            ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  children: [
-                    const Flexible(
-                      child: Text(
-                        'Restaurant Inventory',
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: -0.2,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                      decoration: BoxDecoration(
-                        color: _greenAccent.withValues(alpha: 0.25),
-                        borderRadius: BorderRadius.circular(5),
-                        border: Border.all(color: _greenAccent.withValues(alpha: 0.4)),
-                      ),
-                      child: const Text(
-                        'Live APIs',
-                        style: TextStyle(color: Color(0xFF86EFAC), fontSize: 9, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 1.5),
-                const Text(
-                  'Raw materials, automatic recipe consumption & stock ledger',
-                  style: TextStyle(color: Color(0xFF94A3B8), fontSize: 9.5),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: _openSubscription,
-            icon: const Icon(Icons.workspace_premium_rounded, color: Color(0xFFFBBF24), size: 18),
-            tooltip: 'Subscription & Plans',
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            onPressed: _loadData,
-            icon: _isLoading
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.sync_rounded, color: Colors.white, size: 18),
-            tooltip: 'Sync with backend',
-            visualDensity: VisualDensity.compact,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
-          ),
-          const SizedBox(width: 8),
-          ElevatedButton.icon(
-            onPressed: () => _showAddMaterialDialog(),
-            icon: const Icon(Icons.add_rounded, size: 14),
-            label: const Text('Add Material', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2563EB),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              minimumSize: Size.zero,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // 2. SEGMENTED NEUMORPHIC NAVIGATION TABS
+  // 1. SEGMENTED NEUMORPHIC NAVIGATION TABS
   // ===========================================================================
 
   Widget _buildNavigationTabBar() {
@@ -493,51 +523,101 @@ class _InventoryScreenState extends State<InventoryScreen> {
     return Container(
       color: _neumorphicBase,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: List.generate(tabs.length, (index) {
-            final isSelected = _selectedTabIndex == index;
-            final tab = tabs[index];
+      child: Row(
+        children: [
+          if (widget.onBack != null || Navigator.canPop(context)) ...[
+            InkWell(
+              onTap: () {
+                if (widget.onBack != null) {
+                  widget.onBack!();
+                } else {
+                  Navigator.pop(context);
+                }
+              },
+              borderRadius: BorderRadius.circular(9),
+              child: Container(
+                padding: const EdgeInsets.all(7),
+                decoration: _neumorphicCardDecoration(radius: 9),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 13, color: _primaryNavy),
+              ),
+            ),
+            const SizedBox(width: 6),
+          ],
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: List.generate(tabs.length, (index) {
+                  final isSelected = _selectedTabIndex == index;
+                  final tab = tabs[index];
 
-            return Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: InkWell(
-                onTap: () => setState(() => _selectedTabIndex = index),
-                borderRadius: BorderRadius.circular(9),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
-                  decoration: _neumorphicButtonDecoration(
-                    color: isSelected ? _primaryNavy : _neumorphicCard,
-                    radius: 9,
-                    isSelected: isSelected,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        tab['icon'] as IconData,
-                        size: 14,
-                        color: isSelected ? Colors.white : _textMuted,
-                      ),
-                      const SizedBox(width: 5),
-                      Text(
-                        tab['label'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                          color: isSelected ? Colors.white : const Color(0xFF475569),
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: InkWell(
+                      onTap: () => setState(() => _selectedTabIndex = index),
+                      borderRadius: BorderRadius.circular(9),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 180),
+                        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                        decoration: _neumorphicButtonDecoration(
+                          color: isSelected ? _primaryNavy : _neumorphicCard,
+                          radius: 9,
+                          isSelected: isSelected,
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              tab['icon'] as IconData,
+                              size: 14,
+                              color: isSelected ? Colors.white : _textMuted,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              tab['label'] as String,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                                color: isSelected ? Colors.white : const Color(0xFF475569),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
+                  );
+                }),
               ),
-            );
-          }),
-        ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          InkWell(
+            onTap: _openSubscription,
+            borderRadius: BorderRadius.circular(9),
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: _neumorphicCardDecoration(radius: 9),
+              child: const Icon(Icons.workspace_premium_rounded, size: 14, color: Color(0xFFFBBF24)),
+            ),
+          ),
+          const SizedBox(width: 5),
+          InkWell(
+            onTap: _loadData,
+            borderRadius: BorderRadius.circular(9),
+            child: Container(
+              padding: const EdgeInsets.all(7),
+              decoration: _neumorphicCardDecoration(radius: 9),
+              child: _isLoading
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: _primaryNavy),
+                    )
+                  : const Icon(Icons.sync_rounded, size: 14, color: _primaryNavy),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -829,26 +909,48 @@ class _InventoryScreenState extends State<InventoryScreen> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: color.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 14),
-            const SizedBox(width: 5),
-            Text(
-              label,
-              style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color),
-            ),
-          ],
+    return Padding(
+      padding: const EdgeInsets.only(right: 6),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(9),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: _neumorphicBase,
+            borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: Colors.white, width: 1),
+            boxShadow: const [
+              BoxShadow(
+                color: Colors.white,
+                offset: Offset(-2, -2),
+                blurRadius: 4,
+              ),
+              BoxShadow(
+                color: Color(0x14000000),
+                offset: Offset(2, 2),
+                blurRadius: 4,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(3.5),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 12.5),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: _textDark),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -887,17 +989,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
             ),
           ),
           const SizedBox(width: 6),
-          ElevatedButton(
+          _buildNeumorphicButton(
             onPressed: () => _showStockInDialog(),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _redAccent,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-              minimumSize: Size.zero,
-              elevation: 0,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-            ),
-            child: const Text('Restock Now', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+            label: 'Restock Now',
+            backgroundColor: _redAccent,
+            fontSize: 10,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           ),
         ],
       ),
@@ -1124,21 +1221,17 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  ElevatedButton.icon(
+                  _buildNeumorphicButton(
                     onPressed: () => _showAddMaterialDialog(),
-                    icon: const Icon(Icons.add_rounded, size: 14),
-                    label: const Text('Add Material', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _primaryNavy,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      minimumSize: Size.zero,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
+                    icon: Icons.add_rounded,
+                    label: 'Add Material',
+                    backgroundColor: _primaryNavy,
+                    fontSize: 10.5,
+                    padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7.5),
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
+              const SizedBox(height: 7),
               // Category filter pills
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1146,23 +1239,16 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 child: Row(
                   children: _dynamicCategories.map((cat) {
                     final isSel = _selectedCategory == cat;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 5),
-                      child: FilterChip(
-                        label: Text(cat, style: TextStyle(fontSize: 10, fontWeight: isSel ? FontWeight.bold : FontWeight.normal)),
-                        selected: isSel,
-                        onSelected: (val) => setState(() => _selectedCategory = cat),
-                        selectedColor: _primaryNavy.withValues(alpha: 0.12),
-                        checkmarkColor: _primaryNavy,
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 0),
-                        visualDensity: VisualDensity.compact,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                      ),
+                    return _buildNeumorphicFilterPill(
+                      label: cat,
+                      isSelected: isSel,
+                      onTap: () => setState(() => _selectedCategory = cat),
+                      activeColor: _primaryNavy,
                     );
                   }).toList(),
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: 5),
               // Stock status and mode filters
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1171,34 +1257,21 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   children: [
                     ...['All', 'In Stock', 'Low Stock', 'Out of Stock'].map((status) {
                       final isSel = _selectedStockStatus == status;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 5),
-                        child: ChoiceChip(
-                          label: Text(status, style: TextStyle(fontSize: 9.5, fontWeight: isSel ? FontWeight.bold : FontWeight.w600)),
-                          selected: isSel,
-                          onSelected: (val) => setState(() => _selectedStockStatus = status),
-                          selectedColor: _blueAccent.withValues(alpha: 0.15),
-                          labelStyle: TextStyle(color: isSel ? _blueAccent : _textMuted),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        ),
+                      return _buildNeumorphicFilterPill(
+                        label: status,
+                        isSelected: isSel,
+                        onTap: () => setState(() => _selectedStockStatus = status),
+                        activeColor: _blueAccent,
                       );
                     }),
                     const SizedBox(width: 6),
                     ...['All', 'Automatic', 'Manual'].map((mode) {
                       final isSel = _selectedMode == mode;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 5),
-                        child: ChoiceChip(
-                          label: Text(mode == 'All' ? 'All Modes' : 'Mode: $mode',
-                              style: TextStyle(fontSize: 9.5, fontWeight: isSel ? FontWeight.bold : FontWeight.w600)),
-                          selected: isSel,
-                          onSelected: (val) => setState(() => _selectedMode = mode),
-                          selectedColor: _primaryNavy.withValues(alpha: 0.15),
-                          labelStyle: TextStyle(color: isSel ? _primaryNavy : _textMuted),
-                          visualDensity: VisualDensity.compact,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                        ),
+                      return _buildNeumorphicFilterPill(
+                        label: mode == 'All' ? 'All Modes' : 'Mode: $mode',
+                        isSelected: isSel,
+                        onTap: () => setState(() => _selectedMode = mode),
+                        activeColor: _primaryNavy,
                       );
                     }),
                   ],
@@ -1332,30 +1405,31 @@ class _InventoryScreenState extends State<InventoryScreen> {
                 )
               else
                 const Spacer(),
-              TextButton.icon(
+              _buildNeumorphicButton(
                 onPressed: () => _showMaterialLedgerDialog(material),
-                icon: const Icon(Icons.history_rounded, size: 13),
-                label: const Text('Ledger', style: TextStyle(fontSize: 10.5)),
-                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                icon: Icons.history_rounded,
+                label: 'Ledger',
+                fontSize: 9.8,
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4.5),
+                isSecondary: true,
               ),
-              TextButton.icon(
+              const SizedBox(width: 5),
+              _buildNeumorphicButton(
                 onPressed: () => _showAddMaterialDialog(editingMaterial: material),
-                icon: const Icon(Icons.edit_outlined, size: 13),
-                label: const Text('Edit', style: TextStyle(fontSize: 10.5)),
-                style: TextButton.styleFrom(visualDensity: VisualDensity.compact, padding: const EdgeInsets.symmetric(horizontal: 6)),
+                icon: Icons.edit_outlined,
+                label: 'Edit',
+                fontSize: 9.8,
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4.5),
+                isSecondary: true,
               ),
-              ElevatedButton.icon(
+              const SizedBox(width: 5),
+              _buildNeumorphicButton(
                 onPressed: () => _showStockInDialog(preselectedMaterial: material),
-                icon: const Icon(Icons.add_shopping_cart_rounded, size: 12),
-                label: const Text('Restock', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryNavy,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                  minimumSize: Size.zero,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                ),
+                icon: Icons.add_shopping_cart_rounded,
+                label: 'Restock',
+                backgroundColor: _primaryNavy,
+                fontSize: 9.8,
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
               ),
             ],
           ),
@@ -1404,17 +1478,13 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              ElevatedButton.icon(
+              _buildNeumorphicButton(
                 onPressed: () => _showCreateRecipeDialog(),
-                icon: const Icon(Icons.add_rounded, size: 14),
-                label: const Text('Create Recipe', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: _primaryNavy,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                  minimumSize: Size.zero,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
+                icon: Icons.add_rounded,
+                label: 'Create Recipe',
+                backgroundColor: _primaryNavy,
+                fontSize: 10.5,
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7.5),
               ),
             ],
           ),
@@ -1567,18 +1637,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
             child: Row(
               children: List.generate(subTabs.length, (idx) {
                 final isSel = _operationSubTab == idx;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(subTabs[idx], style: TextStyle(fontSize: 10.5, fontWeight: isSel ? FontWeight.bold : FontWeight.w600)),
-                    selected: isSel,
-                    onSelected: (val) => setState(() => _operationSubTab = idx),
-                    selectedColor: _primaryNavy.withValues(alpha: 0.15),
-                    backgroundColor: Colors.white,
-                    labelStyle: TextStyle(color: isSel ? _primaryNavy : _textMuted),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-                    visualDensity: VisualDensity.compact,
-                  ),
+                return _buildNeumorphicFilterPill(
+                  label: subTabs[idx],
+                  isSelected: isSel,
+                  onTap: () => setState(() => _operationSubTab = idx),
+                  activeColor: _primaryNavy,
                 );
               }),
             ),
@@ -1683,17 +1746,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
           ),
           const SizedBox(height: 14),
           Center(
-            child: ElevatedButton.icon(
+            child: _buildNeumorphicButton(
               onPressed: onTap,
-              icon: Icon(icon, size: 14),
-              label: Text(btnLabel, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: btnColor,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                elevation: 0,
-              ),
+              icon: icon,
+              label: btnLabel,
+              backgroundColor: btnColor,
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+              fontSize: 11,
+              radius: 9,
             ),
           ),
         ],
@@ -1719,18 +1779,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
             child: Row(
               children: List.generate(subReports.length, (idx) {
                 final isSel = _reportSubTab == idx;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 6),
-                  child: ChoiceChip(
-                    label: Text(subReports[idx], style: TextStyle(fontSize: 10.5, fontWeight: isSel ? FontWeight.bold : FontWeight.w600)),
-                    selected: isSel,
-                    onSelected: (val) => setState(() => _reportSubTab = idx),
-                    selectedColor: _primaryNavy.withValues(alpha: 0.15),
-                    backgroundColor: Colors.white,
-                    labelStyle: TextStyle(color: isSel ? _primaryNavy : _textMuted),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
-                    visualDensity: VisualDensity.compact,
-                  ),
+                return _buildNeumorphicFilterPill(
+                  label: subReports[idx],
+                  isSelected: isSel,
+                  onTap: () => setState(() => _reportSubTab = idx),
+                  activeColor: _primaryNavy,
                 );
               }),
             ),
@@ -2177,12 +2230,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(
+                        _buildNeumorphicButton(
                           onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel', style: TextStyle(fontSize: 11, color: _textMuted)),
+                          label: 'Cancel',
+                          isSecondary: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        _buildNeumorphicButton(
                           onPressed: _isActionLoading
                               ? null
                               : () async {
@@ -2237,13 +2292,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                     if (mounted) setState(() => _isActionLoading = false);
                                   }
                                 },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _primaryNavy,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: const Text('Save Material', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: editingMaterial != null ? 'Update Material' : 'Save Material',
+                          backgroundColor: _primaryNavy,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         ),
                       ],
                     ),
@@ -2384,7 +2435,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 const Text('Ingredients Required:', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: _textDark)),
-                                TextButton.icon(
+                                _buildNeumorphicButton(
                                   onPressed: () {
                                     setDlgState(() {
                                       if (_rawMaterials.isNotEmpty) {
@@ -2397,9 +2448,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                                       }
                                     });
                                   },
-                                  icon: const Icon(Icons.add_rounded, size: 13),
-                                  label: const Text('Add Ingredient', style: TextStyle(fontSize: 10.5)),
-                                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                                  icon: Icons.add_rounded,
+                                  label: 'Add Ingredient',
+                                  fontSize: 10,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4.5),
+                                  isSecondary: true,
                                 ),
                               ],
                             ),
@@ -2513,12 +2566,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(
+                        _buildNeumorphicButton(
                           onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Cancel', style: TextStyle(fontSize: 11, color: _textMuted)),
+                          label: 'Cancel',
+                          isSecondary: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        _buildNeumorphicButton(
                           onPressed: () async {
                             if (selectedMenuItem == null) return;
                             if (ingredientRows.isEmpty) {
@@ -2558,8 +2613,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               await _loadData();
                             }
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: _primaryNavy, foregroundColor: Colors.white),
-                          child: const Text('Save Recipe', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: 'Save Recipe',
+                          backgroundColor: _primaryNavy,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         ),
                       ],
                     ),
@@ -2694,9 +2750,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(fontSize: 11, color: _textMuted))),
+                        _buildNeumorphicButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          label: 'Cancel',
+                          isSecondary: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        _buildNeumorphicButton(
                           onPressed: () async {
                             if (qty <= 0) return;
                             final payload = {
@@ -2727,8 +2788,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               await _loadData();
                             }
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: _greenAccent, foregroundColor: Colors.white),
-                          child: const Text('Confirm Stock-In', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: 'Confirm Stock-In',
+                          backgroundColor: _greenAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         ),
                       ],
                     ),
@@ -2823,9 +2885,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(fontSize: 11, color: _textMuted))),
+                        _buildNeumorphicButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          label: 'Cancel',
+                          isSecondary: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        _buildNeumorphicButton(
                           onPressed: () async {
                             final qty = double.tryParse(qtyCtrl.text) ?? 0.0;
                             if (qty <= 0) return;
@@ -2852,8 +2919,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               await _loadData();
                             }
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: _redAccent, foregroundColor: Colors.white),
-                          child: const Text('Deduct Stock', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: 'Deduct Stock',
+                          backgroundColor: _redAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         ),
                       ],
                     ),
@@ -2979,9 +3047,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(fontSize: 11, color: _textMuted))),
+                        _buildNeumorphicButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          label: 'Cancel',
+                          isSecondary: true,
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        _buildNeumorphicButton(
                           onPressed: () async {
                             final payload = {
                               'items': [
@@ -3008,8 +3081,9 @@ class _InventoryScreenState extends State<InventoryScreen> {
                               await _loadData();
                             }
                           },
-                          style: ElevatedButton.styleFrom(backgroundColor: _amberAccent, foregroundColor: Colors.white),
-                          child: const Text('Adjust to Count', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                          label: 'Adjust to Count',
+                          backgroundColor: _amberAccent,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                         ),
                       ],
                     ),
@@ -3036,7 +3110,12 @@ class _InventoryScreenState extends State<InventoryScreen> {
           style: TextStyle(fontSize: 11, color: _textMuted),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK', style: TextStyle(fontSize: 11))),
+          _buildNeumorphicButton(
+            onPressed: () => Navigator.pop(ctx),
+            label: 'OK',
+            isSecondary: true,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+          ),
         ],
       ),
     );
