@@ -54,15 +54,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Timer? _pollingTimer;
 
   // WhatsApp Branding Colors
-  static const Color waTealDark = Color(0xFF075E54);
   static const Color waTeal = Color(0xFF128C7E);
   static const Color waGreen = Color(0xFF25D366);
-  static const Color waChatBg = Color(0xFFEFEAE2);
-  static const Color waOutgoingBubble = Color(0xFFD9FDD3);
-  static const Color waIncomingBubble = Colors.white;
-  static const Color waDarkText = Color(0xFF111B21);
-  static const Color waMutedText = Color(0xFF667781);
-  static const Color waCheckBlue = Color(0xFF53BDEB);
 
   @override
   void initState() {
@@ -1311,57 +1304,34 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Phone Status Bar: Dynamic Island + battery/wifi/signal on right. Timing ('9:41') removed per user instruction.
+  /// Phone Status Bar: Centered Dynamic Island only. Timing, network, battery, and wifi icons removed per user instruction.
   Widget _buildPhoneStatusBar() {
     return Container(
       color: Colors.transparent,
-      padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          // Left: Completely empty (Timing removed)
-          const SizedBox(width: 60),
-
-          // Center: Dynamic Island pill with camera lens
-          Container(
-            width: 96,
-            height: 24,
-            decoration: BoxDecoration(
-              color: const Color(0xFF000000),
-              borderRadius: BorderRadius.circular(20),
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      alignment: Alignment.center,
+      child: Container(
+        width: 96,
+        height: 24,
+        decoration: BoxDecoration(
+          color: const Color(0xFF000000),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 11),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
+              ),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  margin: const EdgeInsets.only(right: 11),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Right: Signal Cellular, WiFi, Battery icons matching reference image
-          const SizedBox(
-            width: 60,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Icon(Icons.signal_cellular_alt_rounded, size: 14, color: Color(0xFF0F172A)),
-                SizedBox(width: 4),
-                Icon(Icons.wifi_rounded, size: 14, color: Color(0xFF0F172A)),
-                SizedBox(width: 4),
-                Icon(Icons.battery_full_rounded, size: 16, color: Color(0xFF0F172A)),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1392,16 +1362,16 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       children: [
         // 1. WhatsApp Top Header (Bold green WhatsApp title, Circular Neumorphic Camera & 3-Dots Menu)
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
+          padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
           child: Row(
             children: [
               const Text(
                 'WhatsApp',
                 style: TextStyle(
                   color: Color(0xFF059669), // Vivid WhatsApp emerald green
-                  fontSize: 25,
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -0.6,
+                  letterSpacing: -0.5,
                 ),
               ),
               const Spacer(),
@@ -1411,8 +1381,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 tooltip: 'Camera',
                 onTap: () {},
               ),
-              const SizedBox(width: 10),
-              // Circular Neumorphic 3-Dots Menu Button
+              const SizedBox(width: 8),
+              // Circular Neumorphic 3-Dots Menu Button (Visible text & pure white card)
               _buildNeumorphicMenuButton(),
             ],
           ),
@@ -1422,25 +1392,25 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Container(
-            height: 48,
+            height: 44,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(26),
+              borderRadius: BorderRadius.circular(24),
               boxShadow: const [
                 BoxShadow(
                   color: Color(0x0C000000),
-                  blurRadius: 14,
-                  offset: Offset(0, 4),
+                  blurRadius: 12,
+                  offset: Offset(0, 3),
                 ),
                 BoxShadow(
                   color: Color(0x80FFFFFF),
-                  blurRadius: 6,
+                  blurRadius: 4,
                   offset: Offset(0, -1),
                 ),
               ],
               border: Border.all(
-                color: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
+                color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
                 width: 1,
               ),
             ),
@@ -1451,7 +1421,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
                     onChanged: (val) {
                       setState(() => _searchQuery = val);
                       _chatService.getChats(search: val).then((chats) {
@@ -1460,13 +1430,13 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     },
                     decoration: InputDecoration(
                       hintText: 'Ask Meta AI or Search',
-                      hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.normal),
+                      hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B), fontWeight: FontWeight.normal),
                       isDense: true,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF64748B)),
+                              icon: const Icon(Icons.clear_rounded, size: 15, color: Color(0xFF64748B)),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onPressed: () {
@@ -1500,8 +1470,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 child: GestureDetector(
                   onTap: _showNewChatDialog,
                   child: Container(
-                    width: 56,
-                    height: 56,
+                    width: 54,
+                    height: 54,
                     decoration: const BoxDecoration(
                       gradient: LinearGradient(
                         colors: [Color(0xFF10B981), Color(0xFF059669)],
@@ -1512,12 +1482,12 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       boxShadow: [
                         BoxShadow(
                           color: Color(0x4410B981),
-                          offset: Offset(0, 6),
-                          blurRadius: 16,
+                          offset: Offset(0, 5),
+                          blurRadius: 14,
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 24),
+                    child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 22),
                   ),
                 ),
               ),
@@ -1542,8 +1512,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          width: 38,
-          height: 38,
+          width: 36,
+          height: 36,
           decoration: BoxDecoration(
             color: Colors.white,
             shape: BoxShape.circle,
@@ -1565,18 +1535,18 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ),
           child: Center(
-            child: Icon(icon, size: 19, color: const Color(0xFF1E293B)),
+            child: Icon(icon, size: 18, color: const Color(0xFF1E293B)),
           ),
         ),
       ),
     );
   }
 
-  /// Circular neumorphic button for 3-dots popup menu
+  /// Circular neumorphic button for 3-dots popup menu (Pure white background + dark slate visible text)
   Widget _buildNeumorphicMenuButton() {
     return Container(
-      width: 38,
-      height: 38,
+      width: 36,
+      height: 36,
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
@@ -1597,30 +1567,84 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           width: 1,
         ),
       ),
-      child: PopupMenuButton<String>(
-        icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF1E293B)),
-        padding: EdgeInsets.zero,
-        tooltip: 'More options',
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        onSelected: (val) {
-          if (val == 'new_chat') _showNewChatDialog();
-          if (val == 'credentials') _showConfigureCredentialsDialog();
-          if (val == 'refresh') _loadConnectionAndChats();
-        },
-        itemBuilder: (ctx) => [
-          const PopupMenuItem(
-            value: 'new_chat',
-            child: Text('New chat', style: TextStyle(fontSize: 13)),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          popupMenuTheme: const PopupMenuThemeData(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
           ),
-          const PopupMenuItem(
-            value: 'refresh',
-            child: Text('Refresh chats', style: TextStyle(fontSize: 13)),
+        ),
+        child: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert_rounded, size: 19, color: Color(0xFF1E293B)),
+          padding: EdgeInsets.zero,
+          tooltip: 'More options',
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 8,
+          shadowColor: const Color(0x33000000),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFE2E8F0)),
           ),
-          const PopupMenuItem(
-            value: 'credentials',
-            child: Text('Settings / Credentials', style: TextStyle(fontSize: 13)),
-          ),
-        ],
+          onSelected: (val) {
+            if (val == 'new_chat') _showNewChatDialog();
+            if (val == 'credentials') _showConfigureCredentialsDialog();
+            if (val == 'refresh') _loadConnectionAndChats();
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'new_chat',
+              child: Row(
+                children: const [
+                  Icon(Icons.person_add_outlined, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'New chat',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'refresh',
+              child: Row(
+                children: const [
+                  Icon(Icons.refresh_rounded, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Refresh chats',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'credentials',
+              child: Row(
+                children: const [
+                  Icon(Icons.tune_rounded, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Settings / Credentials',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2096,188 +2120,544 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
     return Column(
       children: [
-        // Chat Header
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          color: waTealDark,
-          child: Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back_rounded, size: 20, color: Colors.white),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () => setState(() => _selectedChat = null),
-              ),
-              const SizedBox(width: 8),
-              CircleAvatar(
-                radius: 17,
-                backgroundColor: const Color(0xFFE2E8F0),
-                child: Text(
-                  _selectedChat!.avatarInitials,
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF0F172A), fontSize: 11),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _selectedChat!.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Colors.white),
-                    ),
-                    const SizedBox(height: 1),
-                    Row(
-                      children: [
-                        const Icon(Icons.circle, size: 5.5, color: Color(0xFF4ADE80)),
-                        const SizedBox(width: 4),
-                        Text(
-                          _selectedChat!.customerPhone,
-                          style: const TextStyle(fontSize: 10.5, color: Color(0xFFE2E8F0)),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: 'Refresh',
-                iconSize: 18,
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
-                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
-                onPressed: () => _loadMessages(_selectedChat!.id),
-              ),
-            ],
-          ),
-        ),
+        // 1. Redesigned Conversation Header (Matching Reference Image)
+        _buildConversationHeader(),
 
-        // Message List
+        // 2. Message List with "Today" pill and Neumorphic Bubble styling
         Expanded(
           child: Container(
-            color: waChatBg,
-            child: _isLoadingMessages
-                ? const Center(child: CircularProgressIndicator(color: waTeal, strokeWidth: 2.5))
-                : _messages.isEmpty
-                    ? Center(
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: const Text(
-                            'No messages yet',
-                            style: TextStyle(fontSize: 11, color: waMutedText),
-                          ),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final msg = _messages[index];
-                          return _buildMessageBubble(msg);
-                        },
-                      ),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFAFCFA),
+                  Color(0xFFF1FAF5),
+                  Color(0xFFF8FAFC),
+                ],
+              ),
+            ),
+            child: Column(
+              children: [
+                _buildDateDivider(),
+                Expanded(
+                  child: _isLoadingMessages
+                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2.5))
+                      : _messages.isEmpty
+                          ? Center(
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: const [
+                                    BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 3)),
+                                  ],
+                                ),
+                                child: const Text(
+                                  'No messages yet',
+                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                            )
+                          : ListView.builder(
+                              controller: _scrollController,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              itemCount: _messages.length,
+                              itemBuilder: (context, index) {
+                                return _buildMessageBubble(_messages[index]);
+                              },
+                            ),
+                ),
+              ],
+            ),
           ),
         ),
 
-        // Bottom Quick Replies & Input Bar (Smoothly lifted when keyboard opens)
+        // 3. Bottom Quick Replies & Input Bar (Smoothly lifted when keyboard opens)
         AnimatedPadding(
           duration: const Duration(milliseconds: 140),
           curve: Curves.easeOut,
           padding: EdgeInsets.only(bottom: bottomInset),
           child: Container(
-            color: const Color(0xFFF0F2F5),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
+            decoration: const BoxDecoration(
+              color: Colors.transparent,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Quick reply chips
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: [
-                      _buildQuickChip('Order Ready for Pickup'),
-                      _buildQuickChip('Your bill total is ready'),
-                      _buildQuickChip('Thank you for your visit!'),
-                      _buildQuickChip('Table confirmed'),
-                    ],
+                // Quick reply pills matching reference image
+                _buildQuickRepliesBar(),
+                const SizedBox(height: 8),
+
+                // Redesigned Input Bar (+ icon, elongated white pill with smiley/paperclip, green send button)
+                _buildConversationInputBar(),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Conversation screen header matching uploaded reference image
+  Widget _buildConversationHeader() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      color: Colors.transparent,
+      child: Row(
+        children: [
+          // Circular Back Button
+          _buildNeumorphicCircleButton(
+            icon: Icons.arrow_back_rounded,
+            tooltip: 'Back to chats',
+            onTap: () => setState(() => _selectedChat = null),
+          ),
+          const SizedBox(width: 8),
+
+          // Contact Avatar
+          Container(
+            width: 40,
+            height: 40,
+            decoration: const BoxDecoration(
+              color: Color(0xFFE2E8F0),
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                _selectedChat!.avatarInitials,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                  fontSize: 14,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+
+          // Contact Name & Phone / Status
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _selectedChat!.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 14,
+                    color: Color(0xFF0F172A),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Row(
                   children: [
-                    // Plus (+) Icon button to send images
-                    Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _showAttachmentSheet,
-                        borderRadius: BorderRadius.circular(20),
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
-                          ),
-                          child: const Icon(Icons.add_rounded, color: Color(0xFF00A884), size: 22),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: TextField(
-                          controller: _messageController,
-                          focusNode: _messageFocusNode,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _sendMessage(),
-                          style: const TextStyle(fontSize: 12.5, color: waDarkText),
-                          decoration: const InputDecoration(
-                            hintText: 'Type a message...',
-                            hintStyle: TextStyle(fontSize: 12.5, color: waMutedText),
-                            isDense: true,
-                            border: InputBorder.none,
-                            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
                     Container(
-                      width: 36,
-                      height: 36,
+                      width: 6,
+                      height: 6,
                       decoration: const BoxDecoration(
-                        color: Color(0xFF00A884),
+                        color: Color(0xFF22C55E),
                         shape: BoxShape.circle,
                       ),
-                      child: IconButton(
-                        padding: EdgeInsets.zero,
-                        icon: _isSending
-                            ? const SizedBox(
-                                width: 14,
-                                height: 14,
-                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                              )
-                            : const Icon(Icons.send_rounded, color: Colors.white, size: 17),
-                        onPressed: _isSending ? null : _sendMessage,
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        _selectedChat!.customerPhone.startsWith('+')
+                            ? _selectedChat!.customerPhone
+                            : '+${_selectedChat!.customerPhone}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF64748B),
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
                 ),
               ],
+            ),
+          ),
+
+          // Call Button
+          _buildNeumorphicCircleButton(
+            icon: Icons.call_outlined,
+            tooltip: 'Voice Call',
+            onTap: () {},
+          ),
+          const SizedBox(width: 8),
+
+          // Video Call Button
+          _buildNeumorphicCircleButton(
+            icon: Icons.videocam_outlined,
+            tooltip: 'Video Call',
+            onTap: () {},
+          ),
+          const SizedBox(width: 8),
+
+          // 3-Dots Menu Button
+          _buildConversationMenuButton(),
+        ],
+      ),
+    );
+  }
+
+  /// 3-Dots Menu button inside conversation view with visible white card and dark text
+  Widget _buildConversationMenuButton() {
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+          BoxShadow(
+            color: Color(0x80FFFFFF),
+            blurRadius: 4,
+            offset: Offset(-1, -1),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFF1F5F9),
+          width: 1,
+        ),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(
+          popupMenuTheme: const PopupMenuThemeData(
+            color: Colors.white,
+            surfaceTintColor: Colors.transparent,
+          ),
+        ),
+        child: PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert_rounded, size: 19, color: Color(0xFF1E293B)),
+          padding: EdgeInsets.zero,
+          tooltip: 'Chat options',
+          color: Colors.white,
+          surfaceTintColor: Colors.transparent,
+          elevation: 8,
+          shadowColor: const Color(0x33000000),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Color(0xFFE2E8F0)),
+          ),
+          onSelected: (val) {
+            if (val == 'refresh') _loadMessages(_selectedChat!.id);
+            if (val == 'new_chat') _showNewChatDialog();
+          },
+          itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'refresh',
+              child: Row(
+                children: const [
+                  Icon(Icons.refresh_rounded, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Refresh messages',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: 'new_chat',
+              child: Row(
+                children: const [
+                  Icon(Icons.person_add_outlined, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'New chat',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNeumorphicCircleButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0C000000),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Color(0x80FFFFFF),
+                blurRadius: 4,
+                offset: Offset(-1, -1),
+              ),
+            ],
+            border: Border.all(
+              color: const Color(0xFFF1F5F9),
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: Icon(icon, size: 18, color: const Color(0xFF1E293B)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Floating "Today" date divider pill
+  Widget _buildDateDivider() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4.5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
+          borderRadius: BorderRadius.circular(14),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x06000000),
+              blurRadius: 4,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: const Text(
+          'Today',
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF475569),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Quick reply templates bar
+  Widget _buildQuickRepliesBar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: [
+          _buildConversationQuickChip(
+            icon: Icons.inventory_2_outlined,
+            text: 'Order Ready for Pickup',
+          ),
+          const SizedBox(width: 8),
+          _buildConversationQuickChip(
+            icon: Icons.receipt_long_outlined,
+            text: 'Your bill total is ready',
+          ),
+          const SizedBox(width: 8),
+          _buildConversationQuickChip(
+            icon: Icons.sentiment_satisfied_alt_rounded,
+            text: 'Thank you',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildConversationQuickChip({required IconData icon, required String text}) {
+    return GestureDetector(
+      onTap: () {
+        _messageController.text = text;
+        _messageFocusNode.requestFocus();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x08000000),
+              blurRadius: 6,
+              offset: Offset(0, 2),
+            ),
+          ],
+          border: Border.all(
+            color: const Color(0xFFE2E8F0).withValues(alpha: 0.8),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: const Color(0xFF059669)),
+            const SizedBox(width: 6),
+            Text(
+              text,
+              style: const TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF047857),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Redesigned input bar with plus button, pill input field with emoji & paperclip, and green send button
+  Widget _buildConversationInputBar() {
+    return Row(
+      children: [
+        // Plus (+) Attachment Button
+        GestureDetector(
+          onTap: _showAttachmentSheet,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0E000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
+                BoxShadow(
+                  color: Color(0x80FFFFFF),
+                  blurRadius: 4,
+                  offset: Offset(-1, -1),
+                ),
+              ],
+              border: Border.all(
+                color: const Color(0xFFE2E8F0),
+                width: 1,
+              ),
+            ),
+            child: const Center(
+              child: Icon(Icons.add_rounded, color: Color(0xFF0F172A), size: 22),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Elongated White Pill Input Container with Smiley and Paperclip inside
+        Expanded(
+          child: Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0C000000),
+                  blurRadius: 10,
+                  offset: Offset(0, 3),
+                ),
+                BoxShadow(
+                  color: Color(0x80FFFFFF),
+                  blurRadius: 4,
+                  offset: Offset(0, -1),
+                ),
+              ],
+              border: Border.all(
+                color: const Color(0xFFE2E8F0).withValues(alpha: 0.8),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _messageController,
+                    focusNode: _messageFocusNode,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: (_) => _sendMessage(),
+                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message...',
+                      hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      isDense: true,
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {},
+                  child: const Icon(Icons.sentiment_satisfied_rounded, size: 20, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: _showAttachmentSheet,
+                  child: const Icon(Icons.attach_file_rounded, size: 20, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+
+        // Vibrant Green Circular Send Button
+        GestureDetector(
+          onTap: _isSending ? null : _sendMessage,
+          child: Container(
+            width: 42,
+            height: 42,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0x4010B981),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Center(
+              child: _isSending
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded, color: Colors.white, size: 18),
             ),
           ),
         ),
@@ -2305,7 +2685,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
               children: [
                 const Text(
                   'Send WhatsApp Image',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
                 ),
                 IconButton(
                   padding: EdgeInsets.zero,
@@ -2371,18 +2751,18 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 52,
-            height: 52,
+            width: 50,
+            height: 50,
             decoration: BoxDecoration(
               color: bgColor,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: color, size: 24),
+            child: Icon(icon, color: color, size: 22),
           ),
           const SizedBox(height: 6),
           Text(
             label,
-            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
           ),
         ],
       ),
@@ -2414,7 +2794,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Send Image URL', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+        title: const Text('Send Image URL', style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold)),
         content: TextField(
           controller: urlCtrl,
           decoration: const InputDecoration(
@@ -2433,7 +2813,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 _showImagePreviewDialog(imagePath: url, isLocal: false);
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A884)),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
             child: const Text('Preview', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -2463,7 +2843,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     children: [
                       const Text(
                         'Send Image',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.bold),
                       ),
                       IconButton(
                         padding: EdgeInsets.zero,
@@ -2501,10 +2881,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   // Caption Field
                   TextField(
                     controller: captionCtrl,
-                    style: const TextStyle(fontSize: 13),
+                    style: const TextStyle(fontSize: 12.5),
                     decoration: InputDecoration(
                       hintText: 'Add a caption... (optional)',
-                      hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       isDense: true,
@@ -2557,9 +2937,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                   child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                 )
                               : const Icon(Icons.send_rounded, size: 15),
-                          label: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
+                          label: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF00A884),
+                            backgroundColor: const Color(0xFF059669),
                             foregroundColor: Colors.white,
                           ),
                         ),
@@ -2611,23 +2991,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  Widget _buildQuickChip(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 5),
-      child: ActionChip(
-        label: Text(text, style: const TextStyle(fontSize: 10, color: waTealDark, fontWeight: FontWeight.w600)),
-        backgroundColor: Colors.white,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 0),
-        onPressed: () {
-          _messageController.text = text;
-          _messageFocusNode.requestFocus();
-        },
-      ),
-    );
-  }
-
+  /// Neumorphic message bubble matching reference image
   Widget _buildMessageBubble(WhatsAppMessageModel msg) {
     final isOutgoing = msg.isOutgoing;
     final screenWidth = MediaQuery.of(context).size.width;
@@ -2635,58 +2999,66 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     return Align(
       alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: screenWidth >= 680 ? 460 : screenWidth * 0.78),
+        constraints: BoxConstraints(maxWidth: (screenWidth >= 680 ? 320.0 : screenWidth * 0.74).clamp(180.0, 330.0).toDouble()),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 2.5),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(
-            color: isOutgoing ? waOutgoingBubble : waIncomingBubble,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(8),
-              topRight: const Radius.circular(8),
-              bottomLeft: Radius.circular(isOutgoing ? 8 : 0),
-              bottomRight: Radius.circular(isOutgoing ? 0 : 8),
+            color: isOutgoing ? const Color(0xFFDCFCE7) : Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: isOutgoing
+                  ? const Color(0xFFBBF7D0).withValues(alpha: 0.7)
+                  : const Color(0xFFF1F5F9),
+              width: 0.8,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.04),
-                offset: const Offset(0, 1),
-                blurRadius: 1,
+                color: isOutgoing ? const Color(0x0A000000) : const Color(0x0C000000),
+                offset: const Offset(0, 3),
+                blurRadius: 8,
               ),
             ],
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
               if (msg.messageType == 'image' || msg.mediaUrl.isNotEmpty) ...[
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(6),
+                  borderRadius: BorderRadius.circular(12),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
                     child: _buildBubbleImage(msg.mediaUrl),
                   ),
                 ),
-                if (msg.text.isNotEmpty) const SizedBox(height: 4),
+                if (msg.text.isNotEmpty) const SizedBox(height: 6),
               ],
               if (msg.text.isNotEmpty)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    msg.text,
-                    style: const TextStyle(fontSize: 12.5, color: waDarkText, height: 1.25),
+                Text(
+                  msg.text,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    color: Color(0xFF0F172A),
+                    height: 1.35,
                   ),
                 ),
-              const SizedBox(height: 2),
+              const SizedBox(height: 3),
               Row(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.end,
                 children: [
+                  const Spacer(),
                   Text(
                     _formatTime(msg.timestamp),
-                    style: const TextStyle(fontSize: 9.5, color: waMutedText),
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isOutgoing ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
                   if (isOutgoing) ...[
-                    const SizedBox(width: 3),
+                    const SizedBox(width: 4),
                     _buildStatusIcon(msg.status),
                   ],
                 ],
@@ -2701,15 +3073,15 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Widget _buildStatusIcon(String status) {
     switch (status.toUpperCase()) {
       case 'READ':
-        return const Icon(Icons.done_all_rounded, size: 13, color: waCheckBlue);
+        return const Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF38BDF8));
       case 'DELIVERED':
-        return const Icon(Icons.done_all_rounded, size: 13, color: waMutedText);
+        return const Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF94A3B8));
       case 'SENT':
-        return const Icon(Icons.check_rounded, size: 13, color: waMutedText);
+        return const Icon(Icons.check_rounded, size: 14, color: Color(0xFF94A3B8));
       case 'FAILED':
-        return const Icon(Icons.error_outline_rounded, size: 13, color: Colors.red);
+        return const Icon(Icons.error_outline_rounded, size: 14, color: Colors.red);
       default:
-        return const Icon(Icons.access_time_rounded, size: 11, color: waMutedText);
+        return const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF94A3B8));
     }
   }
 
