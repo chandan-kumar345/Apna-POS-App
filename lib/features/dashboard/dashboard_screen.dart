@@ -229,22 +229,17 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
       resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFFF4F6FB),
       body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: () => _loadDashboardData(isManual: true),
-          color: const Color(0xFF0284C7),
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1100),
-              child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
-                  isMobile ? 12 : 24,
-                  isMobile ? 12 : 20,
-                  isMobile ? 12 : 24,
-                  isMobile ? 20 : 28,
-                ),
-                physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics(),
-                ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1100),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                isMobile ? 12 : 24,
+                isMobile ? 12 : 20,
+                isMobile ? 12 : 24,
+                isMobile ? 20 : 28,
+              ),
+              physics: const BouncingScrollPhysics(),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -326,8 +321,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
             ),
           ),
         ),
-      ),
-    );
+      );
   }
 
   /// Top Header Bar with Neumorphic Filter Pill & Refresh Button

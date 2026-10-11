@@ -260,7 +260,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     )
                                   : RefreshIndicator(
                                       onRefresh: () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
-                                      color: const Color(0xFF0F172A),
+                                      color: Colors.white,
+                                      backgroundColor: const Color(0xFF072146),
+                                      strokeWidth: 2.8,
+                                      displacement: 32,
+                                      edgeOffset: 2,
                                       child: notifications.isEmpty
                                           ? _buildEmptyState()
                                           : ListView.builder(
@@ -396,57 +400,214 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 ),
               ),
 
-              // Action Menu (Mark all as read / Clear all)
-              if (hasNotifications)
-                PopupMenuButton<String>(
-                  color: Colors.white,
-                  elevation: 6,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  icon: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x25000000), offset: Offset(0, 2), blurRadius: 4),
+              // VISIBLE REFRESH BUTTON (Neumorphic Dark Glass Pill)
+              InkWell(
+                onTap: _service.isLoading
+                    ? null
+                    : () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x25000000), offset: Offset(0, 2), blurRadius: 4),
+                    ],
+                  ),
+                  child: Center(
+                    child: _service.isLoading
+                        ? const SizedBox(
+                            width: 15,
+                            height: 15,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          )
+                        : const Icon(Icons.refresh_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+
+              // REDESIGNED THREE-DOT OPTIONS MENU
+              PopupMenuButton<String>(
+                color: Colors.white,
+                surfaceTintColor: Colors.transparent,
+                elevation: 10,
+                shadowColor: const Color(0x33000000),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  side: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+                ),
+                icon: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x25000000), offset: Offset(0, 2), blurRadius: 4),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+                  ),
+                ),
+                onSelected: (val) {
+                  if (val == 'refresh') {
+                    _service.fetchNotifications(filterType: _selectedFilter, refresh: true);
+                  } else if (val == 'read_all') {
+                    _service.markAllAsRead();
+                  } else if (val == 'clear_all') {
+                    _service.clearAll();
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem<String>(
+                    value: 'refresh',
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF2563EB)),
+                        ),
+                        const SizedBox(width: 10),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Refresh Feed',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF0F172A),
+                                ),
+                              ),
+                              Text(
+                                'Fetch latest alerts & chats',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
-                    child: const Center(
-                      child: Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+                  ),
+                  const PopupMenuDivider(height: 1),
+                  PopupMenuItem<String>(
+                    value: 'read_all',
+                    enabled: unreadCount > 0,
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: unreadCount > 0 ? const Color(0xFFECFDF5) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.done_all_rounded,
+                            size: 16,
+                            color: unreadCount > 0 ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Mark all as read',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: unreadCount > 0 ? const Color(0xFF0F172A) : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                              Text(
+                                unreadCount > 0 ? '$unreadCount unread' : 'All caught up',
+                                style: const TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  onSelected: (val) {
-                    if (val == 'read_all') {
-                      _service.markAllAsRead();
-                    } else if (val == 'clear_all') {
-                      _service.clearAll();
-                    }
-                  },
-                  itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'read_all',
-                      child: Row(
-                        children: [
-                          Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF0F172A)),
-                          SizedBox(width: 8),
-                          Text('Mark all as read', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
-                        ],
-                      ),
+                  const PopupMenuDivider(height: 1),
+                  PopupMenuItem<String>(
+                    value: 'clear_all',
+                    enabled: hasNotifications,
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: hasNotifications ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            Icons.delete_sweep_rounded,
+                            size: 16,
+                            color: hasNotifications ? const Color(0xFFEF4444) : const Color(0xFF94A3B8),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Clear all',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: hasNotifications ? const Color(0xFFEF4444) : const Color(0xFF94A3B8),
+                                ),
+                              ),
+                              const Text(
+                                'Delete notifications list',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    const PopupMenuItem(
-                      value: 'clear_all',
-                      child: Row(
-                        children: [
-                          Icon(Icons.clear_all_rounded, size: 16, color: Color(0xFFEF4444)),
-                          SizedBox(width: 8),
-                          Text('Clear all', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),

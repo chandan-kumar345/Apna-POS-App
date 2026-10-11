@@ -8292,37 +8292,56 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               ),
             ],
             const Spacer(),
-            // TABLES BUTTON (Deep Navy Pill matching reference UI with enhanced width)
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                minWidth: isDesktop ? 115 : 95,
-                minHeight: 38,
-              ),
-              child: ElevatedButton.icon(
-                onPressed: () => _openTablesSelectionDialog(),
-                icon: const Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 17),
-                label: const Text(
-                  'Tables',
-                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12.5),
+            // EQUALIZED BUTTON 1: TABLES (Deep Navy Pill)
+            InkWell(
+              onTap: () => _openTablesSelectionDialog(),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                height: 38,
+                constraints: BoxConstraints(
+                  minWidth: isDesktop ? 112 : 98,
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F2B48),
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                  padding: EdgeInsets.symmetric(horizontal: isDesktop ? 16 : 12, vertical: 0),
-                  elevation: 2,
-                  shadowColor: const Color(0xFF0F2B48).withValues(alpha: 0.35),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F2B48),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
+                      offset: const Offset(0, 2),
+                      blurRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.table_restaurant_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 5),
+                    Text(
+                      'Tables',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(width: 6),
-            // ADD ITEM BUTTON (Soft Neumorphic Pill button matching reference UI)
+            const SizedBox(width: 8),
+            // EQUALIZED BUTTON 2: ADD ITEMS (Soft Neumorphic Pill)
             InkWell(
               onTap: _showInputManuallyDialog,
               borderRadius: BorderRadius.circular(20),
               child: Container(
-                height: 36,
-                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 12 : 8),
+                height: 38,
+                constraints: BoxConstraints(
+                  minWidth: isDesktop ? 112 : 98,
+                ),
+                padding: EdgeInsets.symmetric(horizontal: isDesktop ? 14 : 10),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF7FAFD),
                   borderRadius: BorderRadius.circular(20),
@@ -8343,16 +8362,17 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   ],
                 ),
                 child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.add_circle, size: 16, color: Color(0xFF0F2B48)),
-                    SizedBox(width: 4),
+                    SizedBox(width: 5),
                     Text(
-                      'Add Item',
+                      'Add Items',
                       style: TextStyle(
                         color: Color(0xFF0F2B48),
                         fontWeight: FontWeight.w800,
-                        fontSize: 11.5,
+                        fontSize: 12,
                       ),
                     ),
                   ],
