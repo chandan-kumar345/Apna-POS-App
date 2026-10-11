@@ -41,10 +41,10 @@ void main() {
       // Verify WhatsApp Mobile Title inside phone frame
       expect(find.text('WhatsApp'), findsOneWidget);
 
-      // Verify fake phone time and battery/wifi status indicators are removed
+      // Verify fake phone time is removed per user instruction
       expect(find.text('9:41'), findsNothing);
-      expect(find.byIcon(Icons.battery_full_rounded), findsNothing);
-      expect(find.byIcon(Icons.wifi_rounded), findsNothing);
+      expect(find.byIcon(Icons.battery_full_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
 
       // Verify Meta AI Search and Filter pills
       expect(find.text('Ask Meta AI or Search'), findsOneWidget);
@@ -59,7 +59,7 @@ void main() {
       expect(find.text('Calls'), findsOneWidget);
 
       // Verify New Chat FAB
-      expect(find.byIcon(Icons.chat_rounded), findsWidgets);
+      expect(find.byIcon(Icons.chat_bubble_rounded), findsWidgets);
 
       // Verify mock contact is rendered inside the smartphone chat list
       expect(find.text('Rahul Verma'), findsOneWidget);

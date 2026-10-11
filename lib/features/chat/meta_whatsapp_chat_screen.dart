@@ -57,15 +57,12 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   static const Color waTealDark = Color(0xFF075E54);
   static const Color waTeal = Color(0xFF128C7E);
   static const Color waGreen = Color(0xFF25D366);
-  static const Color waGreenLight = Color(0xFFD8FDD2);
-  static const Color waGreenDark = Color(0xFF008069);
   static const Color waChatBg = Color(0xFFEFEAE2);
   static const Color waOutgoingBubble = Color(0xFFD9FDD3);
   static const Color waIncomingBubble = Colors.white;
   static const Color waDarkText = Color(0xFF111B21);
   static const Color waMutedText = Color(0xFF667781);
   static const Color waCheckBlue = Color(0xFF53BDEB);
-  static const Color waLightGreyBg = Color(0xFFF0F2F5);
 
   @override
   void initState() {
@@ -1285,10 +1282,20 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(innerRadius),
           child: Container(
-            color: Colors.white,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Color(0xFFFAFCFA),
+                  Color(0xFFF0FDF4),
+                  Color(0xFFF8FAFC),
+                ],
+              ),
+            ),
             child: Column(
               children: [
-                // Phone Top Status Bar & Dynamic Island (White background with black icons matching reference UI)
+                // Phone Top Status Bar & Dynamic Island (Signal/WiFi/Battery indicators, NO timing per request)
                 _buildPhoneStatusBar(),
 
                 // Mobile View Body
@@ -1304,34 +1311,57 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Phone Status Bar: Centered Dynamic Island with camera lens (time and signal/battery icons removed)
+  /// Phone Status Bar: Dynamic Island + battery/wifi/signal on right. Timing ('9:41') removed per user instruction.
   Widget _buildPhoneStatusBar() {
     return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      alignment: Alignment.center,
-      child: Container(
-        width: 104,
-        height: 24,
-        decoration: BoxDecoration(
-          color: const Color(0xFF000000),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.only(right: 11),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
-              ),
+      color: Colors.transparent,
+      padding: const EdgeInsets.fromLTRB(18, 8, 18, 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left: Completely empty (Timing removed)
+          const SizedBox(width: 60),
+
+          // Center: Dynamic Island pill with camera lens
+          Container(
+            width: 96,
+            height: 24,
+            decoration: BoxDecoration(
+              color: const Color(0xFF000000),
+              borderRadius: BorderRadius.circular(20),
             ),
-          ],
-        ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  margin: const EdgeInsets.only(right: 11),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Right: Signal Cellular, WiFi, Battery icons matching reference image
+          const SizedBox(
+            width: 60,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(Icons.signal_cellular_alt_rounded, size: 14, color: Color(0xFF0F172A)),
+                SizedBox(width: 4),
+                Icon(Icons.wifi_rounded, size: 14, color: Color(0xFF0F172A)),
+                SizedBox(width: 4),
+                Icon(Icons.battery_full_rounded, size: 16, color: Color(0xFF0F172A)),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1339,7 +1369,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   /// Phone Bottom Home Indicator Bar
   Widget _buildPhoneHomeIndicator() {
     return Container(
-      color: Colors.white,
+      color: Colors.transparent,
       padding: const EdgeInsets.only(bottom: 6, top: 4),
       child: Center(
         child: Container(
@@ -1354,75 +1384,65 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// WhatsApp Mobile View: Chat List Screen exactly matching uploaded reference image
+  /// WhatsApp Mobile View: Chat List Screen matching uploaded reference image
   Widget _buildWhatsAppMobileChatList() {
     final int unreadTotal = _chats.fold<int>(0, (sum, c) => sum + c.unreadCount);
 
     return Column(
       children: [
-        // 1. WhatsApp Top Header (White with bold green 'WhatsApp', Camera & 3-dots Menu)
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+        // 1. WhatsApp Top Header (Bold green WhatsApp title, Circular Neumorphic Camera & 3-Dots Menu)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(18, 6, 18, 8),
           child: Row(
             children: [
               const Text(
                 'WhatsApp',
                 style: TextStyle(
-                  color: Color(0xFF00A884), // WhatsApp brand green
-                  fontSize: 23,
+                  color: Color(0xFF059669), // Vivid WhatsApp emerald green
+                  fontSize: 25,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
+                  letterSpacing: -0.6,
                 ),
               ),
               const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.camera_alt_outlined, size: 22, color: Color(0xFF111B21)),
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
+              // Circular Neumorphic Camera Button
+              _buildNeumorphicHeaderButton(
+                icon: Icons.camera_alt_outlined,
                 tooltip: 'Camera',
-                onPressed: () {},
+                onTap: () {},
               ),
-              const SizedBox(width: 4),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded, size: 22, color: Color(0xFF111B21)),
-                padding: const EdgeInsets.all(6),
-                constraints: const BoxConstraints(),
-                tooltip: 'More options',
-                onSelected: (val) {
-                  if (val == 'new_chat') _showNewChatDialog();
-                  if (val == 'credentials') _showConfigureCredentialsDialog();
-                  if (val == 'refresh') _loadConnectionAndChats();
-                },
-                itemBuilder: (ctx) => [
-                  const PopupMenuItem(
-                    value: 'new_chat',
-                    child: Text('New chat', style: TextStyle(fontSize: 13)),
-                  ),
-                  const PopupMenuItem(
-                    value: 'refresh',
-                    child: Text('Refresh chats', style: TextStyle(fontSize: 13)),
-                  ),
-                  const PopupMenuItem(
-                    value: 'credentials',
-                    child: Text('Settings / Credentials', style: TextStyle(fontSize: 13)),
-                  ),
-                ],
-              ),
+              const SizedBox(width: 10),
+              // Circular Neumorphic 3-Dots Menu Button
+              _buildNeumorphicMenuButton(),
             ],
           ),
         ),
 
-        // 2. Search Bar with iridescent Meta AI gradient ring
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        // 2. Search Bar with iridescent Meta AI gradient ring in floating neumorphic pill
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Container(
-            height: 42,
+            height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: waLightGreyBg,
-              borderRadius: BorderRadius.circular(22),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(26),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x0C000000),
+                  blurRadius: 14,
+                  offset: Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Color(0x80FFFFFF),
+                  blurRadius: 6,
+                  offset: Offset(0, -1),
+                ),
+              ],
+              border: Border.all(
+                color: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
+                width: 1,
+              ),
             ),
             child: Row(
               children: [
@@ -1431,7 +1451,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
-                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF111B21)),
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF0F172A)),
                     onChanged: (val) {
                       setState(() => _searchQuery = val);
                       _chatService.getChats(search: val).then((chats) {
@@ -1440,13 +1460,13 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     },
                     decoration: InputDecoration(
                       hintText: 'Ask Meta AI or Search',
-                      hintStyle: const TextStyle(fontSize: 13.5, color: Color(0xFF667781)),
+                      hintStyle: const TextStyle(fontSize: 14, color: Color(0xFF64748B), fontWeight: FontWeight.normal),
                       isDense: true,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
                       suffixIcon: _searchQuery.isNotEmpty
                           ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF667781)),
+                              icon: const Icon(Icons.clear_rounded, size: 16, color: Color(0xFF64748B)),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               onPressed: () {
@@ -1464,51 +1484,40 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 3. Category Filter Pills: All, Unread, Groups
-        Container(
-          color: Colors.white,
-          padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-          child: Row(
-            children: [
-              _buildFilterPill('All'),
-              const SizedBox(width: 8),
-              _buildFilterPill('Unread', badgeCount: unreadTotal),
-              const SizedBox(width: 8),
-              _buildFilterPill('Groups'),
-            ],
-          ),
-        ),
+        // 3. Category Filter Pills: All (selected lime/mint glow), Unread, Groups (floating white pills)
+        _buildFilterPills(unreadTotal),
 
         // 4. Chat List Body with Circular Green FAB
         Expanded(
           child: Stack(
             children: [
-              Container(
-                color: Colors.white,
-                child: _buildChatListColumn(),
-              ),
+              _buildChatListColumn(),
 
-              // Green WhatsApp Circular Floating Action Button
+              // Circular Emerald Green WhatsApp Floating Action Button (FAB)
               Positioned(
                 bottom: 16,
-                right: 16,
+                right: 18,
                 child: GestureDetector(
                   onTap: _showNewChatDialog,
                   child: Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF00A884),
+                    width: 56,
+                    height: 56,
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.22),
-                          offset: const Offset(0, 4),
-                          blurRadius: 8,
+                          color: Color(0x4410B981),
+                          offset: Offset(0, 6),
+                          blurRadius: 16,
                         ),
                       ],
                     ),
-                    child: const Icon(Icons.chat_rounded, color: Colors.white, size: 23),
+                    child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 24),
                   ),
                 ),
               ),
@@ -1516,25 +1525,119 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 5. Official WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls)
+        // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls)
         _buildWhatsAppBottomNavBar(unreadTotal),
       ],
+    );
+  }
+
+  /// Circular neumorphic button for Camera / Header action
+  Widget _buildNeumorphicHeaderButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0F000000),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              ),
+              BoxShadow(
+                color: Color(0x80FFFFFF),
+                blurRadius: 4,
+                offset: Offset(-1, -1),
+              ),
+            ],
+            border: Border.all(
+              color: const Color(0xFFF1F5F9),
+              width: 1,
+            ),
+          ),
+          child: Center(
+            child: Icon(icon, size: 19, color: const Color(0xFF1E293B)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Circular neumorphic button for 3-dots popup menu
+  Widget _buildNeumorphicMenuButton() {
+    return Container(
+      width: 38,
+      height: 38,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0F000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+          BoxShadow(
+            color: Color(0x80FFFFFF),
+            blurRadius: 4,
+            offset: Offset(-1, -1),
+          ),
+        ],
+        border: Border.all(
+          color: const Color(0xFFF1F5F9),
+          width: 1,
+        ),
+      ),
+      child: PopupMenuButton<String>(
+        icon: const Icon(Icons.more_vert_rounded, size: 20, color: Color(0xFF1E293B)),
+        padding: EdgeInsets.zero,
+        tooltip: 'More options',
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        onSelected: (val) {
+          if (val == 'new_chat') _showNewChatDialog();
+          if (val == 'credentials') _showConfigureCredentialsDialog();
+          if (val == 'refresh') _loadConnectionAndChats();
+        },
+        itemBuilder: (ctx) => [
+          const PopupMenuItem(
+            value: 'new_chat',
+            child: Text('New chat', style: TextStyle(fontSize: 13)),
+          ),
+          const PopupMenuItem(
+            value: 'refresh',
+            child: Text('Refresh chats', style: TextStyle(fontSize: 13)),
+          ),
+          const PopupMenuItem(
+            value: 'credentials',
+            child: Text('Settings / Credentials', style: TextStyle(fontSize: 13)),
+          ),
+        ],
+      ),
     );
   }
 
   /// Iridescent Meta AI Ring icon matching official WhatsApp UI
   Widget _buildMetaAiRing() {
     return Container(
-      width: 21,
-      height: 21,
+      width: 24,
+      height: 24,
       decoration: const BoxDecoration(
         shape: BoxShape.circle,
         gradient: SweepGradient(
           colors: [
             Color(0xFF0064E0),
-            Color(0xFF00A3FF),
-            Color(0xFF8A3FFC),
-            Color(0xFFFF3B30),
+            Color(0xFF00B2FE),
+            Color(0xFF9333EA),
+            Color(0xFFEC4899),
             Color(0xFF0064E0),
           ],
         ),
@@ -1542,14 +1645,34 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       padding: const EdgeInsets.all(2.5),
       child: Container(
         decoration: const BoxDecoration(
-          color: waLightGreyBg,
+          color: Colors.white,
           shape: BoxShape.circle,
         ),
       ),
     );
   }
 
-  /// Filter pill chip (All, Unread, Groups)
+  /// Category Filter Pills row (All, Unread, Groups)
+  Widget _buildFilterPills(int unreadTotal) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _buildFilterPill('All'),
+            const SizedBox(width: 8),
+            _buildFilterPill('Unread', badgeCount: unreadTotal),
+            const SizedBox(width: 8),
+            _buildFilterPill('Groups'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Filter pill chip (All with lime-mint glow, Unread and Groups as floating white pills)
   Widget _buildFilterPill(String title, {int badgeCount = 0}) {
     final bool isSelected = _selectedFilter == title;
     return GestureDetector(
@@ -1559,10 +1682,32 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         });
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6.5),
         decoration: BoxDecoration(
-          color: isSelected ? waGreenLight : waLightGreyBg,
-          borderRadius: BorderRadius.circular(20),
+          color: isSelected ? null : Colors.white,
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [Color(0xFF86EFAC), Color(0xFFA7F3D0)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          borderRadius: BorderRadius.circular(22),
+          border: isSelected ? null : Border.all(color: const Color(0xFFF1F5F9)),
+          boxShadow: [
+            if (isSelected)
+              const BoxShadow(
+                color: Color(0x3310B981),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              )
+            else
+              const BoxShadow(
+                color: Color(0x0C000000),
+                blurRadius: 8,
+                offset: Offset(0, 3),
+              ),
+          ],
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -1570,8 +1715,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             Text(
               title,
               style: TextStyle(
-                color: isSelected ? waGreenDark : const Color(0xFF54656F),
-                fontSize: 12.5,
+                color: isSelected ? const Color(0xFF065F46) : const Color(0xFF475569),
+                fontSize: 13,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
               ),
             ),
@@ -1580,7 +1725,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                 decoration: const BoxDecoration(
-                  color: waGreenDark,
+                  color: Color(0xFF059669),
                   borderRadius: BorderRadius.all(Radius.circular(10)),
                 ),
                 child: Text(
@@ -1595,15 +1740,22 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Official WhatsApp 4-Tab Bottom Navigation Bar
+  /// WhatsApp 4-Tab Bottom Navigation Bar (Elevated curved container matching reference UI)
   Widget _buildWhatsAppBottomNavBar(int unreadCount) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      decoration: const BoxDecoration(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      decoration: BoxDecoration(
         color: Colors.white,
-        border: Border(
-          top: BorderSide(color: waLightGreyBg, width: 1),
-        ),
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0E000000),
+            blurRadius: 16,
+            offset: Offset(0, -3),
+          ),
+        ],
+        border: Border.all(color: const Color(0xFFF1F5F9)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -1611,20 +1763,20 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _buildBottomNavItem(
             index: 0,
             label: 'Chats',
-            icon: Icons.chat_rounded,
+            icon: Icons.chat_bubble_rounded,
             badgeCount: unreadCount > 0 ? unreadCount : 1,
             isSelected: _selectedBottomNavIndex == 0,
           ),
           _buildBottomNavItem(
             index: 1,
             label: 'Updates',
-            icon: Icons.motion_photos_on_outlined,
+            icon: Icons.donut_large_rounded,
             isSelected: _selectedBottomNavIndex == 1,
           ),
           _buildBottomNavItem(
             index: 2,
             label: 'Communities',
-            icon: Icons.groups_outlined,
+            icon: Icons.groups_rounded,
             isSelected: _selectedBottomNavIndex == 2,
           ),
           _buildBottomNavItem(
@@ -1656,9 +1808,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             decoration: BoxDecoration(
-              color: isSelected ? waGreenLight : Colors.transparent,
+              color: isSelected ? const Color(0xFFBBF7D0) : Colors.transparent,
               borderRadius: BorderRadius.circular(16),
             ),
             child: Stack(
@@ -1667,19 +1819,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 Icon(
                   icon,
                   size: 20,
-                  color: isSelected ? waGreenDark : const Color(0xFF54656F),
+                  color: isSelected ? const Color(0xFF047857) : const Color(0xFF64748B),
                 ),
-                if (badgeCount > 0)
+                if (badgeCount > 0 && isSelected)
                   Positioned(
-                    top: -4,
-                    right: -7,
+                    top: -6,
+                    right: -8,
                     child: Container(
                       padding: const EdgeInsets.all(2.5),
                       decoration: const BoxDecoration(
-                        color: waGreenDark,
+                        color: Color(0xFF047857),
                         shape: BoxShape.circle,
                       ),
-                      constraints: const BoxConstraints(minWidth: 14, minHeight: 14),
+                      constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
                       child: Center(
                         child: Text(
                           '$badgeCount',
@@ -1701,7 +1853,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-              color: isSelected ? const Color(0xFF008069) : const Color(0xFF54656F),
+              color: isSelected ? const Color(0xFF047857) : const Color(0xFF64748B),
             ),
           ),
         ],
@@ -1720,165 +1872,210 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     }
 
     if (_isLoadingChats) {
-      return const Center(child: CircularProgressIndicator(color: Color(0xFF008069), strokeWidth: 2.5));
+      return const Center(child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2.5));
     }
 
     if (filtered.isEmpty) {
       return _buildEmptyChatList();
     }
 
-    return ListView.separated(
+    return ListView.builder(
+      padding: const EdgeInsets.only(top: 4, bottom: 80),
       itemCount: filtered.length,
-      separatorBuilder: (_, _) => const Divider(
-        height: 1,
-        indent: 74,
-        color: Color(0xFFF1F5F9),
-      ),
       itemBuilder: (context, index) {
         final chat = filtered[index];
-        final isSelected = _selectedChat?.id == chat.id;
+        return _buildChatCard(chat);
+      },
+    );
+  }
 
-        return Material(
-          color: isSelected ? const Color(0xFFF0F2F5) : Colors.white,
-          child: InkWell(
-            onTap: () => _selectChat(chat),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 24,
-                    backgroundColor: const Color(0xFFE2E8F0),
+  /// Floating Neumorphic Chat Card matching reference image
+  Widget _buildChatCard(WhatsAppChatModel chat) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0C000000),
+            blurRadius: 14,
+            offset: Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Color(0x80FFFFFF),
+            blurRadius: 4,
+            offset: Offset(0, -1),
+          ),
+        ],
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+          onTap: () => _selectChat(chat),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            child: Row(
+              children: [
+                // Soft lavender-grey avatar circle
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE2E8F0),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
                     child: Text(
                       chat.avatarInitials,
                       style: const TextStyle(
                         fontWeight: FontWeight.w700,
-                        fontSize: 15,
+                        fontSize: 16,
                         color: Color(0xFF475569),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                chat.displayName,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 15,
-                                  color: Color(0xFF111B21),
-                                ),
+                ),
+                const SizedBox(width: 14),
+                // Chat Info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              chat.displayName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15.5,
+                                color: Color(0xFF0F172A),
                               ),
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              _formatTimestamp(chat.lastMessageAt),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            _formatTimestamp(chat.lastMessageAt),
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: chat.unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
+                              color: chat.unreadCount > 0 ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (chat.lastMessageDirection == 'OUTGOING') ...[
+                            const Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF38BDF8)),
+                            const SizedBox(width: 4),
+                          ],
+                          Expanded(
+                            child: Text(
+                              chat.lastMessage.isNotEmpty ? chat.lastMessage : 'No messages',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: chat.unreadCount > 0 ? FontWeight.bold : FontWeight.normal,
-                                color: chat.unreadCount > 0 ? const Color(0xFF008069) : const Color(0xFF667781),
+                                fontSize: 13,
+                                color: chat.unreadCount > 0 ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                                fontWeight: chat.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
                               ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 3),
-                        Row(
-                          children: [
-                            if (chat.lastMessageDirection == 'OUTGOING') ...[
-                              const Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF53BDEB)),
-                              const SizedBox(width: 3),
-                            ],
-                            Expanded(
+                          ),
+                          if (chat.unreadCount > 0)
+                            Container(
+                              margin: const EdgeInsets.only(left: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: const BoxDecoration(
+                                color: Color(0xFF10B981),
+                                borderRadius: BorderRadius.all(Radius.circular(10)),
+                              ),
                               child: Text(
-                                chat.lastMessage.isNotEmpty ? chat.lastMessage : 'No messages',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: chat.unreadCount > 0 ? const Color(0xFF111B21) : const Color(0xFF667781),
-                                  fontWeight: chat.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
+                                '${chat.unreadCount}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
                                 ),
                               ),
                             ),
-                            if (chat.unreadCount > 0)
-                              Container(
-                                margin: const EdgeInsets.only(left: 4),
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF25D366),
-                                  borderRadius: BorderRadius.all(Radius.circular(10)),
-                                ),
-                                child: Text(
-                                  '${chat.unreadCount}',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                        ],
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
   Widget _buildEmptyChatList() {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: const Color(0xFFF0FDF4),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFBBF7D0)),
+        padding: const EdgeInsets.all(24),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0C000000),
+                blurRadius: 14,
+                offset: Offset(0, 4),
               ),
-              child: const Icon(Icons.mark_chat_unread_outlined, size: 28, color: Color(0xFF008069)),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'No chats yet',
-              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF111B21)),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Customer replies will appear here in real-time.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Color(0xFF667781)),
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: _showNewChatDialog,
-              icon: const Icon(Icons.add_rounded, size: 15),
-              label: const Text('New Chat', style: TextStyle(fontSize: 11.5)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF00A884),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ],
+            border: Border.all(color: const Color(0xFFF1F5F9)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF0FDF4),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFBBF7D0)),
+                ),
+                child: const Icon(Icons.mark_chat_unread_outlined, size: 28, color: Color(0xFF059669)),
               ),
-            ),
-          ],
+              const SizedBox(height: 12),
+              const Text(
+                'No chats yet',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Customer replies will appear here in real-time.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 14),
+              ElevatedButton.icon(
+                onPressed: _showNewChatDialog,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('New Chat', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF059669),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 2,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
