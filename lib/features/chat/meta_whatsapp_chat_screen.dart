@@ -283,324 +283,406 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
+  /// Redesigned New WhatsApp Chat Bottom Sheet Modal matching reference image
   void _showNewChatDialog() {
     final phoneCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final msgCtrl = TextEditingController(text: 'Hello! How can we help you today?');
     bool isSubmitting = false;
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (context, setDialogState) => Dialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          elevation: 16,
-          backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // WhatsApp Branded Header
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
-                    decoration: const BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF00A884), Color(0xFF008069)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final bottomInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
+          return AnimatedPadding(
+            padding: EdgeInsets.only(bottom: bottomInset),
+            duration: const Duration(milliseconds: 150),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x1F000000),
+                        blurRadius: 24,
+                        offset: Offset(0, -6),
                       ),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.2),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: const [
-                              Text(
-                                'New WhatsApp Chat',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                              SizedBox(height: 2),
-                              Text(
-                                'Start a 2-way conversation via Meta API',
-                                style: TextStyle(fontSize: 11, color: Color(0xFFE2E8F0)),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
-                          onPressed: () => Navigator.pop(dialogCtx),
-                        ),
-                      ],
-                    ),
+                    ],
                   ),
-
-                  // Form Fields
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Phone Number Field with +91 Prefix
-                        const Text(
-                          'Recipient Phone Number',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                  child: SafeArea(
+                    top: false,
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          // 1. Centered Drag Handle
+                          Center(
+                            child: Container(
+                              width: 44,
+                              height: 4.5,
+                              margin: const EdgeInsets.only(bottom: 14),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFCBD5E1),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
                           ),
-                          child: Row(
+
+                          // 2. Header Row: Squircle App Icon + Title + Subtitle (NO CROSS BUTTON per user request)
+                          Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFF1F5F9),
-                                  borderRadius: BorderRadius.horizontal(left: Radius.circular(11)),
+                                width: 44,
+                                height: 44,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE8FDF2),
+                                  borderRadius: BorderRadius.circular(15),
                                 ),
-                                child: Row(
+                                child: const Center(
+                                  child: Icon(
+                                    Icons.chat_bubble_rounded,
+                                    color: Color(0xFF00A884),
+                                    size: 21,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: const [
-                                    Text('🇮🇳', style: TextStyle(fontSize: 14)),
-                                    SizedBox(width: 4),
                                     Text(
-                                      '+91',
-                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                                      'New WhatsApp Chat',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFF0F172A),
+                                        letterSpacing: -0.2,
+                                      ),
+                                    ),
+                                    SizedBox(height: 2),
+                                    Text(
+                                      'Start a 2-way conversation via Meta API',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        color: Color(0xFF64748B),
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: TextField(
-                                  controller: phoneCtrl,
-                                  keyboardType: TextInputType.phone,
-                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                            ],
+                          ),
+
+                          const SizedBox(height: 18),
+
+                          // 3. Recipient Phone Number Field
+                          Row(
+                            children: const [
+                              Text(
+                                'Recipient Phone Number',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              SizedBox(width: 3),
+                              Text(
+                                '*',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                            child: Row(
+                              children: [
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Text('🇮🇳', style: TextStyle(fontSize: 14)),
+                                    SizedBox(width: 3),
+                                    Icon(Icons.keyboard_arrow_down_rounded, size: 14, color: Color(0xFF64748B)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      '+91',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                Container(
+                                  height: 20,
+                                  width: 1,
+                                  color: const Color(0xFFCBD5E1),
+                                  margin: const EdgeInsets.symmetric(horizontal: 10),
+                                ),
+                                Expanded(
+                                  child: TextField(
+                                    controller: phoneCtrl,
+                                    keyboardType: TextInputType.phone,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    decoration: const InputDecoration(
+                                      hintText: '9876543210',
+                                      hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(vertical: 11),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // 4. Customer Name (Optional) Field
+                          const Text(
+                            'Customer Name (Optional)',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF94A3B8)),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: TextField(
+                                    controller: nameCtrl,
+                                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                                    decoration: const InputDecoration(
+                                      hintText: 'e.g. Rahul Sharma',
+                                      hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                                      border: InputBorder.none,
+                                      isDense: true,
+                                      contentPadding: EdgeInsets.symmetric(vertical: 11),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 14),
+
+                          // 5. Initial WhatsApp Message Field with Character Counter
+                          Row(
+                            children: const [
+                              Text(
+                                'Initial WhatsApp Message',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF1E293B),
+                                ),
+                              ),
+                              SizedBox(width: 3),
+                              Text(
+                                '*',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFAFDFA),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFA7F3D0), width: 1.2),
+                            ),
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                TextField(
+                                  controller: msgCtrl,
+                                  minLines: 3,
+                                  maxLines: 4,
+                                  onChanged: (_) => setSheetState(() {}),
+                                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), height: 1.3),
                                   decoration: const InputDecoration(
-                                    hintText: '9876543210',
-                                    hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                                    hintText: 'Type initial message...',
+                                    hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
                                     border: InputBorder.none,
                                     isDense: true,
-                                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text(
+                                    '${msgCtrl.text.length}/1024',
+                                    style: const TextStyle(
+                                      fontSize: 9.5,
+                                      color: Color(0xFF94A3B8),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          const SizedBox(height: 18),
+
+                          // 6. Action Buttons: Cancel and Start Chat
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () => Navigator.pop(sheetCtx),
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(22),
+                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: const Text(
+                                      'Cancel',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF334155),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 1,
+                                child: InkWell(
+                                  onTap: isSubmitting
+                                      ? null
+                                      : () async {
+                                          final rawPhone = phoneCtrl.text.trim();
+                                          if (rawPhone.isEmpty) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(content: Text('Please enter a phone number')),
+                                            );
+                                            return;
+                                          }
+                                          final cleanDigits = rawPhone.replaceAll(RegExp(r'\D'), '');
+                                          final phone = cleanDigits.length == 10 ? '91$cleanDigits' : cleanDigits;
+                                          setSheetState(() => isSubmitting = true);
+                                          try {
+                                            final chat = await _chatService.startNewChat(
+                                              customerPhone: phone,
+                                              customerName: nameCtrl.text.trim(),
+                                              initialMessage: msgCtrl.text.trim(),
+                                            );
+                                            if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                                            if (chat != null && mounted) {
+                                              _selectChat(chat);
+                                              _loadConnectionAndChats();
+                                            }
+                                          } catch (e) {
+                                            setSheetState(() => isSubmitting = false);
+                                            if (mounted) _showErrorSnackBar('Could not start chat: $e');
+                                          }
+                                        },
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        colors: [Color(0xFF10B981), Color(0xFF059669)],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      borderRadius: BorderRadius.circular(22),
+                                      boxShadow: const [
+                                        BoxShadow(
+                                          color: Color(0x3310B981),
+                                          blurRadius: 8,
+                                          offset: Offset(0, 3),
+                                        ),
+                                      ],
+                                    ),
+                                    alignment: Alignment.center,
+                                    child: isSubmitting
+                                        ? const SizedBox(
+                                            width: 15,
+                                            height: 15,
+                                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                          )
+                                        : Row(
+                                            mainAxisAlignment: MainAxisAlignment.center,
+                                            children: const [
+                                              Icon(Icons.near_me_rounded, color: Colors.white, size: 16),
+                                              SizedBox(width: 6),
+                                              Text(
+                                                'Start Chat',
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
                                   ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Customer Name Field
-                        const Text(
-                          'Customer Name (Optional)',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                        ),
-                        const SizedBox(height: 6),
-                        TextField(
-                          controller: nameCtrl,
-                          style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
-                          decoration: InputDecoration(
-                            hintText: 'e.g. Rahul Sharma',
-                            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
-                            prefixIcon: const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF64748B)),
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Initial Message & Quick Templates
-                        const Text(
-                          'Initial WhatsApp Message',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            _buildTemplateChip(
-                              msgCtrl,
-                              'Hello! How can we help you?',
-                              setDialogState,
-                            ),
-                            _buildTemplateChip(
-                              msgCtrl,
-                              'Thank you for visiting Apna POS!',
-                              setDialogState,
-                            ),
-                            _buildTemplateChip(
-                              msgCtrl,
-                              'Your order is ready for pickup.',
-                              setDialogState,
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: msgCtrl,
-                          maxLines: 2,
-                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
-                          decoration: InputDecoration(
-                            hintText: 'Type initial message...',
-                            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                            filled: true,
-                            fillColor: const Color(0xFFF8FAFC),
-                            isDense: true,
-                            contentPadding: const EdgeInsets.all(12),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: () => Navigator.pop(dialogCtx),
-                                style: OutlinedButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(vertical: 11),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                  side: const BorderSide(color: Color(0xFFCBD5E1)),
-                                ),
-                                child: const Text('Cancel', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B))),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              flex: 2,
-                              child: ElevatedButton.icon(
-                                onPressed: isSubmitting
-                                    ? null
-                                    : () async {
-                                        final rawPhone = phoneCtrl.text.trim();
-                                        if (rawPhone.isEmpty) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(content: Text('Please enter a phone number')),
-                                          );
-                                          return;
-                                        }
-                                        final cleanDigits = rawPhone.replaceAll(RegExp(r'\D'), '');
-                                        final phone = cleanDigits.length == 10 ? '91$cleanDigits' : cleanDigits;
-                                        setDialogState(() => isSubmitting = true);
-                                        try {
-                                          final chat = await _chatService.startNewChat(
-                                            customerPhone: phone,
-                                            customerName: nameCtrl.text.trim(),
-                                            initialMessage: msgCtrl.text.trim(),
-                                          );
-                                          if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                                          if (chat != null && mounted) {
-                                            _selectChat(chat);
-                                            _loadConnectionAndChats();
-                                          }
-                                        } catch (e) {
-                                          setDialogState(() => isSubmitting = false);
-                                          if (mounted) _showErrorSnackBar('Could not start chat: $e');
-                                        }
-                                      },
-                                icon: isSubmitting
-                                    ? const SizedBox(
-                                        width: 14,
-                                        height: 14,
-                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                                      )
-                                    : const Icon(Icons.send_rounded, size: 15),
-                                label: Text(
-                                  isSubmitting ? 'Starting...' : 'Start Chat',
-                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF00A884),
-                                  foregroundColor: Colors.white,
-                                  elevation: 2,
-                                  padding: const EdgeInsets.symmetric(vertical: 11),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ],
+                ),
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTemplateChip(TextEditingController ctrl, String template, StateSetter setDialogState) {
-    return InkWell(
-      onTap: () {
-        setDialogState(() {
-          ctrl.text = template;
-        });
-      },
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF0FDF4),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: const Color(0xFFBBF7D0)),
-        ),
-        child: Text(
-          template,
-          style: const TextStyle(fontSize: 10.5, color: Color(0xFF166534), fontWeight: FontWeight.w600),
-        ),
+          );
+        },
       ),
     );
   }
