@@ -525,24 +525,6 @@ class _InventoryScreenState extends State<InventoryScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       child: Row(
         children: [
-          if (widget.onBack != null || Navigator.canPop(context)) ...[
-            InkWell(
-              onTap: () {
-                if (widget.onBack != null) {
-                  widget.onBack!();
-                } else {
-                  Navigator.pop(context);
-                }
-              },
-              borderRadius: BorderRadius.circular(9),
-              child: Container(
-                padding: const EdgeInsets.all(7),
-                decoration: _neumorphicCardDecoration(radius: 9),
-                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 13, color: _primaryNavy),
-              ),
-            ),
-            const SizedBox(width: 6),
-          ],
           Expanded(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -665,64 +647,65 @@ class _InventoryScreenState extends State<InventoryScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Responsive KPI Cards (Wrapped layout to prevent pixel overflows)
+                // Responsive KPI Cards (2 boxes in one row on mobile & tablet)
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final width = constraints.maxWidth;
-                    final int cols = width > 780 ? 3 : (width > 480 ? 2 : 1);
-                    final double cardWidth = (width - ((cols - 1) * 10)) / cols;
+                    // Always 2 boxes in one row on mobile/tablets; 3 boxes on large desktop
+                    final int cols = width > 750 ? 3 : 2;
+                    final double cardWidth = (width - ((cols - 1) * 8)) / cols;
 
                     return Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
                         _buildKpiCard(
-                          title: 'Total Stock Valuation',
+                          title: 'Stock Valuation',
                           value: '₹${totalValuation.toStringAsFixed(2)}',
-                          subtitle: '${_rawMaterials.length} raw materials on hand',
-                          icon: Icons.account_balance_wallet_outlined,
-                          iconColor: _blueAccent,
+                          subtitle: '${_rawMaterials.length} materials on hand',
+                          icon: Icons.account_balance_wallet_rounded,
+                          iconColor: const Color(0xFF2563EB),
                           width: cardWidth,
                         ),
                         _buildKpiCard(
                           title: 'Low Stock Alert',
                           value: '$lowStockCount Items',
-                          subtitle: 'Items below minimum reorder level',
-                          icon: Icons.warning_amber_rounded,
-                          iconColor: _amberAccent,
+                          subtitle: 'Below reorder point',
+                          icon: Icons.warning_rounded,
+                          iconColor: const Color(0xFFF59E0B),
                           width: cardWidth,
                           isWarning: lowStockCount > 0,
                         ),
                         _buildKpiCard(
                           title: 'Out of Stock',
                           value: '$outOfStockCount Items',
-                          subtitle: 'Items requiring immediate purchase',
-                          icon: Icons.remove_shopping_cart_outlined,
-                          iconColor: _redAccent,
+                          subtitle: 'Needs immediate restock',
+                          icon: Icons.remove_shopping_cart_rounded,
+                          iconColor: const Color(0xFFEF4444),
                           width: cardWidth,
                           isDanger: outOfStockCount > 0,
                         ),
                         _buildKpiCard(
                           title: "Today's Stock-In",
                           value: '₹${(_dashboardSummary?['todayStockInValue'] ?? 0).toString()}',
-                          subtitle: 'Supplier purchases received',
-                          icon: Icons.archive_outlined,
-                          iconColor: _greenAccent,
+                          subtitle: 'Goods purchases received',
+                          icon: Icons.local_shipping_rounded,
+                          iconColor: const Color(0xFF10B981),
                           width: cardWidth,
                         ),
                         _buildKpiCard(
                           title: "Today's Consumption",
                           value: '₹${(_dashboardSummary?['todayStockOutValue'] ?? 0).toString()}',
-                          subtitle: 'Recipe sales + kitchen usage',
-                          icon: Icons.unarchive_outlined,
+                          subtitle: 'Kitchen cooking & sales',
+                          icon: Icons.soup_kitchen_rounded,
                           iconColor: const Color(0xFF8B5CF6),
                           width: cardWidth,
                         ),
                         _buildKpiCard(
                           title: 'Active Recipes',
                           value: '${_recipes.length} Recipes',
-                          subtitle: 'Configured menu item deductions',
-                          icon: Icons.restaurant_menu_rounded,
+                          subtitle: 'Menu auto-deductions',
+                          icon: Icons.menu_book_rounded,
                           iconColor: _primaryNavy,
                           width: cardWidth,
                         ),
@@ -784,14 +767,14 @@ class _InventoryScreenState extends State<InventoryScreen> {
   }) {
     return Container(
       width: width,
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8.5),
       decoration: _neumorphicCardDecoration(
         border: Border.all(
           color: isDanger
-              ? _redAccent.withValues(alpha: 0.4)
+              ? _redAccent.withValues(alpha: 0.45)
               : isWarning
-                  ? _amberAccent.withValues(alpha: 0.4)
-                  : _borderColor.withValues(alpha: 0.7),
+                  ? _amberAccent.withValues(alpha: 0.45)
+                  : Colors.white.withValues(alpha: 0.8),
           width: isDanger || isWarning ? 1.2 : 1,
         ),
       ),
@@ -805,26 +788,36 @@ class _InventoryScreenState extends State<InventoryScreen> {
               Flexible(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: _textMuted),
+                  style: const TextStyle(
+                    fontSize: 9.8,
+                    fontWeight: FontWeight.w700,
+                    color: _textMuted,
+                    letterSpacing: -0.1,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              const SizedBox(width: 4),
               Container(
-                padding: const EdgeInsets.all(4.5),
+                padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(6),
+                  color: iconColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(7),
+                  border: Border.all(
+                    color: iconColor.withValues(alpha: 0.25),
+                    width: 0.8,
+                  ),
                 ),
-                child: Icon(icon, color: iconColor, size: 13),
+                child: Icon(icon, color: iconColor, size: 14),
               ),
             ],
           ),
-          const SizedBox(height: 5),
+          const SizedBox(height: 4),
           Text(
             value,
             style: TextStyle(
-              fontSize: 15,
+              fontSize: 14,
               fontWeight: FontWeight.w800,
               color: isDanger ? _redAccent : isWarning ? _amberAccent : _textDark,
               letterSpacing: -0.2,
@@ -835,7 +828,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           const SizedBox(height: 2),
           Text(
             subtitle,
-            style: const TextStyle(fontSize: 9, color: _textMuted),
+            style: const TextStyle(fontSize: 8.8, color: _textMuted),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
