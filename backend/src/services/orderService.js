@@ -11,6 +11,7 @@ const notificationService = require('./notificationService');
 const loyaltyService = require('./loyaltyService');
 const tableService = require('./tableService');
 const socketService = require('./socketService');
+const inventoryService = require('./inventoryService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
@@ -583,6 +584,13 @@ class OrderService {
         }
       }
 
+      // Deduct raw material restaurant inventory according to configured recipes
+      try {
+        await inventoryService.deductRecipeInventoryForOrder(businessId, order);
+      } catch (invErr) {
+        console.warn('[generatePosOrder] Recipe inventory deduction warning:', invErr.message);
+      }
+
       // PrintLog snapshot for completed order
       try {
         const existingPrints = await PrintLog.countDocuments({ businessId, orderId: order._id });
@@ -814,6 +822,13 @@ class OrderService {
             $set: { lastVisit: new Date() },
           }
         );
+      }
+
+      // Deduct raw material restaurant inventory according to configured recipes
+      try {
+        await inventoryService.deductRecipeInventoryForOrder(businessId, order);
+      } catch (invErr) {
+        console.warn('[updateOrderStatus] Recipe inventory deduction warning:', invErr.message);
       }
     } else if (status === 'cancelled') {
       order.cancelledAt = new Date();
@@ -1422,6 +1437,13 @@ class OrderService {
           { $inc: { stock: -item.quantity } }
         );
       }
+    }
+
+    // Deduct raw material restaurant inventory according to configured recipes
+    try {
+      await inventoryService.deductRecipeInventoryForOrder(bId, order);
+    } catch (invErr) {
+      console.warn('[settleOrder] Recipe inventory deduction warning:', invErr.message);
     }
 
     // 3. Free Table if dineIn
