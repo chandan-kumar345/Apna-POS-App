@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
@@ -299,113 +302,314 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     showDialog(
       context: context,
       builder: (dialogCtx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          titlePadding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-          title: Row(
-            children: const [
-              Icon(Icons.person_add_alt_1_rounded, color: waTeal, size: 18),
-              SizedBox(width: 8),
-              Text('New WhatsApp Chat', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: InputDecoration(
-                    labelText: 'Phone Number *',
-                    labelStyle: const TextStyle(fontSize: 12),
-                    hintText: 'e.g. 9876543210 or +919876543210',
-                    hintStyle: const TextStyle(fontSize: 11.5),
-                    prefixIcon: const Icon(Icons.phone_android_rounded, size: 17),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        builder: (context, setDialogState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          elevation: 16,
+          backgroundColor: Colors.white,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // WhatsApp Branded Header
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Color(0xFF00A884), Color(0xFF008069)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.2),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.chat_rounded, color: Colors.white, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: const [
+                              Text(
+                                'New WhatsApp Chat',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'Start a 2-way conversation via Meta API',
+                                style: TextStyle(fontSize: 11, color: Color(0xFFE2E8F0)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          icon: const Icon(Icons.close_rounded, color: Colors.white, size: 20),
+                          onPressed: () => Navigator.pop(dialogCtx),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: nameCtrl,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: InputDecoration(
-                    labelText: 'Name (Optional)',
-                    labelStyle: const TextStyle(fontSize: 12),
-                    hintText: 'Customer Name',
-                    hintStyle: const TextStyle(fontSize: 11.5),
-                    prefixIcon: const Icon(Icons.person_outline_rounded, size: 17),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+
+                  // Form Fields
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Phone Number Field with +91 Prefix
+                        const Text(
+                          'Recipient Phone Number',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.horizontal(left: Radius.circular(11)),
+                                ),
+                                child: Row(
+                                  children: const [
+                                    Text('🇮🇳', style: TextStyle(fontSize: 14)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      '+91',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF334155)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: TextField(
+                                  controller: phoneCtrl,
+                                  keyboardType: TextInputType.phone,
+                                  style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                                  decoration: const InputDecoration(
+                                    hintText: '9876543210',
+                                    hintStyle: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                                    border: InputBorder.none,
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(vertical: 12),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Customer Name Field
+                        const Text(
+                          'Customer Name (Optional)',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: nameCtrl,
+                          style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
+                          decoration: InputDecoration(
+                            hintText: 'e.g. Rahul Sharma',
+                            hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                            prefixIcon: const Icon(Icons.person_outline_rounded, size: 18, color: Color(0xFF64748B)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Initial Message & Quick Templates
+                        const Text(
+                          'Initial WhatsApp Message',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            _buildTemplateChip(
+                              msgCtrl,
+                              'Hello! How can we help you?',
+                              setDialogState,
+                            ),
+                            _buildTemplateChip(
+                              msgCtrl,
+                              'Thank you for visiting Apna POS!',
+                              setDialogState,
+                            ),
+                            _buildTemplateChip(
+                              msgCtrl,
+                              'Your order is ready for pickup.',
+                              setDialogState,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: msgCtrl,
+                          maxLines: 2,
+                          style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                          decoration: InputDecoration(
+                            hintText: 'Type initial message...',
+                            hintStyle: const TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                            filled: true,
+                            fillColor: const Color(0xFFF8FAFC),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.all(12),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Action Buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(dialogCtx),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 11),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                                ),
+                                child: const Text('Cancel', style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B))),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              flex: 2,
+                              child: ElevatedButton.icon(
+                                onPressed: isSubmitting
+                                    ? null
+                                    : () async {
+                                        final rawPhone = phoneCtrl.text.trim();
+                                        if (rawPhone.isEmpty) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(content: Text('Please enter a phone number')),
+                                          );
+                                          return;
+                                        }
+                                        final cleanDigits = rawPhone.replaceAll(RegExp(r'\D'), '');
+                                        final phone = cleanDigits.length == 10 ? '91$cleanDigits' : cleanDigits;
+                                        setDialogState(() => isSubmitting = true);
+                                        try {
+                                          final chat = await _chatService.startNewChat(
+                                            customerPhone: phone,
+                                            customerName: nameCtrl.text.trim(),
+                                            initialMessage: msgCtrl.text.trim(),
+                                          );
+                                          if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                                          if (chat != null && mounted) {
+                                            _selectChat(chat);
+                                            _loadConnectionAndChats();
+                                          }
+                                        } catch (e) {
+                                          setDialogState(() => isSubmitting = false);
+                                          if (mounted) _showErrorSnackBar('Could not start chat: $e');
+                                        }
+                                      },
+                                icon: isSubmitting
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.send_rounded, size: 15),
+                                label: Text(
+                                  isSubmitting ? 'Starting...' : 'Start Chat',
+                                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF00A884),
+                                  foregroundColor: Colors.white,
+                                  elevation: 2,
+                                  padding: const EdgeInsets.symmetric(vertical: 11),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: msgCtrl,
-                  maxLines: 2,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: InputDecoration(
-                    labelText: 'Initial Message',
-                    labelStyle: const TextStyle(fontSize: 12),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Cancel', style: TextStyle(fontSize: 12, color: Color(0xFF64748B))),
-            ),
-            ElevatedButton(
-              onPressed: isSubmitting
-                  ? null
-                  : () async {
-                      final phone = phoneCtrl.text.trim();
-                      if (phone.isEmpty) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Please enter a valid phone number')),
-                        );
-                        return;
-                      }
-                      setDialogState(() => isSubmitting = true);
-                      try {
-                        final chat = await _chatService.startNewChat(
-                          customerPhone: phone,
-                          customerName: nameCtrl.text.trim(),
-                          initialMessage: msgCtrl.text.trim(),
-                        );
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        if (chat != null && mounted) {
-                          _selectChat(chat);
-                          _loadConnectionAndChats();
-                        }
-                      } catch (e) {
-                        setDialogState(() => isSubmitting = false);
-                        if (mounted) _showErrorSnackBar('Could not start chat: $e');
-                      }
-                    },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: waTeal,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ],
               ),
-              child: isSubmitting
-                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Text('Start Chat', style: TextStyle(fontSize: 12)),
             ),
-          ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemplateChip(TextEditingController ctrl, String template, StateSetter setDialogState) {
+    return InkWell(
+      onTap: () {
+        setDialogState(() {
+          ctrl.text = template;
+        });
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF0FDF4),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: const Color(0xFFBBF7D0)),
+        ),
+        child: Text(
+          template,
+          style: const TextStyle(fontSize: 10.5, color: Color(0xFF166534), fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -520,6 +724,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Navigator.of(context).pop();
       },
       child: Scaffold(
+        resizeToAvoidBottomInset: false,
         backgroundColor: const Color(0xFF031024), // Deep Midnight Navy (matching POS screen)
         body: Container(
           decoration: const BoxDecoration(
@@ -1099,69 +1304,34 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Phone Status Bar: 9:41 Time, Dynamic Island with Camera lens, Signal, WiFi, Battery
+  /// Phone Status Bar: Centered Dynamic Island with camera lens (time and signal/battery icons removed)
   Widget _buildPhoneStatusBar() {
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // 9:41 Phone Clock
-          const SizedBox(
-            width: 60,
-            child: Text(
-              '9:41',
-              style: TextStyle(
-                color: Color(0xFF000000),
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                letterSpacing: -0.3,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      alignment: Alignment.center,
+      child: Container(
+        width: 104,
+        height: 24,
+        decoration: BoxDecoration(
+          color: const Color(0xFF000000),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              margin: const EdgeInsets.only(right: 11),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E293B),
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
               ),
             ),
-          ),
-
-          // Dynamic Island Notch Pill with camera lens
-          Container(
-            width: 106,
-            height: 26,
-            decoration: BoxDecoration(
-              color: const Color(0xFF000000),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Container(
-                  width: 9,
-                  height: 9,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // Signal, Wifi, Battery
-          const SizedBox(
-            width: 60,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Icon(Icons.signal_cellular_alt_rounded, size: 14, color: Color(0xFF000000)),
-                SizedBox(width: 3),
-                Icon(Icons.wifi_rounded, size: 14, color: Color(0xFF000000)),
-                SizedBox(width: 3),
-                Icon(Icons.battery_full_rounded, size: 18, color: Color(0xFF000000)),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1717,6 +1887,15 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Widget _buildChatConversationView({bool isMobile = false}) {
     if (_selectedChat == null) return const SizedBox();
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+
+    if (bottomInset > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+        }
+      });
+    }
 
     return Column(
       children: [
@@ -1811,76 +1990,427 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // Bottom Quick Replies & Input Bar
-        Container(
-          color: const Color(0xFFF0F2F5),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Quick reply chips
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildQuickChip('Order Ready for Pickup'),
-                    _buildQuickChip('Your bill total is ready'),
-                    _buildQuickChip('Thank you for your visit!'),
-                    _buildQuickChip('Table confirmed'),
-                  ],
+        // Bottom Quick Replies & Input Bar (Smoothly lifted when keyboard opens)
+        AnimatedPadding(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOut,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Container(
+            color: const Color(0xFFF0F2F5),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Quick reply chips
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildQuickChip('Order Ready for Pickup'),
+                      _buildQuickChip('Your bill total is ready'),
+                      _buildQuickChip('Thank you for your visit!'),
+                      _buildQuickChip('Table confirmed'),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    // Plus (+) Icon button to send images
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _showAttachmentSheet,
                         borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: TextField(
-                        controller: _messageController,
-                        focusNode: _messageFocusNode,
-                        textInputAction: TextInputAction.send,
-                        onSubmitted: (_) => _sendMessage(),
-                        style: const TextStyle(fontSize: 12.5, color: waDarkText),
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          hintStyle: TextStyle(fontSize: 12.5, color: waMutedText),
-                          isDense: true,
-                          border: InputBorder.none,
-                          contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        child: Container(
+                          width: 36,
+                          height: 36,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: const Icon(Icons.add_rounded, color: Color(0xFF00A884), size: 22),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: const BoxDecoration(
-                      color: waTeal,
-                      shape: BoxShape.circle,
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: TextField(
+                          controller: _messageController,
+                          focusNode: _messageFocusNode,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _sendMessage(),
+                          style: const TextStyle(fontSize: 12.5, color: waDarkText),
+                          decoration: const InputDecoration(
+                            hintText: 'Type a message...',
+                            hintStyle: TextStyle(fontSize: 12.5, color: waMutedText),
+                            isDense: true,
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          ),
+                        ),
+                      ),
                     ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      icon: _isSending
-                          ? const SizedBox(
-                              width: 14,
-                              height: 14,
-                              child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                            )
-                          : const Icon(Icons.send_rounded, color: Colors.white, size: 17),
-                      onPressed: _isSending ? null : _sendMessage,
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF00A884),
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: _isSending
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : const Icon(Icons.send_rounded, color: Colors.white, size: 17),
+                        onPressed: _isSending ? null : _sendMessage,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
+    );
+  }
+
+  void _showAttachmentSheet() {
+    if (_selectedChat == null) return;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Send WhatsApp Image',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                ),
+                IconButton(
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  icon: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
+                  onPressed: () => Navigator.pop(sheetCtx),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildAttachmentOption(
+                  icon: Icons.camera_alt_rounded,
+                  label: 'Camera',
+                  color: const Color(0xFF0284C7),
+                  bgColor: const Color(0xFFE0F2FE),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _pickAndSendImage(ImageSource.camera);
+                  },
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.photo_library_rounded,
+                  label: 'Gallery',
+                  color: const Color(0xFF7C3AED),
+                  bgColor: const Color(0xFFF3E8FF),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _pickAndSendImage(ImageSource.gallery);
+                  },
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.link_rounded,
+                  label: 'Image URL',
+                  color: const Color(0xFF059669),
+                  bgColor: const Color(0xFFD1FAE5),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _showImageUrlDialog();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAttachmentOption({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required Color bgColor,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: bgColor,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF334155)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAndSendImage(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final XFile? pickedFile = await picker.pickImage(
+        source: source,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 75,
+      );
+      if (pickedFile != null && mounted) {
+        _showImagePreviewDialog(imagePath: pickedFile.path, isLocal: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showErrorSnackBar('Could not pick image: $e');
+      }
+    }
+  }
+
+  void _showImageUrlDialog() {
+    final urlCtrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Send Image URL', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: urlCtrl,
+          decoration: const InputDecoration(
+            hintText: 'https://example.com/image.jpg',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              final url = urlCtrl.text.trim();
+              if (url.isNotEmpty) {
+                Navigator.pop(ctx);
+                _showImagePreviewDialog(imagePath: url, isLocal: false);
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF00A884)),
+            child: const Text('Preview', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showImagePreviewDialog({required String imagePath, required bool isLocal}) {
+    final captionCtrl = TextEditingController();
+    bool isSendingImage = false;
+
+    showDialog(
+      context: context,
+      builder: (previewCtx) => StatefulBuilder(
+        builder: (context, setPreviewState) => Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 380),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Send Image',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        icon: const Icon(Icons.close_rounded, size: 18),
+                        onPressed: () => Navigator.pop(previewCtx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Image Thumbnail Preview
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      height: 180,
+                      color: const Color(0xFFF1F5F9),
+                      child: isLocal && !kIsWeb
+                          ? Image.file(
+                              File(imagePath),
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Center(
+                                child: Icon(Icons.broken_image_rounded, size: 40, color: Color(0xFF94A3B8)),
+                              ),
+                            )
+                          : Image.network(
+                              imagePath,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) => const Center(
+                                child: Icon(Icons.broken_image_rounded, size: 40, color: Color(0xFF94A3B8)),
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Caption Field
+                  TextField(
+                    controller: captionCtrl,
+                    style: const TextStyle(fontSize: 13),
+                    decoration: InputDecoration(
+                      hintText: 'Add a caption... (optional)',
+                      hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(previewCtx),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: isSendingImage
+                              ? null
+                              : () async {
+                                  setPreviewState(() => isSendingImage = true);
+                                  try {
+                                    final caption = captionCtrl.text.trim();
+                                    final msg = await _chatService.sendMessage(
+                                      _selectedChat!.id,
+                                      caption,
+                                      messageType: 'image',
+                                      mediaUrl: imagePath,
+                                    );
+                                    if (previewCtx.mounted) Navigator.pop(previewCtx);
+                                    if (msg != null && mounted) {
+                                      setState(() {
+                                        _messages.add(msg);
+                                      });
+                                      _scrollToBottom();
+                                    }
+                                  } catch (e) {
+                                    setPreviewState(() => isSendingImage = false);
+                                    if (mounted) _showErrorSnackBar('Failed to send image: $e');
+                                  }
+                                },
+                          icon: isSendingImage
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                )
+                              : const Icon(Icons.send_rounded, size: 15),
+                          label: const Text('Send', style: TextStyle(fontWeight: FontWeight.bold)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF00A884),
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBubbleImage(String mediaUrl) {
+    if (mediaUrl.isEmpty) {
+      return Container(
+        color: const Color(0xFFF1F5F9),
+        padding: const EdgeInsets.all(16),
+        child: const Icon(Icons.image_rounded, size: 40, color: Color(0xFF94A3B8)),
+      );
+    }
+    if (!kIsWeb && !mediaUrl.startsWith('http://') && !mediaUrl.startsWith('https://')) {
+      final file = File(mediaUrl);
+      if (file.existsSync()) {
+        return Image.file(
+          file,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
+        );
+      }
+    }
+    return Image.network(
+      mediaUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) => Container(
+        color: const Color(0xFFF1F5F9),
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.broken_image_rounded, size: 28, color: Color(0xFF94A3B8)),
+            SizedBox(height: 4),
+            Text('Image attachment', style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8))),
+          ],
+        ),
+      ),
     );
   }
 
@@ -1932,13 +2462,24 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  msg.text,
-                  style: const TextStyle(fontSize: 12.5, color: waDarkText, height: 1.25),
+              if (msg.messageType == 'image' || msg.mediaUrl.isNotEmpty) ...[
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
+                    child: _buildBubbleImage(msg.mediaUrl),
+                  ),
                 ),
-              ),
+                if (msg.text.isNotEmpty) const SizedBox(height: 4),
+              ],
+              if (msg.text.isNotEmpty)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    msg.text,
+                    style: const TextStyle(fontSize: 12.5, color: waDarkText, height: 1.25),
+                  ),
+                ),
               const SizedBox(height: 2),
               Row(
                 mainAxisSize: MainAxisSize.min,

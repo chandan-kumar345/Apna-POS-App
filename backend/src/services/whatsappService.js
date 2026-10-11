@@ -259,6 +259,8 @@ class WhatsAppService {
   async sendChatMessage({
     to,
     text,
+    messageType = 'text',
+    mediaUrl = '',
     phoneNumberId = null,
     accessToken = null,
   }) {
@@ -292,12 +294,20 @@ class WhatsAppService {
     }
 
     const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
+    const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
     const payload = {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: normalizedPhone,
-      type: 'text',
-      text: { preview_url: false, body: text },
+      type: isImage ? 'image' : 'text',
+      ...(isImage
+        ? {
+            image: {
+              link: mediaUrl,
+              ...(text && text.trim() ? { caption: text.trim() } : {}),
+            },
+          }
+        : { text: { preview_url: false, body: text || '' } }),
     };
 
     let response = await fetch(url, {

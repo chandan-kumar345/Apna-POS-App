@@ -41,10 +41,10 @@ void main() {
       // Verify WhatsApp Mobile Title inside phone frame
       expect(find.text('WhatsApp'), findsOneWidget);
 
-      // Verify fake phone time and Dynamic Island
-      expect(find.text('9:41'), findsOneWidget);
-      expect(find.byIcon(Icons.battery_full_rounded), findsOneWidget);
-      expect(find.byIcon(Icons.wifi_rounded), findsOneWidget);
+      // Verify fake phone time and battery/wifi status indicators are removed
+      expect(find.text('9:41'), findsNothing);
+      expect(find.byIcon(Icons.battery_full_rounded), findsNothing);
+      expect(find.byIcon(Icons.wifi_rounded), findsNothing);
 
       // Verify Meta AI Search and Filter pills
       expect(find.text('Ask Meta AI or Search'), findsOneWidget);
@@ -64,6 +64,15 @@ void main() {
       // Verify mock contact is rendered inside the smartphone chat list
       expect(find.text('Rahul Verma'), findsOneWidget);
       expect(find.text('Is my order ready?'), findsOneWidget);
+
+      // Tap on the chat to open conversation view
+      await tester.tap(find.text('Rahul Verma'));
+      await tester.pump();
+
+      // Verify plus (+) icon for sending images is present in the conversation input bar
+      expect(find.byIcon(Icons.add_rounded), findsOneWidget);
+      expect(find.byIcon(Icons.send_rounded), findsOneWidget);
+      expect(find.text('Type a message...'), findsOneWidget);
     });
   });
 }

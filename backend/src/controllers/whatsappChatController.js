@@ -39,8 +39,12 @@ class WhatsAppChatController {
   async sendMessage(req, res, next) {
     try {
       const { chatId } = req.params;
-      const { text } = req.body;
-      const result = await whatsappChatService.sendMessage(req.businessId, chatId, { text });
+      const { text, messageType, mediaUrl } = req.body;
+      const result = await whatsappChatService.sendMessage(req.businessId, chatId, {
+        text,
+        messageType,
+        mediaUrl,
+      });
       return ApiResponse.success(res, result, 'WhatsApp message sent successfully');
     } catch (error) {
       next(error);

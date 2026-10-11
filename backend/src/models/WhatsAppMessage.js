@@ -33,6 +33,10 @@ const whatsAppMessageSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    mediaUrl: {
+      type: String,
+      default: '',
+    },
     whatsappMessageId: {
       type: String,
       default: '',

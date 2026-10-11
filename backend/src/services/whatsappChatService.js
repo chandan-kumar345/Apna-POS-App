@@ -78,8 +78,9 @@ class WhatsAppChatService {
   /**
    * Send a reply message from business to customer in an existing chat
    */
-  async sendMessage(businessId, chatId, { text }) {
-    if (!text || !text.trim()) {
+  async sendMessage(businessId, chatId, { text = '', messageType = 'text', mediaUrl = '' }) {
+    const isImage = messageType === 'image' || Boolean(mediaUrl);
+    if (!isImage && (!text || !text.trim())) {
       throw ApiError.badRequest('Message text cannot be empty', null, 'EMPTY_MESSAGE');
     }
 
@@ -102,7 +103,9 @@ class WhatsAppChatService {
     // Send via Meta WhatsApp Cloud API
     const waResult = await whatsappService.sendChatMessage({
       to: chat.customerPhone,
-      text: text.trim(),
+      text: (text || '').trim(),
+      messageType: isImage ? 'image' : 'text',
+      mediaUrl: mediaUrl || '',
       phoneNumberId,
       accessToken,
     });
@@ -113,15 +116,16 @@ class WhatsAppChatService {
       chatId: chat._id,
       customerPhone: chat.customerPhone,
       direction: 'OUTGOING',
-      messageType: 'text',
-      text: text.trim(),
+      messageType: isImage ? 'image' : 'text',
+      mediaUrl: mediaUrl || '',
+      text: (text || '').trim(),
       whatsappMessageId: waResult.messageId,
       status: 'SENT',
       timestamp: new Date(),
     });
 
     // Update conversation summary
-    chat.lastMessage = text.trim();
+    chat.lastMessage = isImage ? (text ? `📷 ${text.trim()}` : '📷 Image') : text.trim();
     chat.lastMessageAt = message.timestamp;
     chat.lastMessageDirection = 'OUTGOING';
     await chat.save();

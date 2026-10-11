@@ -80,6 +80,7 @@ class WhatsAppMessageModel {
   final String direction; // 'INCOMING' | 'OUTGOING'
   final String text;
   final String messageType;
+  final String mediaUrl;
   final String whatsappMessageId;
   final String status; // 'SENT' | 'DELIVERED' | 'READ' | 'FAILED'
   final String? error;
@@ -92,6 +93,7 @@ class WhatsAppMessageModel {
     required this.direction,
     required this.text,
     this.messageType = 'text',
+    this.mediaUrl = '',
     this.whatsappMessageId = '',
     this.status = 'SENT',
     this.error,
@@ -115,6 +117,7 @@ class WhatsAppMessageModel {
       direction: (json['direction']?.toString() ?? 'OUTGOING').toUpperCase(),
       text: json['text']?.toString() ?? '',
       messageType: json['messageType']?.toString() ?? 'text',
+      mediaUrl: json['mediaUrl']?.toString() ?? '',
       whatsappMessageId: json['whatsappMessageId']?.toString() ?? '',
       status: (json['status']?.toString() ?? 'SENT').toUpperCase(),
       error: json['error']?.toString(),
@@ -207,11 +210,22 @@ class WhatsAppChatService {
   }
 
   /// Send an outgoing message to a customer
-  Future<WhatsAppMessageModel?> sendMessage(String chatId, String text) async {
+  Future<WhatsAppMessageModel?> sendMessage(
+    String chatId,
+    String text, {
+    String messageType = 'text',
+    String? mediaUrl,
+  }) async {
     try {
+      final payload = <String, dynamic>{
+        'text': text.trim(),
+        if (messageType != 'text') 'messageType': messageType,
+        if (mediaUrl != null && mediaUrl.isNotEmpty) 'mediaUrl': mediaUrl,
+      };
+
       final response = await _apiClient.post(
         ApiEndpoints.whatsappSendMessage(chatId),
-        data: {'text': text.trim()},
+        data: payload,
       );
 
       if (response != null && response is Map<String, dynamic>) {
