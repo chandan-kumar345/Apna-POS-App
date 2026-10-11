@@ -203,208 +203,253 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final groupedNotifs = _groupNotificationsChronologically(notifications);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFEFF2F6), // Neumorphism soft background
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 720), // Responsive wrapped layout
-            child: Column(
-              children: [
-                // Neumorphic Top Bar
-                _buildNeumorphicHeader(unreadCount, notifications.isNotEmpty),
+      backgroundColor: const Color(0xFF031024), // Signature Midnight Navy matching the app
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              Color(0xFF031024), // Deep Midnight Navy
+              Color(0xFF072146), // Rich Royal Navy
+              Color(0xFF0A2E5C), // Deep Indigo Blue
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: SafeArea(
+          bottom: true,
+          child: Column(
+            children: [
+              // 1. Top Header Bar (Signature Apna POS Deep Navy Bar)
+              _buildAppHeader(unreadCount, notifications.isNotEmpty),
 
-                // Neumorphic Filter Tabs
-                _buildNeumorphicFilterTabs(),
+              // 2. Active Notifications Workspace (Curved Top Container wrapping the screen like POS)
+              Expanded(
+                child: Container(
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFEFF2F6), // Neumorphism soft background
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0x33000000),
+                        blurRadius: 16,
+                        offset: Offset(0, -4),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 720), // Responsive wrapped layout
+                        child: Column(
+                          children: [
+                            const SizedBox(height: 10),
+                            // Neumorphic Filter Tabs
+                            _buildNeumorphicFilterTabs(),
 
-                // Push Permission Banner
-                if (!_isPermissionGranted) _buildPermissionBanner(),
+                            // Push Permission Banner
+                            if (!_isPermissionGranted) _buildPermissionBanner(),
 
-                // Notifications List Body
-                Expanded(
-                  child: isLoading && notifications.isEmpty
-                      ? const Center(
-                          child: CircularProgressIndicator(color: Color(0xFF0F172A), strokeWidth: 2.2),
-                        )
-                      : RefreshIndicator(
-                          onRefresh: () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
-                          color: const Color(0xFF0F172A),
-                          child: notifications.isEmpty
-                              ? _buildEmptyState()
-                              : ListView.builder(
-                                  controller: _scrollController,
-                                  physics: const AlwaysScrollableScrollPhysics(),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  itemCount: groupedNotifs.keys.length + (_service.isLoadingMore ? 1 : 0),
-                                  itemBuilder: (context, index) {
-                                    if (index == groupedNotifs.keys.length) {
-                                      return const Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 14),
-                                        child: Center(
-                                          child: SizedBox(
-                                            width: 18,
-                                            height: 18,
-                                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F172A)),
-                                          ),
-                                        ),
-                                      );
-                                    }
+                            // Notifications List Body
+                            Expanded(
+                              child: isLoading && notifications.isEmpty
+                                  ? const Center(
+                                      child: CircularProgressIndicator(color: Color(0xFF0F172A), strokeWidth: 2.2),
+                                    )
+                                  : RefreshIndicator(
+                                      onRefresh: () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
+                                      color: const Color(0xFF0F172A),
+                                      child: notifications.isEmpty
+                                          ? _buildEmptyState()
+                                          : ListView.builder(
+                                              controller: _scrollController,
+                                              physics: const AlwaysScrollableScrollPhysics(),
+                                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                              itemCount: groupedNotifs.keys.length + (_service.isLoadingMore ? 1 : 0),
+                                              itemBuilder: (context, index) {
+                                                if (index == groupedNotifs.keys.length) {
+                                                  return const Padding(
+                                                    padding: EdgeInsets.symmetric(vertical: 14),
+                                                    child: Center(
+                                                      child: SizedBox(
+                                                        width: 18,
+                                                        height: 18,
+                                                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F172A)),
+                                                      ),
+                                                    ),
+                                                  );
+                                                }
 
-                                    final sectionTitle = groupedNotifs.keys.elementAt(index);
-                                    final sectionItems = groupedNotifs[sectionTitle]!;
+                                                final sectionTitle = groupedNotifs.keys.elementAt(index);
+                                                final sectionItems = groupedNotifs[sectionTitle]!;
 
-                                    return Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Padding(
-                                          padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
-                                          child: Text(
-                                            sectionTitle.toUpperCase(),
-                                            style: const TextStyle(
-                                              fontSize: 10.5,
-                                              fontWeight: FontWeight.w800,
-                                              color: Color(0xFF94A3B8),
-                                              letterSpacing: 0.8,
+                                                return Column(
+                                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                                  children: [
+                                                    Padding(
+                                                      padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+                                                      child: Text(
+                                                        sectionTitle.toUpperCase(),
+                                                        style: const TextStyle(
+                                                          fontSize: 10.5,
+                                                          fontWeight: FontWeight.w800,
+                                                          color: Color(0xFF94A3B8),
+                                                          letterSpacing: 0.8,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    ...sectionItems.map((item) => _buildNotificationCard(item)),
+                                                  ],
+                                                );
+                                              },
                                             ),
-                                          ),
-                                        ),
-                                        ...sectionItems.map((item) => _buildNotificationCard(item)),
-                                      ],
-                                    );
-                                  },
-                                ),
+                                    ),
+                            ),
+                          ],
                         ),
+                      ),
+                    ),
+                  ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  /// Neumorphic Header with soft curved back button and actions
-  Widget _buildNeumorphicHeader(int unreadCount, bool hasNotifications) {
+  /// Top Header with signature Apna POS dark navy gradient, back button, and actions
+  Widget _buildAppHeader(int unreadCount, bool hasNotifications) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFFEFF2F6),
-      ),
-      child: Row(
-        children: [
-          // Circular Neumorphic Back Button
-          InkWell(
-            onTap: () => Navigator.of(context).pop(),
-            borderRadius: BorderRadius.circular(20),
-            child: Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
-                boxShadow: const [
-                  BoxShadow(color: Color(0x10000000), offset: Offset(2, 3), blurRadius: 6),
-                  BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
-                ],
-              ),
-              child: const Icon(
-                Icons.arrow_back_ios_new_rounded,
-                color: Color(0xFF1E293B),
-                size: 15,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-
-          // Title & Unread Count Badge
-          Expanded(
-            child: Row(
-              children: [
-                const Text(
-                  'Notifications',
-                  style: TextStyle(
-                    color: Color(0xFF0F172A),
-                    fontSize: 15.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: Colors.transparent,
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Row(
+            children: [
+              // Circular Back Button
+              InkWell(
+                onTap: () => Navigator.of(context).pop(),
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x25000000), offset: Offset(0, 2), blurRadius: 4),
+                    ],
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.arrow_back_ios_new_rounded,
+                      color: Colors.white,
+                      size: 15,
+                    ),
                   ),
                 ),
-                if (unreadCount > 0) ...[
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x33EF4444), offset: Offset(0, 2), blurRadius: 4),
-                      ],
-                    ),
-                    child: Text(
-                      '$unreadCount',
-                      style: const TextStyle(
+              ),
+              const SizedBox(width: 12),
+
+              // Title & Unread Count Badge
+              Expanded(
+                child: Row(
+                  children: [
+                    const Text(
+                      'Notifications',
+                      style: TextStyle(
                         color: Colors.white,
-                        fontSize: 10,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: -0.2,
                       ),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-
-          // Action Menu (Mark all as read / Clear all)
-          if (hasNotifications)
-            PopupMenuButton<String>(
-              color: Colors.white,
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-              icon: Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
-                  boxShadow: const [
-                    BoxShadow(color: Color(0x10000000), offset: Offset(2, 3), blurRadius: 6),
-                    BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                    if (unreadCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEF4444),
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x40EF4444), offset: Offset(0, 2), blurRadius: 6),
+                          ],
+                        ),
+                        child: Text(
+                          '$unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-                child: const Icon(Icons.more_vert_rounded, color: Color(0xFF334155), size: 18),
               ),
-              onSelected: (val) {
-                if (val == 'read_all') {
-                  _service.markAllAsRead();
-                } else if (val == 'clear_all') {
-                  _service.clearAll();
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'read_all',
-                  child: Row(
-                    children: [
-                      Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF0F172A)),
-                      SizedBox(width: 8),
-                      Text('Mark all as read', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
-                    ],
+
+              // Action Menu (Mark all as read / Clear all)
+              if (hasNotifications)
+                PopupMenuButton<String>(
+                  color: Colors.white,
+                  elevation: 6,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                  icon: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 0.8),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x25000000), offset: Offset(0, 2), blurRadius: 4),
+                      ],
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.more_vert_rounded, color: Colors.white, size: 18),
+                    ),
                   ),
+                  onSelected: (val) {
+                    if (val == 'read_all') {
+                      _service.markAllAsRead();
+                    } else if (val == 'clear_all') {
+                      _service.clearAll();
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'read_all',
+                      child: Row(
+                        children: [
+                          Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF0F172A)),
+                          SizedBox(width: 8),
+                          Text('Mark all as read', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 'clear_all',
+                      child: Row(
+                        children: [
+                          Icon(Icons.clear_all_rounded, size: 16, color: Color(0xFFEF4444)),
+                          SizedBox(width: 8),
+                          Text('Clear all', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const PopupMenuItem(
-                  value: 'clear_all',
-                  child: Row(
-                    children: [
-                      Icon(Icons.clear_all_rounded, size: 16, color: Color(0xFFEF4444)),
-                      SizedBox(width: 8),
-                      Text('Clear all', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
