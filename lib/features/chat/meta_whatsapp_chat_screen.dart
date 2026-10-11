@@ -1326,25 +1326,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   /// Smartphone Device Mockup Frame containing authentic WhatsApp Mobile View
   Widget _buildSmartphoneFrame({required Widget child, required double maxWidth, required double maxHeight}) {
     final bool isMobile = maxWidth < 500;
-    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final double frameWidth = isMobile ? (maxWidth - 12).clamp(320.0, 420.0) : 410.0;
-    final double minFrameHeight = (isMobile && bottomInset > 0) ? 240.0 : (isMobile ? 520.0 : 580.0);
-    final double frameHeight = isMobile
-        ? (maxHeight - (bottomInset > 0 ? 0 : 12)).clamp(minFrameHeight, 840.0)
-        : maxHeight.clamp(minFrameHeight, 820.0);
-    final double outerRadius = (isMobile && bottomInset > 0) ? 22.0 : (isMobile ? 38.0 : 46.0);
-    final double innerRadius = (isMobile && bottomInset > 0) ? 16.0 : (isMobile ? 30.0 : 38.0);
-    final double borderWidth = (isMobile && bottomInset > 0) ? 3.0 : (isMobile ? 6.0 : 8.5);
+    final double frameHeight = isMobile ? (maxHeight - 12).clamp(500.0, 840.0) : maxHeight.clamp(560.0, 820.0);
+    final double outerRadius = isMobile ? 38.0 : 46.0;
+    final double innerRadius = isMobile ? 30.0 : 38.0;
+    final double borderWidth = isMobile ? 6.0 : 8.5;
 
     return Center(
       child: Container(
         width: frameWidth,
         height: frameHeight,
-        margin: EdgeInsets.only(
-          left: isMobile ? 6 : 10,
-          right: isMobile ? 6 : 10,
-          top: (isMobile && bottomInset > 0) ? 2 : (isMobile ? 6 : 10),
-          bottom: bottomInset > 0 ? 0 : (isMobile ? 6 : 10),
+        margin: EdgeInsets.symmetric(
+          horizontal: isMobile ? 6 : 10,
+          vertical: isMobile ? 6 : 10,
         ),
         decoration: BoxDecoration(
           color: const Color(0xFF0F172A), // Dark Titanium Bezel
@@ -1386,8 +1380,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 // Mobile View Body
                 Expanded(child: child),
 
-                // Bottom Home Bar Indicator (Hidden when keyboard is open to eliminate bottom gap)
-                if (bottomInset == 0) _buildPhoneHomeIndicator(),
+                // Bottom Home Bar Indicator (Hidden when keyboard is open to keep layout flush)
+                _buildPhoneHomeIndicator(),
               ],
             ),
           ),
@@ -1428,8 +1422,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Phone Bottom Home Indicator Bar
+  /// Phone Bottom Home Indicator Bar (Hides cleanly when keyboard is open)
   Widget _buildPhoneHomeIndicator() {
+    final hasKeyboard = MediaQuery.of(context).viewInsets.bottom > 0;
+    if (hasKeyboard) return const SizedBox.shrink();
     return Container(
       color: Colors.transparent,
       padding: const EdgeInsets.only(bottom: 6, top: 4),
@@ -2266,11 +2262,16 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 3. Bottom Input Bar (flush to bottom edge when keyboard opens, zero dead space)
-        Container(
-          padding: EdgeInsets.fromLTRB(10, 4, 10, bottomInset > 0 ? 2 : 6),
-          color: Colors.transparent,
-          child: _buildConversationInputBar(),
+        // 3. Bottom Input Bar: Only plus, text box, and send button lift up on keyboard open, and smoothly drop down on keyboard close
+        AnimatedPadding(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 6),
+            color: Colors.transparent,
+            child: _buildConversationInputBar(),
+          ),
         ),
       ],
     );
@@ -2984,21 +2985,45 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Neumorphic message bubble matching reference image
+  /// Word-adaptive message bubble: bubble hugs short single-line messages tightly
+  /// and wraps multiline messages naturally up to max width without artificial spacers.
   Widget _buildMessageBubble(WhatsAppMessageModel msg) {
     final isOutgoing = msg.isOutgoing;
     final screenWidth = MediaQuery.of(context).size.width;
+    final hasMedia = msg.messageType == 'image' || msg.mediaUrl.isNotEmpty;
+    final isSingleShortLine = !hasMedia && !msg.text.contains('\n') && msg.text.length <= 28;
+
+    final timeWidget = Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          _formatTime(msg.timestamp),
+          style: TextStyle(
+            fontSize: 9.5,
+            color: isOutgoing ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        if (isOutgoing) ...[
+          const SizedBox(width: 3),
+          _buildStatusIcon(msg.status),
+        ],
+      ],
+    );
 
     return Align(
       alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: (screenWidth >= 680 ? 320.0 : screenWidth * 0.74).clamp(180.0, 330.0).toDouble()),
+        constraints: BoxConstraints(
+          maxWidth: (screenWidth >= 680 ? 320.0 : screenWidth * 0.74).clamp(180.0, 330.0).toDouble(),
+        ),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 4),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+          margin: const EdgeInsets.symmetric(vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             color: isOutgoing ? const Color(0xFFDCFCE7) : Colors.white,
-            borderRadius: BorderRadius.circular(18),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(
               color: isOutgoing
                   ? const Color(0xFFBBF7D0).withValues(alpha: 0.7)
@@ -3008,56 +3033,61 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             boxShadow: [
               BoxShadow(
                 color: isOutgoing ? const Color(0x0A000000) : const Color(0x0C000000),
-                offset: const Offset(0, 3),
-                blurRadius: 8,
+                offset: const Offset(0, 2),
+                blurRadius: 6,
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (msg.messageType == 'image' || msg.mediaUrl.isNotEmpty) ...[
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
-                    child: _buildBubbleImage(msg.mediaUrl),
-                  ),
-                ),
-                if (msg.text.isNotEmpty) const SizedBox(height: 6),
-              ],
-              if (msg.text.isNotEmpty)
-                Text(
-                  msg.text,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    color: Color(0xFF0F172A),
-                    height: 1.35,
-                  ),
-                ),
-              const SizedBox(height: 3),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  const Spacer(),
-                  Text(
-                    _formatTime(msg.timestamp),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isOutgoing ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
-                      fontWeight: FontWeight.w500,
+          child: isSingleShortLine
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        msg.text,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF0F172A),
+                          height: 1.35,
+                        ),
+                      ),
                     ),
-                  ),
-                  if (isOutgoing) ...[
-                    const SizedBox(width: 4),
-                    _buildStatusIcon(msg.status),
+                    const SizedBox(width: 8),
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 1),
+                      child: timeWidget,
+                    ),
                   ],
-                ],
-              ),
-            ],
-          ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (hasMedia) ...[
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
+                          child: _buildBubbleImage(msg.mediaUrl),
+                        ),
+                      ),
+                      if (msg.text.isNotEmpty) const SizedBox(height: 5),
+                    ],
+                    if (msg.text.isNotEmpty)
+                      Text(
+                        msg.text,
+                        textAlign: TextAlign.left,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          color: Color(0xFF0F172A),
+                          height: 1.35,
+                        ),
+                      ),
+                    const SizedBox(height: 2),
+                    timeWidget,
+                  ],
+                ),
         ),
       ),
     );
