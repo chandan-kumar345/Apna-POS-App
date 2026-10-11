@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
 const { Notification } = require('../models/Notification');
+const User = require('../models/User');
 const pushNotificationService = require('./pushNotificationService');
 const ApiError = require('../utils/ApiError');
 
@@ -46,20 +47,34 @@ class NotificationService {
       });
 
       // Dispatch push notification asynchronously without blocking response
-      if (sendPush && userId) {
-        setImmediate(() => {
-          pushNotificationService.sendPushNotification({
-            userId,
-            title: notification.title,
-            message: notification.message,
-            data: {
-              notificationId: notification._id.toString(),
-              type: notification.type,
-              entityType: notification.entityType,
-              entityId: notification.entityId || '',
-              ...notification.metadata,
-            },
-          });
+      if (sendPush) {
+        setImmediate(async () => {
+          try {
+            let targetUserIds = [];
+            if (userId) {
+              targetUserIds = [userId];
+            } else if (businessId) {
+              const users = await User.find({ businessId }).select('_id');
+              targetUserIds = users.map((u) => u._id);
+            }
+
+            for (const uid of targetUserIds) {
+              pushNotificationService.sendPushNotification({
+                userId: uid,
+                title: notification.title,
+                message: notification.message,
+                data: {
+                  notificationId: notification._id.toString(),
+                  type: notification.type,
+                  entityType: notification.entityType,
+                  entityId: notification.entityId || '',
+                  ...notification.metadata,
+                },
+              });
+            }
+          } catch (pushErr) {
+            console.warn('[NotificationService] Push dispatch warning:', pushErr.message);
+          }
         });
       }
 
@@ -109,9 +124,14 @@ class NotificationService {
         query.type = 'daily_sales_summary';
       } else if (typeLower === 'inventory' || typeLower === 'stock') {
         query.type = 'low_stock';
+      } else if (typeLower === 'whatsapp' || typeLower === 'whatsapp_message' || typeLower === 'chat') {
+        query.type = 'whatsapp_message';
       } else {
         query.type = type;
       }
+    } else {
+      // By default in All view: exclude new_order notifications per user instruction
+      query.type = { $ne: 'new_order' };
     }
 
     const parsedPage = Math.max(1, parseInt(page, 10) || 1);
@@ -143,7 +163,7 @@ class NotificationService {
    * Get unread notification count
    */
   async getUnreadCount(businessId, userId) {
-    const query = { isRead: false };
+    const query = { isRead: false, type: { $ne: 'new_order' } };
     if (businessId) {
       query.businessId = businessId;
     } else if (userId) {

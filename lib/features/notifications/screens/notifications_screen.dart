@@ -8,6 +8,7 @@ import '../../crm/screens/crm_leads_screen.dart';
 import '../../inventory/inventory_screen.dart';
 import '../../dashboard/main_layout.dart';
 import '../widgets/daily_business_summary_dialog.dart';
+import '../../chat/meta_whatsapp_chat_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -20,9 +21,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final NotificationService _service = NotificationService();
   final ScrollController _scrollController = ScrollController();
 
+  // Filter tabs: new_order is removed; WhatsApp filter added
   final List<Map<String, String>> _filterTabs = [
     {'key': 'All', 'label': 'All'},
-    {'key': 'new_order', 'label': 'Orders'},
+    {'key': 'whatsapp_message', 'label': 'WhatsApp'},
     {'key': 'new_lead', 'label': 'Leads'},
     {'key': 'daily_sales_summary', 'label': 'Daily Summary'},
     {'key': 'low_stock', 'label': 'Inventory'},
@@ -100,6 +102,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     };
 
     for (final item in items) {
+      // Exclude new_order notifications completely
+      if (item.type == NotificationType.newOrder) continue;
+
       final itemDate = DateTime(item.timestamp.year, item.timestamp.month, item.timestamp.day);
       if (itemDate.isAtSameMomentAs(today)) {
         groups['Today']!.add(item);
@@ -117,6 +122,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _handleNotificationTap(NotificationItem notif) {
     _service.markAsRead(notif.id);
+
+    // Direct redirection to WhatsApp chat screen if it's a WhatsApp message
+    if (notif.type == NotificationType.whatsappMessage ||
+        notif.target == NotificationTarget.whatsappChat ||
+        notif.entityType == 'whatsapp_chat') {
+      final customerPhone = notif.metadata['customerPhone']?.toString() ??
+          notif.metadata['phone']?.toString() ??
+          notif.entityId;
+      final customerName = notif.metadata['customerName']?.toString();
+
+      if (customerPhone != null && customerPhone.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => MetaWhatsAppChatScreen(
+              initialPhone: customerPhone,
+              initialCustomerName: customerName,
+            ),
+          ),
+        );
+      }
+      return;
+    }
 
     switch (notif.target) {
       case NotificationTarget.orderDetails:
@@ -159,6 +186,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
         break;
 
+      case NotificationTarget.whatsappChat:
       case NotificationTarget.none:
         break;
     }
@@ -166,58 +194,186 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final notifications = _service.notifications;
+    // Filter out any new_order notifications
+    final notifications = _service.notifications
+        .where((n) => n.type != NotificationType.newOrder)
+        .toList();
     final unreadCount = _service.unreadCount;
     final isLoading = _service.isLoading;
     final groupedNotifs = _groupNotificationsChronologically(notifications);
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      backgroundColor: const Color(0xFFF8FAFC),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF082559),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
+      backgroundColor: const Color(0xFFEFF2F6), // Neumorphism soft background
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720), // Responsive wrapped layout
+            child: Column(
+              children: [
+                // Neumorphic Top Bar
+                _buildNeumorphicHeader(unreadCount, notifications.isNotEmpty),
+
+                // Neumorphic Filter Tabs
+                _buildNeumorphicFilterTabs(),
+
+                // Push Permission Banner
+                if (!_isPermissionGranted) _buildPermissionBanner(),
+
+                // Notifications List Body
+                Expanded(
+                  child: isLoading && notifications.isEmpty
+                      ? const Center(
+                          child: CircularProgressIndicator(color: Color(0xFF0F172A), strokeWidth: 2.2),
+                        )
+                      : RefreshIndicator(
+                          onRefresh: () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
+                          color: const Color(0xFF0F172A),
+                          child: notifications.isEmpty
+                              ? _buildEmptyState()
+                              : ListView.builder(
+                                  controller: _scrollController,
+                                  physics: const AlwaysScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                  itemCount: groupedNotifs.keys.length + (_service.isLoadingMore ? 1 : 0),
+                                  itemBuilder: (context, index) {
+                                    if (index == groupedNotifs.keys.length) {
+                                      return const Padding(
+                                        padding: EdgeInsets.symmetric(vertical: 14),
+                                        child: Center(
+                                          child: SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF0F172A)),
+                                          ),
+                                        ),
+                                      );
+                                    }
+
+                                    final sectionTitle = groupedNotifs.keys.elementAt(index);
+                                    final sectionItems = groupedNotifs[sectionTitle]!;
+
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding: const EdgeInsets.fromLTRB(4, 10, 4, 6),
+                                          child: Text(
+                                            sectionTitle.toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w800,
+                                              color: Color(0xFF94A3B8),
+                                              letterSpacing: 0.8,
+                                            ),
+                                          ),
+                                        ),
+                                        ...sectionItems.map((item) => _buildNotificationCard(item)),
+                                      ],
+                                    );
+                                  },
+                                ),
+                        ),
+                ),
+              ],
+            ),
+          ),
         ),
-        title: Row(
-          children: [
-            const Text(
-              'Notification Center',
-              style: TextStyle(
+      ),
+    );
+  }
+
+  /// Neumorphic Header with soft curved back button and actions
+  Widget _buildNeumorphicHeader(int unreadCount, bool hasNotifications) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFFEFF2F6),
+      ),
+      child: Row(
+        children: [
+          // Circular Neumorphic Back Button
+          InkWell(
+            onTap: () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
                 color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.3,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x10000000), offset: Offset(2, 3), blurRadius: 6),
+                  BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                ],
+              ),
+              child: const Icon(
+                Icons.arrow_back_ios_new_rounded,
+                color: Color(0xFF1E293B),
+                size: 15,
               ),
             ),
-            if (unreadCount > 0) ...[
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$unreadCount',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
+          ),
+          const SizedBox(width: 12),
+
+          // Title & Unread Count Badge
+          Expanded(
+            child: Row(
+              children: [
+                const Text(
+                  'Notifications',
+                  style: TextStyle(
+                    color: Color(0xFF0F172A),
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
                   ),
                 ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          if (notifications.isNotEmpty)
+                if (unreadCount > 0) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: const [
+                        BoxShadow(color: Color(0x33EF4444), offset: Offset(0, 2), blurRadius: 4),
+                      ],
+                    ),
+                    child: Text(
+                      '$unreadCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+
+          // Action Menu (Mark all as read / Clear all)
+          if (hasNotifications)
             PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert_rounded, color: Colors.white),
               color: Colors.white,
+              elevation: 4,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              icon: Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x10000000), offset: Offset(2, 3), blurRadius: 6),
+                    BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 4),
+                  ],
+                ),
+                child: const Icon(Icons.more_vert_rounded, color: Color(0xFF334155), size: 18),
+              ),
               onSelected: (val) {
                 if (val == 'read_all') {
                   _service.markAllAsRead();
@@ -230,9 +386,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   value: 'read_all',
                   child: Row(
                     children: [
-                      Icon(Icons.done_all_rounded, size: 18, color: Color(0xFF082559)),
-                      SizedBox(width: 10),
-                      Text('Mark all as read', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
+                      Icon(Icons.done_all_rounded, size: 16, color: Color(0xFF0F172A)),
+                      SizedBox(width: 8),
+                      Text('Mark all as read', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0F172A))),
                     ],
                   ),
                 ),
@@ -240,9 +396,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   value: 'clear_all',
                   child: Row(
                     children: [
-                      Icon(Icons.clear_all_rounded, size: 18, color: Color(0xFFEF4444)),
-                      SizedBox(width: 10),
-                      Text('Clear all', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
+                      Icon(Icons.clear_all_rounded, size: 16, color: Color(0xFFEF4444)),
+                      SizedBox(width: 8),
+                      Text('Clear all', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFEF4444))),
                     ],
                   ),
                 ),
@@ -250,349 +406,396 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
             ),
         ],
       ),
-      body: Column(
-        children: [
-          // Filter Tabs
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _filterTabs.map((tab) {
-                  final key = tab['key']!;
-                  final label = tab['label']!;
-                  final isSelected = _selectedFilter == key;
+    );
+  }
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InkWell(
-                      onTap: () => _onFilterSelected(key),
-                      borderRadius: BorderRadius.circular(16),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSelected ? const Color(0xFF082559) : const Color(0xFFF1F5F9),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected ? const Color(0xFF082559) : const Color(0xFFE2E8F0),
-                          ),
+  /// Neumorphic Filter Pills
+  Widget _buildNeumorphicFilterTabs() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 2, 14, 10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: _filterTabs.map((tab) {
+            final key = tab['key']!;
+            final label = tab['label']!;
+            final isSelected = _selectedFilter == key;
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 7),
+              child: InkWell(
+                onTap: () => _onFilterSelected(key),
+                borderRadius: BorderRadius.circular(20),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 180),
+                  padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFF0F172A) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected ? const Color(0xFF0F172A) : const Color(0xFFE2E8F0),
+                      width: 0.8,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            const BoxShadow(
+                              color: Color(0x2E0F172A),
+                              offset: Offset(2, 4),
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : const [
+                            BoxShadow(
+                              color: Color(0x0C000000),
+                              offset: Offset(2, 3),
+                              blurRadius: 5,
+                            ),
+                            BoxShadow(
+                              color: Colors.white,
+                              offset: Offset(-2, -2),
+                              blurRadius: 4,
+                            ),
+                          ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (key == 'whatsapp_message') ...[
+                        Icon(
+                          Icons.chat_bubble_rounded,
+                          size: 11,
+                          color: isSelected ? const Color(0xFF25D366) : const Color(0xFF16A34A),
                         ),
-                        child: Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                            color: isSelected ? Colors.white : const Color(0xFF334155),
-                          ),
+                        const SizedBox(width: 5),
+                      ],
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected ? Colors.white : const Color(0xFF475569),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    ],
+                  ),
+                ),
               ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  /// Push Notification Permission Banner
+  Widget _buildPermissionBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x08000000), offset: Offset(2, 3), blurRadius: 6),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: const BoxDecoration(
+              color: Color(0xFFFEF3C7),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.notifications_off_outlined, color: Color(0xFFD97706), size: 14),
+          ),
+          const SizedBox(width: 8),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Alerts Disabled',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+                Text(
+                  'Enable alerts to get instant WhatsApp messages & leads.',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFFB45309),
+                  ),
+                ),
+              ],
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
-
-          // Notification Permission Banner (if not granted)
-          if (!_isPermissionGranted)
-            Container(
-              margin: const EdgeInsets.fromLTRB(14, 12, 14, 2),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFFBEB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFFFDE68A)),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFF59E0B),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.notifications_off_outlined, color: Colors.white, size: 16),
-                  ),
-                  const SizedBox(width: 10),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Push Notifications Disabled',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF92400E),
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          'Enable alerts to get instant updates for orders & leads.',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFFB45309),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton(
-                    onPressed: () async {
-                      final granted = await NotificationPermissionHelper.requestPermissionDirectly();
-                      if (mounted) {
-                        setState(() => _isPermissionGranted = granted);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF082559),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      'Enable',
-                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
-                    ),
-                  ),
-                ],
-              ),
+          const SizedBox(width: 8),
+          ElevatedButton(
+            onPressed: () async {
+              final granted = await NotificationPermissionHelper.requestPermissionDirectly();
+              if (mounted) {
+                setState(() => _isPermissionGranted = granted);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F172A),
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              elevation: 0,
             ),
-
-          // Body Content
-          Expanded(
-            child: isLoading && notifications.isEmpty
-                ? const Center(
-                    child: CircularProgressIndicator(color: Color(0xFF082559)),
-                  )
-                : RefreshIndicator(
-                    onRefresh: () => _service.fetchNotifications(filterType: _selectedFilter, refresh: true),
-                    color: const Color(0xFF082559),
-                    child: notifications.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            controller: _scrollController,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                            itemCount: groupedNotifs.keys.length + (_service.isLoadingMore ? 1 : 0),
-                            itemBuilder: (context, index) {
-                              if (index == groupedNotifs.keys.length) {
-                                return const Padding(
-                                  padding: EdgeInsets.symmetric(vertical: 16),
-                                  child: Center(
-                                    child: SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF082559)),
-                                    ),
-                                  ),
-                                );
-                              }
-
-                              final sectionTitle = groupedNotifs.keys.elementAt(index);
-                              final sectionItems = groupedNotifs[sectionTitle]!;
-
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.fromLTRB(4, 10, 4, 8),
-                                    child: Text(
-                                      sectionTitle,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w900,
-                                        color: Color(0xFF64748B),
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ),
-                                  ...sectionItems.map((item) => _buildNotificationCard(item)),
-                                ],
-                              );
-                            },
-                          ),
-                  ),
+            child: const Text('Enable', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
-    return SingleChildScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      child: Container(
-        height: MediaQuery.of(context).size.height * 0.65,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(22),
-              decoration: const BoxDecoration(
-                color: Color(0xFFE0F2FE),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.notifications_off_outlined,
-                color: Color(0xFF082559),
-                size: 44,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'No Notifications',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              _selectedFilter == 'All'
-                  ? 'You are all caught up! New orders, customer leads, and business summaries will appear here.'
-                  : 'No notifications in this category.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF64748B),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
+  /// Neumorphic Notification Card with white background, curved corners, and smaller typography
   Widget _buildNotificationCard(NotificationItem notif) {
+    final isWhatsApp = notif.type == NotificationType.whatsappMessage ||
+        notif.target == NotificationTarget.whatsappChat ||
+        notif.entityType == 'whatsapp_chat';
+
     return Dismissible(
       key: Key(notif.id),
       direction: DismissDirection.endToStart,
       onDismissed: (_) => _service.deleteNotification(notif.id),
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
-        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.only(right: 18),
+        margin: const EdgeInsets.only(bottom: 9),
         decoration: BoxDecoration(
           color: const Color(0xFFEF4444),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
         ),
-        child: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+        child: const Icon(Icons.delete_outline_rounded, color: Colors.white, size: 20),
       ),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 9),
         decoration: BoxDecoration(
-          color: notif.isRead ? Colors.white : const Color(0xFFF0F7FF),
-          borderRadius: BorderRadius.circular(14),
+          color: Colors.white, // Pure white background
+          borderRadius: BorderRadius.circular(16), // Curved corners
           border: Border.all(
-            color: notif.isRead ? const Color(0xFFE2E8F0) : const Color(0xFFBFDBFE),
-            width: notif.isRead ? 1 : 1.2,
+            color: notif.isRead
+                ? const Color(0xFFE8EEF5)
+                : (isWhatsApp ? const Color(0xFF86EFAC) : const Color(0xFFBFDBFE)),
+            width: notif.isRead ? 0.9 : 1.2,
           ),
           boxShadow: const [
-            BoxShadow(color: Color(0x04000000), blurRadius: 4, offset: Offset(0, 1)),
+            // Neumorphic dual soft shadows
+            BoxShadow(
+              color: Color(0x0C000000),
+              offset: Offset(3, 4),
+              blurRadius: 8,
+              spreadRadius: 0,
+            ),
+            BoxShadow(
+              color: Colors.white,
+              offset: Offset(-2, -2),
+              blurRadius: 5,
+              spreadRadius: 0,
+            ),
           ],
         ),
         child: InkWell(
           onTap: () => _handleNotificationTap(notif),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(11),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Icon Avatar
+                // Neumorphic Icon Container
                 Container(
-                  width: 38,
-                  height: 38,
+                  width: 34,
+                  height: 34,
                   decoration: BoxDecoration(
-                    color: notif.color.withOpacity(0.12),
+                    color: notif.color.withValues(alpha: 0.12),
                     shape: BoxShape.circle,
+                    boxShadow: const [
+                      BoxShadow(color: Color(0x08000000), offset: Offset(1, 2), blurRadius: 3),
+                      BoxShadow(color: Colors.white, offset: Offset(-1, -1), blurRadius: 2),
+                    ],
                   ),
-                  child: Icon(notif.icon, color: notif.color, size: 20),
+                  child: Icon(
+                    isWhatsApp ? Icons.chat_bubble_rounded : notif.icon,
+                    color: notif.color,
+                    size: 16,
+                  ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
 
-                // Content
+                // Card Details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Header Row: Title & Timestamp
                       Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           Expanded(
                             child: Text(
                               notif.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 13.5,
-                                fontWeight: notif.isRead ? FontWeight.w700 : FontWeight.w900,
+                                fontSize: 12.5, // Smaller text
+                                fontWeight: notif.isRead ? FontWeight.w700 : FontWeight.w800,
                                 color: const Color(0xFF0F172A),
                               ),
                             ),
                           ),
+                          const SizedBox(width: 6),
                           if (!notif.isRead)
                             Container(
-                              width: 7,
-                              height: 7,
-                              margin: const EdgeInsets.only(right: 6),
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF082559),
+                              width: 6,
+                              height: 6,
+                              margin: const EdgeInsets.only(right: 5),
+                              decoration: BoxDecoration(
+                                color: isWhatsApp ? const Color(0xFF25D366) : const Color(0xFF0F172A),
                                 shape: BoxShape.circle,
                               ),
                             ),
                           Text(
                             _formatTime(notif.timestamp),
                             style: const TextStyle(
-                              fontSize: 10.5,
+                              fontSize: 9.5, // Smaller time
                               fontWeight: FontWeight.w600,
                               color: Color(0xFF94A3B8),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 3),
+
+                      // Notification Body Message
                       Text(
                         notif.message,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 11, // Smaller body text
+                          fontWeight: FontWeight.w500,
                           color: Color(0xFF475569),
                           height: 1.35,
                         ),
                       ),
-                      if (notif.target != NotificationTarget.none) ...[
-                        const SizedBox(height: 6),
+
+                      // Bottom Action Row
+                      const SizedBox(height: 5),
+                      if (isWhatsApp)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F9EE),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFFB7EBCE), width: 0.8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.chat_bubble_rounded, size: 9.5, color: Color(0xFF16A34A)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Tap to open chat',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF16A34A),
+                                ),
+                              ),
+                              SizedBox(width: 3),
+                              Icon(Icons.arrow_forward_ios_rounded, size: 8, color: Color(0xFF16A34A)),
+                            ],
+                          ),
+                        )
+                      else if (notif.target != NotificationTarget.none)
                         Row(
                           children: [
                             Text(
                               'Tap to view',
                               style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
                                 color: notif.color,
                               ),
                             ),
                             const SizedBox(width: 3),
-                            Icon(Icons.arrow_forward_ios_rounded, size: 10, color: notif.color),
+                            Icon(Icons.arrow_forward_ios_rounded, size: 8, color: notif.color),
                           ],
                         ),
-                      ],
                     ],
                   ),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Neumorphic Empty State
+  Widget _buildEmptyState() {
+    return SingleChildScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      child: Container(
+        height: MediaQuery.of(context).size.height * 0.6,
+        alignment: Alignment.center,
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(color: Color(0x0C000000), offset: Offset(3, 4), blurRadius: 8),
+                  BoxShadow(color: Colors.white, offset: Offset(-2, -2), blurRadius: 6),
+                ],
+              ),
+              child: const Icon(
+                Icons.notifications_off_outlined,
+                color: Color(0xFF64748B),
+                size: 36,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text(
+              'No Notifications',
+              style: TextStyle(
+                fontSize: 14.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              _selectedFilter == 'All'
+                  ? "You're all caught up! WhatsApp messages, leads, inventory alerts, and daily summaries will appear here."
+                  : 'No notifications in this category.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF64748B),
+                height: 1.35,
+              ),
+            ),
+          ],
         ),
       ),
     );

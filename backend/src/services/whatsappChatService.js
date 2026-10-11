@@ -422,6 +422,41 @@ class WhatsAppChatService {
     });
 
     console.log(`[WhatsAppChatService] 📩 Received incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}" with media "${mediaUrl || 'none'}" for Business ${business.profile?.name || business._id}`);
+
+    // Create WhatsApp Message Notification & trigger push notification
+    try {
+      const notificationService = require('./notificationService');
+      const senderDisplay = customerName && !customerName.startsWith('Customer ')
+        ? customerName
+        : (normalizedPhone.startsWith('91') && normalizedPhone.length === 12
+            ? `+91 ${normalizedPhone.substring(2, 7)} ${normalizedPhone.substring(7)}`
+            : normalizedPhone);
+
+      const notifBody = isImage
+        ? (incomingMsg.body && incomingMsg.body !== '[Photo]' ? `📷 ${incomingMsg.body}` : '📷 Photo')
+        : (incomingMsg.body || 'New message');
+
+      await notificationService.createNotification({
+        businessId: bId,
+        type: 'whatsapp_message',
+        title: `WhatsApp: ${senderDisplay}`,
+        message: notifBody,
+        entityType: 'whatsapp_chat',
+        entityId: chat._id.toString(),
+        metadata: {
+          chatId: chat._id.toString(),
+          customerPhone: normalizedPhone,
+          customerName: customerName || '',
+          mediaUrl: mediaUrl || '',
+          messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
+        },
+        sendPush: true,
+        idempotencyKey: incomingMsg.messageId ? `wa_notif_${incomingMsg.messageId}` : undefined,
+      });
+      console.log(`[WhatsAppChatService] 🔔 Created push notification for WhatsApp message from ${senderDisplay}`);
+    } catch (notifErr) {
+      console.warn('[WhatsAppChatService] Non-blocking notification creation error:', notifErr.message);
+    }
   }
 
   /**

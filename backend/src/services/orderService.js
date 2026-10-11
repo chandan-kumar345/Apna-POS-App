@@ -629,37 +629,6 @@ class OrderService {
       }
     }
 
-    // Trigger New Order Notification with idempotency
-    try {
-      const displayOrderType = order.orderType
-        ? order.orderType.charAt(0).toUpperCase() + order.orderType.slice(1)
-        : 'POS';
-      const itemsCount = (order.items || []).length || 1;
-      const formattedAmount = Number(order.totalAmount || 0).toLocaleString('en-IN');
-
-      await notificationService.createNotification({
-        businessId,
-        type: 'new_order',
-        title: 'New Order Received 🛍️',
-        message: `New ${displayOrderType} order received. Order #${order.orderNumber} | ₹${formattedAmount} | ${itemsCount} item${itemsCount > 1 ? 's' : ''}. Tap to view order details.`,
-        entityType: 'order',
-        entityId: order._id.toString(),
-        metadata: {
-          orderId: order._id.toString(),
-          orderNumber: order.orderNumber,
-          orderType: displayOrderType,
-          totalAmount: order.totalAmount,
-          itemsCount,
-          customerName: order.customerName || '',
-          tableNumber: order.tableNumber || '',
-        },
-        sendPush: false,
-        idempotencyKey: `new_order_${order._id.toString()}`,
-      });
-    } catch (err) {
-      console.warn(`[Order Notification Notice] ${err.message}`);
-    }
-
     // Broadcast real-time order state across all connected devices
     try {
       if (status === 'completed') {

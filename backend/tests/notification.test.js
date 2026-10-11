@@ -101,11 +101,34 @@ describe('Notification Center APIs & Services', () => {
       expect(res.status).toBe(201);
 
       const orderNotifs = await Notification.find({ type: 'new_order' });
-      expect(orderNotifs.length).toBe(1);
-      expect(orderNotifs[0].title).toBe('New Order Received 🛍️');
-      expect(orderNotifs[0].message).toContain('Order #');
-      expect(orderNotifs[0].metadata.totalAmount).toBe(660);
-      expect(orderNotifs[0].metadata.itemsCount).toBe(2);
+      // New order notifications are removed from notification center as requested
+      expect(orderNotifs.length).toBe(0);
+    });
+
+    it('should create and fetch whatsapp_message notification with customer phone and chat redirection metadata', async () => {
+      const waNotif = await notificationService.createNotification({
+        businessId,
+        type: 'whatsapp_message',
+        title: 'WhatsApp: Rahul',
+        message: 'Hello, is my order ready?',
+        entityType: 'whatsapp_chat',
+        entityId: '65f1234567890123456789ab',
+        metadata: {
+          chatId: '65f1234567890123456789ab',
+          customerPhone: '919876543210',
+          customerName: 'Rahul',
+        },
+      });
+
+      expect(waNotif).toBeDefined();
+      expect(waNotif.type).toBe('whatsapp_message');
+
+      const res = await request(app)
+        .get('/api/v1/notifications?type=whatsapp_message')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.notifications.some((n) => n.type === 'whatsapp_message')).toBe(true);
     });
   });
 

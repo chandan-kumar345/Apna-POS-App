@@ -7,6 +7,7 @@ enum NotificationType {
   dailySalesSummary,
   lowStock,
   system,
+  whatsappMessage,
 }
 
 enum NotificationTarget {
@@ -15,6 +16,7 @@ enum NotificationTarget {
   crmLead,
   salesReport,
   inventory,
+  whatsappChat,
   none,
 }
 
@@ -74,6 +76,11 @@ class NotificationItem {
       case 'low_stock':
       case 'inventory':
         type = NotificationType.lowStock;
+        break;
+      case 'whatsapp_message':
+      case 'whatsapp_chat':
+      case 'whatsapp':
+        type = NotificationType.whatsappMessage;
         break;
       default:
         type = NotificationType.system;
@@ -144,6 +151,8 @@ class NotificationItem {
         return NotificationTarget.dashboard;
       case NotificationType.lowStock:
         return NotificationTarget.inventory;
+      case NotificationType.whatsappMessage:
+        return NotificationTarget.whatsappChat;
       case NotificationType.system:
         return NotificationTarget.none;
     }
@@ -161,6 +170,8 @@ class NotificationItem {
         return Icons.bar_chart_rounded;
       case NotificationType.lowStock:
         return Icons.inventory_2_outlined;
+      case NotificationType.whatsappMessage:
+        return Icons.chat_rounded;
       case NotificationType.system:
         return Icons.notifications_active_outlined;
     }
@@ -178,6 +189,8 @@ class NotificationItem {
         return const Color(0xFFF59E0B);
       case NotificationType.lowStock:
         return const Color(0xFFEF4444);
+      case NotificationType.whatsappMessage:
+        return const Color(0xFF25D366);
       case NotificationType.system:
         return const Color(0xFF8B5CF6);
     }

@@ -7,6 +7,7 @@ const NOTIFICATION_TYPES = [
   'daily_sales_summary',
   'low_stock',
   'system',
+  'whatsapp_message',
 ];
 
 const notificationSchema = new mongoose.Schema(
@@ -48,7 +49,7 @@ const notificationSchema = new mongoose.Schema(
     },
     entityType: {
       type: String,
-      enum: ['order', 'lead', 'sales_report', 'user', 'inventory', 'system'],
+      enum: ['order', 'lead', 'sales_report', 'user', 'inventory', 'system', 'whatsapp_chat'],
       default: 'system',
     },
     entityId: {

@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
 import '../../features/notifications/services/notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
+import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
 
@@ -11,6 +13,9 @@ class LocalNotificationService {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
   factory LocalNotificationService() => _instance;
   LocalNotificationService._internal();
+
+  /// Global Navigator key for deep-linking into WhatsApp chats or screens on notification tap
+  static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
   bool _isInitialized = false;
@@ -21,6 +26,41 @@ class LocalNotificationService {
           defaultTargetPlatform == TargetPlatform.iOS ||
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux);
+
+  /// Handle notification payload when tapped from system notification tray
+  static void _handleNotificationPayload(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    try {
+      final decoded = jsonDecode(payload);
+      if (decoded is Map<String, dynamic>) {
+        final type = decoded['type']?.toString();
+        final entityType = decoded['entityType']?.toString();
+        final metadata = decoded['metadata'] as Map<String, dynamic>? ?? {};
+
+        if (type == 'whatsappMessage' ||
+            type == 'whatsapp_message' ||
+            entityType == 'whatsapp_chat') {
+          final phone = metadata['customerPhone']?.toString() ??
+              metadata['phone']?.toString() ??
+              decoded['entityId']?.toString();
+          final name = metadata['customerName']?.toString();
+
+          if (phone != null && phone.isNotEmpty) {
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(
+                builder: (_) => MetaWhatsAppChatScreen(
+                  initialPhone: phone,
+                  initialCustomerName: name,
+                ),
+              ),
+            );
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error handling payload: $e');
+    }
+  }
 
   /// Initialize local notification channels for Android and iOS
   Future<void> init() async {
@@ -45,6 +85,7 @@ class LocalNotificationService {
         initSettings,
         onDidReceiveNotificationResponse: (NotificationResponse response) {
           debugPrint('[LocalNotificationService] Notification tapped: ${response.payload}');
+          _handleNotificationPayload(response.payload);
         },
       );
 
@@ -90,10 +131,18 @@ class LocalNotificationService {
     if (!_isInitialized) await init();
 
     try {
+      final isWhatsApp = type == NotificationType.whatsappMessage;
+      final effectiveChannelId = isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : channelId;
+      final effectiveChannelName = isWhatsApp ? 'WhatsApp Messages' : channelName;
+      final effectiveChannelDesc = isWhatsApp
+          ? 'Real-time notifications for incoming WhatsApp customer messages'
+          : channelDescription;
+      final effectiveColor = isWhatsApp ? const Color(0xFF25D366) : color;
+
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        channelId,
-        channelName,
-        channelDescription: channelDescription,
+        effectiveChannelId,
+        effectiveChannelName,
+        channelDescription: effectiveChannelDesc,
         importance: importance,
         priority: priority,
         showWhen: true,
@@ -103,7 +152,7 @@ class LocalNotificationService {
         styleInformation: styleInformation,
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: actions,
-        color: color,
+        color: effectiveColor,
         visibility: visibility,
         category: category,
       );
@@ -120,12 +169,20 @@ class LocalNotificationService {
         iOS: iosDetails,
       );
 
+      final effectivePayload = payload ??
+          jsonEncode({
+            'type': type.name,
+            'entityType': entityType ?? (isWhatsApp ? 'whatsapp_chat' : 'system'),
+            'entityId': entityId,
+            'metadata': metadata,
+          });
+
       await _notificationsPlugin.show(
         id == 0 ? DateTime.now().millisecondsSinceEpoch.remainder(100000) : id,
         title,
         body,
         platformDetails,
-        payload: payload,
+        payload: effectivePayload,
       );
       debugPrint('[LocalNotificationService] Push notification delivered: "$title"');
     } catch (e) {

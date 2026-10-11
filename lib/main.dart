@@ -78,6 +78,7 @@ class ApnaPosApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: LocalNotificationService.navigatorKey,
       title: 'Apna POS - Smart Restaurant Billing',
       debugShowCheckedModeBanner: false,
       theme: GlassTheme.themeData,
