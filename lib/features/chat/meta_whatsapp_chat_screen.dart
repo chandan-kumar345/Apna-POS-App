@@ -298,27 +298,31 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       builder: (sheetCtx) => StatefulBuilder(
         builder: (context, setSheetState) {
           final bottomInset = MediaQuery.of(sheetCtx).viewInsets.bottom;
-          return AnimatedPadding(
-            padding: EdgeInsets.only(bottom: bottomInset),
-            duration: const Duration(milliseconds: 150),
-            child: Center(
+          return Align(
+            alignment: Alignment.bottomCenter,
+            child: AnimatedPadding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              duration: const Duration(milliseconds: 150),
               child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 440),
+                constraints: const BoxConstraints(maxWidth: 460),
                 child: Container(
+                  width: double.infinity,
                   decoration: const BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
                     boxShadow: [
                       BoxShadow(
-                        color: Color(0x1F000000),
-                        blurRadius: 24,
-                        offset: Offset(0, -6),
+                        color: Color(0x26000000),
+                        blurRadius: 28,
+                        offset: Offset(0, -8),
                       ),
                     ],
                   ),
                   child: SafeArea(
                     top: false,
+                    bottom: true,
                     child: SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(20, 10, 20, 22),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
@@ -1322,19 +1326,25 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   /// Smartphone Device Mockup Frame containing authentic WhatsApp Mobile View
   Widget _buildSmartphoneFrame({required Widget child, required double maxWidth, required double maxHeight}) {
     final bool isMobile = maxWidth < 500;
+    final double bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final double frameWidth = isMobile ? (maxWidth - 12).clamp(320.0, 420.0) : 410.0;
-    final double frameHeight = isMobile ? (maxHeight - 12).clamp(520.0, 840.0) : maxHeight.clamp(580.0, 820.0);
-    final double outerRadius = isMobile ? 38.0 : 46.0;
-    final double innerRadius = isMobile ? 30.0 : 38.0;
-    final double borderWidth = isMobile ? 6.0 : 8.5;
+    final double minFrameHeight = (isMobile && bottomInset > 0) ? 240.0 : (isMobile ? 520.0 : 580.0);
+    final double frameHeight = isMobile
+        ? (maxHeight - (bottomInset > 0 ? 0 : 12)).clamp(minFrameHeight, 840.0)
+        : maxHeight.clamp(minFrameHeight, 820.0);
+    final double outerRadius = (isMobile && bottomInset > 0) ? 22.0 : (isMobile ? 38.0 : 46.0);
+    final double innerRadius = (isMobile && bottomInset > 0) ? 16.0 : (isMobile ? 30.0 : 38.0);
+    final double borderWidth = (isMobile && bottomInset > 0) ? 3.0 : (isMobile ? 6.0 : 8.5);
 
     return Center(
       child: Container(
         width: frameWidth,
         height: frameHeight,
-        margin: EdgeInsets.symmetric(
-          horizontal: isMobile ? 6 : 10,
-          vertical: isMobile ? 6 : 10,
+        margin: EdgeInsets.only(
+          left: isMobile ? 6 : 10,
+          right: isMobile ? 6 : 10,
+          top: (isMobile && bottomInset > 0) ? 2 : (isMobile ? 6 : 10),
+          bottom: bottomInset > 0 ? 0 : (isMobile ? 6 : 10),
         ),
         decoration: BoxDecoration(
           color: const Color(0xFF0F172A), // Dark Titanium Bezel
@@ -1376,8 +1386,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 // Mobile View Body
                 Expanded(child: child),
 
-                // Bottom Home Bar Indicator (Centered black capsule matching reference UI)
-                _buildPhoneHomeIndicator(),
+                // Bottom Home Bar Indicator (Hidden when keyboard is open to eliminate bottom gap)
+                if (bottomInset == 0) _buildPhoneHomeIndicator(),
               ],
             ),
           ),
@@ -2256,34 +2266,17 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
 
-        // 3. Bottom Quick Replies & Input Bar (Smoothly lifted when keyboard opens)
-        AnimatedPadding(
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.only(bottom: bottomInset),
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(10, 6, 10, 8),
-            decoration: const BoxDecoration(
-              color: Colors.transparent,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Quick reply pills matching reference image
-                _buildQuickRepliesBar(),
-                const SizedBox(height: 8),
-
-                // Redesigned Input Bar (+ icon, elongated white pill with smiley/paperclip, green send button)
-                _buildConversationInputBar(),
-              ],
-            ),
-          ),
+        // 3. Bottom Input Bar (flush to bottom edge when keyboard opens, zero dead space)
+        Container(
+          padding: EdgeInsets.fromLTRB(10, 4, 10, bottomInset > 0 ? 2 : 6),
+          color: Colors.transparent,
+          child: _buildConversationInputBar(),
         ),
       ],
     );
   }
 
-  /// Conversation screen header matching uploaded reference image
+  /// Conversation screen header matching uploaded reference image (Call and Video call buttons removed per request)
   Widget _buildConversationHeader() {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
@@ -2367,23 +2360,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ),
 
-          // Call Button
-          _buildNeumorphicCircleButton(
-            icon: Icons.call_outlined,
-            tooltip: 'Voice Call',
-            onTap: () {},
-          ),
-          const SizedBox(width: 8),
-
-          // Video Call Button
-          _buildNeumorphicCircleButton(
-            icon: Icons.videocam_outlined,
-            tooltip: 'Video Call',
-            onTap: () {},
-          ),
-          const SizedBox(width: 8),
-
-          // 3-Dots Menu Button
+          // 3-Dots Menu Button (Call and Video buttons removed per user instruction)
           _buildConversationMenuButton(),
         ],
       ),
@@ -2548,73 +2525,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Quick reply templates bar
-  Widget _buildQuickRepliesBar() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: [
-          _buildConversationQuickChip(
-            icon: Icons.inventory_2_outlined,
-            text: 'Order Ready for Pickup',
-          ),
-          const SizedBox(width: 8),
-          _buildConversationQuickChip(
-            icon: Icons.receipt_long_outlined,
-            text: 'Your bill total is ready',
-          ),
-          const SizedBox(width: 8),
-          _buildConversationQuickChip(
-            icon: Icons.sentiment_satisfied_alt_rounded,
-            text: 'Thank you',
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildConversationQuickChip({required IconData icon, required String text}) {
-    return GestureDetector(
-      onTap: () {
-        _messageController.text = text;
-        _messageFocusNode.requestFocus();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x08000000),
-              blurRadius: 6,
-              offset: Offset(0, 2),
-            ),
-          ],
-          border: Border.all(
-            color: const Color(0xFFE2E8F0).withValues(alpha: 0.8),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: const Color(0xFF059669)),
-            const SizedBox(width: 6),
-            Text(
-              text,
-              style: const TextStyle(
-                fontSize: 10.5,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF047857),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   /// Redesigned input bar with plus button, pill input field with emoji & paperclip, and green send button
   Widget _buildConversationInputBar() {

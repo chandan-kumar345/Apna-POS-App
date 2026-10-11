@@ -97,11 +97,11 @@ void main() {
       await tester.tap(find.text('Rahul Verma'));
       await tester.pump(const Duration(milliseconds: 350));
 
-      // Verify redesigned conversation screen elements matching reference image
-      expect(find.byIcon(Icons.call_outlined), findsOneWidget);
-      expect(find.byIcon(Icons.videocam_outlined), findsOneWidget);
+      // Verify call, video call, and quick replies are removed per user request
+      expect(find.byIcon(Icons.call_outlined), findsNothing);
+      expect(find.byIcon(Icons.videocam_outlined), findsNothing);
+      expect(find.text('Order Ready for Pickup'), findsNothing);
       expect(find.text('Today'), findsOneWidget);
-      expect(find.text('Order Ready for Pickup'), findsOneWidget);
       expect(find.byIcon(Icons.add_rounded), findsWidgets);
       expect(find.byIcon(Icons.send_rounded), findsOneWidget);
       expect(find.text('Type a message...'), findsOneWidget);
