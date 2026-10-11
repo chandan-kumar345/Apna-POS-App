@@ -4,6 +4,7 @@ const WhatsAppMessage = require('../models/WhatsAppMessage');
 const Business = require('../models/Business');
 const Customer = require('../models/Customer');
 const whatsappService = require('./whatsappService');
+const storageService = require('../utils/storageService');
 const ApiError = require('../utils/ApiError');
 
 class WhatsAppChatService {
@@ -31,7 +32,8 @@ class WhatsAppChatService {
       WhatsAppChat.find(query)
         .sort({ lastMessageAt: -1 })
         .skip(skip)
-        .limit(Math.max(1, Number(limit))),
+        .limit(Math.max(1, Number(limit)))
+        .lean(),
       WhatsAppChat.countDocuments(query),
     ]);
 
@@ -67,7 +69,8 @@ class WhatsAppChatService {
 
     const messages = await WhatsAppMessage.find({ chatId: cId, businessId: bId })
       .sort({ timestamp: 1 })
-      .limit(Math.max(1, Number(limit)));
+      .limit(Math.max(1, Number(limit)))
+      .lean();
 
     return {
       chat,
@@ -162,8 +165,8 @@ class WhatsAppChatService {
     if (!resolvedName) {
       const customer = await Customer.findOne({
         businessId: bId,
-        phone: { $regex: normalizedPhone.slice(-10) },
-      });
+        phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
+      }).lean();
       if (customer?.name) resolvedName = customer.name;
     }
 
@@ -336,19 +339,50 @@ class WhatsAppChatService {
     // Locate existing conversation (supports 10-digit, 12-digit, or + prefixes)
     let chat = await WhatsAppChat.findOne({
       businessId: bId,
-      customerPhone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`] },
+      customerPhone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
     });
 
     let customerName = incomingMsg.customerName || '';
     if (!customerName) {
       const customerRecord = await Customer.findOne({
         businessId: bId,
-        phone: { $regex: normalizedPhone.slice(-10) },
-      });
+        phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
+      }).lean();
       if (customerRecord?.name) {
         customerName = customerRecord.name;
       }
     }
+
+    // Handle incoming media (Image, Document, Video, Audio)
+    let mediaUrl = incomingMsg.mediaUrl || '';
+    if (!mediaUrl && incomingMsg.mediaId) {
+      try {
+        const token = business.whatsappSettings?.accessToken || whatsappService.accessToken;
+        const downloaded = await whatsappService.downloadMediaFromMeta(incomingMsg.mediaId, token);
+        if (downloaded && downloaded.buffer) {
+          const ext = downloaded.mimeType?.includes('png')
+            ? '.png'
+            : (downloaded.mimeType?.includes('webp') ? '.webp' : '.jpg');
+          const cleanFileName = `wa_in_${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`;
+          const uploadedUrl = await storageService.uploadImage(
+            downloaded.buffer,
+            cleanFileName,
+            downloaded.mimeType || 'image/jpeg',
+            'whatsapp'
+          );
+          if (uploadedUrl) {
+            mediaUrl = uploadedUrl;
+          }
+        }
+      } catch (err) {
+        console.error('[WhatsAppChatService] Error downloading incoming media from Meta:', err.message);
+      }
+    }
+
+    const isImage = incomingMsg.type === 'image' || Boolean(mediaUrl);
+    const lastMsgDisplay = isImage
+      ? (incomingMsg.body && incomingMsg.body !== '[Photo]' ? `📷 ${incomingMsg.body}` : '📷 Photo')
+      : (incomingMsg.body || '[Message]');
 
     if (!chat) {
       chat = await WhatsAppChat.create({
@@ -356,7 +390,7 @@ class WhatsAppChatService {
         phoneNumberId: phoneNumberId || business.whatsappSettings?.phoneNumberId || '',
         customerPhone: normalizedPhone,
         customerName: customerName || `Customer ${normalizedPhone.slice(-4)}`,
-        lastMessage: incomingMsg.body || '[Message]',
+        lastMessage: lastMsgDisplay,
         lastMessageAt: incomingMsg.timestamp || new Date(),
         lastMessageDirection: 'INCOMING',
         unreadCount: 1,
@@ -366,7 +400,7 @@ class WhatsAppChatService {
       if (customerName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
         chat.customerName = customerName;
       }
-      chat.lastMessage = incomingMsg.body || '[Message]';
+      chat.lastMessage = lastMsgDisplay;
       chat.lastMessageAt = incomingMsg.timestamp || new Date();
       chat.lastMessageDirection = 'INCOMING';
       chat.unreadCount = (chat.unreadCount || 0) + 1;
@@ -379,14 +413,15 @@ class WhatsAppChatService {
       chatId: chat._id,
       customerPhone: normalizedPhone,
       direction: 'INCOMING',
-      messageType: incomingMsg.type || 'text',
+      messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
       text: incomingMsg.body || '',
+      mediaUrl: mediaUrl || '',
       whatsappMessageId: incomingMsg.messageId || '',
       status: 'DELIVERED',
       timestamp: incomingMsg.timestamp || new Date(),
     });
 
-    console.log(`[WhatsAppChatService] 📩 Received incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${incomingMsg.body}" for Business ${business.profile?.name || business._id}`);
+    console.log(`[WhatsAppChatService] 📩 Received incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}" with media "${mediaUrl || 'none'}" for Business ${business.profile?.name || business._id}`);
   }
 
   /**

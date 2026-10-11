@@ -102,47 +102,53 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
   Future<void> _checkEligibilityAndWallet() async {
     final phone = (_currentOrder.customerPhone ?? '').trim();
 
-    // 1. Fetch wallet balance
-    try {
-      final balance = await EbillService().getWalletBalance();
-      if (mounted && balance != null) {
-        setState(() {
-          _walletBalance = balance;
-        });
-      }
-    } catch (_) {}
-
-    // 2. Check if customer phone number is missing
+    // 1. If customer phone number is missing, just load wallet balance
     if (phone.isEmpty) {
       if (mounted) {
         setState(() {
           _ebillStatus = EbillUiStatus.missingPhone;
         });
       }
+      try {
+        final balance = await EbillService().getWalletBalance();
+        if (mounted && balance != null) {
+          setState(() {
+            _walletBalance = balance;
+          });
+        }
+      } catch (_) {}
       return;
     }
 
-    // 3. Fetch authoritative eligibility from backend if online
+    // 2. Customer phone is present - checkEligibility returns authoritative wallet balance + fee in 1 call
     if (NetworkService().isOnline) {
       final billId = _currentOrder.id.isNotEmpty ? _currentOrder.id : _currentOrder.orderNumber;
-      final eligibility = await EbillService().checkEligibility(billId);
-      if (!mounted) return;
+      try {
+        final eligibility = await EbillService().checkEligibility(billId);
+        if (!mounted) return;
 
-      setState(() {
-        _walletBalance = eligibility.walletBalance;
-        _ebillFee = eligibility.ebillCharge;
+        setState(() {
+          _walletBalance = eligibility.walletBalance;
+          _ebillFee = eligibility.ebillCharge;
 
-        if (!eligibility.customerPhonePresent) {
-          _ebillStatus = EbillUiStatus.missingPhone;
-        } else if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
-          _ebillStatus = EbillUiStatus.insufficientBalance;
-        } else {
-          _ebillStatus = EbillUiStatus.ready;
+          if (!eligibility.customerPhonePresent) {
+            _ebillStatus = EbillUiStatus.missingPhone;
+          } else if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
+            _ebillStatus = EbillUiStatus.insufficientBalance;
+          } else {
+            _ebillStatus = EbillUiStatus.ready;
+          }
+        });
+
+        if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
+          _showInsufficientBalanceSnackbar();
         }
-      });
-
-      if (!eligibility.eligible && eligibility.reason == 'INSUFFICIENT_WALLET_BALANCE') {
-        _showInsufficientBalanceSnackbar();
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _ebillStatus = EbillUiStatus.ready;
+          });
+        }
       }
     } else {
       // Offline fallback: prompt that eBill requires network
@@ -256,20 +262,31 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-                const SizedBox(width: 10),
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 22),
+                const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    "✓ eBill sent successfully via WhatsApp to $phone!$refText",
-                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        "WhatsApp eBill Sent Successfully!",
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Colors.white),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        "Bill #${finalOrder.orderNumber} delivered to $phone$refText",
+                        style: const TextStyle(fontWeight: FontWeight.normal, fontSize: 12, color: Color(0xFFD1FAE5)),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-            backgroundColor: const Color(0xFF166534),
+            backgroundColor: const Color(0xFF047857),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            duration: const Duration(seconds: 3),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 4),
           ),
         );
 

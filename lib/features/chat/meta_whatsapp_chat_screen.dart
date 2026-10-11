@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../core/database/database_service.dart';
+import '../../core/network/api_endpoints.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
@@ -52,6 +53,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   final FocusNode _messageFocusNode = FocusNode();
 
   Timer? _pollingTimer;
+  Timer? _searchDebounce;
 
   // WhatsApp Branding Colors
   static const Color waTeal = Color(0xFF128C7E);
@@ -82,6 +84,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   @override
   void dispose() {
     _pollingTimer?.cancel();
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _messageController.dispose();
     _scrollController.dispose();
@@ -92,8 +95,12 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Future<void> _loadConnectionAndChats() async {
     setState(() => _isLoadingChats = true);
     try {
-      final conn = await _chatService.getConnectionStatus();
-      final chats = await _chatService.getChats(search: _searchQuery);
+      final results = await Future.wait([
+        _chatService.getConnectionStatus(),
+        _chatService.getChats(search: _searchQuery),
+      ]);
+      final conn = results[0] as WhatsAppConnectionInfo?;
+      final chats = results[1] as List<WhatsAppChatModel>;
 
       if (mounted) {
         setState(() {
@@ -1394,26 +1401,26 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Widget _buildPhoneStatusBar() {
     return Container(
       color: Colors.transparent,
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.fromLTRB(0, 6, 0, 2),
       alignment: Alignment.center,
       child: Container(
-        width: 96,
-        height: 24,
+        width: 90,
+        height: 20,
         decoration: BoxDecoration(
           color: const Color(0xFF000000),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             Container(
-              width: 8,
-              height: 8,
-              margin: const EdgeInsets.only(right: 11),
+              width: 7,
+              height: 7,
+              margin: const EdgeInsets.only(right: 10),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E293B),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
+                border: Border.all(color: const Color(0xFF0F172A), width: 1.0),
               ),
             ),
           ],
@@ -1450,7 +1457,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       children: [
         // 1. WhatsApp Top Header (Bold green WhatsApp title, Circular Neumorphic Camera & 3-Dots Menu)
         Padding(
-          padding: const EdgeInsets.fromLTRB(18, 6, 18, 6),
+          padding: const EdgeInsets.fromLTRB(18, 2, 18, 4),
           child: Row(
             children: [
               const Text(
@@ -1512,8 +1519,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A)),
                     onChanged: (val) {
                       setState(() => _searchQuery = val);
-                      _chatService.getChats(search: val).then((chats) {
-                        if (mounted) setState(() => _chats = chats);
+                      _searchDebounce?.cancel();
+                      _searchDebounce = Timer(const Duration(milliseconds: 300), () {
+                        _chatService.getChats(search: val).then((chats) {
+                          if (mounted) setState(() => _chats = chats);
+                        });
                       });
                     },
                     decoration: InputDecoration(
@@ -2280,7 +2290,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   /// Conversation screen header matching uploaded reference image (Call and Video call buttons removed per request)
   Widget _buildConversationHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+      padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
       color: Colors.transparent,
       child: Row(
         children: [
@@ -3112,6 +3122,117 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
+  String _resolveImageUrl(String mediaUrl) {
+    if (mediaUrl.isEmpty) return '';
+    if (mediaUrl.startsWith('/')) {
+      final base = ApiEndpoints.baseUrl.replaceAll('/api/v1', '');
+      return '$base$mediaUrl';
+    }
+    return mediaUrl;
+  }
+
+  void _openFullScreenImage(String mediaUrl, [String caption = '']) {
+    if (mediaUrl.isEmpty) return;
+    final resolvedUrl = _resolveImageUrl(mediaUrl);
+    final isLocalFile = !kIsWeb && !resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://');
+    final displayCaption = (caption == '[Photo]' || caption == '📷 Photo' || caption == '📷 Image') ? '' : caption;
+
+    showGeneralDialog(
+      context: context,
+      useRootNavigator: true,
+      barrierDismissible: true,
+      barrierLabel: 'Full Screen Image',
+      barrierColor: Colors.black.withValues(alpha: 0.94),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (dialogCtx, anim1, anim2) {
+        return Scaffold(
+          backgroundColor: Colors.transparent,
+          body: SafeArea(
+            child: Stack(
+              children: [
+                // Interactive pinch-to-zoom and pan image
+                Center(
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 4.0,
+                    clipBehavior: Clip.none,
+                    child: isLocalFile
+                        ? Image.file(
+                            File(resolvedUrl),
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => const Icon(
+                              Icons.broken_image_rounded,
+                              size: 64,
+                              color: Colors.white54,
+                            ),
+                          )
+                        : Image.network(
+                            resolvedUrl,
+                            fit: BoxFit.contain,
+                            loadingBuilder: (context, child, progress) {
+                              if (progress == null) return child;
+                              return const Center(
+                                child: CircularProgressIndicator(
+                                  color: Color(0xFF10B981),
+                                  strokeWidth: 2.5,
+                                ),
+                              );
+                            },
+                            errorBuilder: (context, error, stackTrace) => const Icon(
+                              Icons.broken_image_rounded,
+                              size: 64,
+                              color: Colors.white54,
+                            ),
+                          ),
+                  ),
+                ),
+
+                // Top bar with close button
+                Positioned(
+                  top: 12,
+                  right: 14,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: IconButton(
+                      icon: const Icon(Icons.close_rounded, color: Colors.white, size: 26),
+                      tooltip: 'Close full screen',
+                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                    ),
+                  ),
+                ),
+
+                // Bottom caption if present
+                if (displayCaption.isNotEmpty)
+                  Positioned(
+                    bottom: 20,
+                    left: 20,
+                    right: 20,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.65),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        displayCaption,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBubbleImage(String mediaUrl) {
     if (mediaUrl.isEmpty) {
       return Container(
@@ -3120,19 +3241,35 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         child: const Icon(Icons.image_rounded, size: 40, color: Color(0xFF94A3B8)),
       );
     }
-    if (!kIsWeb && !mediaUrl.startsWith('http://') && !mediaUrl.startsWith('https://')) {
-      final file = File(mediaUrl);
+    final resolvedUrl = _resolveImageUrl(mediaUrl);
+    if (!kIsWeb && !resolvedUrl.startsWith('http://') && !resolvedUrl.startsWith('https://')) {
+      final file = File(resolvedUrl);
       if (file.existsSync()) {
         return Image.file(
           file,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
+          errorBuilder: (context, error, stackTrace) =>
+              const Icon(Icons.broken_image_rounded, size: 30, color: Colors.grey),
         );
       }
     }
     return Image.network(
-      mediaUrl,
+      resolvedUrl,
       fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Container(
+          height: 120,
+          color: const Color(0xFFF1F5F9),
+          child: const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF10B981)),
+            ),
+          ),
+        );
+      },
       errorBuilder: (context, error, stackTrace) => Container(
         color: const Color(0xFFF1F5F9),
         padding: const EdgeInsets.all(12),
@@ -3232,7 +3369,17 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                         borderRadius: BorderRadius.circular(12),
                         child: ConstrainedBox(
                           constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
-                          child: _buildBubbleImage(msg.mediaUrl),
+                          child: GestureDetector(
+                            onTap: msg.mediaUrl.isNotEmpty
+                                ? () => _openFullScreenImage(msg.mediaUrl, msg.text)
+                                : null,
+                            child: MouseRegion(
+                              cursor: msg.mediaUrl.isNotEmpty
+                                  ? SystemMouseCursors.click
+                                  : SystemMouseCursors.basic,
+                              child: _buildBubbleImage(msg.mediaUrl),
+                            ),
+                          ),
                         ),
                       ),
                       if (msg.text.isNotEmpty) const SizedBox(height: 5),

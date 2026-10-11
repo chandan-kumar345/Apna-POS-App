@@ -486,6 +486,65 @@ class WhatsAppService {
   }
 
   /**
+   * Download a media file (image/document/video) from Meta WhatsApp Cloud API using its mediaId
+   * Step 1: GET https://graph.facebook.com/v21.0/{mediaId} to obtain the temporary direct download URL
+   * Step 2: GET {directUrl} with Bearer token authorization to get raw binary buffer
+   */
+  async downloadMediaFromMeta(mediaId, accessToken = null) {
+    const token = accessToken || this.accessToken;
+    if (!mediaId || !token || token === 'mock_token' || token === 'test_token') {
+      return null;
+    }
+
+    try {
+      // Step 1: Query Meta Graph API for media object metadata
+      const metaUrl = `https://graph.facebook.com/${this.apiVersion}/${mediaId}`;
+      const metaRes = await fetch(metaUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      if (!metaRes.ok) {
+        const errText = await metaRes.text().catch(() => '');
+        console.error(`[WhatsAppService] Failed to query media metadata for ${mediaId}:`, errText);
+        return null;
+      }
+
+      const metaData = await metaRes.json();
+      const directUrl = metaData.url;
+      if (!directUrl) {
+        console.error(`[WhatsAppService] No download URL returned for mediaId ${mediaId}`);
+        return null;
+      }
+
+      // Step 2: Download raw binary bytes from Meta lookaside URL
+      const downloadRes = await fetch(directUrl, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'User-Agent': 'curl/7.68.0',
+        },
+      });
+
+      if (!downloadRes.ok) {
+        console.error(`[WhatsAppService] Failed to download media binary for ${mediaId}:`, downloadRes.statusText);
+        return null;
+      }
+
+      const arrayBuffer = await downloadRes.arrayBuffer();
+      return {
+        buffer: Buffer.from(arrayBuffer),
+        mimeType: metaData.mime_type || 'image/jpeg',
+        fileSize: metaData.file_size,
+        mediaId,
+      };
+    } catch (err) {
+      console.error(`[WhatsAppService] Exception in downloadMediaFromMeta:`, err.message);
+      return null;
+    }
+  }
+
+  /**
    * Parse incoming messages from WhatsApp webhook payload
    */
   extractMessagesFromPayload(payload) {
@@ -511,6 +570,8 @@ class WhatsAppService {
         if (Array.isArray(val.messages)) {
           for (const msg of val.messages) {
             let bodyText = '';
+            let mediaId = '';
+            let mimeType = '';
             if (msg.type === 'text') {
               bodyText = msg.text?.body || '';
             } else if (msg.type === 'button') {
@@ -519,12 +580,20 @@ class WhatsAppService {
               bodyText = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || '';
             } else if (msg.type === 'image') {
               bodyText = msg.image?.caption || '[Photo]';
+              mediaId = msg.image?.id || '';
+              mimeType = msg.image?.mime_type || 'image/jpeg';
             } else if (msg.type === 'document') {
               bodyText = msg.document?.caption || msg.document?.filename || '[Document]';
+              mediaId = msg.document?.id || '';
+              mimeType = msg.document?.mime_type || 'application/pdf';
             } else if (msg.type === 'audio' || msg.type === 'voice') {
               bodyText = '[Voice note]';
+              mediaId = (msg.audio || msg.voice)?.id || '';
+              mimeType = (msg.audio || msg.voice)?.mime_type || 'audio/ogg';
             } else if (msg.type === 'video') {
               bodyText = msg.video?.caption || '[Video]';
+              mediaId = msg.video?.id || '';
+              mimeType = msg.video?.mime_type || 'video/mp4';
             } else if (msg.type === 'location') {
               bodyText = `[Location: ${msg.location?.latitude}, ${msg.location?.longitude}]`;
             } else if (msg.type === 'reaction') {
@@ -542,6 +611,8 @@ class WhatsAppService {
               timestamp: msg.timestamp ? new Date(Number(msg.timestamp) * 1000) : new Date(),
               type: msg.type || 'text',
               body: bodyText,
+              mediaId,
+              mimeType,
             });
           }
         }

@@ -39,7 +39,7 @@ class EbillService {
       });
     }
 
-    return Order.findOne({ $and: queryConditions });
+    return Order.findOne({ $and: queryConditions }).lean();
   }
 
   /**
@@ -50,8 +50,10 @@ class EbillService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    const walletEligibility = await walletService.checkEligibility(bId);
-    const order = await this.findOrder(bId, billId);
+    const [walletEligibility, order] = await Promise.all([
+      walletService.checkEligibility(bId),
+      this.findOrder(bId, billId),
+    ]);
 
     if (!order) {
       return {
