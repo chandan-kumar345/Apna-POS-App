@@ -30,6 +30,7 @@ class EbillController {
 
       const result = await ebillService.sendEbill({
         businessId: req.businessId,
+        userId: req.user?._id || req.user?.id,
         billId: billId || req.body.orderId,
         customerId,
         idempotencyKey,

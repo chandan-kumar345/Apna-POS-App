@@ -3,6 +3,7 @@ const EBill = require('../models/EBill');
 const Order = require('../models/Order');
 const Customer = require('../models/Customer');
 const Business = require('../models/Business');
+const User = require('../models/User');
 const walletService = require('./walletService');
 const whatsappService = require('./whatsappService');
 const ApiError = require('../utils/ApiError');
@@ -165,6 +166,7 @@ class EbillService {
    */
   async sendEbill({
     businessId,
+    userId = null,
     billId,
     customerId = null,
     idempotencyKey = '',
@@ -284,12 +286,29 @@ class EbillService {
       await existingEbill.save();
     }
 
-    // 7. Load business details for receipt rendering
+    // 7. Load business details for receipt rendering and WhatsApp routing
     const business = await Business.findById(bId);
     const receiptText = this.generateReceiptText(order, business);
     existingEbill.receiptText = receiptText;
 
-    // 8. Submit to WhatsApp Cloud API
+    // Check if user or business has integrated WhatsApp API
+    let customPhoneNumberId = null;
+    let customAccessToken = null;
+
+    if (userId) {
+      const user = await User.findById(userId).select('whatsappSettings').lean();
+      if (user?.whatsappSettings?.enabled && user.whatsappSettings.phoneNumberId && user.whatsappSettings.accessToken) {
+        customPhoneNumberId = user.whatsappSettings.phoneNumberId.trim();
+        customAccessToken = user.whatsappSettings.accessToken.trim();
+      }
+    }
+
+    if (!customPhoneNumberId && business?.whatsappSettings?.enabled && business.whatsappSettings.phoneNumberId && business.whatsappSettings.accessToken) {
+      customPhoneNumberId = business.whatsappSettings.phoneNumberId.trim();
+      customAccessToken = business.whatsappSettings.accessToken.trim();
+    }
+
+    // 8. Submit to WhatsApp Cloud API (routes through custom credentials if integrated, else default WhatsApp)
     try {
       const waResult = await whatsappService.sendEbillReceipt({
         to: normalizedPhone,
@@ -300,10 +319,13 @@ class EbillService {
         currency: order.currency || 'INR',
         receiptText,
         documentUrl: existingEbill.documentUrl,
+        customPhoneNumberId,
+        customAccessToken,
       });
 
       // 9. Update eBill on WhatsApp acceptance
       existingEbill.whatsappMessageId = waResult.messageId;
+      existingEbill.whatsappPhoneNumberId = waResult.whatsappPhoneNumberId || existingEbill.whatsappPhoneNumberId;
       existingEbill.status = 'SENT';
       existingEbill.deliveryStatus = 'SENT';
       existingEbill.lastError = null;

@@ -29,6 +29,7 @@ class NotificationService extends ChangeNotifier {
   int _totalPages = 1;
   bool _isLoading = false;
   bool _isLoadingMore = false;
+  bool _isInitialLoad = true;
   String? _errorMessage;
   String _activeFilter = 'All';
 
@@ -144,20 +145,28 @@ class NotificationService extends ChangeNotifier {
           notifsList.map((n) => NotificationItem.fromJson(n as Map<String, dynamic>)).toList();
 
       // Check for newly arrived unread notifications to trigger push & sound
-      if (_notifications.isNotEmpty && items.isNotEmpty) {
+      if (!_isInitialLoad && _notifications.isNotEmpty && items.isNotEmpty) {
         final existingIds = _notifications.map((n) => n.id).toSet();
         for (final newItem in items) {
           if (!existingIds.contains(newItem.id) && !newItem.isRead) {
+            // NEVER trigger daily sales summary on login or polling
             if (newItem.type == NotificationType.dailySalesSummary) {
-              LocalNotificationService().deliverDailyBusinessSummaryPushNotification(
-                totalSales: (newItem.metadata['totalSales'] as num?)?.toDouble() ?? 0.0,
-                orderCount: (newItem.metadata['ordersCount'] as num?)?.toInt() ?? 0,
-                revenue: (newItem.metadata['revenue'] as num?)?.toDouble() ?? 0.0,
-                dateStr: newItem.metadata['date']?.toString(),
-                formattedDate: newItem.metadata['formattedDate']?.toString(),
-                orders: (newItem.metadata['orders'] as List?) ?? [],
-              );
-            } else if (newItem.type != NotificationType.newOrder) {
+              continue;
+            }
+            // For subscription notifications, only push if 2 days or less left (<= 48 hours)
+            if (newItem.entityType == 'subscription') {
+              final expiresAtStr = newItem.metadata['expiresAt']?.toString();
+              if (expiresAtStr != null) {
+                final expiry = DateTime.tryParse(expiresAtStr);
+                if (expiry != null) {
+                  final diff = expiry.difference(DateTime.now());
+                  if (diff.isNegative || diff.inHours > 48) {
+                    continue; // Skip alerting if outside the 2 days window
+                  }
+                }
+              }
+            }
+            if (newItem.type != NotificationType.newOrder) {
               LocalNotificationService().showPushNotification(
                 title: newItem.title,
                 body: newItem.message,
@@ -171,6 +180,7 @@ class NotificationService extends ChangeNotifier {
           }
         }
       }
+      _isInitialLoad = false;
 
       final prevIds = _notifications.map((n) => '${n.id}_${n.isRead}').toList();
       final prevUnread = _unreadCount;

@@ -9,6 +9,7 @@ import '../models/restaurant_model.dart';
 import '../database/database_service.dart';
 import 'product_service.dart';
 import 'local_notification_service.dart';
+import 'fcm_service.dart';
 
 import 'session_manager.dart';
 
@@ -51,6 +52,9 @@ class AuthService {
     await _db.saveActiveUser(user);
     await _db.clearUserDataForNewAccount();
     ProductService.clearPosCache();
+
+    // Register device push token with backend
+    unawaited(FcmService().registerTokenWithBackend());
 
     // Deliver welcome push notification upon register
     LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name);
@@ -147,6 +151,9 @@ class AuthService {
     unawaited(_db.syncWithBackend().catchError((e) {
       debugPrint('[AuthService] background sync notice: $e');
     }));
+
+    // Register device push token with backend
+    unawaited(FcmService().registerTokenWithBackend());
 
     // Deliver welcome push notification upon login in background
     unawaited(Future(() => LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name)));
@@ -255,6 +262,9 @@ class AuthService {
     unawaited(_db.syncWithBackend().catchError((e) {
       debugPrint('[AuthService] background sync notice: $e');
     }));
+
+    // Register device push token with backend
+    unawaited(FcmService().registerTokenWithBackend());
 
     unawaited(Future(() => LocalNotificationService().deliverWelcomeNotificationOnLogin(userName: user.name)));
 

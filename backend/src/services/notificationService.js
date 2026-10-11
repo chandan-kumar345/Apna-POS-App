@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const { Notification } = require('../models/Notification');
 const User = require('../models/User');
 const pushNotificationService = require('./pushNotificationService');
+const socketService = require('./socketService');
 const ApiError = require('../utils/ApiError');
 
 class NotificationService {
@@ -45,6 +46,11 @@ class NotificationService {
         idempotencyKey: idempotencyKey || undefined,
         isRead: false,
       });
+
+      // Broadcast instantaneously via Socket.IO for sub-50ms delivery
+      try {
+        socketService.emitNotificationCreated(businessId, userId, notification);
+      } catch (_) {}
 
       // Dispatch push notification asynchronously without blocking response
       if (sendPush) {

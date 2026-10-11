@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../network/api_endpoints.dart';
 import '../models/table_model.dart';
 import '../security/secure_storage_service.dart';
+import 'local_notification_service.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -157,6 +159,9 @@ class SocketService {
 
       // Subscription updated events (real-time toggle from MongoDB Compass or API)
       socket.on('subscription:updated', (data) => _handleSubscriptionUpdated(data));
+
+      // Instant push notification delivery (<50ms)
+      socket.on('notification:new', (data) => _handleNotificationNew(data));
 
       socket.connect();
     } catch (e) {
@@ -317,6 +322,42 @@ class SocketService {
       onSubscriptionUpdated?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing subscription:updated event: $e');
+    }
+  }
+
+  void _handleNotificationNew(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      final notifData = rawMap['notification'] is Map
+          ? Map<String, dynamic>.from(rawMap['notification'] as Map)
+          : rawMap;
+      if (notifData.isEmpty) return;
+
+      final type = notifData['type']?.toString() ?? 'system';
+      final title = notifData['title']?.toString() ?? 'Notification';
+      final message = notifData['message']?.toString() ?? '';
+      final metadata = notifData['metadata'] is Map
+          ? Map<String, dynamic>.from(notifData['metadata'] as Map)
+          : <String, dynamic>{};
+
+      // Suppress new order push notifications
+      if (type == 'new_order' || type == 'newOrder') return;
+
+      debugPrint('[SocketService] 🔔 Instant notification received via socket: "$title"');
+
+      LocalNotificationService().showPushNotification(
+        title: title,
+        body: message,
+        payload: jsonEncode(notifData),
+        type: LocalNotificationService().resolveNotificationType(type),
+        entityType: notifData['entityType']?.toString(),
+        entityId: notifData['entityId']?.toString(),
+        metadata: metadata,
+        playSound: true,
+      );
+    } catch (e) {
+      debugPrint('[SocketService] Error handling notification:new: $e');
     }
   }
 

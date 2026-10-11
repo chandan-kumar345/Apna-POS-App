@@ -3,29 +3,72 @@ const WhatsAppChat = require('../models/WhatsAppChat');
 const WhatsAppMessage = require('../models/WhatsAppMessage');
 const Business = require('../models/Business');
 const Customer = require('../models/Customer');
+const User = require('../models/User');
 const whatsappService = require('./whatsappService');
 const storageService = require('../utils/storageService');
 const ApiError = require('../utils/ApiError');
 
 class WhatsAppChatService {
   /**
-   * Get all active customer chat conversations for a business
+   * Get all active customer chat conversations for a business with per-user isolation
    */
-  async getChats(businessId, { search = '', page = 1, limit = 50 } = {}) {
+  async getChats(businessId, { search = '', page = 1, limit = 50, userId = null } = {}) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    const query = { businessId: bId };
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+
+    const conditions = [{ businessId: bId }];
+
+    // ISOLATION LOGIC:
+    // If the requesting user has configured their own Meta WhatsApp Phone Number ID,
+    // show ONLY the chats belonging to this user or their specific phoneNumberId.
+    if (user?.whatsappSettings?.phoneNumberId && user.whatsappSettings.phoneNumberId.trim()) {
+      const userPhoneId = user.whatsappSettings.phoneNumberId.trim();
+      conditions.push({
+        $or: [
+          { userId: user._id },
+          { phoneNumberId: userPhoneId },
+        ],
+      });
+    } else {
+      // If the requesting user has NOT entered custom credentials,
+      // hide any chats that belong to other users who have entered their private phoneNumberId!
+      const otherUsers = await User.find({
+        businessId: bId,
+        _id: { $ne: user?._id },
+        'whatsappSettings.phoneNumberId': { $exists: true, $ne: '' },
+      }).select('whatsappSettings.phoneNumberId _id').lean();
+
+      const privatePhoneIds = otherUsers
+        .map((u) => u.whatsappSettings?.phoneNumberId?.trim())
+        .filter(Boolean);
+      const privateUserIds = otherUsers.map((u) => u._id);
+
+      if (privateUserIds.length > 0) {
+        conditions.push({ userId: { $nin: privateUserIds } });
+      }
+      if (privatePhoneIds.length > 0) {
+        conditions.push({ phoneNumberId: { $nin: privatePhoneIds } });
+      }
+    }
 
     if (search && search.trim()) {
       const term = search.trim();
-      query.$or = [
-        { customerName: { $regex: term, $options: 'i' } },
-        { customerPhone: { $regex: term, $options: 'i' } },
-        { lastMessage: { $regex: term, $options: 'i' } },
-      ];
+      conditions.push({
+        $or: [
+          { customerName: { $regex: term, $options: 'i' } },
+          { customerPhone: { $regex: term, $options: 'i' } },
+          { lastMessage: { $regex: term, $options: 'i' } },
+        ],
+      });
     }
+
+    const query = conditions.length === 1 ? conditions[0] : { $and: conditions };
 
     const skip = (Math.max(1, Number(page)) - 1) * Math.max(1, Number(limit));
     const [chats, total] = await Promise.all([
@@ -48,7 +91,7 @@ class WhatsAppChatService {
   /**
    * Get message history for a specific chat conversation and mark as read
    */
-  async getChatMessages(businessId, chatId, { limit = 100 } = {}) {
+  async getChatMessages(businessId, chatId, { limit = 100, userId = null } = {}) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
@@ -59,6 +102,10 @@ class WhatsAppChatService {
     const chat = await WhatsAppChat.findOne({ _id: cId, businessId: bId });
     if (!chat) {
       throw ApiError.notFound('WhatsApp conversation not found', 'CHAT_NOT_FOUND');
+    }
+
+    if (userId && chat.userId && chat.userId.toString() !== userId.toString()) {
+      throw ApiError.forbidden('You do not have permission to access this conversation', 'CHAT_ACCESS_DENIED');
     }
 
     // Reset unread count when opening conversation
@@ -81,7 +128,7 @@ class WhatsAppChatService {
   /**
    * Send a reply message from business to customer in an existing chat
    */
-  async sendMessage(businessId, chatId, { text = '', messageType = 'text', mediaUrl = '' }) {
+  async sendMessage(businessId, chatId, { text = '', messageType = 'text', mediaUrl = '', userId = null }) {
     const isImage = messageType === 'image' || Boolean(mediaUrl);
     if (!isImage && (!text || !text.trim())) {
       throw ApiError.badRequest('Message text cannot be empty', null, 'EMPTY_MESSAGE');
@@ -99,9 +146,23 @@ class WhatsAppChatService {
       throw ApiError.notFound('WhatsApp conversation not found', 'CHAT_NOT_FOUND');
     }
 
+    if (userId && chat.userId && chat.userId.toString() !== userId.toString()) {
+      throw ApiError.forbidden('You do not have permission to access this conversation', 'CHAT_ACCESS_DENIED');
+    }
+
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+
     const business = await Business.findById(bId);
-    const phoneNumberId = business?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
-    const accessToken = business?.whatsappSettings?.accessToken || whatsappService.accessToken;
+    const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
+      chat.phoneNumberId ||
+      business?.whatsappSettings?.phoneNumberId ||
+      whatsappService.phoneNumberId;
+    const accessToken = user?.whatsappSettings?.accessToken ||
+      business?.whatsappSettings?.accessToken ||
+      whatsappService.accessToken;
 
     // Send via Meta WhatsApp Cloud API
     const waResult = await whatsappService.sendChatMessage({
@@ -131,6 +192,9 @@ class WhatsAppChatService {
     chat.lastMessage = isImage ? (text ? `📷 ${text.trim()}` : '📷 Image') : text.trim();
     chat.lastMessageAt = message.timestamp;
     chat.lastMessageDirection = 'OUTGOING';
+    if (!chat.userId && user) {
+      chat.userId = user._id;
+    }
     await chat.save();
 
     return {
@@ -142,7 +206,7 @@ class WhatsAppChatService {
   /**
    * Start or locate a new chat with a phone number
    */
-  async startNewChat(businessId, { customerPhone, customerName = '', initialMessage = '' }) {
+  async startNewChat(businessId, { customerPhone, customerName = '', initialMessage = '', userId = null }) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
@@ -156,9 +220,15 @@ class WhatsAppChatService {
       throw ApiError.badRequest('Invalid customer phone number format', null, 'INVALID_PHONE');
     }
 
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+
     let chat = await WhatsAppChat.findOne({
       businessId: bId,
       customerPhone: normalizedPhone,
+      ...(user?.whatsappSettings?.phoneNumberId ? { phoneNumberId: user.whatsappSettings.phoneNumberId.trim() } : {}),
     });
 
     let resolvedName = customerName || '';
@@ -172,10 +242,11 @@ class WhatsAppChatService {
 
     if (!chat) {
       const business = await Business.findById(bId);
-      const phoneNumberId = business?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
+      const phoneNumberId = user?.whatsappSettings?.phoneNumberId || business?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
 
       chat = await WhatsAppChat.create({
         businessId: bId,
+        userId: user?._id || null,
         phoneNumberId: phoneNumberId || '',
         customerPhone: normalizedPhone,
         customerName: resolvedName || `Customer ${normalizedPhone.slice(-4)}`,
@@ -192,7 +263,7 @@ class WhatsAppChatService {
 
     let sentMessage = null;
     if (initialMessage && initialMessage.trim()) {
-      const sendRes = await this.sendMessage(bId, chat._id, { text: initialMessage });
+      const sendRes = await this.sendMessage(bId, chat._id, { text: initialMessage, userId });
       sentMessage = sendRes.message;
       chat = sendRes.chat;
     }
@@ -204,49 +275,90 @@ class WhatsAppChatService {
   }
 
   /**
-   * Save and connect Meta WhatsApp Phone Number credentials for a business
+   * Save and connect Meta WhatsApp Phone Number credentials for a user / business
    */
-  async saveConnection(businessId, { phoneNumberId, phoneNumber, wabaId = '', accessToken = '' }) {
+  async saveConnection(businessId, { phoneNumberId, phoneNumber, wabaId = '', accessToken = '', userId = null }) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
-
-    const business = await Business.findById(bId);
-    if (!business) {
-      throw ApiError.notFound('Business not found', 'BUSINESS_NOT_FOUND');
-    }
 
     if (!phoneNumberId || !phoneNumberId.trim()) {
       throw ApiError.badRequest('Meta WhatsApp Phone Number ID is required', null, 'PHONE_ID_REQUIRED');
     }
 
-    business.whatsappSettings = {
-      enabled: true,
-      phoneNumberId: phoneNumberId.trim(),
-      phoneNumber: (phoneNumber || '').trim(),
-      wabaId: (wabaId || '').trim(),
-      accessToken: (accessToken || '').trim(),
-      webhookVerifyToken: business.whatsappSettings?.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026',
-      connectedAt: new Date(),
-    };
+    const cleanPhoneId = phoneNumberId.trim();
+    const cleanPhone = (phoneNumber || '').trim();
+    const cleanWaba = (wabaId || '').trim();
+    const cleanToken = (accessToken || '').trim();
 
-    await business.save();
+    // 1. If userId is provided, save onto User model for user-specific WhatsApp isolation
+    if (userId) {
+      await User.findByIdAndUpdate(userId, {
+        $set: {
+          whatsappSettings: {
+            enabled: true,
+            phoneNumberId: cleanPhoneId,
+            phoneNumber: cleanPhone,
+            wabaId: cleanWaba,
+            accessToken: cleanToken,
+            webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
+            connectedAt: new Date(),
+          },
+        },
+      });
+
+      // Bind existing chats with this phoneNumberId to this user
+      await WhatsAppChat.updateMany(
+        { businessId: bId, phoneNumberId: cleanPhoneId },
+        { $set: { userId } }
+      );
+    }
+
+    // 2. Also persist onto Business model if business exists
+    const business = await Business.findById(bId);
+    if (business) {
+      business.whatsappSettings = {
+        enabled: true,
+        phoneNumberId: cleanPhoneId,
+        phoneNumber: cleanPhone,
+        wabaId: cleanWaba,
+        accessToken: cleanToken,
+        webhookVerifyToken: business.whatsappSettings?.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026',
+        connectedAt: new Date(),
+      };
+      await business.save();
+    }
 
     return {
       connected: true,
-      phoneNumberId: business.whatsappSettings.phoneNumberId,
-      phoneNumber: business.whatsappSettings.phoneNumber,
-      connectedAt: business.whatsappSettings.connectedAt,
+      phoneNumberId: cleanPhoneId,
+      phoneNumber: cleanPhone,
+      connectedAt: new Date(),
     };
   }
 
   /**
-   * Get connection info for the business
+   * Get connection info for the user / business
    */
-  async getConnectionStatus(businessId) {
+  async getConnectionStatus(businessId, userId = null) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
+
+    // Check user settings first if userId provided
+    if (userId) {
+      const user = await User.findById(userId).lean();
+      if (user?.whatsappSettings?.phoneNumberId) {
+        return {
+          connected: Boolean(user.whatsappSettings.enabled || user.whatsappSettings.phoneNumberId),
+          phoneNumberId: user.whatsappSettings.phoneNumberId,
+          phoneNumber: user.whatsappSettings.phoneNumber || '',
+          wabaId: user.whatsappSettings.wabaId || '',
+          hasCustomToken: Boolean(user.whatsappSettings.accessToken),
+          connectedAt: user.whatsappSettings.connectedAt || null,
+        };
+      }
+    }
 
     const business = await Business.findById(bId);
     const settings = business?.whatsappSettings || {};
@@ -293,26 +405,51 @@ class WhatsAppChatService {
     const phoneNumberId = incomingMsg.phoneNumberId ? String(incomingMsg.phoneNumberId).trim() : '';
     const displayPhoneNumber = incomingMsg.displayPhoneNumber ? String(incomingMsg.displayPhoneNumber).trim() : '';
 
-    // Match business by configured phone number ID, display phone, or active WhatsApp business
+    // Match user or business by configured phone number ID, display phone, or active WhatsApp business
+    let targetUser = null;
     let business = null;
+
     if (phoneNumberId) {
-      business = await Business.findOne({
-        $or: [
-          { 'whatsappSettings.phoneNumberId': phoneNumberId },
-          { 'whatsappSettings.phoneNumber': phoneNumberId },
-        ],
-      });
+      targetUser = await User.findOne({
+        'whatsappSettings.phoneNumberId': phoneNumberId,
+      }).lean();
+
+      if (targetUser && targetUser.businessId) {
+        business = await Business.findById(targetUser.businessId);
+      }
+
+      if (!business) {
+        business = await Business.findOne({
+          $or: [
+            { 'whatsappSettings.phoneNumberId': phoneNumberId },
+            { 'whatsappSettings.phoneNumber': phoneNumberId },
+          ],
+        });
+      }
     }
 
     if (!business && displayPhoneNumber) {
       const cleanDisplay = whatsappService.normalizePhoneNumber(displayPhoneNumber);
-      business = await Business.findOne({
+      targetUser = await User.findOne({
         $or: [
           { 'whatsappSettings.phoneNumber': cleanDisplay },
           { 'whatsappSettings.phoneNumber': displayPhoneNumber },
-          { 'profile.phone': { $regex: cleanDisplay.slice(-10) } },
         ],
-      });
+      }).lean();
+
+      if (targetUser && targetUser.businessId) {
+        business = await Business.findById(targetUser.businessId);
+      }
+
+      if (!business) {
+        business = await Business.findOne({
+          $or: [
+            { 'whatsappSettings.phoneNumber': cleanDisplay },
+            { 'whatsappSettings.phoneNumber': displayPhoneNumber },
+            { 'profile.phone': { $regex: cleanDisplay.slice(-10) } },
+          ],
+        });
+      }
     }
 
     if (!business) {
@@ -335,12 +472,18 @@ class WhatsAppChatService {
     }
 
     const bId = business._id;
+    const targetUserId = targetUser?._id || null;
 
     // Locate existing conversation (supports 10-digit, 12-digit, or + prefixes)
-    let chat = await WhatsAppChat.findOne({
+    const chatFilter = {
       businessId: bId,
       customerPhone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
-    });
+    };
+    if (targetUserId) {
+      chatFilter.$or = [{ userId: targetUserId }, { phoneNumberId }];
+    }
+
+    let chat = await WhatsAppChat.findOne(chatFilter);
 
     let customerName = incomingMsg.customerName || '';
     if (!customerName) {
@@ -387,6 +530,7 @@ class WhatsAppChatService {
     if (!chat) {
       chat = await WhatsAppChat.create({
         businessId: bId,
+        userId: targetUserId || null,
         phoneNumberId: phoneNumberId || business.whatsappSettings?.phoneNumberId || '',
         customerPhone: normalizedPhone,
         customerName: customerName || `Customer ${normalizedPhone.slice(-4)}`,
@@ -397,6 +541,9 @@ class WhatsAppChatService {
         status: 'ACTIVE',
       });
     } else {
+      if (targetUserId && !chat.userId) {
+        chat.userId = targetUserId;
+      }
       if (customerName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
         chat.customerName = customerName;
       }
@@ -437,6 +584,7 @@ class WhatsAppChatService {
         : (incomingMsg.body || 'New message');
 
       await notificationService.createNotification({
+        userId: targetUserId || business.ownerId || undefined,
         businessId: bId,
         type: 'whatsapp_message',
         title: `WhatsApp: ${senderDisplay}`,

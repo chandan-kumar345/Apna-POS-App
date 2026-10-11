@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 const Business = require('../models/Business');
 const Order = require('../models/Order');
 const Sale = require('../models/Sale');
+const User = require('../models/User');
 const notificationService = require('./notificationService');
 
 class CronService {
@@ -155,11 +156,76 @@ class CronService {
   }
 
   /**
+   * Check for subscriptions expiring within 2 days (48 hours)
+   * Dispatches push notification mentioning the exact date & time.
+   */
+  async checkExpiringSubscriptionsJob() {
+    try {
+      const now = new Date();
+      const twoDaysFromNow = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+      // Find users with active subscriptions expiring in <= 48h and > now
+      const expiringUsers = await User.find({
+        $or: [
+          { 'subscription.isActive': true },
+          { 'subscription.isSubscriptionActive': true },
+          { 'subscription.status': 'active' },
+        ],
+        'subscription.expiresAt': { $gt: now, $lte: twoDaysFromNow },
+      }).lean();
+
+      for (const user of expiringUsers) {
+        if (!user.subscription?.expiresAt) continue;
+        const expiry = new Date(user.subscription.expiresAt);
+
+        // Format date and time (e.g., "13 Oct 2026 at 08:30 PM")
+        const formattedDate = expiry.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+        const formattedTime = expiry.toLocaleTimeString('en-IN', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: true,
+        });
+        const formattedDateTime = `${formattedDate} at ${formattedTime}`;
+
+        const dateKey = `${expiry.getFullYear()}-${expiry.getMonth() + 1}-${expiry.getDate()}`;
+        const idempotencyKey = `sub_expiring_2days_${user._id.toString()}_${dateKey}`;
+
+        const title = 'Your subscription will end soon ⏳';
+        const message = `Your Apna POS subscription will end on ${formattedDateTime}. Please renew your plan to continue using all features.`;
+
+        await notificationService.createNotification({
+          userId: user._id,
+          businessId: user.businessId,
+          type: 'system',
+          title,
+          message,
+          entityType: 'subscription',
+          entityId: user._id.toString(),
+          metadata: {
+            expiresAt: expiry.toISOString(),
+            formattedDateTime,
+            plan: user.subscription?.plan || 'starter',
+          },
+          sendPush: true,
+          idempotencyKey,
+        });
+      }
+    } catch (error) {
+      console.error(`[CronService] Error in checkExpiringSubscriptionsJob: ${error.message}`);
+    }
+  }
+
+  /**
    * Initialize server-side scheduler
    */
   initSchedulers() {
-    // Check every minute for midnight 00:00 trigger
+    // Check every minute for midnight 00:00 trigger & hourly subscription check
     let lastRunDate = '';
+    let lastHourlyCheck = 0;
 
     this._intervalId = setInterval(async () => {
       const now = new Date();
@@ -172,9 +238,20 @@ class CronService {
         lastRunDate = todayStr;
         await this.runDailySummaryJob();
       }
+
+      // Check subscription expiries every 60 minutes
+      if (Date.now() - lastHourlyCheck > 60 * 60 * 1000) {
+        lastHourlyCheck = Date.now();
+        await this.checkExpiringSubscriptionsJob();
+      }
     }, 60000);
 
-    console.log('[CronService] Schedulers initialized (Daily Midnight 12:00 AM summary active)');
+    // Initial check on startup
+    setTimeout(() => {
+      this.checkExpiringSubscriptionsJob().catch(() => {});
+    }, 15000);
+
+    console.log('[CronService] Schedulers initialized (Daily Midnight summary & Hourly 2-day subscription alerts active)');
   }
 
   stopSchedulers() {

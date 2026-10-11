@@ -180,6 +180,22 @@ class SecureStorageService implements ISecureStorageService {
     } catch (_) {}
   }
 
+  Future<void> savePushToken(String token) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('SEC_KEY_PUSH_TOKEN_V1', token);
+    } catch (_) {}
+  }
+
+  Future<String?> getPushToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('SEC_KEY_PUSH_TOKEN_V1');
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Future<String?> getBusinessId() async {
     if (!_isLoaded) await _ensureLoaded();

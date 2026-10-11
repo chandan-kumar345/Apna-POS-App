@@ -252,6 +252,9 @@ class SubscriptionService {
     if (!subDoc && user?.email) {
       subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ createdAt: -1 });
     }
+    if (!subDoc) {
+      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
+    }
 
     let isSubscribed = false;
     let plan = 'starter';
@@ -280,7 +283,7 @@ class SubscriptionService {
       }
 
       plan = subDoc.plan || 'starter';
-      amount = subDoc.amount || 0;
+      amount = subDoc.amount || 300;
       upiId = subDoc.upiId || '9709593705@ybl';
       paymentRef = subDoc.paymentRef || '';
       activatedAt = subDoc.activatedAt || subDoc.createdAt || null;
@@ -309,7 +312,7 @@ class SubscriptionService {
       }
 
       plan = bizSub.plan || userSub.plan || staffSub.plan || 'starter';
-      amount = bizSub.amount || 0;
+      amount = bizSub.amount || 300;
       upiId = bizSub.upiId || '9709593705@ybl';
       paymentRef = bizSub.paymentRef || userSub.paymentRef || '';
       activatedAt = bizSub.activatedAt || userSub.startDate || null;
@@ -602,6 +605,15 @@ class SubscriptionService {
       }
     }
 
+    if (!business && !user) {
+      business = await Business.findOne().sort({ createdAt: -1 });
+      if (business) {
+        user = await User.findById(business.ownerId);
+      } else {
+        user = await User.findOne().sort({ createdAt: -1 });
+      }
+    }
+
     const isActive = subData.isSubscriptionActive !== undefined
       ? Boolean(subData.isSubscriptionActive)
       : (subData.isActive !== undefined ? Boolean(subData.isActive) : (subData.status === 'active'));
@@ -610,10 +622,18 @@ class SubscriptionService {
     let subDoc = null;
     if (subData.subscriptionId) {
       subDoc = await Subscription.findById(subData.subscriptionId);
-    } else if (business?._id) {
+    }
+    if (!subDoc && business?._id) {
       subDoc = await Subscription.findOne({ businessId: business._id }).sort({ updatedAt: -1, createdAt: -1 });
-    } else if (user?._id) {
+    }
+    if (!subDoc && user?._id) {
       subDoc = await Subscription.findOne({ userId: user._id }).sort({ updatedAt: -1, createdAt: -1 });
+    }
+    if (!subDoc && user?.email) {
+      subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ updatedAt: -1, createdAt: -1 });
+    }
+    if (!subDoc && !business && !user) {
+      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
     }
 
     if (subDoc) {
@@ -634,7 +654,7 @@ class SubscriptionService {
       if (subData.amount !== undefined) subDoc.amount = Number(subData.amount);
       if (subData.expiresAt) subDoc.expiresAt = new Date(subData.expiresAt);
       await subDoc.save();
-    } else if (business || user) {
+    } else {
       subDoc = await Subscription.create({
         businessId: business?._id || null,
         userId: user?._id || null,

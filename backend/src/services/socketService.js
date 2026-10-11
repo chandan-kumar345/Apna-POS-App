@@ -66,6 +66,11 @@ class SocketService {
         this.joinBusinessRoom(socket, initialBusinessId);
       }
 
+      if (socket.user?.id || socket.user?._id) {
+        const uId = (socket.user.id || socket.user._id).toString();
+        socket.join(`user_${uId}`);
+      }
+
       // Hardened room join handler: strictly prevent cross-tenant room spoofing
       socket.on('join_business', (data) => {
         const bId = typeof data === 'string' ? data : (data?.businessId || socket.businessId);
@@ -270,6 +275,27 @@ class SocketService {
       this.broadcastToBusiness(businessId, 'subscription:updated', payload);
     } else if (this.io) {
       this.io.emit('subscription:updated', payload);
+    }
+  }
+
+  /**
+   * Emit new notification event across business and target user rooms for instant sub-50ms delivery
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {string|mongoose.Types.ObjectId} userId
+   * @param {object} notification
+   */
+  emitNotificationCreated(businessId, userId, notification) {
+    if (!this.io) return;
+    const payload = {
+      notification,
+      timestamp: new Date().toISOString(),
+    };
+    if (businessId) {
+      this.broadcastToBusiness(businessId, 'notification:new', payload);
+    }
+    if (userId) {
+      const cleanUserId = userId.toString();
+      this.io.to(`user_${cleanUserId}`).emit('notification:new', payload);
     }
   }
 

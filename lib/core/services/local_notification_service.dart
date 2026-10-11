@@ -62,6 +62,37 @@ class LocalNotificationService {
     }
   }
 
+  /// Directly handle payload map from FCM or Socket background handlers
+  static void handlePayloadDirectly(Map<String, dynamic> data) {
+    try {
+      _handleNotificationPayload(jsonEncode(data));
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error in handlePayloadDirectly: $e');
+    }
+  }
+
+  /// Resolve notification type from string identifier
+  NotificationType resolveNotificationType(String? type) {
+    if (type == null) return NotificationType.system;
+    final lower = type.toLowerCase();
+    if (lower == 'whatsapp_message' || lower == 'whatsappmessage') {
+      return NotificationType.whatsappMessage;
+    }
+    if (lower == 'new_lead' || lower == 'lead' || lower == 'crm') {
+      return NotificationType.newLead;
+    }
+    if (lower == 'daily_sales_summary' || lower == 'dailysalessummary') {
+      return NotificationType.dailySalesSummary;
+    }
+    if (lower == 'inventory' || lower == 'low_stock' || lower == 'lowstock') {
+      return NotificationType.lowStock;
+    }
+    if (lower == 'welcome') {
+      return NotificationType.welcome;
+    }
+    return NotificationType.system;
+  }
+
   /// Initialize local notification channels for Android and iOS
   Future<void> init() async {
     if (_isInitialized || !_isSupportedPlatform) return;

@@ -4,6 +4,7 @@ import 'core/theme/glass_theme.dart';
 import 'core/database/database_service.dart';
 import 'core/services/sound_service.dart';
 import 'core/services/local_notification_service.dart';
+import 'core/services/fcm_service.dart';
 import 'core/network/api_endpoints.dart';
 import 'core/widgets/sound_feedback_wrapper.dart';
 import 'features/auth/splash_screen.dart';
@@ -37,9 +38,12 @@ void main() async {
   await Future.wait([
     Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
-    ).catchError((e) {
+    ).then((_) {
+      FcmService().init().catchError((e) {
+        debugPrint('FcmService init error: $e');
+      });
+    }).catchError((e) {
       debugPrint('Firebase.initializeApp warning/info: $e');
-      return Firebase.app();
     }),
     ApiEndpoints.initialize().catchError((e) {
       debugPrint('ApiEndpoints init error: $e');

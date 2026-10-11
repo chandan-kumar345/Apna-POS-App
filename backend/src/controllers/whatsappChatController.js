@@ -8,10 +8,12 @@ class WhatsAppChatController {
   async getChats(req, res, next) {
     try {
       const { search, page, limit } = req.query;
+      const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.getChats(req.businessId, {
         search,
         page,
         limit,
+        userId,
       });
       return ApiResponse.success(res, result, 'WhatsApp conversations retrieved');
     } catch (error) {
@@ -26,7 +28,8 @@ class WhatsAppChatController {
     try {
       const { chatId } = req.params;
       const { limit } = req.query;
-      const result = await whatsappChatService.getChatMessages(req.businessId, chatId, { limit });
+      const userId = req.user?._id || req.user?.id;
+      const result = await whatsappChatService.getChatMessages(req.businessId, chatId, { limit, userId });
       return ApiResponse.success(res, result, 'Chat messages retrieved');
     } catch (error) {
       next(error);
@@ -40,10 +43,12 @@ class WhatsAppChatController {
     try {
       const { chatId } = req.params;
       const { text, messageType, mediaUrl } = req.body;
+      const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.sendMessage(req.businessId, chatId, {
         text,
         messageType,
         mediaUrl,
+        userId,
       });
       return ApiResponse.success(res, result, 'WhatsApp message sent successfully');
     } catch (error) {
@@ -57,10 +62,12 @@ class WhatsAppChatController {
   async startNewChat(req, res, next) {
     try {
       const { customerPhone, customerName, initialMessage } = req.body;
+      const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.startNewChat(req.businessId, {
         customerPhone,
         customerName,
         initialMessage,
+        userId,
       });
       return ApiResponse.success(res, result, 'WhatsApp chat initialized');
     } catch (error) {
@@ -74,11 +81,13 @@ class WhatsAppChatController {
   async saveConnection(req, res, next) {
     try {
       const { phoneNumberId, phoneNumber, wabaId, accessToken } = req.body;
+      const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.saveConnection(req.businessId, {
         phoneNumberId,
         phoneNumber,
         wabaId,
         accessToken,
+        userId,
       });
       return ApiResponse.success(res, result, 'Meta WhatsApp integration connected successfully');
     } catch (error) {
@@ -91,7 +100,8 @@ class WhatsAppChatController {
    */
   async getConnectionStatus(req, res, next) {
     try {
-      const result = await whatsappChatService.getConnectionStatus(req.businessId);
+      const userId = req.user?._id || req.user?.id;
+      const result = await whatsappChatService.getConnectionStatus(req.businessId, userId);
       return ApiResponse.success(res, result, 'WhatsApp connection status retrieved');
     } catch (error) {
       next(error);
@@ -104,7 +114,8 @@ class WhatsAppChatController {
   async markRead(req, res, next) {
     try {
       const { chatId } = req.params;
-      const result = await whatsappChatService.markRead(req.businessId, chatId);
+      const userId = req.user?._id || req.user?.id;
+      const result = await whatsappChatService.markRead(req.businessId, chatId, userId);
       return ApiResponse.success(res, result, 'Conversation marked as read');
     } catch (error) {
       next(error);

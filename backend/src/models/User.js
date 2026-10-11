@@ -113,6 +113,24 @@ const userSchema = new mongoose.Schema(
       min: 0,
       max: 4,
     },
+    pushToken: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+    pushPlatform: {
+      type: String,
+      default: 'android',
+    },
+    whatsappSettings: {
+      enabled: { type: Boolean, default: false },
+      phoneNumberId: { type: String, default: '', trim: true },
+      phoneNumber: { type: String, default: '', trim: true },
+      wabaId: { type: String, default: '', trim: true },
+      accessToken: { type: String, default: '', trim: true },
+      webhookVerifyToken: { type: String, default: '', trim: true },
+      connectedAt: { type: Date, default: null },
+    },
   },
   {
     timestamps: true,

@@ -8,10 +8,17 @@ const whatsAppChatSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      index: true,
+    },
     phoneNumberId: {
       type: String,
       default: '',
       trim: true,
+      index: true,
     },
     customerPhone: {
       type: String,

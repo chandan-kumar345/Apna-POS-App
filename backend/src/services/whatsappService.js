@@ -47,45 +47,21 @@ class WhatsAppService {
    * Send eBill receipt via Meta WhatsApp Cloud API
    * Supports both template message and text summary
    */
-  async sendEbillReceipt({
-    to,
-    customerName = 'Customer',
-    businessName = 'Apna POS Store',
+  /**
+   * Internal helper to dispatch eBill message to Meta Cloud API
+   */
+  async _dispatchEbillToMeta({
+    phoneNumberId,
+    accessToken,
+    normalizedPhone,
+    customerName,
+    businessName,
     billNumber,
     totalAmount,
-    currency = 'INR',
-    receiptText = '',
-    documentUrl = null,
+    currency,
+    receiptText,
   }) {
-    const normalizedPhone = this.normalizePhoneNumber(to);
-    if (!this.isValidPhoneNumber(normalizedPhone)) {
-      throw ApiError.badRequest(
-        `Invalid customer WhatsApp phone number: ${to}`,
-        null,
-        'INVALID_PHONE_NUMBER'
-      );
-    }
-
-
-    // In test environment or when access token is not configured, simulate successful API response
-    if (
-      process.env.NODE_ENV === 'test' ||
-      !this.accessToken ||
-      this.accessToken === 'mock_token' ||
-      this.accessToken === 'test_token'
-    ) {
-      console.warn(`[WhatsAppService] ⚠️ SIMULATION MODE: WHATSAPP_ACCESS_TOKEN is not configured in .env. Real message was not sent to ${normalizedPhone}. Generated mock messageId.`);
-      const mockMessageId = `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`;
-      return {
-        success: true,
-        messageId: mockMessageId,
-        whatsappPhoneNumberId: this.phoneNumberId,
-        recipient: normalizedPhone,
-        isSimulated: true,
-      };
-    }
-
-    const url = `https://graph.facebook.com/${this.apiVersion}/${this.phoneNumberId}/messages`;
+    const url = `https://graph.facebook.com/${this.apiVersion}/${phoneNumberId}/messages`;
 
     let payload;
     if (this.templateName && this.templateName !== 'none') {
@@ -127,7 +103,7 @@ class WhatsAppService {
     let response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${this.accessToken}`,
+        'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
@@ -144,7 +120,7 @@ class WhatsAppService {
         response = await fetch(url, {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
+            'Authorization': `Bearer ${accessToken}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(payload),
@@ -165,7 +141,7 @@ class WhatsAppService {
           response = await fetch(url, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${this.accessToken}`,
+              'Authorization': `Bearer ${accessToken}`,
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(textPayload),
@@ -185,6 +161,110 @@ class WhatsAppService {
       throw ApiError.badRequest(errorMsg, null, errorCode);
     }
 
+    return data;
+  }
+
+  /**
+   * Send eBill receipt via Meta WhatsApp Cloud API
+   * Supports custom WhatsApp credentials (if integrated) with graceful fallback to default WhatsApp
+   */
+  async sendEbillReceipt({
+    to,
+    customerName = 'Customer',
+    businessName = 'Apna POS Store',
+    billNumber,
+    totalAmount,
+    currency = 'INR',
+    receiptText = '',
+    documentUrl = null,
+    customPhoneNumberId = null,
+    customAccessToken = null,
+  }) {
+    const normalizedPhone = this.normalizePhoneNumber(to);
+    if (!this.isValidPhoneNumber(normalizedPhone)) {
+      throw ApiError.badRequest(
+        `Invalid customer WhatsApp phone number: ${to}`,
+        null,
+        'INVALID_PHONE_NUMBER'
+      );
+    }
+
+    // 1. Attempt sending via custom WhatsApp if user/business has integrated their WhatsApp API
+    if (customPhoneNumberId && customAccessToken) {
+      try {
+        if (
+          process.env.NODE_ENV === 'test' ||
+          customAccessToken === 'mock_token' ||
+          customAccessToken === 'test_token'
+        ) {
+          const mockMessageId = `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`;
+          return {
+            success: true,
+            messageId: mockMessageId,
+            whatsappPhoneNumberId: customPhoneNumberId,
+            recipient: normalizedPhone,
+            isCustomApi: true,
+            isSimulated: true,
+          };
+        }
+
+        const data = await this._dispatchEbillToMeta({
+          phoneNumberId: customPhoneNumberId,
+          accessToken: customAccessToken,
+          normalizedPhone,
+          customerName,
+          businessName,
+          billNumber,
+          totalAmount,
+          currency,
+          receiptText,
+        });
+
+        const messageId = data?.messages?.[0]?.id || `wamid.unknown.${Date.now()}`;
+        return {
+          success: true,
+          messageId,
+          whatsappPhoneNumberId: customPhoneNumberId,
+          recipient: normalizedPhone,
+          isCustomApi: true,
+          isSimulated: false,
+        };
+      } catch (customErr) {
+        console.warn(`[WhatsAppService] Custom WhatsApp dispatch failed (${customErr.message}). Falling back to default Apna POS WhatsApp channel.`);
+        // Fall back to default WhatsApp below
+      }
+    }
+
+    // 2. Default Apna POS WhatsApp
+    if (
+      process.env.NODE_ENV === 'test' ||
+      !this.accessToken ||
+      this.accessToken === 'mock_token' ||
+      this.accessToken === 'test_token'
+    ) {
+      console.warn(`[WhatsAppService] ⚠️ SIMULATION MODE: WHATSAPP_ACCESS_TOKEN is not configured in .env. Real message was not sent to ${normalizedPhone}. Generated mock messageId.`);
+      const mockMessageId = `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`;
+      return {
+        success: true,
+        messageId: mockMessageId,
+        whatsappPhoneNumberId: this.phoneNumberId,
+        recipient: normalizedPhone,
+        isCustomApi: false,
+        isSimulated: true,
+      };
+    }
+
+    const data = await this._dispatchEbillToMeta({
+      phoneNumberId: this.phoneNumberId,
+      accessToken: this.accessToken,
+      normalizedPhone,
+      customerName,
+      businessName,
+      billNumber,
+      totalAmount,
+      currency,
+      receiptText,
+    });
 
     const messageId = data?.messages?.[0]?.id || `wamid.unknown.${Date.now()}`;
     return {
@@ -192,6 +272,7 @@ class WhatsAppService {
       messageId,
       whatsappPhoneNumberId: this.phoneNumberId,
       recipient: normalizedPhone,
+      isCustomApi: false,
       isSimulated: false,
     };
   }
