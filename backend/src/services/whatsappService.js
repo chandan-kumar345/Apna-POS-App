@@ -27,7 +27,11 @@ class WhatsAppService {
     } else if (digits.startsWith('0') && digits.length === 11) {
       digits = digits.substring(1);
     }
-    // Indian 10-digit mobile number check
+    // Handle case where phone was entered as 910XXXXXXXXXX (13 digits with unnecessary 0)
+    if (digits.startsWith('910') && digits.length === 13) {
+      digits = `91${digits.substring(3)}`;
+    }
+    // Standard Indian 10-digit mobile number check
     if (digits.length === 10) {
       digits = `91${digits}`;
     }
@@ -509,11 +513,56 @@ class WhatsAppService {
     }
 
     if (!response.ok) {
-      let errorMsg = data?.error?.message || `WhatsApp API error: ${response.statusText}`;
       const errorCode = data?.error?.code || 'WHATSAPP_API_ERROR';
-      if (errorCode === 131030) {
-        errorMsg = `Meta WhatsApp Sandbox Restriction: Customer number (${normalizedPhone}) is not added to your Meta Developer Allowed Phone Numbers list. Switch the app to Live Mode or add this number to the test list.`;
+      let errorMsg = data?.error?.message || `WhatsApp API error: ${response.statusText}`;
+
+      // 1. Error 131047: Customer is outside 24-hour customer service window
+      // Attempt sending an approved Meta Template (e.g. pos_ebill_receipt or hello_world) to re-engage
+      if (errorCode === 131047) {
+        console.warn(`[WhatsAppService] Customer ${normalizedPhone} is outside the 24-hour window. Attempting re-engagement template dispatch...`);
+        const templateCandidates = [this.templateName, 'hello_world'].filter(Boolean);
+        for (const tName of templateCandidates) {
+          try {
+            const templatePayload = {
+              messaging_product: 'whatsapp',
+              recipient_type: 'individual',
+              to: normalizedPhone,
+              type: 'template',
+              template: {
+                name: tName,
+                language: { code: 'en_US' },
+              },
+            };
+            const templateRes = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${activeAccessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(templatePayload),
+            });
+            const templateData = await templateRes.json().catch(() => ({}));
+            if (templateRes.ok) {
+              console.log(`[WhatsAppService] ✅ Re-engagement template '${tName}' sent successfully to ${normalizedPhone}`);
+              const messageId = templateData?.messages?.[0]?.id || `wamid.template.${Date.now()}`;
+              return {
+                success: true,
+                messageId,
+                whatsappPhoneNumberId: activePhoneNumberId,
+                recipient: normalizedPhone,
+                isSimulated: false,
+                isTemplateFallback: true,
+              };
+            }
+          } catch (tErr) {
+            console.warn(`[WhatsAppService] Template candidate '${tName}' dispatch notice:`, tErr.message);
+          }
+        }
+        errorMsg = `Meta 24-Hour Policy Window: Customer (${normalizedPhone}) has not replied in the last 24 hours. Under Meta WhatsApp policies, a conversation must be re-opened with a Meta-approved template before sending free-form text.`;
+      } else if (errorCode === 131030) {
+        errorMsg = `Meta WhatsApp Sandbox Restriction: Customer number (${normalizedPhone}) is not added to your Meta Developer Allowed Phone Numbers list. In Development Mode, add this number in Meta Console (WhatsApp > API Setup > To), or switch the app to Live Mode to send to all customer numbers.`;
       }
+
       console.error('[WhatsAppService] Send chat message failed:', data?.error || data);
       throw ApiError.badRequest(errorMsg, null, errorCode);
     }

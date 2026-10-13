@@ -16,6 +16,8 @@ typedef OrderSettledCallback = void Function(Map<String, dynamic> data);
 typedef OrderUpdatedCallback = void Function(Map<String, dynamic> data);
 typedef OrderDeletedCallback = void Function(Map<String, dynamic> data);
 typedef SubscriptionUpdateCallback = void Function(Map<String, dynamic> data);
+typedef WhatsAppMessageCallback = void Function(Map<String, dynamic> data);
+typedef WhatsAppChatUpdateCallback = void Function(Map<String, dynamic> data);
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -41,6 +43,8 @@ class SocketService {
   OrderUpdatedCallback? onOrderUpdated;
   OrderDeletedCallback? onOrderDeleted;
   SubscriptionUpdateCallback? onSubscriptionUpdated;
+  WhatsAppMessageCallback? onWhatsAppMessage;
+  WhatsAppChatUpdateCallback? onWhatsAppChatUpdated;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -162,6 +166,10 @@ class SocketService {
 
       // Instant push notification delivery (<50ms)
       socket.on('notification:new', (data) => _handleNotificationNew(data));
+
+      // Real-time WhatsApp messages & chat updates (<50ms)
+      socket.on('whatsapp:message', (data) => _handleWhatsAppMessage(data));
+      socket.on('whatsapp:chat_updated', (data) => _handleWhatsAppChatUpdated(data));
 
       socket.connect();
     } catch (e) {
@@ -358,6 +366,28 @@ class SocketService {
       );
     } catch (e) {
       debugPrint('[SocketService] Error handling notification:new: $e');
+    }
+  }
+
+  void _handleWhatsAppMessage(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] 💬 WhatsApp message event received via socket');
+      onWhatsAppMessage?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:message: $e');
+    }
+  }
+
+  void _handleWhatsAppChatUpdated(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] 💬 WhatsApp chat update event received via socket');
+      onWhatsAppChatUpdated?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:chat_updated: $e');
     }
   }
 

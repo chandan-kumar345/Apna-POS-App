@@ -67,6 +67,15 @@ class PushNotificationService {
       const isWhatsApp = data.type === 'whatsapp_message' || data.type === 'whatsappMessage';
       const channelId = isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2';
 
+      // Sanitize all data entries into strings (FCM requirement for data payload)
+      const sanitizedData = {};
+      for (const [key, val] of Object.entries({ title, message, ...data })) {
+        if (val !== undefined && val !== null) {
+          sanitizedData[key] = typeof val === 'object' ? JSON.stringify(val) : String(val);
+        }
+      }
+      sanitizedData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
+
       // FCM High-Priority Payload
       const fcmPayload = {
         to: token,
@@ -76,12 +85,9 @@ class PushNotificationService {
           body: message,
           sound: 'notification_sound',
           android_channel_id: channelId,
+          click_action: 'FLUTTER_NOTIFICATION_CLICK',
         },
-        data: {
-          title,
-          message,
-          ...data,
-        },
+        data: sanitizedData,
       };
 
       // If Firebase Server Key or Service Account credentials exist, dispatch to FCM

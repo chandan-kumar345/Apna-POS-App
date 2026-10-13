@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../../features/notifications/services/notification_service.dart';
 import '../../features/notifications/models/notification_model.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
@@ -120,10 +121,90 @@ class LocalNotificationService {
         },
       );
 
+      // Explicitly register Android Notification Channels so background/terminated push notifications are never dropped
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidPlugin = _notificationsPlugin
+            .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+        if (androidPlugin != null) {
+          // WhatsApp Messages Channel - High Importance, Sound, Vibration, Lights
+          await androidPlugin.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'apna_pos_whatsapp_messages_v1',
+              'WhatsApp Messages',
+              description: 'Real-time notifications for incoming WhatsApp customer messages',
+              importance: Importance.max,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound('notification_sound'),
+              enableVibration: true,
+              enableLights: true,
+            ),
+          );
+
+          // General Alerts & Orders Channel
+          await androidPlugin.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'apna_pos_general_v2',
+              'General Alerts & Orders',
+              description: 'Real-time notifications for orders, leads, and daily summaries',
+              importance: Importance.max,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound('notification_sound'),
+              enableVibration: true,
+              enableLights: true,
+            ),
+          );
+
+          // Daily Sales Reports Channel
+          await androidPlugin.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'apna_pos_sales_v2',
+              'Daily Sales Reports',
+              description: 'Visual end-of-day sales summary and performance metrics',
+              importance: Importance.max,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound('notification_sound'),
+              enableVibration: true,
+              enableLights: true,
+            ),
+          );
+        }
+      }
+
       _isInitialized = true;
-      debugPrint('[LocalNotificationService] Initialized successfully');
+      debugPrint('[LocalNotificationService] Initialized with all Android channels successfully');
     } catch (e) {
       debugPrint('[LocalNotificationService] Initialization error: $e');
+    }
+  }
+
+  /// Display a native system notification from an incoming FCM RemoteMessage (invoked in foreground, background, and terminated states)
+  static Future<void> showNotificationFromRemoteMessage(RemoteMessage message) async {
+    try {
+      final notification = message.notification;
+      final data = message.data;
+
+      final title = notification?.title ?? data['title']?.toString() ?? 'Apna POS Notification';
+      final body = notification?.body ?? data['message']?.toString() ?? '';
+      final typeStr = data['type']?.toString() ?? 'system';
+
+      // Suppress new orders push notifications if handled elsewhere
+      if (typeStr == 'new_order' || typeStr == 'newOrder') return;
+
+      final instance = LocalNotificationService();
+      await instance.init();
+
+      await instance.showPushNotification(
+        title: title,
+        body: body,
+        payload: jsonEncode(data),
+        type: instance.resolveNotificationType(typeStr),
+        entityType: data['entityType']?.toString(),
+        entityId: data['entityId']?.toString(),
+        metadata: data,
+        playSound: true,
+      );
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error showing notification from RemoteMessage: $e');
     }
   }
 

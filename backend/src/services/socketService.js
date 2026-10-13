@@ -299,6 +299,36 @@ class SocketService {
     }
   }
 
+  /**
+   * Emit real-time WhatsApp message event to connected business clients
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} param1 { chat, message }
+   */
+  emitWhatsAppMessageReceived(businessId, { chat, message }) {
+    if (!this.io || !businessId) return;
+    const payload = {
+      chat,
+      message,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'whatsapp:message', payload);
+    this.broadcastToBusiness(businessId, 'whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+  }
+
+  /**
+   * Emit real-time WhatsApp conversation update
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} param1 { chat }
+   */
+  emitWhatsAppChatUpdated(businessId, { chat }) {
+    if (!this.io || !businessId) return;
+    const payload = {
+      chat,
+      timestamp: new Date().toISOString(),
+    };
+    this.broadcastToBusiness(businessId, 'whatsapp:chat_updated', payload);
+  }
+
   getIO() {
     return this.io;
   }

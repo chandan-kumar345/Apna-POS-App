@@ -15,6 +15,11 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp();
   } catch (_) {}
   debugPrint('[FCM Background] Message received in background/terminated state: ${message.messageId} (Data: ${message.data})');
+  try {
+    await LocalNotificationService.showNotificationFromRemoteMessage(message);
+  } catch (e) {
+    debugPrint('[FCM Background] Error displaying native notification: $e');
+  }
 }
 
 class FcmService {

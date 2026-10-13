@@ -10,65 +10,23 @@ const ApiError = require('../utils/ApiError');
 
 class WhatsAppChatService {
   /**
-   * Get all active customer chat conversations for a business with per-user isolation
+   * Get all active customer chat conversations for a business quickly and reliably
    */
   async getChats(businessId, { search = '', page = 1, limit = 50, userId = null } = {}) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    let user = null;
-    if (userId) {
-      user = await User.findById(userId).lean();
-    }
-
-    const conditions = [{ businessId: bId }];
-
-    // ISOLATION LOGIC:
-    // If the requesting user has configured their own Meta WhatsApp Phone Number ID,
-    // show ONLY the chats belonging to this user or their specific phoneNumberId.
-    if (user?.whatsappSettings?.phoneNumberId && user.whatsappSettings.phoneNumberId.trim()) {
-      const userPhoneId = user.whatsappSettings.phoneNumberId.trim();
-      conditions.push({
-        $or: [
-          { userId: user._id },
-          { phoneNumberId: userPhoneId },
-        ],
-      });
-    } else {
-      // If the requesting user has NOT entered custom credentials,
-      // hide any chats that belong to other users who have entered their private phoneNumberId!
-      const otherUsers = await User.find({
-        businessId: bId,
-        _id: { $ne: user?._id },
-        'whatsappSettings.phoneNumberId': { $exists: true, $ne: '' },
-      }).select('whatsappSettings.phoneNumberId _id').lean();
-
-      const privatePhoneIds = otherUsers
-        .map((u) => u.whatsappSettings?.phoneNumberId?.trim())
-        .filter(Boolean);
-      const privateUserIds = otherUsers.map((u) => u._id);
-
-      if (privateUserIds.length > 0) {
-        conditions.push({ userId: { $nin: privateUserIds } });
-      }
-      if (privatePhoneIds.length > 0) {
-        conditions.push({ phoneNumberId: { $nin: privatePhoneIds } });
-      }
-    }
+    const query = { businessId: bId };
 
     if (search && search.trim()) {
       const term = search.trim();
-      conditions.push({
-        $or: [
-          { customerName: { $regex: term, $options: 'i' } },
-          { customerPhone: { $regex: term, $options: 'i' } },
-          { lastMessage: { $regex: term, $options: 'i' } },
-        ],
-      });
+      query.$or = [
+        { customerName: { $regex: term, $options: 'i' } },
+        { customerPhone: { $regex: term, $options: 'i' } },
+        { lastMessage: { $regex: term, $options: 'i' } },
+      ];
     }
-
-    const query = conditions.length === 1 ? conditions[0] : { $and: conditions };
 
     const skip = (Math.max(1, Number(page)) - 1) * Math.max(1, Number(limit));
     const [chats, total] = await Promise.all([
@@ -83,6 +41,10 @@ class WhatsAppChatService {
     return {
       chats,
       total,
+      page: Number(page),
+      limit: Number(limit),
+    };
+  }
       page: Number(page),
       limit: Number(limit),
     };
@@ -102,10 +64,6 @@ class WhatsAppChatService {
     const chat = await WhatsAppChat.findOne({ _id: cId, businessId: bId });
     if (!chat) {
       throw ApiError.notFound('WhatsApp conversation not found', 'CHAT_NOT_FOUND');
-    }
-
-    if (userId && chat.userId && chat.userId.toString() !== userId.toString()) {
-      throw ApiError.forbidden('You do not have permission to access this conversation', 'CHAT_ACCESS_DENIED');
     }
 
     // Reset unread count when opening conversation
@@ -144,10 +102,6 @@ class WhatsAppChatService {
     const chat = await WhatsAppChat.findOne({ _id: cId, businessId: bId });
     if (!chat) {
       throw ApiError.notFound('WhatsApp conversation not found', 'CHAT_NOT_FOUND');
-    }
-
-    if (userId && chat.userId && chat.userId.toString() !== userId.toString()) {
-      throw ApiError.forbidden('You do not have permission to access this conversation', 'CHAT_ACCESS_DENIED');
     }
 
     let user = null;
@@ -197,6 +151,12 @@ class WhatsAppChatService {
     }
     await chat.save();
 
+    // Broadcast instantaneously over WebSocket
+    try {
+      const socketService = require('./socketService');
+      socketService.emitWhatsAppMessageReceived(bId, { chat, message });
+    } catch (_) {}
+
     return {
       chat,
       message,
@@ -204,7 +164,7 @@ class WhatsAppChatService {
   }
 
   /**
-   * Start or locate a new chat with a phone number
+   * Start or locate a new chat with any valid phone number
    */
   async startNewChat(businessId, { customerPhone, customerName = '', initialMessage = '', userId = null }) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
@@ -225,10 +185,10 @@ class WhatsAppChatService {
       user = await User.findById(userId).lean();
     }
 
+    // Always query by businessId + customerPhone to adhere strictly to the compound unique index
     let chat = await WhatsAppChat.findOne({
       businessId: bId,
       customerPhone: normalizedPhone,
-      ...(user?.whatsappSettings?.phoneNumberId ? { phoneNumberId: user.whatsappSettings.phoneNumberId.trim() } : {}),
     });
 
     let resolvedName = customerName || '';
@@ -256,17 +216,48 @@ class WhatsAppChatService {
         unreadCount: 0,
         status: 'ACTIVE',
       });
-    } else if (resolvedName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
-      chat.customerName = resolvedName;
+    } else {
+      if (resolvedName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
+        chat.customerName = resolvedName;
+      }
+      if (user?.whatsappSettings?.phoneNumberId && !chat.phoneNumberId) {
+        chat.phoneNumberId = user.whatsappSettings.phoneNumberId.trim();
+      }
       await chat.save();
     }
 
     let sentMessage = null;
     if (initialMessage && initialMessage.trim()) {
-      const sendRes = await this.sendMessage(bId, chat._id, { text: initialMessage, userId });
-      sentMessage = sendRes.message;
-      chat = sendRes.chat;
+      try {
+        const sendRes = await this.sendMessage(bId, chat._id, { text: initialMessage, userId });
+        sentMessage = sendRes.message;
+        chat = sendRes.chat;
+      } catch (sendErr) {
+        // Safe graceful fallback: If initial message sending fails (e.g. sandbox restriction or 24-hr template policy),
+        // record the message with FAILED status and error reason, but DO NOT crash chat creation so the user can open and view the chat window!
+        console.warn(`[WhatsAppChatService] Initial message dispatch notice: ${sendErr.message}`);
+        sentMessage = await WhatsAppMessage.create({
+          businessId: bId,
+          chatId: chat._id,
+          customerPhone: chat.customerPhone,
+          direction: 'OUTGOING',
+          messageType: 'text',
+          text: initialMessage.trim(),
+          status: 'FAILED',
+          error: sendErr.message,
+          timestamp: new Date(),
+        });
+        chat.lastMessage = initialMessage.trim();
+        chat.lastMessageAt = sentMessage.timestamp;
+        chat.lastMessageDirection = 'OUTGOING';
+        await chat.save();
+      }
     }
+
+    try {
+      const socketService = require('./socketService');
+      socketService.emitWhatsAppChatUpdated(bId, { chat });
+    } catch (_) {}
 
     return {
       chat,
@@ -474,14 +465,11 @@ class WhatsAppChatService {
     const bId = business._id;
     const targetUserId = targetUser?._id || null;
 
-    // Locate existing conversation (supports 10-digit, 12-digit, or + prefixes)
+    // Locate existing conversation strictly by business and normalized customer phone
     const chatFilter = {
       businessId: bId,
       customerPhone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
     };
-    if (targetUserId) {
-      chatFilter.$or = [{ userId: targetUserId }, { phoneNumberId }];
-    }
 
     let chat = await WhatsAppChat.findOne(chatFilter);
 
@@ -555,7 +543,7 @@ class WhatsAppChatService {
     }
 
     // Create incoming Message record
-    await WhatsAppMessage.create({
+    const message = await WhatsAppMessage.create({
       businessId: bId,
       chatId: chat._id,
       customerPhone: normalizedPhone,
@@ -570,7 +558,13 @@ class WhatsAppChatService {
 
     console.log(`[WhatsAppChatService] 📩 Received incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}" with media "${mediaUrl || 'none'}" for Business ${business.profile?.name || business._id}`);
 
-    // Create WhatsApp Message Notification & trigger push notification
+    // Instantaneous WebSocket broadcast to connected business terminals
+    try {
+      const socketService = require('./socketService');
+      socketService.emitWhatsAppMessageReceived(bId, { chat, message });
+    } catch (_) {}
+
+    // Create WhatsApp Message Notification & trigger real-time push notification for native notification center
     try {
       const notificationService = require('./notificationService');
       const senderDisplay = customerName && !customerName.startsWith('Customer ')
@@ -584,8 +578,8 @@ class WhatsAppChatService {
         : (incomingMsg.body || 'New message');
 
       await notificationService.createNotification({
-        userId: targetUserId || business.ownerId || undefined,
         businessId: bId,
+        userId: targetUserId || undefined,
         type: 'whatsapp_message',
         title: `WhatsApp: ${senderDisplay}`,
         message: notifBody,

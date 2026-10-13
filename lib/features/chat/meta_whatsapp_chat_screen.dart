@@ -54,10 +54,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Timer? _pollingTimer;
   Timer? _searchDebounce;
+  StreamSubscription<WhatsAppMessageModel>? _messageSub;
+  StreamSubscription<List<WhatsAppChatModel>>? _chatsSub;
 
   // WhatsApp Branding Colors
   static const Color waTeal = Color(0xFF128C7E);
-  static const Color waGreen = Color(0xFF25D366);
 
   @override
   void initState() {
@@ -66,14 +67,45 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       _chats = List.from(widget.initialChats!);
       _isLoadingChats = false;
     }
+
+    // Attach real-time reactive WebSocket stream for sub-50ms message arrival
+    _messageSub = _chatService.onMessageReceived.listen((msg) {
+      if (!mounted) return;
+      if (_selectedChat != null && _selectedChat!.id == msg.chatId) {
+        final alreadyPresent = _messages.any((m) =>
+            m.id == msg.id ||
+            (m.whatsappMessageId.isNotEmpty && m.whatsappMessageId == msg.whatsappMessageId));
+        if (!alreadyPresent) {
+          setState(() {
+            _messages.add(msg);
+          });
+          _scrollToBottom();
+        }
+      }
+    });
+
+    _chatsSub = _chatService.onChatsUpdated.listen((updatedChats) {
+      if (!mounted) return;
+      setState(() {
+        _chats = updatedChats;
+        if (_selectedChat != null) {
+          final found = updatedChats.where((c) => c.id == _selectedChat!.id).firstOrNull;
+          if (found != null) {
+            _selectedChat = found;
+          }
+        }
+      });
+    });
+
     if (widget.autoLoad) {
       _loadConnectionAndChats();
     } else {
       _isLoadingChats = false;
     }
-    // Poll for real-time incoming messages every 4 seconds
+
+    // Silent fallback polling every 6 seconds to ensure perfect consistency
     if (widget.enablePolling) {
-      _pollingTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) {
         if (mounted) {
           _refreshSilently();
         }
@@ -83,6 +115,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   @override
   void dispose() {
+    _messageSub?.cancel();
+    _chatsSub?.cancel();
     _pollingTimer?.cancel();
     _searchDebounce?.cancel();
     _searchController.dispose();
@@ -93,11 +127,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Future<void> _loadConnectionAndChats() async {
-    setState(() => _isLoadingChats = true);
+    // 1. Instant Cached Load (0ms UI render from SharedPreferences & memory)
+    final cached = await _chatService.getChats(search: _searchQuery);
+    if (cached.isNotEmpty && mounted) {
+      setState(() {
+        _chats = cached;
+        _isLoadingChats = false;
+      });
+    } else {
+      setState(() => _isLoadingChats = true);
+    }
+
     try {
       final results = await Future.wait([
         _chatService.getConnectionStatus(),
-        _chatService.getChats(search: _searchQuery),
+        _chatService.getChats(search: _searchQuery, forceRefresh: true),
       ]);
       final conn = results[0] as WhatsAppConnectionInfo?;
       final chats = results[1] as List<WhatsAppChatModel>;
@@ -274,18 +318,47 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     }
   }
 
+  /// Returns true if the error string indicates an invalid Meta Phone Number ID
+  bool _isMetaPhoneIdError(String errorStr) {
+    final lower = errorStr.toLowerCase();
+    return lower.contains('unsupported post request') ||
+        lower.contains('does not exist') ||
+        lower.contains('missing permissions') ||
+        lower.contains('graph api') ||
+        lower.contains('phonenumberid') ||
+        lower.contains('phone_number_id');
+  }
+
   void _showErrorSnackBar(String message) {
+    final isCredentialError = _isMetaPhoneIdError(message);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
             const Icon(Icons.error_outline_rounded, color: Colors.white, size: 20),
             const SizedBox(width: 10),
-            Expanded(child: Text(message, style: const TextStyle(fontWeight: FontWeight.w600))),
+            Expanded(
+              child: Text(
+                isCredentialError
+                    ? 'Invalid Phone Number ID. Please update your Meta API credentials.'
+                    : message,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
           ],
         ),
+        action: isCredentialError
+            ? SnackBarAction(
+                label: 'Fix',
+                textColor: Colors.white,
+                onPressed: _showConfigureCredentialsDialog,
+              )
+            : null,
         backgroundColor: const Color(0xFFDC2626),
         behavior: SnackBarBehavior.floating,
+        duration: isCredentialError
+            ? const Duration(seconds: 6)
+            : const Duration(seconds: 4),
       ),
     );
   }
@@ -395,7 +468,57 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                             ],
                           ),
 
-                          const SizedBox(height: 18),
+                          const SizedBox(height: 14),
+
+                          // Quick Customer Picker from Store Customers
+                          if (_db.customers.isNotEmpty) ...[
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Select Store Customer',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                                Text(
+                                  '${_db.customers.length} saved',
+                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            SizedBox(
+                              height: 38,
+                              child: ListView.separated(
+                                scrollDirection: Axis.horizontal,
+                                itemCount: _db.customers.take(15).length,
+                                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                                itemBuilder: (ctx, idx) {
+                                  final cust = _db.customers[idx];
+                                  final displayName = cust.name.isNotEmpty ? cust.name : cust.phone;
+                                  return ActionChip(
+                                    avatar: const CircleAvatar(
+                                      backgroundColor: Color(0xFF00A884),
+                                      radius: 10,
+                                      child: Icon(Icons.person, size: 12, color: Colors.white),
+                                    ),
+                                    label: Text(displayName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                    backgroundColor: const Color(0xFFF1F5F9),
+                                    side: const BorderSide(color: Color(0xFFCBD5E1), width: 0.8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                                    onPressed: () {
+                                      phoneCtrl.text = cust.phone;
+                                      nameCtrl.text = cust.name;
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
 
                           // 3. Recipient Phone Number Field
                           Row(
@@ -621,8 +744,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                             );
                                             return;
                                           }
-                                          final cleanDigits = rawPhone.replaceAll(RegExp(r'\D'), '');
-                                          final phone = cleanDigits.length == 10 ? '91$cleanDigits' : cleanDigits;
+                                          var digits = rawPhone.replaceAll(RegExp(r'\D'), '');
+                                          if (digits.startsWith('0') && digits.length == 11) {
+                                            digits = digits.substring(1);
+                                          }
+                                          final phone = digits.length == 10 ? '91$digits' : digits;
                                           setSheetState(() => isSubmitting = true);
                                           try {
                                             final chat = await _chatService.startNewChat(
@@ -637,7 +763,20 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                             }
                                           } catch (e) {
                                             setSheetState(() => isSubmitting = false);
-                                            if (mounted) _showErrorSnackBar('Could not start chat: $e');
+                                            if (mounted) {
+                                              final errStr = e.toString();
+                                              if (errStr.contains('131030') || errStr.toLowerCase().contains('not in allowed list')) {
+                                                _showErrorSnackBar(
+                                                  'Meta Sandbox: In Development Mode, messages can only be sent to verified test numbers. In Meta Console, add this number to "To" phone numbers, or switch App to Live Mode.',
+                                                );
+                                              } else if (_isMetaPhoneIdError(errStr)) {
+                                                // Close the sheet and show fix prompt
+                                                if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+                                                _showErrorSnackBar(errStr);
+                                              } else {
+                                                _showErrorSnackBar('Could not start chat: $e');
+                                              }
+                                            }
                                           }
                                         },
                                   borderRadius: BorderRadius.circular(22),
@@ -719,7 +858,31 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ⚠️ Helper hint banner
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFFBEB),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: const Color(0xFFFCD34D)),
+                  ),
+                  child: const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Get your Phone Number ID from:\nmeta.com → WhatsApp → API Setup\n(It is a ~15-digit number, not your phone number)',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF92400E), height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
                 TextField(
                   controller: phoneIdCtrl,
                   style: const TextStyle(fontSize: 12.5),
@@ -1004,27 +1167,27 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Widget _buildWidescreenLayout(BoxConstraints constraints) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
+    return Container(
+      color: Colors.white,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Left Side: Apna POS WhatsApp Control Companion Dashboard
-          Expanded(
-            flex: 3,
-            child: _buildApnaPosCompanionPanel(),
-          ),
-          const SizedBox(width: 20),
-          // Right Side: Smartphone Device Frame Mockup
-          Expanded(
-            flex: 4,
-            child: _buildSmartphoneFrame(
-              maxWidth: 410,
-              maxHeight: (constraints.maxHeight - 32).clamp(580.0, 780.0),
-              child: _selectedChat != null
-                  ? _buildChatConversationView(isMobile: true)
-                  : _buildWhatsAppMobileChatList(),
+          // Left Column: Modern WhatsApp Chat List
+          SizedBox(
+            width: 380,
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(right: BorderSide(color: Color(0xFFE2E8F0), width: 1)),
+              ),
+              child: _buildWhatsAppMobileChatList(isEmbedded: true),
             ),
+          ),
+          // Right Column: Active Conversation or Desktop Empty State
+          Expanded(
+            child: _selectedChat != null
+                ? _buildChatConversationView(isMobile: false)
+                : _buildDesktopEmptyChatState(),
           ),
         ],
       ),
@@ -1032,417 +1195,66 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Widget _buildCenteredPhoneLayout(BoxConstraints constraints) {
-    final isMobile = constraints.maxWidth < 500;
-    return Center(
-      child: _buildSmartphoneFrame(
-        maxWidth: isMobile ? constraints.maxWidth : 410,
-        maxHeight: constraints.maxHeight,
-        child: _selectedChat != null
-            ? _buildChatConversationView(isMobile: true)
-            : _buildWhatsAppMobileChatList(),
-      ),
-    );
+    if (_selectedChat != null) {
+      return _buildChatConversationView(isMobile: true);
+    }
+    return _buildWhatsAppMobileChatList(isEmbedded: false);
   }
 
-  Widget _buildApnaPosCompanionPanel() {
-    final phoneId = _connectionInfo?.phoneNumberId ?? _db.whatsAppPhoneId;
-    final integratedPhone = _connectionInfo?.phoneNumber ?? _db.whatsAppPhoneNumber;
-    final int unreadTotal = _chats.fold<int>(0, (sum, c) => sum + c.unreadCount);
-
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Store Info Card
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  offset: const Offset(0, 4),
-                  blurRadius: 12,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0FDF4),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFBBF7D0)),
-                      ),
-                      child: const Icon(Icons.chat_rounded, color: waTeal, size: 22),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _db.restaurant?.name ?? 'Apna POS Outlet',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                          ),
-                          const SizedBox(height: 2),
-                          const Text(
-                            'Meta Cloud API • 2-Way Live Messaging',
-                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: const Color(0xFF86EFAC)),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: const [
-                          CircleAvatar(radius: 3, backgroundColor: Color(0xFF16A34A)),
-                          SizedBox(width: 5),
-                          Text(
-                            'ONLINE',
-                            style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w900, color: Color(0xFF15803D)),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 12),
-
-                // Credentials summary
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildCompanionInfoPill(
-                        label: 'Phone Number ID',
-                        value: phoneId.isNotEmpty ? phoneId : 'Not Set',
-                        icon: Icons.badge_outlined,
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: _buildCompanionInfoPill(
-                        label: 'WhatsApp Number',
-                        value: integratedPhone.isNotEmpty ? integratedPhone : 'Integrated',
-                        icon: Icons.phone_android_rounded,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // Live Metric Counters
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEFF6FF),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.people_alt_rounded, color: Color(0xFF2563EB), size: 18),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '${_chats.length}',
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
-                          ),
-                          const Text('Total Chats', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE2E8F0)),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF0FDF4),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: const Icon(Icons.mark_chat_unread_rounded, color: waGreen, size: 18),
-                      ),
-                      const SizedBox(width: 10),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$unreadTotal',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: unreadTotal > 0 ? waGreen : const Color(0xFF0F172A),
-                            ),
-                          ),
-                          const Text('Unread Messages', style: TextStyle(fontSize: 10.5, color: Color(0xFF64748B))),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 14),
-
-          // Quick Action Buttons
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Quick Actions',
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-                ),
-                const SizedBox(height: 10),
-                ElevatedButton.icon(
-                  onPressed: _showNewChatDialog,
-                  icon: const Icon(Icons.add_rounded, size: 16),
-                  label: const Text('Start New Customer Chat', style: TextStyle(fontSize: 12)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: waTeal,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _showConfigureCredentialsDialog,
-                  icon: const Icon(Icons.tune_rounded, size: 15, color: Color(0xFF475569)),
-                  label: const Text('Configure Phone ID & Credentials', style: TextStyle(fontSize: 11.5, color: Color(0xFF475569))),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 14),
-
-          // Guidance Note
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const [
-                Icon(Icons.info_outline_rounded, color: Color(0xFF64748B), size: 16),
-                SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Customer replies to WhatsApp eBills or incoming queries automatically appear in real-time inside the live mobile phone view.',
-                    style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.3),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCompanionInfoPill({required String label, required String value, required IconData icon}) {
+  Widget _buildDesktopEmptyChatState() {
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 12, color: const Color(0xFF64748B)),
-              const SizedBox(width: 4),
-              Text(label, style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
-            ],
-          ),
-          const SizedBox(height: 3),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Smartphone Device Mockup Frame containing authentic WhatsApp Mobile View
-  Widget _buildSmartphoneFrame({required Widget child, required double maxWidth, required double maxHeight}) {
-    final bool isMobile = maxWidth < 500;
-    final double frameWidth = isMobile ? (maxWidth - 12).clamp(320.0, 420.0) : 410.0;
-    final double frameHeight = isMobile ? (maxHeight - 12).clamp(500.0, 840.0) : maxHeight.clamp(560.0, 820.0);
-    final double outerRadius = isMobile ? 38.0 : 46.0;
-    final double innerRadius = isMobile ? 30.0 : 38.0;
-    final double borderWidth = isMobile ? 6.0 : 8.5;
-
-    return Center(
-      child: Container(
-        width: frameWidth,
-        height: frameHeight,
-        margin: EdgeInsets.symmetric(
-          horizontal: isMobile ? 6 : 10,
-          vertical: isMobile ? 6 : 10,
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFF0F172A), // Dark Titanium Bezel
-          borderRadius: BorderRadius.circular(outerRadius),
-          border: Border.all(color: const Color(0xFF334155), width: borderWidth),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.32),
-              offset: const Offset(0, 18),
-              blurRadius: 36,
-              spreadRadius: 2,
-            ),
-            BoxShadow(
-              color: Colors.white.withValues(alpha: 0.2),
-              offset: const Offset(-1, -1),
-              blurRadius: 4,
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(innerRadius),
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFFFAFCFA),
-                  Color(0xFFF0FDF4),
-                  Color(0xFFF8FAFC),
-                ],
-              ),
-            ),
-            child: Column(
-              children: [
-                // Phone Top Status Bar & Dynamic Island (Signal/WiFi/Battery indicators, NO timing per request)
-                _buildPhoneStatusBar(),
-
-                // Mobile View Body
-                Expanded(child: child),
-
-                // Bottom Home Bar Indicator (Hidden when keyboard is open to keep layout flush)
-                _buildPhoneHomeIndicator(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Phone Status Bar: Centered Dynamic Island only. Timing, network, battery, and wifi icons removed per user instruction.
-  Widget _buildPhoneStatusBar() {
-    return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.fromLTRB(0, 6, 0, 2),
-      alignment: Alignment.center,
-      child: Container(
-        width: 90,
-        height: 20,
-        decoration: BoxDecoration(
-          color: const Color(0xFF000000),
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              margin: const EdgeInsets.only(right: 10),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E293B),
-                shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFF0F172A), width: 1.0),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Phone Bottom Home Indicator Bar (Hides cleanly when keyboard is open)
-  Widget _buildPhoneHomeIndicator() {
-    final hasKeyboard = MediaQuery.of(context).viewInsets.bottom > 0;
-    if (hasKeyboard) return const SizedBox.shrink();
-    return Container(
-      color: Colors.transparent,
-      padding: const EdgeInsets.only(bottom: 6, top: 4),
+      color: const Color(0xFFF8FAFC),
+      padding: const EdgeInsets.all(28),
       child: Center(
-        child: Container(
-          width: 124,
-          height: 4.5,
-          decoration: BoxDecoration(
-            color: const Color(0xFF000000),
-            borderRadius: BorderRadius.circular(100),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 90,
+                height: 90,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE8FDF2),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: const Color(0xFFA7F3D0), width: 1.5),
+                  boxShadow: const [
+                    BoxShadow(color: Color(0x14059669), blurRadius: 18, offset: Offset(0, 6)),
+                  ],
+                ),
+                child: const Center(
+                  child: Icon(Icons.chat_bubble_rounded, size: 44, color: Color(0xFF00A884)),
+                ),
+              ),
+              const SizedBox(height: 22),
+              const Text(
+                'Apna POS WhatsApp Live Chat',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                  letterSpacing: -0.4,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Send and receive real-time messages with your customers via Meta Cloud API.\nSelect any chat from the left panel or start a new conversation.',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 13.5, color: Color(0xFF64748B), height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _showNewChatDialog,
+                icon: const Icon(Icons.person_add_rounded, size: 18),
+                label: const Text('Start New Customer Chat', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF00A884),
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -1450,7 +1262,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   /// WhatsApp Mobile View: Chat List Screen matching uploaded reference image
-  Widget _buildWhatsAppMobileChatList() {
+  Widget _buildWhatsAppMobileChatList({bool isEmbedded = false}) {
     final int unreadTotal = _chats.fold<int>(0, (sum, c) => sum + c.unreadCount);
 
     return Column(
@@ -1594,7 +1406,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         ),
 
         // 5. WhatsApp Bottom Navigation Bar (Chats, Updates, Communities, Calls)
-        _buildWhatsAppBottomNavBar(unreadTotal),
+        if (!isEmbedded) _buildWhatsAppBottomNavBar(unreadTotal),
       ],
     );
   }
@@ -2013,50 +1825,50 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   /// Floating Neumorphic Chat Card matching reference image
   Widget _buildChatCard(WhatsAppChatModel chat) {
+    final isSelected = _selectedChat != null && _selectedChat!.id == chat.id;
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
+        color: isSelected ? const Color(0xFFF0FDF4) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0C000000),
-            blurRadius: 14,
-            offset: Offset(0, 4),
-          ),
-          BoxShadow(
-            color: Color(0x80FFFFFF),
-            blurRadius: 4,
-            offset: Offset(0, -1),
+            color: Color(0x0A000000),
+            blurRadius: 10,
+            offset: Offset(0, 3),
           ),
         ],
-        border: Border.all(color: const Color(0xFFF1F5F9), width: 1),
+        border: Border.all(
+          color: isSelected ? const Color(0xFF10B981) : const Color(0xFFF1F5F9),
+          width: isSelected ? 1.5 : 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         child: InkWell(
-          borderRadius: BorderRadius.circular(22),
+          borderRadius: BorderRadius.circular(20),
           onTap: () => _selectChat(chat),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                // Soft lavender-grey avatar circle
+                // Soft avatar circle
                 Container(
                   width: 46,
                   height: 46,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE2E8F0),
+                  decoration: BoxDecoration(
+                    color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
                     child: Text(
                       chat.avatarInitials,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 16,
-                        color: Color(0xFF475569),
+                        color: isSelected ? const Color(0xFF065F46) : const Color(0xFF334155),
                       ),
                     ),
                   ),
@@ -2077,7 +1889,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                 fontWeight: FontWeight.w700,
-                                fontSize: 15.5,
+                                fontSize: 16,
                                 color: Color(0xFF0F172A),
                               ),
                             ),
@@ -2086,9 +1898,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                           Text(
                             _formatTimestamp(chat.lastMessageAt),
                             style: TextStyle(
-                              fontSize: 11.5,
+                              fontSize: 12,
                               fontWeight: chat.unreadCount > 0 ? FontWeight.bold : FontWeight.w500,
-                              color: chat.unreadCount > 0 ? const Color(0xFF059669) : const Color(0xFF94A3B8),
+                              color: chat.unreadCount > 0 ? const Color(0xFF059669) : const Color(0xFF64748B),
                             ),
                           ),
                         ],
@@ -2106,25 +1918,25 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 13,
-                                color: chat.unreadCount > 0 ? const Color(0xFF0F172A) : const Color(0xFF64748B),
+                                fontSize: 13.5,
+                                color: chat.unreadCount > 0 ? const Color(0xFF0F172A) : const Color(0xFF475569),
                                 fontWeight: chat.unreadCount > 0 ? FontWeight.w600 : FontWeight.normal,
                               ),
                             ),
                           ),
                           if (chat.unreadCount > 0)
                             Container(
-                              margin: const EdgeInsets.only(left: 4),
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              margin: const EdgeInsets.only(left: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
                               decoration: const BoxDecoration(
                                 color: Color(0xFF10B981),
-                                borderRadius: BorderRadius.all(Radius.circular(10)),
+                                borderRadius: BorderRadius.all(Radius.circular(12)),
                               ),
                               child: Text(
                                 '${chat.unreadCount}',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 10,
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -2578,7 +2390,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         // Elongated White Pill Input Container with Smiley and Paperclip inside
         Expanded(
           child: Container(
-            height: 44,
+            height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -2596,7 +2408,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 ),
               ],
               border: Border.all(
-                color: const Color(0xFFE2E8F0).withValues(alpha: 0.8),
+                color: const Color(0xFFCBD5E1),
                 width: 1,
               ),
             ),
@@ -2608,10 +2420,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     focusNode: _messageFocusNode,
                     textInputAction: TextInputAction.send,
                     onSubmitted: (_) => _sendMessage(),
-                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                    style: const TextStyle(fontSize: 14.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
                     decoration: const InputDecoration(
                       hintText: 'Type a message...',
-                      hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
+                      hintStyle: TextStyle(fontSize: 14, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
                       isDense: true,
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.zero,
@@ -3291,7 +3103,12 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     final isOutgoing = msg.isOutgoing;
     final screenWidth = MediaQuery.of(context).size.width;
     final hasMedia = msg.messageType == 'image' || msg.mediaUrl.isNotEmpty;
-    final isSingleShortLine = !hasMedia && !msg.text.contains('\n') && msg.text.length <= 28;
+    final isSingleShortLine = !hasMedia && !msg.text.contains('\n') && msg.text.length <= 26;
+    final hasError = msg.status.toUpperCase() == 'FAILED' || (msg.error != null && msg.error!.isNotEmpty);
+
+    final double maxBubbleWidth = (screenWidth >= 900
+        ? 520.0
+        : (screenWidth >= 680 ? 420.0 : screenWidth * 0.78)).clamp(220.0, 560.0);
 
     final timeWidget = Row(
       mainAxisSize: MainAxisSize.min,
@@ -3300,13 +3117,13 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Text(
           _formatTime(msg.timestamp),
           style: TextStyle(
-            fontSize: 9.5,
-            color: isOutgoing ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+            fontSize: 10.5,
+            color: isOutgoing ? const Color(0xFF475569) : const Color(0xFF64748B),
             fontWeight: FontWeight.w500,
           ),
         ),
         if (isOutgoing) ...[
-          const SizedBox(width: 3),
+          const SizedBox(width: 3.5),
           _buildStatusIcon(msg.status),
         ],
       ],
@@ -3316,29 +3133,34 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       alignment: isOutgoing ? Alignment.centerRight : Alignment.centerLeft,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: (screenWidth >= 680 ? 320.0 : screenWidth * 0.74).clamp(180.0, 330.0).toDouble(),
+          maxWidth: maxBubbleWidth,
         ),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          margin: const EdgeInsets.symmetric(vertical: 3.5),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
           decoration: BoxDecoration(
-            color: isOutgoing ? const Color(0xFFDCFCE7) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: isOutgoing ? const Color(0xFFD9FDD3) : Colors.white,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: Radius.circular(isOutgoing ? 16 : 4),
+              bottomRight: Radius.circular(isOutgoing ? 4 : 16),
+            ),
             border: Border.all(
               color: isOutgoing
-                  ? const Color(0xFFBBF7D0).withValues(alpha: 0.7)
-                  : const Color(0xFFF1F5F9),
+                  ? const Color(0xFFBBF7D0).withValues(alpha: 0.8)
+                  : const Color(0xFFE2E8F0),
               width: 0.8,
             ),
             boxShadow: [
               BoxShadow(
-                color: isOutgoing ? const Color(0x0A000000) : const Color(0x0C000000),
+                color: isOutgoing ? const Color(0x0C000000) : const Color(0x0E000000),
                 offset: const Offset(0, 2),
                 blurRadius: 6,
               ),
             ],
           ),
-          child: isSingleShortLine
+          child: isSingleShortLine && !hasError
               ? Row(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -3347,13 +3169,15 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       child: Text(
                         msg.text,
                         style: const TextStyle(
-                          fontSize: 12.5,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w500,
                           color: Color(0xFF0F172A),
-                          height: 1.35,
+                          height: 1.4,
+                          letterSpacing: -0.1,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Padding(
                       padding: const EdgeInsets.only(bottom: 1),
                       child: timeWidget,
@@ -3368,7 +3192,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxHeight: 200, minWidth: 160),
+                          constraints: const BoxConstraints(maxHeight: 220, minWidth: 180),
                           child: GestureDetector(
                             onTap: msg.mediaUrl.isNotEmpty
                                 ? () => _openFullScreenImage(msg.mediaUrl, msg.text)
@@ -3382,20 +3206,53 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                           ),
                         ),
                       ),
-                      if (msg.text.isNotEmpty) const SizedBox(height: 5),
+                      if (msg.text.isNotEmpty) const SizedBox(height: 6),
                     ],
                     if (msg.text.isNotEmpty)
-                      Text(
-                        msg.text,
-                        textAlign: TextAlign.left,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          color: Color(0xFF0F172A),
-                          height: 1.35,
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          msg.text,
+                          textAlign: TextAlign.left,
+                          style: const TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF0F172A),
+                            height: 1.4,
+                            letterSpacing: -0.1,
+                          ),
                         ),
                       ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     timeWidget,
+                    if (hasError && msg.error != null && msg.error!.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                msg.error!,
+                                style: const TextStyle(
+                                  fontSize: 10.5,
+                                  color: Color(0xFFDC2626),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
         ),
