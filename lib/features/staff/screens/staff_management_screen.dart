@@ -91,6 +91,12 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       );
 
       if (result != null && mounted) {
+        if (result.staff.isEmpty && _db.orders.isNotEmpty) {
+          _db.reconcileStaffWithOrders();
+          _applyLocalFilter();
+          setState(() => _isLoading = false);
+          return;
+        }
         setState(() {
           _staffList = result.staff;
           _totalCount = result.totalCount;
@@ -111,6 +117,9 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   void _applyLocalFilter() {
+    if (_db.staffList.isEmpty) {
+      _db.reconcileStaffWithOrders();
+    }
     List<StaffModel> list = List.from(_db.staffList);
 
     if (_selectedRole != 'All Roles') {
@@ -254,7 +263,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Future<void> _openCreateStaffScreen() async {
-    final created = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (ctx) => CreateStaffScreen(
@@ -272,7 +281,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   Future<void> _openStaffSettingsScreen(StaffModel staff) async {
-    final updated = await Navigator.push<bool>(
+    await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (ctx) => StaffSettingsScreen(

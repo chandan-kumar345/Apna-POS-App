@@ -45,10 +45,6 @@ class WhatsAppChatService {
       limit: Number(limit),
     };
   }
-      page: Number(page),
-      limit: Number(limit),
-    };
-  }
 
   /**
    * Get message history for a specific chat conversation and mark as read
@@ -280,7 +276,25 @@ class WhatsAppChatService {
     const cleanPhoneId = phoneNumberId.trim();
     const cleanPhone = (phoneNumber || '').trim();
     const cleanWaba = (wabaId || '').trim();
-    const cleanToken = (accessToken || '').trim();
+    let cleanToken = (accessToken || '').trim();
+
+    // Preserve existing access token if caller did not supply a new one
+    if (!cleanToken) {
+      if (userId) {
+        const existingUser = await User.findById(userId).lean();
+        if (existingUser?.whatsappSettings?.accessToken) {
+          cleanToken = existingUser.whatsappSettings.accessToken;
+        }
+      }
+      if (!cleanToken && bId) {
+        const existingBiz = await Business.findById(bId).lean();
+        if (existingBiz?.whatsappSettings?.accessToken) {
+          cleanToken = existingBiz.whatsappSettings.accessToken;
+        }
+      }
+    }
+
+    const now = new Date();
 
     // 1. If userId is provided, save onto User model for user-specific WhatsApp isolation
     if (userId) {
@@ -293,7 +307,7 @@ class WhatsAppChatService {
             wabaId: cleanWaba,
             accessToken: cleanToken,
             webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
-            connectedAt: new Date(),
+            connectedAt: now,
           },
         },
       });
@@ -315,7 +329,7 @@ class WhatsAppChatService {
         wabaId: cleanWaba,
         accessToken: cleanToken,
         webhookVerifyToken: business.whatsappSettings?.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026',
-        connectedAt: new Date(),
+        connectedAt: now,
       };
       await business.save();
     }
@@ -324,7 +338,10 @@ class WhatsAppChatService {
       connected: true,
       phoneNumberId: cleanPhoneId,
       phoneNumber: cleanPhone,
-      connectedAt: new Date(),
+      wabaId: cleanWaba,
+      accessToken: cleanToken,
+      hasCustomToken: Boolean(cleanToken),
+      connectedAt: now,
     };
   }
 
@@ -336,34 +353,59 @@ class WhatsAppChatService {
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
 
-    // Check user settings first if userId provided
+    let userSettings = null;
+    let userDoc = null;
     if (userId) {
-      const user = await User.findById(userId).lean();
-      if (user?.whatsappSettings?.phoneNumberId) {
-        return {
-          connected: Boolean(user.whatsappSettings.enabled || user.whatsappSettings.phoneNumberId),
-          phoneNumberId: user.whatsappSettings.phoneNumberId,
-          phoneNumber: user.whatsappSettings.phoneNumber || '',
-          wabaId: user.whatsappSettings.wabaId || '',
-          hasCustomToken: Boolean(user.whatsappSettings.accessToken),
-          connectedAt: user.whatsappSettings.connectedAt || null,
-        };
-      }
+      userDoc = await User.findById(userId);
+      userSettings = userDoc?.whatsappSettings;
     }
 
-    const business = await Business.findById(bId);
-    const settings = business?.whatsappSettings || {};
+    const business = bId ? await Business.findById(bId) : null;
+    const bizSettings = business?.whatsappSettings;
 
-    const activePhoneNumberId = settings.phoneNumberId || whatsappService.phoneNumberId || '';
-    const isConnected = Boolean(settings.enabled || activePhoneNumberId);
+    const activePhoneNumberId = userSettings?.phoneNumberId || bizSettings?.phoneNumberId || '';
+    const activePhoneNumber = userSettings?.phoneNumber || bizSettings?.phoneNumber || '';
+    const activeWabaId = userSettings?.wabaId || bizSettings?.wabaId || '';
+    const activeToken = userSettings?.accessToken || bizSettings?.accessToken || '';
+    const isConnected = Boolean(userSettings?.enabled || bizSettings?.enabled || activePhoneNumberId);
+    const connectedAt = userSettings?.connectedAt || bizSettings?.connectedAt || null;
+
+    // Cross-sync if one had settings but the other was empty
+    if (activePhoneNumberId) {
+      if (userDoc && (!userSettings?.phoneNumberId || !userSettings?.accessToken)) {
+        userDoc.whatsappSettings = {
+          enabled: true,
+          phoneNumberId: activePhoneNumberId,
+          phoneNumber: activePhoneNumber,
+          wabaId: activeWabaId,
+          accessToken: activeToken,
+          webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
+          connectedAt: connectedAt || new Date(),
+        };
+        await userDoc.save();
+      }
+      if (business && (!bizSettings?.phoneNumberId || !bizSettings?.accessToken)) {
+        business.whatsappSettings = {
+          enabled: true,
+          phoneNumberId: activePhoneNumberId,
+          phoneNumber: activePhoneNumber,
+          wabaId: activeWabaId,
+          accessToken: activeToken,
+          webhookVerifyToken: 'softcode_whatsapp_webhook_verify_2026',
+          connectedAt: connectedAt || new Date(),
+        };
+        await business.save();
+      }
+    }
 
     return {
       connected: isConnected,
       phoneNumberId: activePhoneNumberId,
-      phoneNumber: settings.phoneNumber || '',
-      wabaId: settings.wabaId || '',
-      hasCustomToken: Boolean(settings.accessToken),
-      connectedAt: settings.connectedAt || null,
+      phoneNumber: activePhoneNumber,
+      wabaId: activeWabaId,
+      accessToken: activeToken,
+      hasCustomToken: Boolean(activeToken),
+      connectedAt,
     };
   }
 

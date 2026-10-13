@@ -263,4 +263,46 @@ describe('WhatsApp Meta Live Chat System (/api/v1/whatsapp/chats & Webhook)', ()
     expect(sendRes.body.data.message.mediaUrl).toBe(uploadedUrl);
     expect(sendRes.body.data.message.text).toBe('Here is our special today!');
   });
+
+  it('7. Preserves and restores Meta WhatsApp connection (Phone ID, Phone No, Token) across re-login/reinstall', async () => {
+    // 1. User connects Meta WhatsApp credentials
+    const connectRes = await request(app)
+      .post('/api/v1/whatsapp/chats/connect')
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        phoneNumberId: '109988776655443',
+        phoneNumber: '+91 9709593705',
+        accessToken: 'EAAB_sample_access_token_xyz',
+      });
+
+    expect(connectRes.status).toBe(200);
+    expect(connectRes.body.data.phoneNumberId).toBe('109988776655443');
+    expect(connectRes.body.data.accessToken).toBe('EAAB_sample_access_token_xyz');
+
+    // 2. Simulate app deleted & re-downloaded: User logs in again (/auth/login)
+    // Create new login token
+    const newLoginToken = tokenService.generateAccessToken(userA);
+
+    // Verify /api/v1/auth/me returns the connected whatsappSettings
+    const meRes = await request(app)
+      .get('/api/v1/auth/me')
+      .set('Authorization', `Bearer ${newLoginToken}`);
+
+    expect(meRes.status).toBe(200);
+    expect(meRes.body.data.user.whatsappSettings).toBeDefined();
+    expect(meRes.body.data.user.whatsappSettings.phoneNumberId).toBe('109988776655443');
+    expect(meRes.body.data.user.whatsappSettings.phoneNumber).toBe('+91 9709593705');
+    expect(meRes.body.data.user.whatsappSettings.accessToken).toBe('EAAB_sample_access_token_xyz');
+
+    // Verify /api/v1/whatsapp/chats/connection returns full credentials including token
+    const connRes = await request(app)
+      .get('/api/v1/whatsapp/chats/connection')
+      .set('Authorization', `Bearer ${newLoginToken}`);
+
+    expect(connRes.status).toBe(200);
+    expect(connRes.body.data.connected).toBe(true);
+    expect(connRes.body.data.phoneNumberId).toBe('109988776655443');
+    expect(connRes.body.data.phoneNumber).toBe('+91 9709593705');
+    expect(connRes.body.data.accessToken).toBe('EAAB_sample_access_token_xyz');
+  });
 });

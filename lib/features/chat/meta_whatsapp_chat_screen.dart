@@ -153,6 +153,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _isLoadingChats = false;
         });
 
+        // Ensure database & local cache immediately hold restored WhatsApp credentials
+        if (conn != null && (conn.phoneNumberId.isNotEmpty || conn.phoneNumber.isNotEmpty)) {
+          _db.saveWhatsAppIntegrationSettings(
+            enabled: conn.connected,
+            provider: 'meta_cloud',
+            phoneNumber: conn.phoneNumber,
+            phoneId: conn.phoneNumberId,
+            wabaId: conn.wabaId,
+            accessToken: conn.accessToken.isNotEmpty ? conn.accessToken : _db.whatsAppAccessToken,
+            webhookToken: _db.whatsAppWebhookToken,
+          );
+        }
+
         // If an initial phone was passed, open or create it
         if (widget.initialPhone != null && widget.initialPhone!.isNotEmpty) {
           _handleInitialPhone(widget.initialPhone!, widget.initialCustomerName);
@@ -838,9 +851,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   void _showConfigureCredentialsDialog() {
-    final phoneIdCtrl = TextEditingController(text: _connectionInfo?.phoneNumberId ?? _db.whatsAppPhoneId);
-    final phoneNumCtrl = TextEditingController(text: _connectionInfo?.phoneNumber ?? _db.whatsAppPhoneNumber);
-    final tokenCtrl = TextEditingController(text: _db.whatsAppAccessToken);
+    final initialPhoneId = (_connectionInfo?.phoneNumberId.isNotEmpty == true)
+        ? _connectionInfo!.phoneNumberId
+        : _db.whatsAppPhoneId;
+    final initialPhoneNum = (_connectionInfo?.phoneNumber.isNotEmpty == true)
+        ? _connectionInfo!.phoneNumber
+        : _db.whatsAppPhoneNumber;
+    final initialToken = (_connectionInfo?.accessToken.isNotEmpty == true)
+        ? _connectionInfo!.accessToken
+        : _db.whatsAppAccessToken;
+
+    final phoneIdCtrl = TextEditingController(text: initialPhoneId);
+    final phoneNumCtrl = TextEditingController(text: initialPhoneNum);
+    final tokenCtrl = TextEditingController(text: initialToken);
     bool isSaving = false;
 
     showDialog(

@@ -249,7 +249,10 @@ class UserModel {
       email: json['email']?.toString() ?? '',
       role: json['role']?.toString() ?? 'Owner',
       pin: json['pin']?.toString() ?? '1234',
-      restaurantId: json['restaurantId']?.toString() ?? json['businessId']?.toString() ?? '',
+      restaurantId: json['restaurantId']?.toString() ??
+          json['businessId']?.toString() ??
+          (json['business'] is Map ? (json['business']['_id'] ?? json['business']['id'])?.toString() : null) ??
+          '',
       phone: json['phone']?.toString(),
       employeeId: json['employeeId']?.toString(),
       permissions: parsedPermissions,

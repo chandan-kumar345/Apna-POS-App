@@ -141,11 +141,18 @@ class AuthService {
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
         );
+        final bId = (businessJson['_id'] ?? businessJson['id'])?.toString();
+        if (bId != null && bId.isNotEmpty) {
+          await _db.saveBusinessId(bId);
+        }
         await _db.saveRestaurantOnboarding(updated);
       } catch (e) {
         debugPrint('Error caching business from login: $e');
       }
     }
+
+    // Restore WhatsApp connection credentials immediately upon login
+    await _restoreWhatsAppSettingsIfPresent(userJson, businessJson);
 
     // Auto-fetch all cloud orders, products, tables, and floor status asynchronously in the background
     unawaited(_db.syncWithBackend().catchError((e) {
@@ -259,6 +266,9 @@ class AuthService {
       }
     }
 
+    // Restore WhatsApp connection credentials immediately upon staff login
+    await _restoreWhatsAppSettingsIfPresent(userJson, businessJson);
+
     unawaited(_db.syncWithBackend().catchError((e) {
       debugPrint('[AuthService] background sync notice: $e');
     }));
@@ -327,6 +337,9 @@ class AuthService {
       }
     }
 
+    // Restore WhatsApp connection credentials immediately upon profile sync
+    await _restoreWhatsAppSettingsIfPresent(userJson, businessJson);
+
     return data;
   }
 
@@ -368,6 +381,36 @@ class AuthService {
   Future<bool> isAuthenticated() async {
     final token = await _storage.getAccessToken();
     return token != null && token.isNotEmpty;
+  }
+
+  Future<void> _restoreWhatsAppSettingsIfPresent(
+    Map<String, dynamic>? userJson,
+    Map<String, dynamic>? businessJson,
+  ) async {
+    try {
+      final waJson = (userJson?['whatsappSettings'] ?? businessJson?['whatsappSettings']) as Map<String, dynamic>?;
+      if (waJson != null && (waJson['phoneNumberId'] != null || waJson['phoneNumber'] != null)) {
+        final pId = waJson['phoneNumberId']?.toString() ?? '';
+        final pNum = waJson['phoneNumber']?.toString() ?? '';
+        final token = waJson['accessToken']?.toString() ?? '';
+        final waba = waJson['wabaId']?.toString() ?? '';
+        final isEn = waJson['enabled'] == true || pId.isNotEmpty;
+        if (pId.isNotEmpty || pNum.isNotEmpty) {
+          await _db.saveWhatsAppIntegrationSettings(
+            enabled: isEn,
+            provider: 'meta_cloud',
+            phoneNumber: pNum,
+            phoneId: pId,
+            wabaId: waba,
+            accessToken: token,
+            webhookToken: _db.whatsAppWebhookToken,
+          );
+          debugPrint('[AuthService] 📲 Auto-restored connected WhatsApp into local database: $pId ($pNum)');
+        }
+      }
+    } catch (e) {
+      debugPrint('[AuthService] WhatsApp restore notice: $e');
+    }
   }
 }
 

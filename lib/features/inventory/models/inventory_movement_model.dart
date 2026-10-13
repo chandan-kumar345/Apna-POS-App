@@ -13,6 +13,7 @@ class InventoryMovementModel {
   final String reason;
   final String createdBy;
   final DateTime createdAt;
+  final String baseUnit;
 
   InventoryMovementModel({
     required this.id,
@@ -29,7 +30,10 @@ class InventoryMovementModel {
     this.reason = '',
     this.createdBy = 'System',
     required this.createdAt,
+    this.baseUnit = '',
   });
+
+  DateTime get timestamp => createdAt;
 
   bool get isAddition => quantityDeltaBaseUnits > 0;
 
@@ -67,6 +71,7 @@ class InventoryMovementModel {
         'reason': reason,
         'createdBy': createdBy,
         'createdAt': createdAt.toIso8601String(),
+        'baseUnit': baseUnit,
       };
 
   factory InventoryMovementModel.fromJson(Map<String, dynamic> json) => InventoryMovementModel(
@@ -86,5 +91,6 @@ class InventoryMovementModel {
         createdAt: json['createdAt'] != null
             ? DateTime.tryParse(json['createdAt'].toString()) ?? DateTime.now()
             : DateTime.now(),
+        baseUnit: json['baseUnit']?.toString() ?? json['unit']?.toString() ?? '',
       );
 }

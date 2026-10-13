@@ -3407,6 +3407,26 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
     bool isSaving = false;
     String? modalError;
 
+    // Proactively fetch live connection if local state was empty (e.g. freshly installed app)
+    if (db.whatsAppPhoneId.isEmpty) {
+      WhatsAppChatService().getConnectionStatus().then((conn) {
+        if (conn != null && conn.phoneNumberId.isNotEmpty) {
+          if (phoneIdCtrl.text.isEmpty) phoneIdCtrl.text = conn.phoneNumberId;
+          if (phoneNumCtrl.text.isEmpty && conn.phoneNumber.isNotEmpty) phoneNumCtrl.text = conn.phoneNumber;
+          if (accessTokenCtrl.text.isEmpty && conn.accessToken.isNotEmpty) accessTokenCtrl.text = conn.accessToken;
+          db.saveWhatsAppIntegrationSettings(
+            enabled: conn.connected,
+            provider: 'meta_cloud',
+            phoneNumber: conn.phoneNumber,
+            phoneId: conn.phoneNumberId,
+            wabaId: conn.wabaId,
+            accessToken: conn.accessToken.isNotEmpty ? conn.accessToken : db.whatsAppAccessToken,
+            webhookToken: db.whatsAppWebhookToken,
+          );
+        }
+      }).catchError((_) {});
+    }
+
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -4353,11 +4373,19 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Meta Chats',
-                            subtitle: db.whatsAppPhoneId.isNotEmpty ? 'WhatsApp Live Inbox' : 'Connect Meta Phone ID',
+                            subtitle: db.whatsAppPhoneId.isNotEmpty
+                                ? (db.whatsAppPhoneNumber.isNotEmpty ? 'WhatsApp: ${db.whatsAppPhoneNumber}' : 'WhatsApp Live Inbox')
+                                : 'Connect Meta Phone ID',
                             icon: Icons.chat_bubble_rounded,
                             accentColor: const Color(0xFF25D366),
                             badgeText: db.whatsAppPhoneId.isNotEmpty ? 'Live' : 'Connect',
-                            onTap: () {
+                            onTap: () async {
+                              // If Phone ID not present locally (e.g. fresh reinstall), restore from backend/database
+                              if (db.whatsAppPhoneId.isEmpty) {
+                                await db.restoreWhatsAppFromBackend();
+                              }
+
+                              if (!context.mounted) return;
                               if (db.whatsAppPhoneId.isNotEmpty) {
                                 Navigator.push(
                                   context,

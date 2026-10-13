@@ -727,6 +727,8 @@ class _ReportsScreenState extends State<ReportsScreen> {
     }
 
     final StringBuffer csvBuffer = StringBuffer();
+    // Excel requires UTF-8 BOM for proper encoding of symbols like ₹ and non-ASCII characters
+    csvBuffer.write('\uFEFF');
     for (final row in rows) {
       final line = row.map((f) => '"${f.toString().replaceAll('"', '""')}"').join(',');
       csvBuffer.writeln(line);
@@ -753,11 +755,11 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ],
               ),
-              backgroundColor: const Color(0xFF16A34A),
+              backgroundColor: const Color(0xFF107C41),
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               margin: const EdgeInsets.all(16),
-              duration: const Duration(seconds: 3),
+              duration: const Duration(seconds: 4),
             ),
           );
         }
@@ -785,10 +787,10 @@ class _ReportsScreenState extends State<ReportsScreen> {
       } catch (_) {}
 
       try {
-        targetDir ??= await getApplicationDocumentsDirectory();
+        targetDir ??= await getDownloadsDirectory();
       } catch (_) {}
       try {
-        targetDir ??= await getDownloadsDirectory();
+        targetDir ??= await getApplicationDocumentsDirectory();
       } catch (_) {}
       try {
         targetDir ??= await getExternalStorageDirectory();
@@ -800,22 +802,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
       final now = DateTime.now();
       final dateTag = DateFormat('yyyyMMdd_HHmmss').format(now);
-      final filePath = '${targetDir.path}/Sales_Report_$dateTag.csv';
+      final filename = 'Sales_Report_$dateTag.csv';
+      final filePath = '${targetDir.path}/$filename';
       final file = File(filePath);
       await file.writeAsString(csvBuffer.toString());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: const Row(
+            content: Row(
               children: [
-                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-                SizedBox(width: 10),
+                const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    'Your Excel sales report is downloaded.',
-                    style: TextStyle(
-                      fontSize: 13.5,
+                    'Excel sales report downloaded:\n$filename',
+                    style: const TextStyle(
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w700,
                       color: Colors.white,
                     ),
@@ -823,11 +826,23 @@ class _ReportsScreenState extends State<ReportsScreen> {
                 ),
               ],
             ),
-            backgroundColor: const Color(0xFF16A34A),
+            backgroundColor: const Color(0xFF107C41),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             margin: const EdgeInsets.all(16),
-            duration: const Duration(seconds: 3),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'SHARE / OPEN',
+              textColor: Colors.white,
+              onPressed: () {
+                SharePlus.instance.share(
+                  ShareParams(
+                    files: [XFile(filePath, mimeType: 'text/csv')],
+                    text: 'Apna POS Sales Report ($dateTag)',
+                  ),
+                );
+              },
+            ),
           ),
         );
       }
@@ -1143,20 +1158,41 @@ class _ReportsScreenState extends State<ReportsScreen> {
                   ),
                 ),
                 const SizedBox(width: 8),
-                InkWell(
-                  onTap: _exportSalesToExcel,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    height: 38,
-                    width: 38,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: _ReportsNeumorphicTheme.surface,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
-                      boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                Expanded(
+                  flex: 4,
+                  child: InkWell(
+                    onTap: _exportSalesToExcel,
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      height: 38,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF107C41),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF107C41).withValues(alpha: 0.35),
+                            offset: const Offset(0, 2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.file_download_outlined, color: Colors.white, size: 16),
+                          SizedBox(width: 4),
+                          Text(
+                            'Excel',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    child: const Icon(Icons.file_download_outlined, color: _ReportsNeumorphicTheme.navyBrand, size: 18),
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -1333,31 +1369,36 @@ class _ReportsScreenState extends State<ReportsScreen> {
               ),
               const SizedBox(width: 10),
 
-              // Export CSV Button
+              // Download Excel Button
               InkWell(
                 onTap: _exportSalesToExcel,
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
                   height: 42,
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: _ReportsNeumorphicTheme.surface,
+                    color: const Color(0xFF107C41),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
-                    boxShadow: _ReportsNeumorphicTheme.softRaisedShadows,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF107C41).withValues(alpha: 0.35),
+                        offset: const Offset(0, 3),
+                        blurRadius: 6,
+                      ),
+                    ],
                   ),
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.file_download_outlined, size: 18, color: _ReportsNeumorphicTheme.navyBrand),
-                      SizedBox(width: 5),
+                      Icon(Icons.file_download_outlined, size: 18, color: Colors.white),
+                      SizedBox(width: 6),
                       Text(
-                        'Export',
+                        'Download Excel',
                         style: TextStyle(
                           fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: _ReportsNeumorphicTheme.textBody,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
                         ),
                       ),
                     ],
@@ -1849,8 +1890,48 @@ class _ReportsScreenState extends State<ReportsScreen> {
                       ),
                       const SizedBox(height: 12),
 
-                      // Search Box (Filtering driven by top filter section)
-                      _buildSearchInput(),
+                      // Search Box & Quick Excel Download
+                      Row(
+                        children: [
+                          Expanded(child: _buildSearchInput()),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: _exportSalesToExcel,
+                            borderRadius: BorderRadius.circular(10),
+                            child: Container(
+                              height: 38,
+                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              alignment: Alignment.center,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF107C41),
+                                borderRadius: BorderRadius.circular(10),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFF107C41).withValues(alpha: 0.35),
+                                    offset: const Offset(0, 2),
+                                    blurRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.file_download_outlined, color: Colors.white, size: 16),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'Excel',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ],
                   )
                 : Row(
@@ -1878,8 +1959,46 @@ class _ReportsScreenState extends State<ReportsScreen> {
 
                       // Search Input matching reference mockup
                       SizedBox(
-                        width: 270,
+                        width: 240,
                         child: _buildSearchInput(),
+                      ),
+                      const SizedBox(width: 10),
+
+                      // Download Excel Button
+                      InkWell(
+                        onTap: _exportSalesToExcel,
+                        borderRadius: BorderRadius.circular(10),
+                        child: Container(
+                          height: 38,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF107C41),
+                            borderRadius: BorderRadius.circular(10),
+                            boxShadow: [
+                              BoxShadow(
+                                color: const Color(0xFF107C41).withValues(alpha: 0.35),
+                                offset: const Offset(0, 2),
+                                blurRadius: 4,
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.file_download_outlined, color: Colors.white, size: 16),
+                              SizedBox(width: 5),
+                              Text(
+                                'Download Excel',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),

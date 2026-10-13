@@ -153,4 +153,65 @@ class FirestoreService {
       return null;
     }
   }
+
+  static const String whatsappSettingsCollection = 'whatsapp_settings';
+
+  /// Save WhatsApp integration credentials to Firestore for cloud redundancy
+  Future<void> saveWhatsAppSettings({
+    required String businessOrUserId,
+    required String phoneNumberId,
+    required String phoneNumber,
+    required String accessToken,
+    String wabaId = '',
+    bool enabled = true,
+  }) async {
+    if (_hasPermissionError || businessOrUserId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+
+      final data = {
+        'enabled': enabled,
+        'phoneNumberId': phoneNumberId.trim(),
+        'phoneNumber': phoneNumber.trim(),
+        'wabaId': wabaId.trim(),
+        'accessToken': accessToken.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      await db.collection(whatsappSettingsCollection).doc(businessOrUserId.trim()).set(
+        data,
+        SetOptions(merge: true),
+      );
+      debugPrint('[FirestoreService] WhatsApp settings saved to Firestore for $businessOrUserId');
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Error saving WhatsApp settings to Firestore (non-fatal): $e');
+    }
+  }
+
+  /// Get WhatsApp integration credentials from Firestore
+  Future<Map<String, dynamic>?> getWhatsAppSettings(String businessOrUserId) async {
+    if (_hasPermissionError || businessOrUserId.trim().isEmpty) return null;
+    try {
+      final db = _db;
+      if (db == null) return null;
+
+      final doc = await db.collection(whatsappSettingsCollection).doc(businessOrUserId.trim()).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data();
+      }
+      return null;
+    } catch (e) {
+      final errStr = e.toString();
+      if (errStr.contains('permission-denied') || errStr.contains('insufficient permissions')) {
+        _hasPermissionError = true;
+      }
+      debugPrint('[FirestoreService] Error fetching WhatsApp settings from Firestore: $e');
+      return null;
+    }
+  }
 }

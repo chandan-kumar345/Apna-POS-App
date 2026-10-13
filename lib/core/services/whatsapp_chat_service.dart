@@ -214,6 +214,7 @@ class WhatsAppConnectionInfo {
   final String phoneNumberId;
   final String phoneNumber;
   final String wabaId;
+  final String accessToken;
   final bool hasCustomToken;
   final DateTime? connectedAt;
 
@@ -222,6 +223,7 @@ class WhatsAppConnectionInfo {
     required this.phoneNumberId,
     this.phoneNumber = '',
     this.wabaId = '',
+    this.accessToken = '',
     this.hasCustomToken = false,
     this.connectedAt,
   });
@@ -233,12 +235,15 @@ class WhatsAppConnectionInfo {
       return DateTime.tryParse(d.toString());
     }
 
+    final token = json['accessToken']?.toString() ?? '';
+
     return WhatsAppConnectionInfo(
       connected: json['connected'] == true,
       phoneNumberId: json['phoneNumberId']?.toString() ?? '',
       phoneNumber: json['phoneNumber']?.toString() ?? '',
       wabaId: json['wabaId']?.toString() ?? '',
-      hasCustomToken: json['hasCustomToken'] == true,
+      accessToken: token,
+      hasCustomToken: json['hasCustomToken'] == true || token.isNotEmpty,
       connectedAt: parseDate(json['connectedAt']),
     );
   }

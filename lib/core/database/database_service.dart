@@ -35,6 +35,7 @@ import '../utils/order_calculator.dart';
 import '../network/api_client.dart';
 import '../security/secure_storage_service.dart';
 import '../network/api_endpoints.dart';
+import '../services/whatsapp_chat_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService extends ChangeNotifier {
@@ -151,7 +152,9 @@ class DatabaseService extends ChangeNotifier {
     }
     if (restaurant?.name.trim().isNotEmpty == true) {
       final hashNum = (restaurant!.name.hashCode.abs() % 900000 + 100000).toString();
-      return 'BUS-$hashNum';
+      final gen = 'BUS-$hashNum';
+      _prefs?.setString('business_id', gen);
+      return gen;
     }
     return 'BUS-APNA888';
   }
@@ -1843,6 +1846,34 @@ class DatabaseService extends ChangeNotifier {
           final activeBizId = currentUser?.restaurantId ?? restaurant?.id;
           if (activeBizId != null && activeBizId.isNotEmpty) {
             _socketService.connect(businessId: activeBizId);
+          }
+
+          // Restore WhatsApp Integration settings from user/business payload or backend endpoint
+          try {
+            final wa = u['whatsappSettings'] ?? b?['whatsappSettings'];
+            if (wa != null && wa is Map && (wa['phoneNumberId'] != null || wa['phoneNumber'] != null)) {
+              final pId = wa['phoneNumberId']?.toString() ?? '';
+              final pNum = wa['phoneNumber']?.toString() ?? '';
+              final token = wa['accessToken']?.toString() ?? '';
+              final waba = wa['wabaId']?.toString() ?? '';
+              final isEn = wa['enabled'] == true || pId.isNotEmpty;
+              if (pId.isNotEmpty || pNum.isNotEmpty) {
+                await saveWhatsAppIntegrationSettings(
+                  enabled: isEn,
+                  provider: 'meta_cloud',
+                  phoneNumber: pNum,
+                  phoneId: pId,
+                  wabaId: waba,
+                  accessToken: token,
+                  webhookToken: whatsAppWebhookToken,
+                );
+              }
+            } else {
+              // Proactively query live WhatsApp connection status
+              unawaited(restoreWhatsAppFromBackend());
+            }
+          } catch (e) {
+            debugPrint('[DatabaseService] sync whatsapp error: $e');
           }
         }
       } catch (e) {
@@ -5527,14 +5558,12 @@ class DatabaseService extends ChangeNotifier {
   }
 
   // ==================== STAFF MANAGEMENT ====================
-  // ==================== STAFF MANAGEMENT ====================
   Future<void> _saveStaffToPrefs() async {
     try {
       final activeBizId = currentBusinessId.trim();
-      final scopedStaff = staffList
-          .where((s) => s.businessId.isEmpty || s.businessId == activeBizId)
-          .map((s) => s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s)
-          .toList();
+      final scopedStaff = staffList.map((s) =>
+        (s.businessId.isEmpty && activeBizId.isNotEmpty) ? s.copyWith(businessId: activeBizId) : s
+      ).toList();
       final jsonStr = jsonEncode(scopedStaff.map((s) => s.toJson()).toList());
       await _prefs?.setString(_businessKey('staff_list'), jsonStr);
       await _prefs?.setString(_userKey('staff_list'), jsonStr);
@@ -5545,6 +5574,7 @@ class DatabaseService extends ChangeNotifier {
       if (restaurant?.id != null && restaurant!.id.isNotEmpty) {
         await _prefs?.setString('apna_pos_${restaurant!.id}_staff_list', jsonStr);
       }
+      await _prefs?.setString('apna_pos_staff_list', jsonStr);
     } catch (_) {}
   }
 
@@ -5554,14 +5584,17 @@ class DatabaseService extends ChangeNotifier {
       _loadStaffRolesFromPrefs();
       _loadBusinessBranchesFromPrefs();
 
-      // Clean up legacy global key if present to permanently purge old dummy data
-      if (_prefs?.containsKey('apna_pos_staff_list') == true) {
-        _prefs?.remove('apna_pos_staff_list');
-      }
-
       final List<StaffModel> loadedStaff = [];
       final Set<String> loadedKeys = {};
       final activeBizId = currentBusinessId.trim();
+
+      bool isMatch(StaffModel s) {
+        if (s.businessId.isEmpty || activeBizId.isEmpty) return true;
+        if (s.businessId == activeBizId) return true;
+        // Permissive match if either is a fallback/default placeholder ID
+        if (s.businessId == 'BUS-APNA888' || activeBizId == 'BUS-APNA888' || activeBizId == 'rest_001') return true;
+        return false;
+      }
 
       void tryLoadStaffFromJson(String? jsonStr) {
         if (jsonStr == null || jsonStr.isEmpty) return;
@@ -5572,11 +5605,11 @@ class DatabaseService extends ChangeNotifier {
               .map((s) => StaffModel.fromJson(Map<String, dynamic>.from(s)))
               .toList();
           for (final s in parsed) {
-            // STRICT TENANT ISOLATION: Reject any staff that belongs to a different business
-            if (s.businessId.isNotEmpty && activeBizId.isNotEmpty && s.businessId != activeBizId) {
+            // Reject staff only if it explicitly belongs to another distinct business
+            if (!isMatch(s)) {
               continue;
             }
-            final key = s.id.isNotEmpty ? s.id : s.employeeId;
+            final key = s.id.isNotEmpty ? s.id : (s.employeeId.isNotEmpty ? s.employeeId : s.email.toLowerCase());
             if (key.isNotEmpty && !loadedKeys.contains(key)) {
               loadedKeys.add(key);
               if (s.employeeId.isNotEmpty) {
@@ -5585,7 +5618,7 @@ class DatabaseService extends ChangeNotifier {
               if (s.email.isNotEmpty) {
                 loadedKeys.add('email_${s.email.toLowerCase()}');
               }
-              final stamped = s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s;
+              final stamped = (s.businessId.isEmpty && activeBizId.isNotEmpty) ? s.copyWith(businessId: activeBizId) : s;
               loadedStaff.add(stamped);
             }
           }
@@ -5611,48 +5644,103 @@ class DatabaseService extends ChangeNotifier {
         tryLoadStaffFromJson(_prefs?.getString('apna_pos_${restaurant!.id}_staff_list'));
       }
 
+      // 5. Fallback: global backup key
+      if (loadedStaff.isEmpty) {
+        tryLoadStaffFromJson(_prefs?.getString('apna_pos_staff_list'));
+      }
+
+      // 6. Broad fallback across any saved staff_list keys on the device
+      if (loadedStaff.isEmpty) {
+        final allKeys = _prefs?.getKeys() ?? {};
+        for (final k in allKeys) {
+          if (k.contains('staff_list')) {
+            tryLoadStaffFromJson(_prefs?.getString(k));
+            if (loadedStaff.isNotEmpty) break;
+          }
+        }
+      }
+
       if (loadedStaff.isNotEmpty) {
         staffList = loadedStaff;
-        return;
       }
     } catch (_) {}
-    staffList = [];
+
+    // Auto-reconcile with orders so any staff member that placed orders / appeared in reports is preserved
+    reconcileStaffWithOrders();
+  }
+
+  /// Automatically recovers staff members that exist on orders (and thus in sales reports)
+  /// so team members are never missing from staff management.
+  void reconcileStaffWithOrders() {
+    try {
+      final existingNames = staffList.map((s) => s.name.trim().toLowerCase()).toSet();
+      final existingIds = staffList.map((s) => s.id.trim()).toSet();
+      bool addedAny = false;
+      final activeBizId = currentBusinessId.trim();
+
+      for (final order in orders) {
+        final name = order.staffName?.trim() ?? '';
+        if (name.isNotEmpty && !existingNames.contains(name.toLowerCase())) {
+          existingNames.add(name.toLowerCase());
+          final id = (order.staffId != null && order.staffId!.trim().isNotEmpty && !existingIds.contains(order.staffId!.trim()))
+              ? order.staffId!.trim()
+              : 'st_${name.hashCode.abs()}';
+          existingIds.add(id);
+
+          final orderDate = DateTime.tryParse(order.createdAt) ?? DateTime.now();
+          final recovered = StaffModel(
+            id: id,
+            businessId: activeBizId,
+            name: name,
+            employeeId: 'EMP-${(name.hashCode.abs() % 900 + 100)}',
+            role: (order.staffRole != null && order.staffRole!.trim().isNotEmpty) ? order.staffRole!.trim() : 'Cashier',
+            status: 'Active',
+            createdAt: orderDate,
+            updatedAt: orderDate,
+          );
+          staffList.add(recovered);
+          addedAny = true;
+        }
+      }
+
+      if (addedAny) {
+        _saveStaffToPrefs();
+      }
+    } catch (_) {}
   }
 
   void syncStaffList(List<StaffModel> remoteStaff) {
+    if (remoteStaff.isEmpty) {
+      return;
+    }
+
     final activeBizId = currentBusinessId.trim();
 
-    // Filter incoming remote staff to guarantee they match currentBusinessId
-    final validRemote = remoteStaff.where((r) =>
-      r.businessId.isEmpty || activeBizId.isEmpty || r.businessId == activeBizId
-    ).map((r) => r.businessId.isEmpty ? r.copyWith(businessId: activeBizId) : r).toList();
-
-    // Retain only local-only un-synced staff (ids starting with 'st_') belonging to activeBizId
-    final localUnsynced = staffList.where((s) =>
-      s.id.startsWith('st_') && (s.businessId.isEmpty || s.businessId == activeBizId)
-    ).map((s) => s.businessId.isEmpty ? s.copyWith(businessId: activeBizId) : s).toList();
-
+    // Map existing local staff first
     final Map<String, StaffModel> merged = {};
-
-    // 1. Authoritative remote staff for current business
-    for (final remote in validRemote) {
-      final key = remote.id.isNotEmpty ? remote.id : (remote.employeeId.isNotEmpty ? remote.employeeId : remote.email);
+    for (final local in staffList) {
+      final key = local.id.isNotEmpty ? local.id : (local.employeeId.isNotEmpty ? local.employeeId : local.email.toLowerCase());
       if (key.isNotEmpty) {
-        merged[key] = remote;
+        merged[key] = local;
       }
     }
 
-    // 2. Add local unsynced staff only if not already on remote
-    for (final local in localUnsynced) {
-      final isAlreadyOnRemote = merged.values.any((r) =>
-        (r.id.isNotEmpty && r.id == local.id) ||
-        (local.employeeId.isNotEmpty && r.employeeId == local.employeeId) ||
-        (local.email.isNotEmpty && r.email.trim().toLowerCase() == local.email.trim().toLowerCase())
-      );
-      if (!isAlreadyOnRemote) {
-        final key = local.id.isNotEmpty ? local.id : (local.employeeId.isNotEmpty ? local.employeeId : local.email);
+    // Merge remote staff (filter out only if remote explicitly belongs to another distinct business)
+    for (final remote in remoteStaff) {
+      final isDifferentTenant = remote.businessId.isNotEmpty &&
+          activeBizId.isNotEmpty &&
+          remote.businessId != activeBizId &&
+          remote.businessId != 'BUS-APNA888' &&
+          activeBizId != 'BUS-APNA888' &&
+          activeBizId != 'rest_001';
+
+      if (!isDifferentTenant) {
+        final stamped = (remote.businessId.isEmpty && activeBizId.isNotEmpty)
+            ? remote.copyWith(businessId: activeBizId)
+            : remote;
+        final key = stamped.id.isNotEmpty ? stamped.id : (stamped.employeeId.isNotEmpty ? stamped.employeeId : stamped.email.toLowerCase());
         if (key.isNotEmpty) {
-          merged[key] = local;
+          merged[key] = stamped;
         }
       }
     }
@@ -5794,7 +5882,14 @@ class DatabaseService extends ChangeNotifier {
   }
 
   // ==================== WHATSAPP INTEGRATION SETTINGS ====================
+  bool? _inMemoryWhatsAppEnabled;
+  String? _inMemoryWhatsAppPhoneId;
+  String? _inMemoryWhatsAppPhoneNumber;
+  String? _inMemoryWhatsAppWabaId;
+  String? _inMemoryWhatsAppAccessToken;
+
   bool get isWhatsAppIntegrationEnabled =>
+      _inMemoryWhatsAppEnabled ??
       _prefs?.getBool(_businessKey('wa_enabled')) ??
       _prefs?.getBool('apna_pos_wa_enabled') ??
       false;
@@ -5804,31 +5899,49 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString('apna_pos_wa_provider') ??
       'meta_cloud';
 
-  String get whatsAppPhoneNumber =>
-      _prefs?.getString(_businessKey('wa_phone')) ??
-      _prefs?.getString('apna_pos_wa_phone') ??
-      '';
+  String get whatsAppPhoneNumber {
+    if (_inMemoryWhatsAppPhoneNumber != null && _inMemoryWhatsAppPhoneNumber!.isNotEmpty) {
+      return _inMemoryWhatsAppPhoneNumber!;
+    }
+    return _prefs?.getString(_businessKey('wa_phone')) ??
+        _prefs?.getString('apna_pos_wa_phone') ??
+        '';
+  }
 
-  String get whatsAppPhoneId =>
-      _prefs?.getString(_businessKey('wa_phone_id')) ??
-      _prefs?.getString('apna_pos_wa_phone_id') ??
-      '';
+  String get whatsAppPhoneId {
+    if (_inMemoryWhatsAppPhoneId != null && _inMemoryWhatsAppPhoneId!.isNotEmpty) {
+      return _inMemoryWhatsAppPhoneId!;
+    }
+    return _prefs?.getString(_businessKey('wa_phone_id')) ??
+        _prefs?.getString('apna_pos_wa_phone_id') ??
+        '';
+  }
 
-  String get whatsAppWabaId =>
-      _prefs?.getString(_businessKey('wa_waba_id')) ??
-      _prefs?.getString('apna_pos_wa_waba_id') ??
-      '';
+  String get whatsAppWabaId {
+    if (_inMemoryWhatsAppWabaId != null && _inMemoryWhatsAppWabaId!.isNotEmpty) {
+      return _inMemoryWhatsAppWabaId!;
+    }
+    return _prefs?.getString(_businessKey('wa_waba_id')) ??
+        _prefs?.getString('apna_pos_wa_waba_id') ??
+        '';
+  }
 
-  String get whatsAppAccessToken =>
-      _prefs?.getString(_businessKey('wa_access_token')) ??
-      _prefs?.getString('apna_pos_wa_access_token') ??
-      '';
+  String get whatsAppAccessToken {
+    if (_inMemoryWhatsAppAccessToken != null && _inMemoryWhatsAppAccessToken!.isNotEmpty) {
+      return _inMemoryWhatsAppAccessToken!;
+    }
+    return _prefs?.getString(_businessKey('wa_access_token')) ??
+        _prefs?.getString('apna_pos_wa_access_token') ??
+        '';
+  }
 
   String get whatsAppWebhookToken =>
       _prefs?.getString(_businessKey('wa_webhook_token')) ??
       _prefs?.getString('apna_pos_wa_webhook_token') ??
       '';
 
+  /// Save WhatsApp credentials into local memory, persistent SharedPreferences,
+  /// and redundant Cloud Firestore storage.
   Future<void> saveWhatsAppIntegrationSettings({
     required bool enabled,
     required String provider,
@@ -5837,7 +5950,16 @@ class DatabaseService extends ChangeNotifier {
     required String wabaId,
     required String accessToken,
     required String webhookToken,
+    bool syncToFirestore = true,
   }) async {
+    _inMemoryWhatsAppEnabled = enabled;
+    _inMemoryWhatsAppPhoneId = phoneId.trim();
+    _inMemoryWhatsAppPhoneNumber = phoneNumber.trim();
+    _inMemoryWhatsAppWabaId = wabaId.trim();
+    if (accessToken.trim().isNotEmpty) {
+      _inMemoryWhatsAppAccessToken = accessToken.trim();
+    }
+
     await _prefs?.setBool(_businessKey('wa_enabled'), enabled);
     await _prefs?.setBool('apna_pos_wa_enabled', enabled);
 
@@ -5853,13 +5975,97 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_businessKey('wa_waba_id'), wabaId.trim());
     await _prefs?.setString('apna_pos_wa_waba_id', wabaId.trim());
 
-    await _prefs?.setString(_businessKey('wa_access_token'), accessToken.trim());
-    await _prefs?.setString('apna_pos_wa_access_token', accessToken.trim());
+    if (accessToken.trim().isNotEmpty) {
+      await _prefs?.setString(_businessKey('wa_access_token'), accessToken.trim());
+      await _prefs?.setString('apna_pos_wa_access_token', accessToken.trim());
+    }
 
     await _prefs?.setString(_businessKey('wa_webhook_token'), webhookToken.trim());
     await _prefs?.setString('apna_pos_wa_webhook_token', webhookToken.trim());
 
     notifyListeners();
+
+    // Redundant Cloud Sync to Firestore in background for cross-device & reinstall resilience
+    if (syncToFirestore) {
+      final targetId = currentUser?.restaurantId ?? currentUser?.id ?? restaurant?.id;
+      if (targetId != null && targetId.isNotEmpty) {
+        unawaited(_firestoreService.saveWhatsAppSettings(
+          businessOrUserId: targetId,
+          phoneNumberId: phoneId.trim(),
+          phoneNumber: phoneNumber.trim(),
+          accessToken: accessToken.trim(),
+          wabaId: wabaId.trim(),
+          enabled: enabled,
+        ).catchError((e) {
+          debugPrint('[DatabaseService] Firestore WhatsApp sync notice: $e');
+        }));
+      }
+    }
+  }
+
+  /// Seamlessly fetch and restore WhatsApp integration credentials from backend API or Firestore.
+  /// This ensures that even if the app was completely uninstalled and reinstalled,
+  /// the user's connected WhatsApp details appear automatically upon logging in.
+  Future<bool> restoreWhatsAppFromBackend({bool force = false}) async {
+    // If already populated and not forced, return true immediately
+    if (!force && whatsAppPhoneId.isNotEmpty && whatsAppAccessToken.isNotEmpty) {
+      return true;
+    }
+
+    try {
+      // 1. Primary: Fetch live connection status from Backend API (/whatsapp/chats/connection)
+      final conn = await WhatsAppChatService().getConnectionStatus();
+      if (conn != null && (conn.phoneNumberId.isNotEmpty || conn.phoneNumber.isNotEmpty)) {
+        await saveWhatsAppIntegrationSettings(
+          enabled: conn.connected,
+          provider: 'meta_cloud',
+          phoneNumber: conn.phoneNumber,
+          phoneId: conn.phoneNumberId,
+          wabaId: conn.wabaId,
+          accessToken: conn.accessToken.isNotEmpty ? conn.accessToken : whatsAppAccessToken,
+          webhookToken: whatsAppWebhookToken,
+          syncToFirestore: false,
+        );
+        debugPrint('[DatabaseService] 📲 Successfully restored WhatsApp connection from Backend: ${conn.phoneNumberId}');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error restoring WhatsApp from backend API: $e');
+    }
+
+    // 2. Secondary Fallback: Cloud Firestore
+    try {
+      final targetId = currentUser?.restaurantId ?? currentUser?.id ?? restaurant?.id;
+      if (targetId != null && targetId.isNotEmpty) {
+        final fsData = await _firestoreService.getWhatsAppSettings(targetId);
+        if (fsData != null && (fsData['phoneNumberId'] != null || fsData['phoneNumber'] != null)) {
+          final pId = fsData['phoneNumberId']?.toString() ?? '';
+          final pNum = fsData['phoneNumber']?.toString() ?? '';
+          final token = fsData['accessToken']?.toString() ?? '';
+          final waba = fsData['wabaId']?.toString() ?? '';
+          final isEn = fsData['enabled'] == true || pId.isNotEmpty;
+
+          if (pId.isNotEmpty || pNum.isNotEmpty) {
+            await saveWhatsAppIntegrationSettings(
+              enabled: isEn,
+              provider: 'meta_cloud',
+              phoneNumber: pNum,
+              phoneId: pId,
+              wabaId: waba,
+              accessToken: token,
+              webhookToken: whatsAppWebhookToken,
+              syncToFirestore: false,
+            );
+            debugPrint('[DatabaseService] 📲 Successfully restored WhatsApp connection from Firestore: $pId');
+            return true;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error restoring WhatsApp from Firestore: $e');
+    }
+
+    return false;
   }
 
   // ==================== WHATSAPP MESSAGES SETTINGS ====================

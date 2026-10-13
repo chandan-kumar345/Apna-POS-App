@@ -242,6 +242,11 @@ class AuthService {
       } catch (_) {}
     }
 
+    // Resolve active WhatsApp settings across User or Business
+    const activeWaSettings = user.whatsappSettings?.phoneNumberId
+      ? user.whatsappSettings
+      : (business?.whatsappSettings?.phoneNumberId ? business.whatsappSettings : null);
+
     return {
       user: {
         id: user._id,
@@ -255,6 +260,7 @@ class AuthService {
         permissions,
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
         onboardingStep: isStaffUser ? 4 : user.onboardingStep,
+        whatsappSettings: activeWaSettings,
         business: business || null,
       },
       ...tokens,
@@ -391,6 +397,9 @@ class AuthService {
         onboardingCompleted: isStaffUser ? true : user.onboardingCompleted,
         onboardingStep: isStaffUser ? 4 : user.onboardingStep,
         subscription: subPayload,
+        whatsappSettings: user.whatsappSettings?.phoneNumberId
+          ? user.whatsappSettings
+          : (business?.whatsappSettings?.phoneNumberId ? business.whatsappSettings : null),
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
