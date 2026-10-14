@@ -296,37 +296,105 @@ class SocketService {
     if (userId) {
       const cleanUserId = userId.toString();
       this.io.to(`user_${cleanUserId}`).emit('notification:new', payload);
+      this.io.to(`business_${cleanUserId}`).emit('notification:new', payload);
     }
+    // Also notify POS terminal default room
+    this.io.to('business_rest_001').emit('notification:new', payload);
+    this.io.to('business_default').emit('notification:new', payload);
   }
 
   /**
-   * Emit real-time WhatsApp message event to connected business clients
+   * Emit real-time WhatsApp message event to connected business clients and terminals
    * @param {string|mongoose.Types.ObjectId} businessId
-   * @param {object} param1 { chat, message }
+   * @param {object} param1 { chat, message, targetUserId, ownerId }
    */
-  emitWhatsAppMessageReceived(businessId, { chat, message }) {
-    if (!this.io || !businessId) return;
+  emitWhatsAppMessageReceived(businessId, { chat, message, targetUserId = null, ownerId = null }) {
+    if (!this.io) return;
     const payload = {
       chat,
       message,
       timestamp: new Date().toISOString(),
     };
-    this.broadcastToBusiness(businessId, 'whatsapp:message', payload);
-    this.broadcastToBusiness(businessId, 'whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+
+    // 1. Broadcast to standard business room conventions
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:message', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:message', payload);
+      this.io.to(`business_${cleanId}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+      this.io.to(`business:${cleanId}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+    }
+
+    // 2. Broadcast to specific user rooms (e.g. chat assignee, target user, business owner)
+    const userIds = new Set();
+    if (chat?.userId) userIds.add(chat.userId.toString());
+    if (targetUserId) userIds.add(targetUserId.toString());
+    if (ownerId) userIds.add(ownerId.toString());
+
+    for (const uid of userIds) {
+      this.io.to(`user_${uid}`).emit('whatsapp:message', payload);
+      this.io.to(`business_${uid}`).emit('whatsapp:message', payload);
+      this.io.to(`user_${uid}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+      this.io.to(`business_${uid}`).emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+    }
+
+    // 3. Fallback broadcast to default POS business aliases (rest_001, default)
+    this.io.to('business_rest_001').emit('whatsapp:message', payload);
+    this.io.to('business_rest_001').emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
+    this.io.to('business_default').emit('whatsapp:message', payload);
+    this.io.to('business_default').emit('whatsapp:chat_updated', { chat, timestamp: new Date().toISOString() });
   }
 
   /**
    * Emit real-time WhatsApp conversation update
    * @param {string|mongoose.Types.ObjectId} businessId
-   * @param {object} param1 { chat }
+   * @param {object} param1 { chat, targetUserId, ownerId }
    */
-  emitWhatsAppChatUpdated(businessId, { chat }) {
-    if (!this.io || !businessId) return;
+  emitWhatsAppChatUpdated(businessId, { chat, targetUserId = null, ownerId = null }) {
+    if (!this.io) return;
     const payload = {
       chat,
       timestamp: new Date().toISOString(),
     };
-    this.broadcastToBusiness(businessId, 'whatsapp:chat_updated', payload);
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:chat_updated', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:chat_updated', payload);
+    }
+    const userIds = new Set();
+    if (chat?.userId) userIds.add(chat.userId.toString());
+    if (targetUserId) userIds.add(targetUserId.toString());
+    if (ownerId) userIds.add(ownerId.toString());
+
+    for (const uid of userIds) {
+      this.io.to(`user_${uid}`).emit('whatsapp:chat_updated', payload);
+      this.io.to(`business_${uid}`).emit('whatsapp:chat_updated', payload);
+    }
+
+    this.io.to('business_rest_001').emit('whatsapp:chat_updated', payload);
+    this.io.to('business_default').emit('whatsapp:chat_updated', payload);
+  }
+
+  /**
+   * Emit real-time media hydration update when image download finishes in background
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} param1 { messageId, chatId, mediaUrl }
+   */
+  emitWhatsAppMessageUpdated(businessId, { messageId, chatId, mediaUrl }) {
+    if (!this.io) return;
+    const payload = {
+      messageId: messageId ? messageId.toString() : '',
+      chatId: chatId ? chatId.toString() : '',
+      mediaUrl,
+      timestamp: new Date().toISOString(),
+    };
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:message:updated', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:message:updated', payload);
+    }
+    this.io.to('business_rest_001').emit('whatsapp:message:updated', payload);
+    this.io.to('business_default').emit('whatsapp:message:updated', payload);
   }
 
   getIO() {

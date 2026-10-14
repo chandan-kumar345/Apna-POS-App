@@ -6,6 +6,9 @@ import '../network/api_endpoints.dart';
 import '../models/table_model.dart';
 import '../security/secure_storage_service.dart';
 import 'local_notification_service.dart';
+import 'sound_service.dart';
+import '../../features/chat/meta_whatsapp_chat_screen.dart';
+import '../../features/notifications/models/notification_model.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -18,6 +21,7 @@ typedef OrderDeletedCallback = void Function(Map<String, dynamic> data);
 typedef SubscriptionUpdateCallback = void Function(Map<String, dynamic> data);
 typedef WhatsAppMessageCallback = void Function(Map<String, dynamic> data);
 typedef WhatsAppChatUpdateCallback = void Function(Map<String, dynamic> data);
+typedef WhatsAppMessageUpdatedCallback = void Function(Map<String, dynamic> data);
 
 class SocketService {
   static final SocketService _instance = SocketService._internal();
@@ -45,6 +49,7 @@ class SocketService {
   SubscriptionUpdateCallback? onSubscriptionUpdated;
   WhatsAppMessageCallback? onWhatsAppMessage;
   WhatsAppChatUpdateCallback? onWhatsAppChatUpdated;
+  WhatsAppMessageUpdatedCallback? onWhatsAppMessageUpdated;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -116,16 +121,12 @@ class SocketService {
       // Setup Lifecycle Event Listeners
       socket.onConnect((_) {
         debugPrint('[SocketService] Connected successfully to Socket.IO server: $serverUrl');
-        if (_currentBusinessId != null && _currentBusinessId!.isNotEmpty) {
-          joinBusinessRoom(_currentBusinessId!);
-        }
+        joinAllRelevantRooms();
       });
 
       socket.onReconnect((_) {
         debugPrint('[SocketService] Reconnected to Socket.IO server. Triggering room rejoin and resync...');
-        if (_currentBusinessId != null && _currentBusinessId!.isNotEmpty) {
-          joinBusinessRoom(_currentBusinessId!);
-        }
+        joinAllRelevantRooms();
         // Notify listeners of reconnection so they can reconcile any missed state
         onReconnected?.call();
       });
@@ -170,6 +171,7 @@ class SocketService {
       // Real-time WhatsApp messages & chat updates (<50ms)
       socket.on('whatsapp:message', (data) => _handleWhatsAppMessage(data));
       socket.on('whatsapp:chat_updated', (data) => _handleWhatsAppChatUpdated(data));
+      socket.on('whatsapp:message:updated', (data) => _handleWhatsAppMessageUpdated(data));
 
       socket.connect();
     } catch (e) {
@@ -188,12 +190,35 @@ class SocketService {
     }
   }
 
+  /// Join all applicable tenant, user, and POS rooms for 100% real-time notification reliability
+  Future<void> joinAllRelevantRooms({String? businessId, String? userId}) async {
+    try {
+      final activeBiz = businessId ?? _currentBusinessId ?? await _storage.getBusinessId();
+      final activeUser = userId ?? await _storage.getUserId();
+
+      if (_socket != null && _socket!.connected) {
+        if (activeBiz != null && activeBiz.isNotEmpty) {
+          debugPrint('[SocketService] Joining room for business: $activeBiz');
+          _socket!.emit('join_business', {'businessId': activeBiz});
+        }
+        if (activeUser != null && activeUser.isNotEmpty && activeUser != activeBiz) {
+          debugPrint('[SocketService] Joining room for user: $activeUser');
+          _socket!.emit('join_business', {'businessId': activeUser});
+        }
+        _socket!.emit('join_business', {'businessId': 'rest_001'});
+        _socket!.emit('join_business', {'businessId': 'default'});
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error joining rooms: $e');
+    }
+  }
+
   /// Update business ID and rejoin room if changed
   void updateBusinessId(String businessId) {
     if (businessId.trim().isEmpty) return;
     _currentBusinessId = businessId.trim();
     if (_socket != null && _socket!.connected) {
-      joinBusinessRoom(_currentBusinessId!);
+      joinAllRelevantRooms(businessId: _currentBusinessId);
     }
   }
 
@@ -374,7 +399,66 @@ class SocketService {
       if (data == null) return;
       final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
       debugPrint('[SocketService] 💬 WhatsApp message event received via socket');
+
+      final msgMap = rawMap['message'] is Map ? Map<String, dynamic>.from(rawMap['message'] as Map) : null;
+      final chatMap = rawMap['chat'] is Map ? Map<String, dynamic>.from(rawMap['chat'] as Map) : null;
+
+      // 1. Forward directly to in-app stream listeners for 0ms chat screen rendering
       onWhatsAppMessage?.call(rawMap);
+
+      // 2. Trigger high-priority push notification for incoming WhatsApp messages
+      if (msgMap != null && (msgMap['direction']?.toString().toUpperCase() == 'INCOMING')) {
+        final chatId = msgMap['chatId']?.toString() ?? chatMap?['_id']?.toString() ?? chatMap?['id']?.toString() ?? '';
+        final customerPhone = msgMap['customerPhone']?.toString() ?? chatMap?['customerPhone']?.toString() ?? '';
+        final customerName = chatMap?['customerName']?.toString() ?? '';
+        final text = msgMap['text']?.toString() ?? '';
+        final messageType = msgMap['messageType']?.toString() ?? 'text';
+        final isImage = messageType == 'image' || (msgMap['mediaUrl'] != null && msgMap['mediaUrl'].toString().isNotEmpty);
+
+        final senderDisplay = customerName.isNotEmpty && !customerName.startsWith('Customer ')
+            ? customerName
+            : (customerPhone.startsWith('91') && customerPhone.length == 12
+                ? '+91 ${customerPhone.substring(2, 7)} ${customerPhone.substring(7)}'
+                : customerPhone);
+
+        final body = isImage
+            ? (text.isNotEmpty && text != '[Photo]' ? '📷 $text' : '📷 Photo')
+            : (text.isNotEmpty ? text : 'New WhatsApp message');
+
+        final isCurrentlyViewingChat = MetaWhatsAppChatScreen.activeChatId != null &&
+            MetaWhatsAppChatScreen.activeChatId == chatId;
+
+        if (isCurrentlyViewingChat) {
+          // Play in-chat audio chime without blocking screen
+          SoundService.playNotificationSound();
+        } else {
+          // Trigger instant floating push notification banner with sound and vibration
+          LocalNotificationService().showPushNotification(
+            title: 'WhatsApp: $senderDisplay',
+            body: body,
+            payload: jsonEncode({
+              'type': 'whatsapp_message',
+              'entityType': 'whatsapp_chat',
+              'entityId': chatId,
+              'metadata': {
+                'chatId': chatId,
+                'customerPhone': customerPhone,
+                'customerName': customerName,
+                'messageType': messageType,
+              },
+            }),
+            type: NotificationType.whatsappMessage,
+            entityType: 'whatsapp_chat',
+            entityId: chatId,
+            metadata: {
+              'chatId': chatId,
+              'customerPhone': customerPhone,
+              'customerName': customerName,
+            },
+            playSound: true,
+          );
+        }
+      }
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:message: $e');
     }
@@ -388,6 +472,17 @@ class SocketService {
       onWhatsAppChatUpdated?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:chat_updated: $e');
+    }
+  }
+
+  void _handleWhatsAppMessageUpdated(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] 💬 WhatsApp media update event received via socket');
+      onWhatsAppMessageUpdated?.call(rawMap);
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:message:updated: $e');
     }
   }
 

@@ -23,6 +23,7 @@ import '../loyalty/widgets/loyalty_redemption_dialog.dart';
 import 'widgets/pos_product_media_box.dart';
 import 'widgets/chotu_mic_button.dart';
 import '../../core/services/chotu_service.dart';
+import '../../core/services/coupon_service.dart';
 
 enum ManualItemPersistenceMode { temporary, permanent }
 
@@ -687,13 +688,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     }
   }
 
-  void _addToCart(MenuItemModel item, {String? variantName}) {
+  void _addToCart(MenuItemModel item, {String? variantName, int quantity = 1}) {
+    if (quantity <= 0) return;
     setState(() {
       final existingIndex = _cartItems.indexWhere((e) => e.item.id == item.id);
       if (existingIndex >= 0) {
-        _cartItems[existingIndex].quantity++;
+        _cartItems[existingIndex].quantity += quantity;
       } else {
-        _cartItems.add(CartItemModel(item: item, quantity: 1));
+        _cartItems.add(CartItemModel(item: item, quantity: quantity));
       }
       _syncTableStatusWithCart();
     });
@@ -703,7 +705,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       item: item,
       tableNumber: _selectedTable,
       orderType: _selectedOrderType.name,
-      quantity: 1,
+      quantity: quantity,
       variantName: variantName,
     );
   }
@@ -1066,8 +1068,575 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       );
     },
   );
-}
+  }
 
+  void _showProductDetailsModal(MenuItemModel item) {
+    final currency = db.restaurant?.currencySymbol ?? '₹';
+    final defaultGstRate = (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0);
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) {
+        return BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+          child: StatefulBuilder(
+            builder: (context, setModalState) {
+              final screenWidth = MediaQuery.of(context).size.width;
+              final isTwoColumn = screenWidth >= 640;
+              final dialogWidth = isTwoColumn ? 640.0 : (screenWidth * 0.92).clamp(320.0, 440.0);
+
+              // State inside the modal
+              int quantity = 1;
+              ProductVariant? selectedVariant = item.variants.isNotEmpty ? item.variants.first : null;
+
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: StatefulBuilder(
+                  builder: (context, setInnerState) {
+                    final double unitPrice = selectedVariant != null ? selectedVariant!.effectivePrice : item.effectivePrice;
+                    final double originalPrice = selectedVariant != null ? selectedVariant!.price : item.price;
+                    final bool hasDiscount = selectedVariant != null ? selectedVariant!.hasDiscount : item.hasDiscount;
+                    final double discountPercent = selectedVariant != null ? selectedVariant!.discountPercent : item.discountPercent;
+                    final double effectiveTax = item.gstPercent ?? defaultGstRate;
+
+                    // Available stock/portions
+                    final int available = item.availablePortions;
+                    final bool isOutOfStock = item.stockStatus == 'out_of_stock' || (item.trackInventory && available <= 0);
+                    final int maxAllowed = available > 0 ? available : 999;
+
+                    Widget buildMediaBox() {
+                      return Stack(
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            height: isTwoColumn ? 320 : 180,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE2E8F0),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(16),
+                              child: _buildPosProductImage(item),
+                            ),
+                          ),
+                          Positioned(
+                            top: 8,
+                            left: 8,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.95),
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: const [
+                                  BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                                ],
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildFoodTypeIcon(item.itemType),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    item.itemType.toUpperCase(),
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (hasDiscount && discountPercent > 0)
+                            Positioned(
+                              top: 8,
+                              right: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF10B981),
+                                  borderRadius: BorderRadius.circular(8),
+                                  boxShadow: const [
+                                    BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 2)),
+                                  ],
+                                ),
+                                child: Text(
+                                  '${discountPercent.toStringAsFixed(0)}% OFF',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    }
+
+                    Widget buildStockIndicator() {
+                      Color bg;
+                      Color border;
+                      Color textColor;
+                      IconData icon;
+                      String text;
+
+                      if (item.stockStatus == 'in_stock') {
+                        bg = const Color(0xFFECFDF5);
+                        border = const Color(0xFFA7F3D0);
+                        textColor = const Color(0xFF059669);
+                        icon = Icons.check_circle_rounded;
+                        text = '$available portions available';
+                      } else if (item.stockStatus == 'low_stock') {
+                        bg = const Color(0xFFFFFBEB);
+                        border = const Color(0xFFFDE68A);
+                        textColor = const Color(0xFFD97706);
+                        icon = Icons.warning_amber_rounded;
+                        text = 'Only $available portions left';
+                      } else if (item.stockStatus == 'out_of_stock' || isOutOfStock) {
+                        bg = const Color(0xFFFEF2F2);
+                        border = const Color(0xFFFECACA);
+                        textColor = const Color(0xFFDC2626);
+                        icon = Icons.cancel_rounded;
+                        text = 'Out of Stock';
+                      } else {
+                        bg = const Color(0xFFF1F5F9);
+                        border = const Color(0xFFCBD5E1);
+                        textColor = const Color(0xFF64748B);
+                        icon = Icons.info_outline_rounded;
+                        text = 'Stock not tracked';
+                      }
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: bg,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: border),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 14, color: textColor),
+                            const SizedBox(width: 5),
+                            Flexible(
+                              child: Text(
+                                text,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: textColor,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    Widget buildDetailsContent() {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Header: Name and Close
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  item.name,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF0F172A),
+                                    letterSpacing: -0.3,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              InkWell(
+                                onTap: () => Navigator.pop(context),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE2E8F0).withValues(alpha: 0.6),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF475569)),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+
+                          // Category and SubCategory Badges
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFE2E8F0),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  item.category,
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w600),
+                                ),
+                              ),
+                              if (item.subCategory != null && item.subCategory!.isNotEmpty)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE2E8F0),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    item.subCategory!,
+                                    style: const TextStyle(fontSize: 11, color: Color(0xFF334155), fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              buildStockIndicator(),
+                            ],
+                          ),
+
+                          if (item.description.trim().isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              item.description,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                                height: 1.35,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+
+                          const SizedBox(height: 12),
+
+                          // Price and Tax Info
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              Text(
+                                '$currency${unitPrice.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF051C48),
+                                ),
+                              ),
+                              if (hasDiscount && originalPrice > unitPrice) ...[
+                                const SizedBox(width: 8),
+                                Text(
+                                  '$currency${originalPrice.toStringAsFixed(0)}',
+                                  style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: Color(0xFF94A3B8),
+                                    decoration: TextDecoration.lineThrough,
+                                  ),
+                                ),
+                              ],
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                                ),
+                                child: Text(
+                                  effectiveTax > 0 ? '${effectiveTax.toStringAsFixed(0)}% GST' : 'Non-GST',
+                                  style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          // Variants Selector (if any)
+                          if (item.variants.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Select Variant',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF334155),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 6,
+                              children: item.variants.map((v) {
+                                final isSelected = selectedVariant?.name == v.name;
+                                return InkWell(
+                                  onTap: () {
+                                    setInnerState(() {
+                                      selectedVariant = v;
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(10),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: isSelected ? const Color(0xFF051C48) : Colors.white,
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isSelected ? const Color(0xFF051C48) : const Color(0xFFCBD5E1),
+                                        width: isSelected ? 1.5 : 1.0,
+                                      ),
+                                      boxShadow: isSelected
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(0xFF051C48).withValues(alpha: 0.25),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ]
+                                          : const [
+                                              BoxShadow(
+                                                color: Color(0xFFE2E8F0),
+                                                blurRadius: 2,
+                                                offset: Offset(0, 1),
+                                              ),
+                                            ],
+                                    ),
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          v.name,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                            color: isSelected ? Colors.white : const Color(0xFF1E293B),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          '$currency${v.effectivePrice.toStringAsFixed(0)}',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: isSelected ? const Color(0xFF93C5FD) : const Color(0xFF64748B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
+
+                          const SizedBox(height: 16),
+
+                          // Quantity and Add to Cart Section
+                          Row(
+                            children: [
+                              // Quantity Stepper
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                                  boxShadow: const [
+                                    BoxShadow(
+                                      color: Color(0xFFE2E8F0),
+                                      blurRadius: 4,
+                                      offset: Offset(0, 1),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_rounded, size: 18),
+                                      color: quantity > 1 ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                                      padding: const EdgeInsets.all(6),
+                                      constraints: const BoxConstraints(),
+                                      onPressed: quantity > 1
+                                          ? () {
+                                              setInnerState(() {
+                                                quantity--;
+                                              });
+                                            }
+                                          : null,
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                                      child: Text(
+                                        '$quantity',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.add_rounded, size: 18),
+                                      color: quantity < maxAllowed ? const Color(0xFF0F172A) : const Color(0xFFCBD5E1),
+                                      padding: const EdgeInsets.all(6),
+                                      constraints: const BoxConstraints(),
+                                      onPressed: quantity < maxAllowed
+                                          ? () {
+                                              setInnerState(() {
+                                                quantity++;
+                                              });
+                                            }
+                                          : () {
+                                              ScaffoldMessenger.of(context).showSnackBar(
+                                                SnackBar(
+                                                  content: Text('Cannot add more than $maxAllowed portion(s) currently available.'),
+                                                  duration: const Duration(seconds: 1),
+                                                  behavior: SnackBarBehavior.floating,
+                                                ),
+                                              );
+                                            },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+
+                              // Primary Add to Cart Button
+                              Expanded(
+                                child: SizedBox(
+                                  height: 44,
+                                  child: ElevatedButton(
+                                    onPressed: isOutOfStock
+                                        ? null
+                                        : () {
+                                            if (selectedVariant != null) {
+                                              final variantId = '${item.id}_var_${selectedVariant!.name}';
+                                              final variantItem = MenuItemModel(
+                                                id: variantId,
+                                                productId: item.productId.isNotEmpty ? item.productId : item.id,
+                                                name: '${item.name} (${selectedVariant!.name})',
+                                                category: item.category,
+                                                subCategory: item.subCategory,
+                                                price: selectedVariant!.price,
+                                                salePrice: selectedVariant!.hasDiscount ? selectedVariant!.effectivePrice : null,
+                                                hasDiscount: selectedVariant!.hasDiscount,
+                                                discountPercent: selectedVariant!.discountPercent,
+                                                description: item.description,
+                                                imageUrl: item.imageUrl,
+                                                images: item.images,
+                                                videoUrl: item.videoUrl,
+                                                emoji: item.emoji,
+                                                itemType: item.itemType,
+                                                gstPercent: item.gstPercent ?? defaultGstRate,
+                                                trackInventory: item.trackInventory,
+                                                stockStatus: item.stockStatus,
+                                                availablePortions: item.availablePortions,
+                                                inventoryType: item.inventoryType,
+                                              );
+                                              _addToCart(variantItem, variantName: selectedVariant!.name, quantity: quantity);
+                                            } else {
+                                              _addToCart(item, quantity: quantity);
+                                            }
+                                            Navigator.pop(context);
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFF051C48),
+                                      disabledBackgroundColor: const Color(0xFF94A3B8),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                      elevation: 2,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        const Icon(Icons.add_shopping_cart_rounded, color: Colors.white, size: 16),
+                                        const SizedBox(width: 6),
+                                        Flexible(
+                                          child: Text(
+                                            isOutOfStock
+                                                ? 'Out of Stock'
+                                                : 'Add • $currency${(unitPrice * quantity).toStringAsFixed(0)}',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      );
+                    }
+
+                    return Container(
+                      width: dialogWidth,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF8FAFD),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white, width: 1.5),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.white,
+                            offset: Offset(-3, -3),
+                            blurRadius: 8,
+                          ),
+                          BoxShadow(
+                            color: Color(0xFFCBD5E1),
+                            offset: Offset(4, 4),
+                            blurRadius: 12,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(16),
+                      child: isTwoColumn
+                          ? Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(flex: 5, child: buildMediaBox()),
+                                const SizedBox(width: 16),
+                                Expanded(flex: 6, child: buildDetailsContent()),
+                              ],
+                            )
+                          : SingleChildScrollView(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  buildMediaBox(),
+                                  const SizedBox(height: 12),
+                                  buildDetailsContent(),
+                                ],
+                              ),
+                            ),
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
   OrderCalculationResult get currentOrderCalculation => OrderCalculator.calculate(
     items: _cartItems,
     defaultTaxRate: (db.restaurant?.billingType == 'Non-GST') ? 0.0 : (db.restaurant?.taxRate ?? 5.0),
@@ -1081,7 +1650,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     deliveryCharge: 0.0,
   );
 
-  void _applyPromoCode(String code, StateSetter setStateCart) {
+  Future<void> _applyPromoCode(String code, StateSetter setStateCart) async {
     final currency = db.restaurant?.currencySymbol ?? '₹';
     final clean = code.trim();
     if (clean.isEmpty) {
@@ -1108,6 +1677,60 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       return;
     }
 
+    final double currentSubtotal = cartSubtotal;
+
+    // 1. Validate against backend coupon service
+    try {
+      final valResult = await CouponService().validateCoupon(
+        code: clean,
+        cartSubtotal: currentSubtotal,
+        orderType: _selectedOrderType.name,
+        customerId: _customerPhone.isNotEmpty ? _customerPhone : null,
+        cartItems: _cartItems.map((e) => {
+          'productId': e.item.productId.isNotEmpty ? e.item.productId : e.item.id,
+          'price': e.item.effectivePrice,
+          'quantity': e.quantity,
+          'category': e.item.category,
+        }).toList(),
+      );
+
+      if (valResult.valid) {
+        final isPerc = valResult.discountType == 'percentage';
+        setStateCart(() {
+          _appliedCoupon = valResult.code;
+          _promoCodeController.text = valResult.code;
+          _discountMode = isPerc ? 'percent' : 'flat';
+          _discountInputValue = isPerc ? valResult.discountValue : valResult.discountAmount;
+          _discountAmount = valResult.discountAmount;
+        });
+        setState(() {
+          _appliedCoupon = valResult.code;
+          _discountMode = isPerc ? 'percent' : 'flat';
+          _discountInputValue = isPerc ? valResult.discountValue : valResult.discountAmount;
+          _discountAmount = valResult.discountAmount;
+        });
+        _saveCurrentDraft();
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                valResult.message.isNotEmpty
+                    ? valResult.message
+                    : 'Coupon "${valResult.code}" applied! (-$currency${valResult.discountAmount.toStringAsFixed(2)})',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              duration: const Duration(seconds: 2),
+              backgroundColor: const Color(0xFF051C48),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+        return;
+      }
+    } catch (_) {}
+
+    // 2. Fallback to manual percentage/flat discount pattern
     final percent = OrderCalculator.parsePromoDiscountPercent(clean, availableCoupons: db.extras);
     final isFlat = clean.toUpperCase().startsWith('FLAT') && !clean.endsWith('%');
 
@@ -1131,28 +1754,32 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           ? percent.toStringAsFixed(0)
           : percent.toStringAsFixed(1);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            percent > 0
-                ? 'Promo code "$clean" applied: $percentFormatted% off (-$currency${discount.toStringAsFixed(2)}) before GST'
-                : 'Promo code "$clean" applied! (-$currency${discount.toStringAsFixed(2)})',
-            style: const TextStyle(fontWeight: FontWeight.w600),
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              percent > 0
+                  ? 'Promo code "$clean" applied: $percentFormatted% off (-$currency${discount.toStringAsFixed(2)}) before GST'
+                  : 'Promo code "$clean" applied! (-$currency${discount.toStringAsFixed(2)})',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: const Color(0xFF051C48),
+            behavior: SnackBarBehavior.floating,
           ),
-          duration: const Duration(seconds: 2),
-          backgroundColor: const Color(0xFF051C48),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid promo code. Enter a percentage (e.g. 10%, 20%) or coupon code.'),
-          duration: Duration(seconds: 2),
-          backgroundColor: Color(0xFFDC2626),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid promo code. Enter an active coupon code or discount percentage.'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Color(0xFFDC2626),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
     }
   }
 
@@ -5728,29 +6355,59 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                                   }
 
                                                   setDialogState(() => isValidatingCoupon = true);
-                                                  final result = await db.extraService.validateCoupon(
-                                                    code: rawCode,
-                                                    subtotal: cartSubtotal,
-                                                    availableCoupons: db.extras,
-                                                  );
-                                                  if (context.mounted) {
-                                                    setDialogState(() {
-                                                      isValidatingCoupon = false;
-                                                      if (result.isValid) {
-                                                        tempCoupon = rawCode.toUpperCase();
-                                                      }
-                                                    });
-                                                    ScaffoldMessenger.of(context).showSnackBar(
-                                                      SnackBar(
-                                                        content: Text(result.message),
-                                                        duration: const Duration(seconds: 2),
-                                                        backgroundColor: result.isValid
-                                                            ? const Color(0xFF0F2B48)
-                                                            : const Color(0xFFDC2626),
-                                                        behavior: SnackBarBehavior.floating,
-                                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                                      ),
+                                                  try {
+                                                    final result = await CouponService().validateCoupon(
+                                                      code: rawCode,
+                                                      cartSubtotal: cartSubtotal,
+                                                      orderType: _selectedOrderType.name,
+                                                      customerId: _customerPhone.isNotEmpty ? _customerPhone : null,
+                                                      cartItems: _cartItems.map((e) => {
+                                                        'productId': e.item.productId.isNotEmpty ? e.item.productId : e.item.id,
+                                                        'price': e.item.effectivePrice,
+                                                        'quantity': e.quantity,
+                                                        'category': e.item.category,
+                                                      }).toList(),
                                                     );
+
+                                                    if (context.mounted) {
+                                                      setDialogState(() {
+                                                        isValidatingCoupon = false;
+                                                        if (result.valid) {
+                                                          tempCoupon = result.code;
+                                                          final isPerc = result.discountType == 'percentage';
+                                                          tempDiscountMode = isPerc ? 'percent' : 'flat';
+                                                          tempDiscountVal = isPerc ? result.discountValue : result.discountAmount;
+                                                          discCtrl.text = isPerc
+                                                              ? result.discountValue.toStringAsFixed(0)
+                                                              : result.discountAmount.toStringAsFixed(0);
+                                                        }
+                                                      });
+
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text(result.message.isNotEmpty
+                                                              ? result.message
+                                                              : (result.valid ? 'Coupon applied!' : 'Invalid coupon')),
+                                                          duration: const Duration(seconds: 2),
+                                                          backgroundColor: result.valid
+                                                              ? const Color(0xFF051C48)
+                                                              : const Color(0xFFDC2626),
+                                                          behavior: SnackBarBehavior.floating,
+                                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                                        ),
+                                                      );
+                                                    }
+                                                  } catch (e) {
+                                                    if (context.mounted) {
+                                                      setDialogState(() => isValidatingCoupon = false);
+                                                      ScaffoldMessenger.of(context).showSnackBar(
+                                                        SnackBar(
+                                                          content: Text('Error: $e'),
+                                                          backgroundColor: const Color(0xFFDC2626),
+                                                          behavior: SnackBarBehavior.floating,
+                                                        ),
+                                                      );
+                                                    }
                                                   }
                                                 },
                                           style: ElevatedButton.styleFrom(
@@ -5775,6 +6432,72 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                       ),
                                     ],
                                   ),
+                                ),
+                                // Quick Pick Active Coupons
+                                FutureBuilder<CouponPaginatedResult>(
+                                  future: CouponService().getCoupons(status: 'active', limit: 8),
+                                  builder: (context, snapshot) {
+                                    final list = snapshot.data?.coupons.where((c) => !c.isExpired).toList() ?? [];
+                                    if (list.isEmpty) return const SizedBox.shrink();
+
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          const Text(
+                                            'Available Offers:',
+                                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                              children: list.map((c) {
+                                                final isApplied = tempCoupon.toUpperCase() == c.code.toUpperCase();
+                                                return Padding(
+                                                  padding: const EdgeInsets.only(right: 6),
+                                                  child: InkWell(
+                                                    onTap: () {
+                                                      couponCtrl.text = c.code;
+                                                      setDialogState(() {
+                                                        tempCoupon = c.code;
+                                                        final isPerc = c.isPercentage;
+                                                        tempDiscountMode = isPerc ? 'percent' : 'flat';
+                                                        tempDiscountVal = c.discountValue;
+                                                        discCtrl.text = isPerc
+                                                            ? c.discountValue.toStringAsFixed(0)
+                                                            : c.discountValue.toStringAsFixed(0);
+                                                      });
+                                                    },
+                                                    borderRadius: BorderRadius.circular(8),
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                                      decoration: BoxDecoration(
+                                                        color: isApplied ? const Color(0xFF10B981) : const Color(0xFFFEF3C7),
+                                                        borderRadius: BorderRadius.circular(8),
+                                                        border: Border.all(
+                                                          color: isApplied ? const Color(0xFF10B981) : const Color(0xFFFDE68A),
+                                                        ),
+                                                      ),
+                                                      child: Text(
+                                                        '${c.code} (${c.formattedDiscount})',
+                                                        style: TextStyle(
+                                                          fontSize: 10,
+                                                          fontWeight: FontWeight.bold,
+                                                          color: isApplied ? Colors.white : const Color(0xFF92400E),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              }).toList(),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
                                 ),
                               ],
                             ),
@@ -7645,6 +8368,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               customerName: _customerName.isNotEmpty ? _customerName : targetKotOrder.customerName,
               customerPhone: _customerPhone.isNotEmpty ? _customerPhone : targetKotOrder.customerPhone,
               deliveryAddress: _selectedOrderType == OrderType.delivery ? _formattedDeliveryAddress : targetKotOrder.deliveryAddress,
+              couponCode: _appliedCoupon.isNotEmpty ? _appliedCoupon : targetKotOrder.couponCode,
+              couponDiscount: _discountAmount > 0 ? _discountAmount : calc.orderDiscount,
             );
           } else {
             // CREATE FINALIZED COMPLETED ORDER ATOMICALLY
@@ -7664,6 +8389,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
               customerPhone: _customerPhone,
               roundOff: roundOff ?? 0.0,
               totalAmount: totalAmount ?? calc.totalPayableAmount,
+              couponCode: _appliedCoupon.isNotEmpty ? _appliedCoupon : null,
+              couponDiscount: _discountAmount > 0 ? _discountAmount : calc.orderDiscount,
             );
           }
 
@@ -8694,6 +9421,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
           child: InkWell(
             borderRadius: BorderRadius.circular(16),
             onTap: isDesktop ? handleItemTap : null,
+            onLongPress: () => _showProductDetailsModal(item),
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
               child: Column(
@@ -8705,6 +9433,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: !isDesktop ? handleItemTap : null,
+                      onLongPress: () => _showProductDetailsModal(item),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
@@ -8916,6 +9645,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: isDesktop ? handleItemTap : null,
+          onLongPress: () => _showProductDetailsModal(item),
           child: Padding(
             padding: const EdgeInsets.all(7),
             child: Column(
@@ -8927,6 +9657,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: !isDesktop ? handleItemTap : null,
+                    onLongPress: () => _showProductDetailsModal(item),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [

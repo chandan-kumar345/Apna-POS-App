@@ -56,17 +56,24 @@ class NotificationService {
       if (sendPush) {
         setImmediate(async () => {
           try {
-            let targetUserIds = [];
-            if (userId) {
-              targetUserIds = [userId];
-            } else if (businessId) {
-              const users = await User.find({ businessId }).select('_id');
-              targetUserIds = users.map((u) => u._id);
+            const targetUserIds = new Set();
+            if (userId) targetUserIds.add(userId.toString());
+            if (businessId) {
+              const Business = mongoose.models.Business || require('../models/Business');
+              const [biz, users] = await Promise.all([
+                Business.findById(businessId).select('ownerId').lean().catch(() => null),
+                User.find({ businessId }).select('_id').lean().catch(() => []),
+              ]);
+              if (biz?.ownerId) targetUserIds.add(biz.ownerId.toString());
+              for (const u of users) {
+                if (u._id) targetUserIds.add(u._id.toString());
+              }
             }
 
             for (const uid of targetUserIds) {
               pushNotificationService.sendPushNotification({
                 userId: uid,
+                businessId,
                 title: notification.title,
                 message: notification.message,
                 data: {

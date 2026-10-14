@@ -1560,6 +1560,68 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     );
   }
 
+  Widget _buildStockStatusBadge(MenuItemModel product, {bool compact = false}) {
+    Color bgColor;
+    Color borderColor;
+    Color textColor;
+    String badgeText;
+    IconData icon;
+
+    if (product.isStockNotConfigured) {
+      bgColor = const Color(0xFFF1F5F9);
+      borderColor = const Color(0xFFCBD5E1);
+      textColor = const Color(0xFF64748B);
+      badgeText = compact ? 'Not Set' : 'Not Configured';
+      icon = Icons.help_outline_rounded;
+    } else if (product.isOutOfStock || product.availablePortions <= 0) {
+      bgColor = const Color(0xFFFEF2F2);
+      borderColor = const Color(0xFFFECACA);
+      textColor = const Color(0xFFDC2626);
+      badgeText = 'Out of stock';
+      icon = Icons.cancel_outlined;
+    } else if (product.isLowStock || product.availablePortions <= 5) {
+      bgColor = const Color(0xFFFFFBEB);
+      borderColor = const Color(0xFFFDE68A);
+      textColor = const Color(0xFFD97706);
+      badgeText = compact ? '${product.availablePortions} low' : 'Low (${product.availablePortions} left)';
+      icon = Icons.warning_amber_rounded;
+    } else {
+      bgColor = const Color(0xFFECFDF5);
+      borderColor = const Color(0xFFA7F3D0);
+      textColor = const Color(0xFF059669);
+      badgeText = '${product.availablePortions} in stock';
+      icon = Icons.check_circle_outline_rounded;
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: compact ? 5 : 7, vertical: compact ? 1.5 : 2.5),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: borderColor, width: 1.0),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: compact ? 9 : 10.5, color: textColor),
+          const SizedBox(width: 3.5),
+          Flexible(
+            child: Text(
+              badgeText,
+              style: TextStyle(
+                fontSize: compact ? 8.5 : 9.5,
+                fontWeight: FontWeight.bold,
+                color: textColor,
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProductTableRow({
     required MenuItemModel product,
     required int index,
@@ -1567,8 +1629,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     required String category,
     required int totalProducts,
   }) {
-    final inStock = product.stockQuantity > 0;
-
     return Container(
       color: isChecked ? _navyTint : Colors.transparent,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -1706,22 +1766,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
             flex: 2,
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: inStock ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: inStock ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                ),
-                child: Text(
-                  inStock ? '${product.stockQuantity} in stock' : 'Out of stock',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.bold,
-                    color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                  ),
-                ),
-              ),
+              child: _buildStockStatusBadge(product),
             ),
           ),
 
@@ -1796,7 +1841,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       itemBuilder: (context, index) {
         final product = products[index];
         final isChecked = _selectedProductIds.contains(product.id);
-        final inStock = product.stockQuantity > 0;
 
         return Container(
           key: ValueKey('mob_prod_${product.id}_$index'),
@@ -1893,22 +1937,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                           '₹${product.effectivePrice.toStringAsFixed(0)}',
                           style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _primaryNavy),
                         ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                          decoration: BoxDecoration(
-                            color: inStock ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: inStock ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                          ),
-                          child: Text(
-                            inStock ? '${product.stockQuantity} in stock' : 'Out of stock',
-                            style: TextStyle(
-                              fontSize: 8.5,
-                              fontWeight: FontWeight.bold,
-                              color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                            ),
-                          ),
-                        ),
+                        _buildStockStatusBadge(product, compact: true),
                         if (product.variants.isNotEmpty)
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
@@ -1988,7 +2017,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       itemBuilder: (context, index) {
         final product = products[index];
         final isChecked = _selectedProductIds.contains(product.id);
-        final inStock = product.stockQuantity > 0;
 
         return Container(
           decoration: BoxDecoration(
@@ -2052,22 +2080,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     Positioned(
                       top: 6,
                       right: 6,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: inStock ? const Color(0xFFECFDF5) : const Color(0xFFFEF2F2),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: inStock ? const Color(0xFFA7F3D0) : const Color(0xFFFECACA)),
-                        ),
-                        child: Text(
-                          inStock ? '${product.stockQuantity} in stock' : 'Out of stock',
-                          style: TextStyle(
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.bold,
-                            color: inStock ? const Color(0xFF059669) : const Color(0xFFDC2626),
-                          ),
-                        ),
-                      ),
+                      child: _buildStockStatusBadge(product, compact: true),
                     ),
                   ],
                 ),

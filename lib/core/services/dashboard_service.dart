@@ -10,6 +10,7 @@ import 'report_service.dart';
 class DashboardSummaryData {
   final String period;
   final double revenue;
+  final double totalRoundOff;
   final int totalOrders;
   final int activeOrdersCount;
   final int totalProductsCount;
@@ -18,6 +19,7 @@ class DashboardSummaryData {
   DashboardSummaryData({
     this.period = 'Today',
     this.revenue = 0,
+    this.totalRoundOff = 0,
     this.totalOrders = 0,
     this.activeOrdersCount = 0,
     this.totalProductsCount = 0,
@@ -30,6 +32,7 @@ class DashboardSummaryData {
     return DashboardSummaryData(
       period: json['period'] ?? 'Today',
       revenue: (json['totalRevenue'] as num?)?.toDouble() ?? (json['revenue'] as num?)?.toDouble() ?? 0.0,
+      totalRoundOff: (json['totalRoundOff'] as num?)?.toDouble() ?? (json['roundOff'] as num?)?.toDouble() ?? 0.0,
       totalOrders: (json['totalOrders'] as num?)?.toInt() ?? 0,
       activeOrdersCount: (json['activeOrdersCount'] as num?)?.toInt() ?? 0,
       totalProductsCount: (json['totalProductsCount'] as num?)?.toInt() ?? 0,
@@ -592,8 +595,8 @@ class DashboardService {
     final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
     final salesReport = await _reportService.fetchSalesReport(
       period: period,
-      startDate: startDate ?? (start != null ? start.toUtc().toIso8601String() : null),
-      endDate: endDate ?? (end != null ? end.toUtc().toIso8601String() : null),
+      startDate: startDate ?? start?.toUtc().toIso8601String(),
+      endDate: endDate ?? end?.toUtc().toIso8601String(),
     );
     return buildOverviewFromSalesReport(salesReport, period: period, start: start, end: end);
   }
@@ -607,8 +610,8 @@ class DashboardService {
     final (start, end) = _parseDateRange(period: period, startDate: startDate, endDate: endDate);
     final salesReport = _reportService.getLocalSalesReport(
       period: period,
-      startDate: startDate ?? (start != null ? start.toUtc().toIso8601String() : null),
-      endDate: endDate ?? (end != null ? end.toUtc().toIso8601String() : null),
+      startDate: startDate ?? start?.toUtc().toIso8601String(),
+      endDate: endDate ?? end?.toUtc().toIso8601String(),
     );
     return buildOverviewFromSalesReport(salesReport, period: period, start: start, end: end);
   }

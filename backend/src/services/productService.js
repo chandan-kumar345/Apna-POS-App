@@ -1,6 +1,8 @@
 const mongoose = require('mongoose');
 const Product = require('../models/Product');
 const Category = require('../models/Category');
+const Recipe = require('../models/Recipe');
+const RawMaterial = require('../models/RawMaterial');
 const ApiError = require('../utils/ApiError');
 
 class ProductService {
@@ -130,6 +132,79 @@ class ProductService {
     };
   }
 
+  async _attachStockAndPortions(businessId, products = []) {
+    if (!products || products.length === 0) return products;
+
+    try {
+      const [recipes, rawMaterials] = await Promise.all([
+        Recipe.find({ businessId, isActive: { $ne: false } }).lean(),
+        RawMaterial.find({ businessId }).lean(),
+      ]);
+
+      const recipeByProdId = new Map();
+      const recipeByName = new Map();
+      for (const r of recipes) {
+        if (r.productId) recipeByProdId.set(r.productId.toString(), r);
+        if (r.productName) recipeByName.set(r.productName.toString().trim().toLowerCase(), r);
+      }
+
+      const materialMap = new Map();
+      for (const m of rawMaterials) {
+        materialMap.set(m._id.toString(), m);
+      }
+
+      for (const p of products) {
+        const pId = (p.id || p._id || p.productId || '').toString();
+        const pName = (p.name || '').toString().trim().toLowerCase();
+        const recipe = recipeByProdId.get(pId) || (p.productId && recipeByProdId.get(p.productId.toString())) || recipeByName.get(pName);
+
+        if (recipe && Array.isArray(recipe.ingredients) && recipe.ingredients.length > 0) {
+          let minPortions = Infinity;
+          const servingSize = (recipe.servingSize && recipe.servingSize > 0) ? recipe.servingSize : 1;
+
+          for (const ing of recipe.ingredients) {
+            const matId = ing.materialId ? ing.materialId.toString() : '';
+            const mat = materialMap.get(matId);
+            if (!mat) {
+              minPortions = 0;
+              break;
+            }
+            const currentStock = Number(mat.currentStock) || 0;
+            const minStock = Number(mat.minimumStock) || 0;
+            const usableStock = Math.max(0, currentStock - minStock);
+            const reqPerPortion = Number(ing.effectiveQuantityBaseUnits || ing.quantityBaseUnits || ing.quantity) || 1;
+            const portionsForIng = Math.floor(usableStock / reqPerPortion);
+            if (portionsForIng < minPortions) {
+              minPortions = portionsForIng;
+            }
+          }
+
+          const availablePortions = (minPortions === Infinity ? 0 : Math.max(0, minPortions)) * servingSize;
+          p.availablePortions = availablePortions;
+          p.inventoryType = 'recipe';
+          p.stockStatus = availablePortions <= 0 ? 'out_of_stock' : availablePortions <= 5 ? 'low_stock' : 'in_stock';
+          p.stock = availablePortions;
+          p.stockQuantity = availablePortions;
+        } else if (p.trackInventory === false) {
+          p.availablePortions = 0;
+          p.inventoryType = 'not_configured';
+          p.stockStatus = 'not_configured';
+        } else {
+          const directStock = (p.stock !== undefined && p.stock !== -1) ? Math.max(0, Number(p.stock)) : (Number(p.stockQuantity) || 0);
+          p.availablePortions = directStock;
+          p.inventoryType = 'direct';
+          p.stockStatus = directStock <= 0 ? 'out_of_stock' : directStock <= 5 ? 'low_stock' : 'in_stock';
+          p.stock = directStock;
+          p.stockQuantity = directStock;
+        }
+      }
+    } catch (err) {
+      console.warn('[_attachStockAndPortions] Error calculating stock portions:', err.message);
+    }
+
+    return products;
+  }
+
   async getPosProducts(businessId, { page = 1, limit = 100, category, search } = {}) {
     const query = { businessId, isAvailable: true };
 
@@ -167,6 +242,8 @@ class ProductService {
       delete p.__v;
       products.push(p);
     }
+
+    await this._attachStockAndPortions(businessId, products);
 
     return {
       products,
@@ -216,6 +293,8 @@ class ProductService {
       delete p.__v;
       products.push(p);
     }
+
+    await this._attachStockAndPortions(businessId, products);
 
     return {
       products,

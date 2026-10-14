@@ -454,13 +454,30 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showPhoneOtpVerificationDialog(String displayPhone, String rawPhone) async {
     final authRepo = AuthRepositoryFactory.instance;
     
-    // Ensure we use international format for Firebase if possible
+    // Ensure we use international format for WhatsApp & Firebase
     String firebaseRecipient = rawPhone;
     if (!firebaseRecipient.startsWith('+')) {
       firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
     }
 
-    await authRepo.sendOtp(firebaseRecipient);
+    // 1. Send OTP from Apna POS WhatsApp number
+    bool sentViaWhatsapp = false;
+    try {
+      final waRes = await AuthService().sendWhatsappOtp(firebaseRecipient);
+      if (waRes['whatsappSent'] == true || (waRes['success'] == true && waRes['whatsappSent'] != false)) {
+        sentViaWhatsapp = true;
+      }
+    } catch (e) {
+      debugPrint('[PhoneLogin] WhatsApp OTP dispatch notice: $e');
+    }
+
+    // 2. Keep existing SMS / Firebase OTP dispatch running as parallel / fallback so login never breaks
+    try {
+      await authRepo.sendOtp(firebaseRecipient);
+    } catch (e) {
+      debugPrint('[PhoneLogin] Firebase sendOtp notice: $e');
+    }
+
     if (!mounted) return;
 
     final otpController = TextEditingController();
@@ -593,6 +610,33 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
 
+                              if (sentViaWhatsapp) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF0FDF4),
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(Icons.mark_chat_read_rounded, color: Color(0xFF16A34A), size: 14),
+                                      SizedBox(width: 5),
+                                      Text(
+                                        'Sent via Apna POS WhatsApp',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF15803D),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+
                               const SizedBox(height: 22),
 
                               if (otpError != null) ...[
@@ -650,19 +694,30 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   TextButton(
                                     onPressed: () async {
-                                      // Re-send OTP via Firebase
                                       String firebaseRecipient = rawPhone;
                                       if (!firebaseRecipient.startsWith('+')) {
                                         firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
                                       }
-                                      await authRepo.sendOtp(firebaseRecipient);
+                                      bool reSentWa = false;
+                                      try {
+                                        final waRes = await AuthService().sendWhatsappOtp(firebaseRecipient);
+                                        if (waRes['whatsappSent'] == true || (waRes['success'] == true && waRes['whatsappSent'] != false)) {
+                                          reSentWa = true;
+                                          setDialogState(() => sentViaWhatsapp = true);
+                                        }
+                                      } catch (_) {}
+                                      try {
+                                        await authRepo.sendOtp(firebaseRecipient);
+                                      } catch (_) {}
                                       
                                       if (!mounted) return;
                                       ScaffoldMessenger.of(context).showSnackBar(
                                         SnackBar(
                                           backgroundColor: GlassTheme.primaryNavy,
                                           content: Text(
-                                            'New OTP verification code sent via SMS to $displayPhone',
+                                            reSentWa
+                                                ? 'New OTP verification code sent via WhatsApp & SMS to $displayPhone'
+                                                : 'New OTP verification code sent via SMS to $displayPhone',
                                             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
                                           ),
                                         ),
@@ -737,9 +792,25 @@ class _LoginScreenState extends State<LoginScreen> {
                                               firebaseRecipient = '${_selectedCountry.dialCode}$rawPhone';
                                             }
 
-                                            final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
+                                            // Dual Verification: Check WhatsApp OTP first, fallback to Firebase OTP
+                                            bool isVerified = false;
+                                            try {
+                                              final waVerifyRes = await AuthService().verifyWhatsappOtp(firebaseRecipient, enteredOtp);
+                                              if (waVerifyRes['success'] == true || waVerifyRes['user'] != null) {
+                                                isVerified = true;
+                                              }
+                                            } catch (waErr) {
+                                              debugPrint('[PhoneLogin] WhatsApp OTP verification fallback: $waErr');
+                                            }
 
-                                            if (userEntity != null) {
+                                            if (!isVerified) {
+                                              final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
+                                              if (userEntity != null) {
+                                                isVerified = true;
+                                              }
+                                            }
+
+                                            if (isVerified) {
                                               // Authenticate with backend API
                                               try {
                                                 final phoneEmail = '${rawPhone.replaceAll(RegExp(r'[^0-9]'), '')}@apnapos.com';

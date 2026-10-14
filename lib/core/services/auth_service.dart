@@ -377,6 +377,52 @@ class AuthService {
     return (response['data'] as Map<String, dynamic>?) ?? response;
   }
 
+  /// Send WhatsApp OTP via Apna POS official WhatsApp number if the phone is registered
+  Future<Map<String, dynamic>> sendWhatsappOtp(String phone) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.sendWhatsappOtp,
+      data: {'phone': phone.trim()},
+    );
+    if (response is Map<String, dynamic>) {
+      return (response['data'] as Map<String, dynamic>?) ?? response;
+    }
+    return {'success': false, 'isRegistered': false, 'whatsappSent': false};
+  }
+
+  /// Verify WhatsApp OTP and obtain authenticated session tokens
+  Future<Map<String, dynamic>> verifyWhatsappOtp(String phone, String otp) async {
+    final response = await _apiClient.post(
+      ApiEndpoints.verifyWhatsappOtp,
+      data: {
+        'phone': phone.trim(),
+        'otp': otp.trim(),
+      },
+    );
+    final data = (response['data'] as Map<String, dynamic>?) ?? response;
+    final accessToken = data['accessToken'] as String?;
+    final refreshToken = data['refreshToken'] as String?;
+    final userJson = data['user'] as Map<String, dynamic>?;
+
+    if (accessToken != null) {
+      await _storage.saveAccessToken(accessToken);
+    }
+    if (refreshToken != null) {
+      await _storage.saveRefreshToken(refreshToken);
+    }
+
+    ProductService.clearPosCache();
+
+    if (userJson != null) {
+      final user = UserModel.fromJson(userJson);
+      await _storage.saveUserId(user.id);
+      await _sessionManager.saveSession(user.id);
+      await _db.saveActiveUser(user);
+      await _db.loadUserDataForActiveUser(user.id);
+    }
+
+    return data;
+  }
+
   // Check if active access token exists
   Future<bool> isAuthenticated() async {
     final token = await _storage.getAccessToken();

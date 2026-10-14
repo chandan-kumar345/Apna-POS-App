@@ -346,6 +346,7 @@ class WhatsAppService {
   async sendChatMessage({
     to,
     text,
+    message,
     messageType = 'text',
     mediaUrl = '',
     phoneNumberId = null,
@@ -359,6 +360,8 @@ class WhatsAppService {
         'INVALID_PHONE_NUMBER'
       );
     }
+
+    const messageContent = (text !== undefined && text !== null ? text : message) || '';
 
     const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
     const activeAccessToken = accessToken || this.accessToken;
@@ -382,6 +385,10 @@ class WhatsAppService {
 
     const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
     const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
+
+    if (!isImage && !messageContent.toString().trim()) {
+      throw ApiError.badRequest('WhatsApp text message body cannot be empty', null, 'EMPTY_MESSAGE_TEXT');
+    }
 
     let imagePayload = null;
     if (isImage) {
@@ -440,8 +447,8 @@ class WhatsAppService {
         imagePayload = { link: mediaUrl };
       }
 
-      if (text && text.trim()) {
-        imagePayload.caption = text.trim();
+      if (messageContent && messageContent.toString().trim()) {
+        imagePayload.caption = messageContent.toString().trim();
       }
     }
 
@@ -452,7 +459,7 @@ class WhatsAppService {
       type: isImage ? 'image' : 'text',
       ...(isImage
         ? { image: imagePayload }
-        : { text: { preview_url: false, body: text || '' } }),
+        : { text: { preview_url: false, body: messageContent.toString() } }),
     };
 
     let response = await fetch(url, {

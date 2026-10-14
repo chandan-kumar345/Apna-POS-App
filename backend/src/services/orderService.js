@@ -12,6 +12,7 @@ const loyaltyService = require('./loyaltyService');
 const tableService = require('./tableService');
 const socketService = require('./socketService');
 const inventoryService = require('./inventoryService');
+const couponService = require('./couponService');
 const ApiError = require('../utils/ApiError');
 
 class OrderService {
@@ -465,6 +466,9 @@ class OrderService {
       sgst,
       igst,
       tipAmount,
+      roundOff: Number(rawData.roundOff) || 0,
+      couponCode: (rawData.couponCode || rawData.coupon || '').toString().trim().toUpperCase(),
+      couponDiscount: Number(rawData.couponDiscount) || 0,
       totalAmount,
       paymentMethod,
       paymentStatus,
@@ -574,9 +578,25 @@ class OrderService {
         { upsert: true, new: true }
       );
 
-      // Inventory deduction
+      // 1. Deduct raw material restaurant inventory according to configured recipes
+      const recipeDeductedItems = new Set();
+      try {
+        const invRes = await inventoryService.deductRecipeInventoryForOrder(businessId, order);
+        if (invRes && Array.isArray(invRes.summary)) {
+          invRes.summary.forEach((s) => {
+            if (s.productId) recipeDeductedItems.add(s.productId.toString());
+            if (s.productName) recipeDeductedItems.add(s.productName.toString().toLowerCase().trim());
+          });
+        }
+      } catch (invErr) {
+        console.warn('[generatePosOrder] Recipe inventory deduction warning:', invErr.message);
+      }
+
+      // 2. Direct inventory deduction ONLY for items that did NOT use recipe stock
       for (const item of order.items) {
-        if (item.productId) {
+        const pId = item.productId ? item.productId.toString() : '';
+        const pName = (item.name || '').toString().toLowerCase().trim();
+        if (pId && !recipeDeductedItems.has(pId) && !recipeDeductedItems.has(pName)) {
           await Product.findOneAndUpdate(
             { _id: item.productId, businessId, trackInventory: true, stock: { $gt: 0 } },
             { $inc: { stock: -item.quantity } }
@@ -584,11 +604,22 @@ class OrderService {
         }
       }
 
-      // Deduct raw material restaurant inventory according to configured recipes
-      try {
-        await inventoryService.deductRecipeInventoryForOrder(businessId, order);
-      } catch (invErr) {
-        console.warn('[generatePosOrder] Recipe inventory deduction warning:', invErr.message);
+      // 3. Record coupon redemption if coupon applied
+      if (order.couponCode) {
+        try {
+          await couponService.recordRedemption(businessId, {
+            couponCode: order.couponCode,
+            orderId: order._id,
+            orderNumber: order.orderNumber,
+            customerPhone: order.customerPhone,
+            customerName: order.customerName,
+            orderSubtotal: order.subtotal,
+            discountAmount: order.couponDiscount || order.discountAmount || 0,
+            finalOrderAmount: order.totalAmount,
+          });
+        } catch (cpErr) {
+          console.warn('[generatePosOrder] Coupon redemption logging warning:', cpErr.message);
+        }
       }
 
       // PrintLog snapshot for completed order
@@ -930,6 +961,7 @@ class OrderService {
       discountAmount: order.discountAmount,
       taxAmount: order.taxAmount,
       tipAmount: order.tipAmount,
+      roundOff: order.roundOff || 0,
       totalAmount: order.totalAmount,
       paymentMethod,
       saleDate: new Date(),
@@ -1420,6 +1452,7 @@ class OrderService {
           discountAmount: order.discountAmount || 0,
           taxAmount: order.taxAmount || 0,
           tipAmount: order.tipAmount || 0,
+          roundOff: order.roundOff || 0,
           totalAmount: order.totalAmount,
           paymentMethod: paymentMethod.toLowerCase(),
           saleDate: order.completedAt || new Date(),
@@ -1429,9 +1462,25 @@ class OrderService {
       { upsert: true, new: true }
     );
 
-    // 2. Deduct Inventory for tracked items
+    // 2. Deduct raw material restaurant inventory according to configured recipes
+    const recipeDeductedItems = new Set();
+    try {
+      const invRes = await inventoryService.deductRecipeInventoryForOrder(bId, order);
+      if (invRes && Array.isArray(invRes.summary)) {
+        invRes.summary.forEach((s) => {
+          if (s.productId) recipeDeductedItems.add(s.productId.toString());
+          if (s.productName) recipeDeductedItems.add(s.productName.toString().toLowerCase().trim());
+        });
+      }
+    } catch (invErr) {
+      console.warn('[settleOrder] Recipe inventory deduction warning:', invErr.message);
+    }
+
+    // Direct inventory deduction ONLY for items that did NOT use recipe stock
     for (const item of order.items) {
-      if (item.productId) {
+      const pId = item.productId ? item.productId.toString() : '';
+      const pName = (item.name || '').toString().toLowerCase().trim();
+      if (pId && !recipeDeductedItems.has(pId) && !recipeDeductedItems.has(pName)) {
         await Product.findOneAndUpdate(
           { _id: item.productId, businessId: bId, trackInventory: true, stock: { $gt: 0 } },
           { $inc: { stock: -item.quantity } }
@@ -1439,11 +1488,22 @@ class OrderService {
       }
     }
 
-    // Deduct raw material restaurant inventory according to configured recipes
-    try {
-      await inventoryService.deductRecipeInventoryForOrder(bId, order);
-    } catch (invErr) {
-      console.warn('[settleOrder] Recipe inventory deduction warning:', invErr.message);
+    // Record coupon redemption if coupon applied
+    if (order.couponCode) {
+      try {
+        await couponService.recordRedemption(bId, {
+          couponCode: order.couponCode,
+          orderId: order._id,
+          orderNumber: order.orderNumber,
+          customerPhone: order.customerPhone,
+          customerName: order.customerName,
+          orderSubtotal: order.subtotal,
+          discountAmount: order.couponDiscount || order.discountAmount || 0,
+          finalOrderAmount: order.totalAmount,
+        });
+      } catch (cpErr) {
+        console.warn('[settleOrder] Coupon redemption logging warning:', cpErr.message);
+      }
     }
 
     // 3. Free Table if dineIn

@@ -1158,8 +1158,9 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
 
     // Connect real-time socket client if user has an active business
-    if (currentUser != null && currentUser!.restaurantId.isNotEmpty) {
-      _socketService.connect(businessId: currentUser!.restaurantId);
+    if (currentUser != null) {
+      final biz = currentBusinessId.isNotEmpty ? currentBusinessId : currentUser!.businessId;
+      _socketService.connect(businessId: biz);
     }
 
     // Start real-time background auto-sync across devices
@@ -1843,7 +1844,9 @@ class DatabaseService extends ChangeNotifier {
           }
 
           // Connect real-time Socket.IO room for this business
-          final activeBizId = currentUser?.restaurantId ?? restaurant?.id;
+          final activeBizId = currentBusinessId.isNotEmpty
+              ? currentBusinessId
+              : (currentUser?.businessId ?? restaurant?.id);
           if (activeBizId != null && activeBizId.isNotEmpty) {
             _socketService.connect(businessId: activeBizId);
           }
@@ -4005,6 +4008,8 @@ class DatabaseService extends ChangeNotifier {
     String? staffId,
     String? staffName,
     String? staffRole,
+    String? couponCode,
+    double couponDiscount = 0.0,
   }) async {
     final double subtotal = subtotalOverride ?? items.fold<double>(0.0, (double sum, i) => sum + i.totalPrice);
     final double defaultTaxRate = (restaurant?.billingType == 'Non-GST') ? 0.0 : (restaurant?.taxRate ?? 5.0);
@@ -4110,6 +4115,8 @@ class DatabaseService extends ChangeNotifier {
       staffId: resolvedStaffId,
       staffName: resolvedStaffName,
       staffRole: resolvedStaffRole,
+      couponCode: couponCode,
+      couponDiscount: couponDiscount,
     );
 
     orders.insert(0, newOrder);
@@ -4446,6 +4453,8 @@ class DatabaseService extends ChangeNotifier {
     String? customerName,
     String? customerPhone,
     String? deliveryAddress,
+    String? couponCode,
+    double? couponDiscount,
   }) async {
     final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
     OrderModel baseOrder;
@@ -4490,6 +4499,8 @@ class DatabaseService extends ChangeNotifier {
       customerName: resolvedCustName,
       customerPhone: resolvedCustPhone,
       deliveryAddress: resolvedDelivAddr,
+      couponCode: couponCode ?? baseOrder.couponCode,
+      couponDiscount: couponDiscount ?? baseOrder.couponDiscount,
     );
 
     if (index >= 0) {
@@ -4563,6 +4574,10 @@ class DatabaseService extends ChangeNotifier {
           'tipAmount': completedOrder.tipAmount,
           'deliveryCharge': completedOrder.deliveryCharge,
           'roundOff': roundOff,
+          if (completedOrder.couponCode != null && completedOrder.couponCode!.isNotEmpty)
+            'couponCode': completedOrder.couponCode,
+          if (completedOrder.couponDiscount > 0)
+            'couponDiscount': completedOrder.couponDiscount,
           'totalAmount': totalAmount,
           'amountPaid': totalAmount,
           'paymentMethod': paymentMethod,

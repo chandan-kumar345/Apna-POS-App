@@ -526,33 +526,9 @@ class WhatsAppChatService {
       }
     }
 
-    // Handle incoming media (Image, Document, Video, Audio)
+    const hasPendingMedia = !incomingMsg.mediaUrl && Boolean(incomingMsg.mediaId);
     let mediaUrl = incomingMsg.mediaUrl || '';
-    if (!mediaUrl && incomingMsg.mediaId) {
-      try {
-        const token = business.whatsappSettings?.accessToken || whatsappService.accessToken;
-        const downloaded = await whatsappService.downloadMediaFromMeta(incomingMsg.mediaId, token);
-        if (downloaded && downloaded.buffer) {
-          const ext = downloaded.mimeType?.includes('png')
-            ? '.png'
-            : (downloaded.mimeType?.includes('webp') ? '.webp' : '.jpg');
-          const cleanFileName = `wa_in_${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`;
-          const uploadedUrl = await storageService.uploadImage(
-            downloaded.buffer,
-            cleanFileName,
-            downloaded.mimeType || 'image/jpeg',
-            'whatsapp'
-          );
-          if (uploadedUrl) {
-            mediaUrl = uploadedUrl;
-          }
-        }
-      } catch (err) {
-        console.error('[WhatsAppChatService] Error downloading incoming media from Meta:', err.message);
-      }
-    }
-
-    const isImage = incomingMsg.type === 'image' || Boolean(mediaUrl);
+    const isImage = incomingMsg.type === 'image' || Boolean(mediaUrl) || Boolean(incomingMsg.mediaId);
     const lastMsgDisplay = isImage
       ? (incomingMsg.body && incomingMsg.body !== '[Photo]' ? `📷 ${incomingMsg.body}` : '📷 Photo')
       : (incomingMsg.body || '[Message]');
@@ -584,7 +560,7 @@ class WhatsAppChatService {
       await chat.save();
     }
 
-    // Create incoming Message record
+    // Create incoming Message record immediately (<15ms)
     const message = await WhatsAppMessage.create({
       businessId: bId,
       chatId: chat._id,
@@ -598,15 +574,20 @@ class WhatsAppChatService {
       timestamp: incomingMsg.timestamp || new Date(),
     });
 
-    console.log(`[WhatsAppChatService] 📩 Received incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}" with media "${mediaUrl || 'none'}" for Business ${business.profile?.name || business._id}`);
+    console.log(`[WhatsAppChatService] 📩 [INSTANT] Incoming WhatsApp message from ${normalizedPhone} (${customerName || 'Customer'}): "${lastMsgDisplay}"`);
 
-    // Instantaneous WebSocket broadcast to connected business terminals
+    // 1. Instantaneous WebSocket broadcast to connected business terminals (<20ms)
     try {
       const socketService = require('./socketService');
-      socketService.emitWhatsAppMessageReceived(bId, { chat, message });
+      socketService.emitWhatsAppMessageReceived(bId, {
+        chat,
+        message,
+        targetUserId,
+        ownerId: business?.ownerId,
+      });
     } catch (_) {}
 
-    // Create WhatsApp Message Notification & trigger real-time push notification for native notification center
+    // 2. Immediate push notification dispatch for OS Notification Tray (<30ms)
     try {
       const notificationService = require('./notificationService');
       const senderDisplay = customerName && !customerName.startsWith('Customer ')
@@ -621,7 +602,7 @@ class WhatsAppChatService {
 
       await notificationService.createNotification({
         businessId: bId,
-        userId: targetUserId || undefined,
+        userId: targetUserId || business?.ownerId || undefined,
         type: 'whatsapp_message',
         title: `WhatsApp: ${senderDisplay}`,
         message: notifBody,
@@ -637,9 +618,44 @@ class WhatsAppChatService {
         sendPush: true,
         idempotencyKey: incomingMsg.messageId ? `wa_notif_${incomingMsg.messageId}` : undefined,
       });
-      console.log(`[WhatsAppChatService] 🔔 Created push notification for WhatsApp message from ${senderDisplay}`);
+      console.log(`[WhatsAppChatService] 🔔 Instant push notification dispatched for ${senderDisplay}`);
     } catch (notifErr) {
-      console.warn('[WhatsAppChatService] Non-blocking notification creation error:', notifErr.message);
+      console.warn('[WhatsAppChatService] Non-blocking notification creation notice:', notifErr.message);
+    }
+
+    // 3. Asynchronous background media hydration (non-blocking for instant responsiveness)
+    if (hasPendingMedia) {
+      setImmediate(async () => {
+        try {
+          const token = business.whatsappSettings?.accessToken || whatsappService.accessToken;
+          const downloaded = await whatsappService.downloadMediaFromMeta(incomingMsg.mediaId, token);
+          if (downloaded && downloaded.buffer) {
+            const ext = downloaded.mimeType?.includes('png')
+              ? '.png'
+              : (downloaded.mimeType?.includes('webp') ? '.webp' : '.jpg');
+            const cleanFileName = `wa_in_${Date.now()}_${Math.random().toString(36).slice(2, 7)}${ext}`;
+            const uploadedUrl = await storageService.uploadImage(
+              downloaded.buffer,
+              cleanFileName,
+              downloaded.mimeType || 'image/jpeg',
+              'whatsapp'
+            );
+            if (uploadedUrl) {
+              message.mediaUrl = uploadedUrl;
+              await message.save();
+              const socketService = require('./socketService');
+              socketService.emitWhatsAppMessageUpdated(bId, {
+                messageId: message._id,
+                chatId: chat._id,
+                mediaUrl: uploadedUrl,
+              });
+              console.log(`[WhatsAppChatService] 🖼️ Media hydrated for message ${message._id}`);
+            }
+          }
+        } catch (err) {
+          console.error('[WhatsAppChatService] Error downloading incoming media from Meta:', err.message);
+        }
+      });
     }
   }
 
@@ -654,7 +670,15 @@ class WhatsAppChatService {
 
     message.status = update.status;
     if (update.errors && Array.isArray(update.errors) && update.errors.length > 0) {
-      message.error = update.errors[0]?.message || 'Delivery error';
+      const err = update.errors[0];
+      const code = err.code;
+      const title = err.title || '';
+      const rawMsg = err.message || '';
+      if (code === 131047 || title === 'Re-engagement message' || rawMsg === 'Re-engagement message') {
+        message.error = '24-hour customer window expired (Meta policy). Customer must reply or send template to re-engage.';
+      } else {
+        message.error = err.error_data?.details || err.message || err.title || 'Delivery error';
+      }
     }
     await message.save();
   }

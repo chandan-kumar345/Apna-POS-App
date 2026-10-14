@@ -77,6 +77,36 @@ class AuthController {
       next(error);
     }
   }
+
+  // Send WhatsApp OTP (dispatched from Apna POS WhatsApp number)
+  async sendWhatsappOtp(req, res, next) {
+    try {
+      const { phone } = req.body;
+      const result = await authService.sendWhatsappOtp(phone);
+      if (!result.success) {
+        return res.status(400).json({
+          success: false,
+          isRegistered: result.isRegistered || false,
+          whatsappSent: false,
+          message: result.message,
+        });
+      }
+      return ApiResponse.success(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // Verify WhatsApp OTP and login
+  async verifyWhatsappOtp(req, res, next) {
+    try {
+      const { phone, otp } = req.body;
+      const result = await authService.verifyWhatsappOtp(phone, otp);
+      return ApiResponse.success(res, result, 'WhatsApp OTP verified successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 
 module.exports = new AuthController();

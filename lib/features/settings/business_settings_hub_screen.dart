@@ -14,6 +14,7 @@ import 'print_logs_screen.dart';
 import 'superadmin_order_deletion_screen.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
 import '../../core/services/whatsapp_chat_service.dart';
+import '../coupon/screens/coupon_management_screen.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -4242,7 +4243,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Financials & Payments',
                         icon: Icons.account_balance_wallet_rounded,
-                        countText: '3 Items',
+                        countText: '4 Items',
                         accentColor: const Color(0xFF059669),
                       ),
                       const SizedBox(height: 14),
@@ -4277,6 +4278,22 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             accentColor: const Color(0xFF0D9488),
                             badgeText: db.isWalletEnabled ? '${db.walletCashbackPercentage}% Back' : 'Setup',
                             onTap: _showWalletModal,
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Coupons & Offers',
+                            subtitle: 'Promo Codes & Order Discounts',
+                            icon: Icons.confirmation_number_rounded,
+                            accentColor: const Color(0xFFD97706),
+                            badgeText: 'Offers',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const CouponManagementScreen(),
+                                ),
+                              );
+                            },
                           ),
                         ],
                       ),

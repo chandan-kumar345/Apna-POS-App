@@ -371,6 +371,7 @@ class NotificationService extends ChangeNotifier {
     String? entityType,
     String? entityId,
     Map<String, dynamic> metadata = const {},
+    bool playSound = false,
   }) {
     final newItem = NotificationItem(
       id: 'local_${DateTime.now().millisecondsSinceEpoch}',
@@ -398,7 +399,9 @@ class NotificationService extends ChangeNotifier {
     notifyListeners();
     _persistNotificationsToCache();
 
-    // Play sound feedback
-    SoundService.playNotificationSound();
+    // Play sound feedback only when explicitly requested (since LocalNotificationService handles push audio)
+    if (playSound) {
+      SoundService.playNotificationSound();
+    }
   }
 }

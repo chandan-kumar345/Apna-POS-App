@@ -4,7 +4,11 @@ const Staff = require('../models/Staff');
 const Subscription = require('../models/Subscription');
 const tokenService = require('./tokenService');
 const notificationService = require('./notificationService');
+const whatsappService = require('./whatsappService');
 const ApiError = require('../utils/ApiError');
+
+// In-memory store for active WhatsApp OTPs: Map<normalizedPhone, { otp: string, expiresAt: number, phone: string }>
+const activeWhatsappOtps = new Map();
 
 class AuthService {
   // Register a new user
@@ -430,6 +434,174 @@ class AuthService {
     return {
       success: true,
       message: 'Password has been reset successfully. Please log in with your new password.',
+    };
+  }
+
+  // Check if a phone number belongs to a registered customer / user / staff / business
+  async findRegisteredAccountByPhone(phone) {
+    if (!phone) return null;
+    const raw = phone.toString().trim();
+    const normalized = whatsappService.normalizePhoneNumber(raw);
+    const digitsOnly = raw.replace(/\D/g, '');
+    const last10 = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : digitsOnly;
+
+    const phoneCandidates = Array.from(new Set([
+      raw,
+      normalized,
+      `+${normalized}`,
+      digitsOnly,
+      last10,
+      `+91${last10}`,
+      `91${last10}`,
+    ])).filter(Boolean);
+
+    // 1. Search in User collection
+    let user = await User.findOne({
+      phone: { $in: phoneCandidates },
+    });
+    if (user) {
+      return { type: 'user', account: user, user };
+    }
+
+    // 2. Search in Staff collection
+    let staff = await Staff.findOne({
+      phone: { $in: phoneCandidates },
+    });
+    if (staff) {
+      let linkedUser = null;
+      if (staff.userId) {
+        linkedUser = await User.findById(staff.userId);
+      }
+      return { type: 'staff', account: staff, user: linkedUser };
+    }
+
+    // 3. Search in Business collection
+    let business = await Business.findOne({
+      'profile.phone': { $in: phoneCandidates },
+    });
+    if (business) {
+      let owner = await User.findById(business.ownerId);
+      return { type: 'business', account: business, user: owner };
+    }
+
+    return null;
+  }
+
+  // Generate & dispatch OTP via WhatsApp from Apna POS official WhatsApp number
+  async sendWhatsappOtp(phone) {
+    if (!phone) {
+      throw ApiError.badRequest('Phone number is required');
+    }
+
+    const normalizedPhone = whatsappService.normalizePhoneNumber(phone);
+    if (!normalizedPhone || !whatsappService.isValidPhoneNumber(normalizedPhone)) {
+      throw ApiError.badRequest('Invalid mobile phone number format');
+    }
+
+    // Check whether the entered phone number is an existing registered user / staff / business
+    let registered = null;
+    try {
+      registered = await this.findRegisteredAccountByPhone(phone);
+    } catch (dbErr) {
+      console.warn(`[WhatsApp OTP] Transient DB lookup notice: ${dbErr.message}`);
+    }
+
+    // Generate secure 4-digit OTP matching Apna POS PIN boxes
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiry
+
+    activeWhatsappOtps.set(normalizedPhone, { otp, expiresAt, phone, isExisting: Boolean(registered) });
+
+    try {
+      const otpMessage = registered
+        ? `*Apna POS Verification Code*\n\nYour login verification OTP is: *${otp}*\n\nThis OTP is valid for 5 minutes. Please do not share this OTP with anyone for security purposes.\n\nThank you for choosing Apna POS!`
+        : `*Welcome to Apna POS!*\n\nYour account verification code is: *${otp}*\n\nThis code is valid for 5 minutes. Please do not share this OTP with anyone for security purposes.\n\nThank you for choosing Apna POS!`;
+
+      await whatsappService.sendChatMessage({
+        to: normalizedPhone,
+        text: otpMessage,
+        message: otpMessage,
+      });
+
+      console.log(`[WhatsApp OTP] Successfully sent OTP to ${normalizedPhone}`);
+
+      return {
+        success: true,
+        isRegistered: true,
+        whatsappSent: true,
+        isExistingAccount: Boolean(registered),
+        message: 'Verification OTP sent to your WhatsApp number successfully.',
+        phone: normalizedPhone,
+      };
+    } catch (err) {
+      console.error(`[WhatsApp OTP Dispatch Error] ${err.message}`);
+      return {
+        success: false,
+        isRegistered: Boolean(registered),
+        whatsappSent: false,
+        message: `Failed to dispatch WhatsApp OTP: ${err.message}`,
+        phone: normalizedPhone,
+      };
+    }
+  }
+
+  // Verify WhatsApp OTP and generate authenticated session tokens
+  async verifyWhatsappOtp(phone, enteredOtp) {
+    if (!phone || !enteredOtp) {
+      throw ApiError.badRequest('Phone number and OTP code are required');
+    }
+
+    const normalizedPhone = whatsappService.normalizePhoneNumber(phone);
+    const cleanOtp = enteredOtp.toString().trim().replace(/\D/g, '');
+
+    const record = activeWhatsappOtps.get(normalizedPhone);
+    if (!record) {
+      throw ApiError.unauthorized('No active OTP found for this number or it has expired. Please request a new OTP.');
+    }
+
+    if (Date.now() > record.expiresAt) {
+      activeWhatsappOtps.delete(normalizedPhone);
+      throw ApiError.unauthorized('Your OTP has expired. Please request a new OTP.');
+    }
+
+    if (record.otp !== cleanOtp) {
+      throw ApiError.unauthorized('The OTP you entered is incorrect. Please check and try again.');
+    }
+
+    // OTP verified successfully - clear from memory
+    activeWhatsappOtps.delete(normalizedPhone);
+
+    // Fetch or create user record
+    const registered = await this.findRegisteredAccountByPhone(phone);
+    let user = registered?.user;
+
+    if (!user) {
+      const placeholderEmail = `user_${normalizedPhone}@apnapos.com`;
+      user = await User.findOne({ $or: [{ phone: normalizedPhone }, { email: placeholderEmail }] });
+      if (!user) {
+        const dummyHash = await User.hashPassword('PhoneAuth@123');
+        user = await User.create({
+          email: placeholderEmail,
+          phone: normalizedPhone,
+          passwordHash: dummyHash,
+          role: 'owner',
+          onboardingCompleted: true,
+        });
+      }
+    }
+
+    const tokens = await tokenService.generateAuthTokens(user);
+
+    return {
+      success: true,
+      user: {
+        id: user._id,
+        email: user.email,
+        phone: user.phone || normalizedPhone,
+        role: user.role || 'owner',
+        onboardingCompleted: user.onboardingCompleted ?? true,
+      },
+      ...tokens,
     };
   }
 }

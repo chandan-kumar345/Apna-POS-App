@@ -284,6 +284,9 @@ class WhatsAppChatService {
       socketService.onWhatsAppChatUpdated = (data) {
         _handleIncomingSocketChatUpdate(data);
       };
+      socketService.onWhatsAppMessageUpdated = (data) {
+        _handleIncomingSocketMessageUpdated(data);
+      };
     } catch (e) {
       debugPrint('[WhatsAppChatService] Error attaching socket listeners: $e');
     }
@@ -307,25 +310,24 @@ class WhatsAppChatService {
       }
 
       // 2. Update chats list cache
-      if (_chatsCache != null) {
-        final chatIndex = _chatsCache!.indexWhere((c) => c.id == msg.chatId);
-        if (chatIndex != -1) {
-          final old = _chatsCache![chatIndex];
-          final updated = old.copyWith(
-            lastMessage: msg.messageType == 'image' ? '📷 Photo' : (msg.text.isNotEmpty ? msg.text : 'New message'),
-            lastMessageAt: msg.timestamp,
-            lastMessageDirection: msg.direction,
-            unreadCount: msg.isIncoming ? old.unreadCount + 1 : old.unreadCount,
-          );
-          _chatsCache!.removeAt(chatIndex);
-          _chatsCache!.insert(0, updated);
-        } else if (chatMap != null) {
-          final newChat = WhatsAppChatModel.fromJson(chatMap);
-          _chatsCache!.insert(0, newChat);
-        }
-        _saveChatsToPrefs(_chatsCache!);
-        _chatsStreamController.add(List.from(_chatsCache!));
+      _chatsCache ??= [];
+      final chatIndex = _chatsCache!.indexWhere((c) => c.id == msg.chatId);
+      if (chatIndex != -1) {
+        final old = _chatsCache![chatIndex];
+        final updated = old.copyWith(
+          lastMessage: msg.messageType == 'image' ? '📷 Photo' : (msg.text.isNotEmpty ? msg.text : 'New message'),
+          lastMessageAt: msg.timestamp,
+          lastMessageDirection: msg.direction,
+          unreadCount: msg.isIncoming ? old.unreadCount + 1 : old.unreadCount,
+        );
+        _chatsCache!.removeAt(chatIndex);
+        _chatsCache!.insert(0, updated);
+      } else if (chatMap != null) {
+        final newChat = WhatsAppChatModel.fromJson(chatMap);
+        _chatsCache!.insert(0, newChat);
       }
+      _saveChatsToPrefs(_chatsCache!);
+      _chatsStreamController.add(List.from(_chatsCache!));
 
       // 3. Emit message event to active chat screen
       _messageStreamController.add(msg);
@@ -341,18 +343,40 @@ class WhatsAppChatService {
       if (chatMap == null) return;
       final updatedChat = WhatsAppChatModel.fromJson(chatMap);
 
-      if (_chatsCache != null) {
-        final idx = _chatsCache!.indexWhere((c) => c.id == updatedChat.id);
-        if (idx != -1) {
-          _chatsCache![idx] = updatedChat;
-        } else {
-          _chatsCache!.insert(0, updatedChat);
-        }
-        _saveChatsToPrefs(_chatsCache!);
-        _chatsStreamController.add(List.from(_chatsCache!));
+      _chatsCache ??= [];
+      final idx = _chatsCache!.indexWhere((c) => c.id == updatedChat.id);
+      if (idx != -1) {
+        _chatsCache![idx] = updatedChat;
+      } else {
+        _chatsCache!.insert(0, updatedChat);
       }
+      _saveChatsToPrefs(_chatsCache!);
+      _chatsStreamController.add(List.from(_chatsCache!));
     } catch (e) {
       debugPrint('[WhatsAppChatService] Error handling socket chat update: $e');
+    }
+  }
+
+  void _handleIncomingSocketMessageUpdated(Map<String, dynamic> data) {
+    try {
+      final messageId = data['messageId']?.toString() ?? '';
+      final chatId = data['chatId']?.toString() ?? '';
+      final mediaUrl = data['mediaUrl']?.toString() ?? '';
+      if (chatId.isEmpty || messageId.isEmpty || mediaUrl.isEmpty) return;
+
+      final existingMsgs = _messagesCache[chatId];
+      if (existingMsgs != null) {
+        final idx = existingMsgs.indexWhere((m) => m.id == messageId);
+        if (idx != -1) {
+          final updatedMsg = existingMsgs[idx].copyWith(mediaUrl: mediaUrl);
+          existingMsgs[idx] = updatedMsg;
+          _saveMessagesToPrefs(chatId, existingMsgs);
+          _messageStreamController.add(updatedMsg);
+          debugPrint('[WhatsAppChatService] 🖼️ Media updated in message: $mediaUrl');
+        }
+      }
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] Error handling media update: $e');
     }
   }
 

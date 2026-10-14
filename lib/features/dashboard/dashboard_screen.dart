@@ -555,19 +555,21 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Metrics in 2 Neumorphic Inset Wells
-          Row(
-            children: [
-              Expanded(
-                child: _buildNeumorphicInset(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          // Metrics in Neumorphic Inset Wells (Total Orders, Total Revenue, Total Round-Off Amount)
+          Builder(
+            builder: (context) {
+              final currency = _db.restaurant?.currencySymbol ?? '₹';
+              final double totalRoundOff = _summaryData.totalRoundOff;
+
+              Widget buildMetricWell(String title, String value, Color color) {
+                return _buildNeumorphicInset(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Total Orders',
-                        style: TextStyle(
+                      Text(
+                        title,
+                        style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFF64748B),
@@ -580,54 +582,55 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          '$totalOrdersCount',
-                          style: const TextStyle(
-                            fontSize: 22,
+                          value,
+                          style: TextStyle(
+                            fontSize: 20,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF059669),
+                            color: color,
                           ),
                         ),
                       ),
                     ],
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildNeumorphicInset(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Total Revenue',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF64748B),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          '₹${totalRevenue.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF0F172A),
-                          ),
-                        ),
-                      ),
-                    ],
+                );
+              }
+
+              if (isMobile) {
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(child: buildMetricWell('Total Orders', '$totalOrdersCount', const Color(0xFF059669))),
+                        const SizedBox(width: 10),
+                        Expanded(child: buildMetricWell('Total Revenue', '$currency${totalRevenue.toStringAsFixed(2)}', const Color(0xFF0F172A))),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    buildMetricWell(
+                      'Total Round-Off Amount',
+                      '$currency${totalRoundOff >= 0 ? "+" : ""}${totalRoundOff.toStringAsFixed(2)}',
+                      totalRoundOff >= 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
+                    ),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: buildMetricWell('Total Orders', '$totalOrdersCount', const Color(0xFF059669))),
+                  const SizedBox(width: 10),
+                  Expanded(child: buildMetricWell('Total Revenue', '$currency${totalRevenue.toStringAsFixed(2)}', const Color(0xFF0F172A))),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: buildMetricWell(
+                      'Total Round-Off Amount',
+                      '$currency${totalRoundOff >= 0 ? "+" : ""}${totalRoundOff.toStringAsFixed(2)}',
+                      totalRoundOff >= 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           ),
           const SizedBox(height: 12),
 
@@ -2756,6 +2759,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
 
       final int totalOrders = settledOrders.length;
       final double totalRevenue = settledOrders.fold(0.0, (sum, o) => sum + o.totalAmount);
+      final double totalRoundOff = settledOrders.fold(0.0, (sum, o) => sum + o.roundOff);
       final int activeOrdersCount = allOrders.where((o) =>
           (o.status == OrderStatus.pending || o.status == OrderStatus.preparing || o.status == OrderStatus.ready) &&
           !o.isPaid &&
@@ -2929,6 +2933,7 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         summary: DashboardSummaryData(
           period: period,
           revenue: totalRevenue,
+          totalRoundOff: totalRoundOff,
           totalOrders: totalOrders,
           activeOrdersCount: activeOrdersCount,
           totalProductsCount: totalProductsCount,

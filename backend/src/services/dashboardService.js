@@ -94,6 +94,7 @@ class DashboardService {
           _id: null,
           totalOrders: { $sum: 1 },
           totalRevenue: { $sum: '$totalAmount' },
+          totalRoundOff: { $sum: { $ifNull: ['$roundOff', 0] } },
         },
       },
     ]);
@@ -105,11 +106,12 @@ class DashboardService {
 
     const totalProductsCount = await Product.countDocuments({ businessId: bId });
 
-    const summary = result[0] || { totalOrders: 0, totalRevenue: 0 };
+    const summary = result[0] || { totalOrders: 0, totalRevenue: 0, totalRoundOff: 0 };
 
     return {
       totalOrders: summary.totalOrders,
       totalRevenue: Number(summary.totalRevenue.toFixed(2)),
+      totalRoundOff: Number((summary.totalRoundOff || 0).toFixed(2)),
       activeOrdersCount,
       totalProductsCount,
       startDate: start.toISOString(),

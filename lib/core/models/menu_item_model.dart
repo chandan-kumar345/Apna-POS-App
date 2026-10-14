@@ -59,6 +59,7 @@ class MenuItemModel {
   final String productId;
   final String name;
   final String category;
+  final String? subCategory;
   final double price;
   final double? salePrice;
   final String description;
@@ -68,6 +69,9 @@ class MenuItemModel {
   final List<String> images;
   final String videoUrl;
   final int stockQuantity;
+  final String stockStatus; // 'in_stock', 'low_stock', 'out_of_stock', 'not_configured'
+  final int availablePortions;
+  final String inventoryType; // 'recipe', 'direct', 'not_configured'
   final String itemType; // 'Veg', 'Non-Veg', 'Egg', 'Beverage'
   final bool hasDiscount;
   final double discountPercent;
@@ -78,11 +82,17 @@ class MenuItemModel {
 
   String get title => name;
 
+  bool get isInStock => stockStatus == 'in_stock';
+  bool get isLowStock => stockStatus == 'low_stock';
+  bool get isOutOfStock => stockStatus == 'out_of_stock';
+  bool get isStockNotConfigured => stockStatus == 'not_configured';
+
   MenuItemModel({
     required this.id,
     String? productId,
     required this.name,
     required this.category,
+    this.subCategory,
     required this.price,
     this.salePrice,
     required this.description,
@@ -92,6 +102,9 @@ class MenuItemModel {
     this.images = const [],
     this.videoUrl = '',
     this.stockQuantity = 50,
+    this.stockStatus = 'in_stock',
+    int? availablePortions,
+    this.inventoryType = 'direct',
     this.itemType = 'Veg',
     this.hasDiscount = false,
     this.discountPercent = 0.0,
@@ -99,7 +112,8 @@ class MenuItemModel {
     this.variants = const [],
     this.trackInventory = true,
     this.aliases = const [],
-  }) : productId = (productId != null && productId.isNotEmpty) ? productId : id;
+  })  : productId = (productId != null && productId.isNotEmpty) ? productId : id,
+        availablePortions = availablePortions ?? stockQuantity;
 
   double get effectivePrice {
     if (variants.isNotEmpty) {
@@ -118,6 +132,7 @@ class MenuItemModel {
         'name': name,
         'title': name,
         'category': category,
+        'subCategory': subCategory,
         'price': price,
         'salePrice': salePrice ?? (hasDiscount && discountPercent > 0 ? price * (1 - discountPercent / 100) : price),
         'description': description,
@@ -130,6 +145,9 @@ class MenuItemModel {
         'video': videoUrl,
         'stockQuantity': stockQuantity,
         'stock': stockQuantity,
+        'stockStatus': stockStatus,
+        'availablePortions': availablePortions,
+        'inventoryType': inventoryType,
         'itemType': itemType,
         'foodType': itemType.toLowerCase().replaceAll('-', '_'),
         'hasDiscount': hasDiscount,
@@ -216,6 +234,7 @@ class MenuItemModel {
       productId: resolvedProductId.isNotEmpty ? resolvedProductId : resolvedId,
       name: resolvedName,
       category: (json['category'] ?? 'General').toString(),
+      subCategory: json['subCategory']?.toString() ?? json['subcategory']?.toString(),
       price: rawPrice,
       salePrice: computedSalePrice,
       description: (json['description'] ?? '').toString(),
@@ -225,6 +244,18 @@ class MenuItemModel {
       images: imagesList,
       videoUrl: resolvedVideo,
       stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? (json['inventory'] as num?)?.toInt() ?? 50,
+      stockStatus: json['stockStatus']?.toString() ??
+          (json['trackInventory'] == false
+              ? 'not_configured'
+              : (((json['availablePortions'] as num?)?.toInt() ?? (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? 50) <= 0
+                  ? 'out_of_stock'
+                  : (((json['availablePortions'] as num?)?.toInt() ?? (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? 50) <= 5 ? 'low_stock' : 'in_stock'))),
+      availablePortions: (json['availablePortions'] as num?)?.toInt() ??
+          (json['stockQuantity'] as num?)?.toInt() ??
+          (json['stock'] as num?)?.toInt() ??
+          (json['inventory'] as num?)?.toInt() ??
+          50,
+      inventoryType: json['inventoryType']?.toString() ?? (json['trackInventory'] == false ? 'not_configured' : 'direct'),
       itemType: foodTypeStr,
       hasDiscount: hasDisc,
       discountPercent: rawDiscount > 0 ? rawDiscount : (rawSalePrice > 0 && rawPrice > 0 ? ((rawPrice - rawSalePrice) / rawPrice * 100) : 0.0),
@@ -240,6 +271,7 @@ class MenuItemModel {
     String? productId,
     String? name,
     String? category,
+    String? subCategory,
     double? price,
     double? salePrice,
     String? description,
@@ -249,6 +281,9 @@ class MenuItemModel {
     List<String>? images,
     String? videoUrl,
     int? stockQuantity,
+    String? stockStatus,
+    int? availablePortions,
+    String? inventoryType,
     String? itemType,
     bool? hasDiscount,
     double? discountPercent,
@@ -262,6 +297,7 @@ class MenuItemModel {
       productId: productId ?? this.productId,
       name: name ?? this.name,
       category: category ?? this.category,
+      subCategory: subCategory ?? this.subCategory,
       price: price ?? this.price,
       salePrice: salePrice ?? this.salePrice,
       description: description ?? this.description,
@@ -271,6 +307,9 @@ class MenuItemModel {
       images: images ?? this.images,
       videoUrl: videoUrl ?? this.videoUrl,
       stockQuantity: stockQuantity ?? this.stockQuantity,
+      stockStatus: stockStatus ?? this.stockStatus,
+      availablePortions: availablePortions ?? this.availablePortions,
+      inventoryType: inventoryType ?? this.inventoryType,
       itemType: itemType ?? this.itemType,
       hasDiscount: hasDiscount ?? this.hasDiscount,
       discountPercent: discountPercent ?? this.discountPercent,

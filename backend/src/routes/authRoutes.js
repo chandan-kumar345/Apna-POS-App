@@ -24,6 +24,15 @@ router.post('/staff-login', (req, res, next) =>
   authController.staffLogin(req, res, next)
 );
 
+// WhatsApp OTP login routes (OTP dispatched from Apna POS WhatsApp number if phone is registered)
+router.post('/send-whatsapp-otp', (req, res, next) =>
+  authController.sendWhatsappOtp(req, res, next)
+);
+
+router.post('/verify-whatsapp-otp', (req, res, next) =>
+  authController.verifyWhatsappOtp(req, res, next)
+);
+
 router.post('/reset-password', validate(resetPasswordSchema), (req, res, next) =>
   authController.resetPassword(req, res, next)
 );

@@ -119,6 +119,21 @@ const orderSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    roundOff: {
+      type: Number,
+      default: 0,
+    },
+    couponCode: {
+      type: String,
+      default: '',
+      uppercase: true,
+      trim: true,
+      index: true,
+    },
+    couponDiscount: {
+      type: Number,
+      default: 0,
+    },
     totalAmount: {
       type: Number,
       required: true,

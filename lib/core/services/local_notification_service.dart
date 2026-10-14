@@ -19,6 +19,7 @@ class LocalNotificationService {
   static final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  final Map<String, int> _recentNotificationDedupe = {};
   bool _isInitialized = false;
 
   bool get _isSupportedPlatform =>
@@ -230,6 +231,20 @@ class LocalNotificationService {
     NotificationVisibility visibility = NotificationVisibility.public,
     AndroidNotificationCategory? category,
   }) async {
+    // 0. Deduplicate notifications within 3.5 seconds
+    final dedupeKey = '$title::$body::$entityId';
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (_recentNotificationDedupe.containsKey(dedupeKey)) {
+      final prev = _recentNotificationDedupe[dedupeKey]!;
+      if (nowMs - prev < 3500) {
+        return;
+      }
+    }
+    _recentNotificationDedupe[dedupeKey] = nowMs;
+    if (_recentNotificationDedupe.length > 50) {
+      _recentNotificationDedupe.removeWhere((_, time) => nowMs - time > 10000);
+    }
+
     // 1. Play immediate in-app audio feedback from assets
     if (playSound) {
       SoundService.playNotificationSound();
@@ -255,8 +270,8 @@ class LocalNotificationService {
         effectiveChannelId,
         effectiveChannelName,
         channelDescription: effectiveChannelDesc,
-        importance: importance,
-        priority: priority,
+        importance: isWhatsApp ? Importance.max : importance,
+        priority: isWhatsApp ? Priority.max : priority,
         showWhen: true,
         enableVibration: true,
         playSound: true,
@@ -265,8 +280,9 @@ class LocalNotificationService {
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: actions,
         color: effectiveColor,
-        visibility: visibility,
-        category: category,
+        visibility: NotificationVisibility.public,
+        category: isWhatsApp ? AndroidNotificationCategory.message : category,
+        ticker: isWhatsApp ? 'New WhatsApp Message' : null,
       );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(

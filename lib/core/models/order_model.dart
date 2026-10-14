@@ -170,6 +170,8 @@ class OrderModel {
   final String? staffId;
   final String? staffName;
   final String? staffRole;
+  final String? couponCode;
+  final double couponDiscount;
 
   OrderModel({
     required this.id,
@@ -201,6 +203,8 @@ class OrderModel {
     this.staffId,
     this.staffName,
     this.staffRole,
+    this.couponCode,
+    this.couponDiscount = 0.0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -233,6 +237,8 @@ class OrderModel {
         'staffId': staffId,
         'staffName': staffName,
         'staffRole': staffRole,
+        'couponCode': couponCode,
+        'couponDiscount': couponDiscount,
       };
 
   factory OrderModel.fromJson(Map<dynamic, dynamic> json) {
@@ -390,6 +396,8 @@ class OrderModel {
       staffId: json['staffId']?.toString() ?? json['waiterId']?.toString() ?? json['userId']?.toString() ?? json['cashierId']?.toString(),
       staffName: json['staffName']?.toString() ?? json['waiterName']?.toString() ?? json['userName']?.toString() ?? json['servedBy']?.toString() ?? json['cashierName']?.toString() ?? json['staff']?.toString(),
       staffRole: json['staffRole']?.toString() ?? json['role']?.toString(),
+      couponCode: json['couponCode']?.toString(),
+      couponDiscount: _toDoubleSafe(json['couponDiscount']),
     );
   }
 
@@ -478,6 +486,8 @@ class OrderModel {
     String? staffId,
     String? staffName,
     String? staffRole,
+    String? couponCode,
+    double? couponDiscount,
   }) {
     return OrderModel(
       id: id ?? this.id,
@@ -509,6 +519,8 @@ class OrderModel {
       staffId: staffId ?? this.staffId,
       staffName: staffName ?? this.staffName,
       staffRole: staffRole ?? this.staffRole,
+      couponCode: couponCode ?? this.couponCode,
+      couponDiscount: couponDiscount ?? this.couponDiscount,
     );
   }
 }

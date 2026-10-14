@@ -478,6 +478,8 @@ class InventoryService {
           });
 
           deductionsSummary.push({
+            productId: prodId,
+            productName: itemName,
             materialName: material.name,
             deducted: deductionBaseUnits,
             baseUnit: material.baseUnit,

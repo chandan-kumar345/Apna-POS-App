@@ -64,6 +64,8 @@ class OrderService {
         'tipAmount': order.tipAmount,
         'deliveryCharge': order.deliveryCharge,
         'roundOff': order.roundOff,
+        'couponCode': order.couponCode,
+        'couponDiscount': order.couponDiscount,
         'totalAmount': order.totalAmount,
         'paymentMethod': isPaid ? (order.paymentMethod.isNotEmpty ? order.paymentMethod : 'Cash') : (isKotOrUnpaid ? 'KOT Pending' : order.paymentMethod),
         'paymentStatus': isPaid ? 'paid' : 'pending',

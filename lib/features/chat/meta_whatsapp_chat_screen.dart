@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import '../../core/database/database_service.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/services/whatsapp_chat_service.dart';
+import '../../core/services/sound_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
 
@@ -24,6 +26,9 @@ class MetaWhatsAppChatScreen extends StatefulWidget {
     this.autoLoad = true,
     this.initialChats,
   });
+
+  /// Tracks the currently open conversation ID globally so notifications are suppressed while reading
+  static String? activeChatId;
 
   @override
   State<MetaWhatsAppChatScreen> createState() => _MetaWhatsAppChatScreenState();
@@ -46,6 +51,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   // New WhatsApp UI State
   String _selectedFilter = 'All'; // 'All' | 'Unread' | 'Groups'
   int _selectedBottomNavIndex = 0; // 0: Chats, 1: Updates, 2: Communities, 3: Calls
+  final bool _showIPhoneFrame = true; // Authentic iPhone Phone Frame
 
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _messageController = TextEditingController();
@@ -56,9 +62,6 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   Timer? _searchDebounce;
   StreamSubscription<WhatsAppMessageModel>? _messageSub;
   StreamSubscription<List<WhatsAppChatModel>>? _chatsSub;
-
-  // WhatsApp Branding Colors
-  static const Color waTeal = Color(0xFF128C7E);
 
   @override
   void initState() {
@@ -80,6 +83,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             _messages.add(msg);
           });
           _scrollToBottom();
+          // Real-time audio feedback for incoming chat message
+          SoundService.playNotificationSound();
+          // Silently mark as read in background
+          _chatService.markRead(msg.chatId);
         }
       }
     });
@@ -103,9 +110,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       _isLoadingChats = false;
     }
 
-    // Silent fallback polling every 6 seconds to ensure perfect consistency
+    // Fast fallback polling every 2 seconds for WhatsApp-grade real-time responsiveness
     if (widget.enablePolling) {
-      _pollingTimer = Timer.periodic(const Duration(seconds: 6), (_) {
+      _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
         if (mounted) {
           _refreshSilently();
         }
@@ -115,6 +122,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   @override
   void dispose() {
+    MetaWhatsAppChatScreen.activeChatId = null;
     _messageSub?.cancel();
     _chatsSub?.cancel();
     _pollingTimer?.cancel();
@@ -225,6 +233,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Future<void> _selectChat(WhatsAppChatModel chat) async {
+    MetaWhatsAppChatScreen.activeChatId = chat.id;
     setState(() {
       _selectedChat = chat;
       _isLoadingMessages = true;
@@ -865,116 +874,314 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     final phoneNumCtrl = TextEditingController(text: initialPhoneNum);
     final tokenCtrl = TextEditingController(text: initialToken);
     bool isSaving = false;
+    bool obscureToken = true;
 
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (dialogCtx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.tune_rounded, color: waTeal, size: 20),
-              SizedBox(width: 8),
-              Text('Meta API Credentials', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ⚠️ Helper hint banner
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  margin: const EdgeInsets.only(bottom: 14),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: const Color(0xFFFCD34D)),
-                  ),
-                  child: const Row(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 440),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x2A000000),
+                  blurRadius: 36,
+                  offset: Offset(0, 16),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header Row with Icon, Title and Close Button
+                  Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: Color(0xFFD97706), size: 16),
-                      SizedBox(width: 8),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF25D366), Color(0xFF128C7E)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                          borderRadius: BorderRadius.circular(14),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x3325D366),
+                              blurRadius: 10,
+                              offset: Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: const Center(
+                          child: Icon(Icons.tune_rounded, color: Colors.white, size: 22),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
                       Expanded(
-                        child: Text(
-                          'Get your Phone Number ID from:\nmeta.com → WhatsApp → API Setup\n(It is a ~15-digit number, not your phone number)',
-                          style: TextStyle(fontSize: 11, color: Color(0xFF92400E), height: 1.4),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Meta API Credentials',
+                              style: TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0F172A),
+                                letterSpacing: -0.2,
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Configure WhatsApp Cloud API connection',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => Navigator.pop(dialogCtx),
+                        borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          child: const Icon(Icons.close_rounded, size: 18, color: Color(0xFF64748B)),
                         ),
                       ),
                     ],
                   ),
-                ),
-                TextField(
-                  controller: phoneIdCtrl,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: const InputDecoration(
-                    labelText: 'Phone Number ID *',
-                    hintText: 'e.g. 1284061438133660',
-                    isDense: true,
+                  const SizedBox(height: 16),
+
+                  // Helper Hint Banner
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDF4),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFBBF7D0)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: const [
+                        Icon(Icons.info_outline_rounded, color: Color(0xFF15803D), size: 18),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Find your Phone Number ID in Meta Developer Console:\nWhatsApp > API Setup > Phone number ID (~15 digits).',
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFF166534), height: 1.4),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: phoneNumCtrl,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: const InputDecoration(
-                    labelText: 'WhatsApp Mobile Number',
-                    hintText: 'e.g. +91 9709593705',
-                    isDense: true,
+                  const SizedBox(height: 16),
+
+                  // Phone Number ID Field
+                  const Text(
+                    'Phone Number ID *',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
                   ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: tokenCtrl,
-                  obscureText: true,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: const InputDecoration(
-                    labelText: 'Access Token (Optional)',
-                    hintText: 'Server default',
-                    isDense: true,
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: phoneIdCtrl,
+                    keyboardType: TextInputType.number,
+                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. 1284061438133660',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                      prefixIcon: const Icon(Icons.tag_rounded, size: 19, color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF128C7E), width: 1.5),
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 14),
+
+                  // WhatsApp Mobile Number Field
+                  const Text(
+                    'WhatsApp Mobile Number',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: phoneNumCtrl,
+                    keyboardType: TextInputType.phone,
+                    style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. +91 9709593705',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                      prefixIcon: const Icon(Icons.phone_rounded, size: 19, color: Color(0xFF64748B)),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF128C7E), width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+
+                  // Access Token Field (Optional)
+                  const Text(
+                    'Access Token (Optional)',
+                    style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF1E293B)),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: tokenCtrl,
+                    obscureText: obscureToken,
+                    style: const TextStyle(fontSize: 13, color: Color(0xFF0F172A), fontWeight: FontWeight.w500),
+                    decoration: InputDecoration(
+                      hintText: 'Server default token',
+                      hintStyle: const TextStyle(fontSize: 13, color: Color(0xFF94A3B8), fontWeight: FontWeight.normal),
+                      prefixIcon: const Icon(Icons.vpn_key_rounded, size: 19, color: Color(0xFF64748B)),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          obscureToken ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                          size: 19,
+                          color: const Color(0xFF64748B),
+                        ),
+                        onPressed: () => setDialogState(() => obscureToken = !obscureToken),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF8FAFC),
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF128C7E), width: 1.5),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 22),
+
+                  // Action Buttons (Cancel / Save)
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: Color(0xFFCBD5E1)),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Color(0xFF475569)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: SizedBox(
+                          height: 44,
+                          child: ElevatedButton(
+                            onPressed: isSaving
+                                ? null
+                                : () async {
+                                    setDialogState(() => isSaving = true);
+                                    try {
+                                      await _chatService.saveConnection(
+                                        phoneNumberId: phoneIdCtrl.text.trim(),
+                                        phoneNumber: phoneNumCtrl.text.trim(),
+                                        accessToken: tokenCtrl.text.trim(),
+                                      );
+                                      await _db.saveWhatsAppIntegrationSettings(
+                                        enabled: true,
+                                        provider: 'meta_cloud',
+                                        phoneNumber: phoneNumCtrl.text.trim(),
+                                        phoneId: phoneIdCtrl.text.trim(),
+                                        wabaId: _db.whatsAppWabaId,
+                                        accessToken: tokenCtrl.text.trim(),
+                                        webhookToken: _db.whatsAppWebhookToken,
+                                      );
+                                      if (dialogCtx.mounted) Navigator.pop(dialogCtx);
+                                      _loadConnectionAndChats();
+                                    } catch (e) {
+                                      setDialogState(() => isSaving = false);
+                                      _showErrorSnackBar('Save error: $e');
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF128C7E),
+                              foregroundColor: Colors.white,
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                            child: isSaving
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                  )
+                                : const Text(
+                                    'Save & Connect',
+                                    style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.bold),
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogCtx),
-              child: const Text('Cancel', style: TextStyle(fontSize: 12)),
-            ),
-            ElevatedButton(
-              onPressed: isSaving
-                  ? null
-                  : () async {
-                      setDialogState(() => isSaving = true);
-                      try {
-                        await _chatService.saveConnection(
-                          phoneNumberId: phoneIdCtrl.text.trim(),
-                          phoneNumber: phoneNumCtrl.text.trim(),
-                          accessToken: tokenCtrl.text.trim(),
-                        );
-                        await _db.saveWhatsAppIntegrationSettings(
-                          enabled: true,
-                          provider: 'meta_cloud',
-                          phoneNumber: phoneNumCtrl.text.trim(),
-                          phoneId: phoneIdCtrl.text.trim(),
-                          wabaId: _db.whatsAppWabaId,
-                          accessToken: tokenCtrl.text.trim(),
-                          webhookToken: _db.whatsAppWebhookToken,
-                        );
-                        if (dialogCtx.mounted) Navigator.pop(dialogCtx);
-                        _loadConnectionAndChats();
-                      } catch (e) {
-                        setDialogState(() => isSaving = false);
-                        _showErrorSnackBar('Save error: $e');
-                      }
-                    },
-              style: ElevatedButton.styleFrom(backgroundColor: waTeal, foregroundColor: Colors.white),
-              child: const Text('Save', style: TextStyle(fontSize: 12)),
-            ),
-          ],
         ),
       ),
     );
@@ -987,9 +1194,11 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         if (_selectedChat != null) {
+          MetaWhatsAppChatScreen.activeChatId = null;
           setState(() => _selectedChat = null);
           return;
         }
+        MetaWhatsAppChatScreen.activeChatId = null;
         Navigator.of(context).pop();
       },
       child: Scaffold(
@@ -1064,6 +1273,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           // Circular Back / Home Button
           InkWell(
             onTap: () {
+              MetaWhatsAppChatScreen.activeChatId = null;
               if (_selectedChat != null) {
                 setState(() => _selectedChat = null);
               } else {
@@ -1129,25 +1339,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
 
           // ONLINE / OFFLINE STATUS DOT INDICATOR (Same as POS)
           const GlassConnectionStatusBadge(isDarkTheme: true, compact: true),
-          const SizedBox(width: 8),
+          const SizedBox(width: 10),
 
-          // Glass circular action buttons
+          // Glass circular action buttons: Refresh and API Settings
           _buildGlassHeaderButton(
             icon: Icons.refresh_rounded,
             tooltip: 'Refresh Chats',
             onTap: _loadConnectionAndChats,
           ),
-          const SizedBox(width: 6),
-          _buildGlassHeaderButton(
-            icon: Icons.person_add_rounded,
-            tooltip: 'New WhatsApp Chat',
-            onTap: _showNewChatDialog,
-          ),
-          const SizedBox(width: 6),
+          const SizedBox(width: 8),
           _buildGlassHeaderButton(
             icon: Icons.tune_rounded,
             tooltip: 'API Credentials',
@@ -1175,10 +1379,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             height: 36,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.12),
+              color: Colors.white.withValues(alpha: 0.14),
               shape: BoxShape.circle,
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.25),
+                color: Colors.white.withValues(alpha: 0.28),
                 width: 1.1,
               ),
             ),
@@ -1209,7 +1413,18 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           // Right Column: Active Conversation or Desktop Empty State
           Expanded(
             child: _selectedChat != null
-                ? _buildChatConversationView(isMobile: false)
+                ? (_showIPhoneFrame
+                    ? Container(
+                        color: const Color(0xFFF1F5F9),
+                        child: Center(
+                          child: _buildIPhoneFrame(
+                            maxWidth: 420,
+                            maxHeight: (constraints.maxHeight - 20).clamp(580.0, 840.0),
+                            child: _buildChatConversationView(isMobile: true),
+                          ),
+                        ),
+                      )
+                    : _buildChatConversationView(isMobile: false))
                 : _buildDesktopEmptyChatState(),
           ),
         ],
@@ -1218,10 +1433,171 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   Widget _buildCenteredPhoneLayout(BoxConstraints constraints) {
-    if (_selectedChat != null) {
-      return _buildChatConversationView(isMobile: true);
+    final Widget content = _selectedChat != null
+        ? _buildChatConversationView(isMobile: true)
+        : _buildWhatsAppMobileChatList(isEmbedded: false);
+
+    if (!_showIPhoneFrame) {
+      return content;
     }
-    return _buildWhatsAppMobileChatList(isEmbedded: false);
+
+    return Center(
+      child: _buildIPhoneFrame(
+        maxWidth: constraints.maxWidth,
+        maxHeight: constraints.maxHeight,
+        child: content,
+      ),
+    );
+  }
+
+  /// Authentic iPhone Device Mockup Frame with Dynamic Island, Titanium Bezel & Home Bar.
+  /// Retains titanium frame, outer bezel, and rounded geometry permanently even when the keyboard opens.
+  Widget _buildIPhoneFrame({required Widget child, required double maxWidth, required double maxHeight}) {
+    final bool isMobile = maxWidth < 500;
+
+    final double frameWidth = isMobile ? maxWidth : 415.0;
+    final double frameHeight = maxHeight;
+    final double outerRadius = isMobile ? 36.0 : 46.0;
+    final double innerRadius = isMobile ? 28.0 : 38.0;
+    final double borderWidth = isMobile ? 5.0 : 7.5;
+    final EdgeInsets margin = isMobile
+        ? const EdgeInsets.symmetric(horizontal: 4, vertical: 4)
+        : const EdgeInsets.symmetric(horizontal: 12, vertical: 8);
+
+    return Center(
+      child: Container(
+        width: frameWidth,
+        height: frameHeight,
+        margin: margin,
+        decoration: BoxDecoration(
+          color: const Color(0xFF0F172A), // Dark Titanium Bezel
+          borderRadius: BorderRadius.circular(outerRadius),
+          border: Border.all(color: const Color(0xFF334155), width: borderWidth),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.38),
+              offset: const Offset(0, 18),
+              blurRadius: 36,
+              spreadRadius: 2,
+            ),
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.18),
+              offset: const Offset(-1, -1),
+              blurRadius: 4,
+            ),
+          ],
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(innerRadius),
+          child: Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                // Top Status Bar with Dynamic Island notch
+                _buildPhoneStatusBar(),
+
+                // WhatsApp View Content
+                Expanded(child: child),
+
+                // Bottom Home Bar Indicator
+                _buildPhoneHomeIndicator(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// iPhone Status Bar: Time, Dynamic Island with Camera lens, Signal, WiFi, Battery
+  Widget _buildPhoneStatusBar() {
+    final now = DateTime.now();
+    final timeStr = DateFormat('h:mm').format(now);
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(18, 6, 18, 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          // Clock
+          SizedBox(
+            width: 58,
+            child: Text(
+              timeStr,
+              style: const TextStyle(
+                color: Color(0xFF000000),
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.3,
+              ),
+            ),
+          ),
+
+          // Dynamic Island Notch with glossy front camera
+          Container(
+            width: 108,
+            height: 25,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Container(
+                  width: 9,
+                  height: 9,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: const Color(0xFF0F172A), width: 1.2),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Status Icons
+          const SizedBox(
+            width: 58,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Icon(Icons.signal_cellular_alt_rounded, size: 14, color: Colors.black),
+                SizedBox(width: 3),
+                Icon(Icons.wifi_rounded, size: 14, color: Colors.black),
+                SizedBox(width: 3),
+                Icon(Icons.battery_full_rounded, size: 18, color: Colors.black),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// iPhone Home Indicator Bar
+  Widget _buildPhoneHomeIndicator() {
+    final hasKeyboard = MediaQuery.of(context).viewInsets.bottom > 0;
+    if (hasKeyboard) return const SizedBox.shrink();
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.only(bottom: 6, top: 4),
+      child: Center(
+        child: Container(
+          width: 120,
+          height: 4.5,
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildDesktopEmptyChatState() {
@@ -2056,7 +2432,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         // 1. Redesigned Conversation Header (Matching Reference Image)
         _buildConversationHeader(),
 
-        // 2. Message List with "Today" pill and Neumorphic Bubble styling
+        // 2. Message List with dynamic "Today" / "Yesterday" date grouping and Neumorphic Bubble styling
         Expanded(
           child: Container(
             decoration: const BoxDecoration(
@@ -2070,40 +2446,46 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 ],
               ),
             ),
-            child: Column(
-              children: [
-                _buildDateDivider(),
-                Expanded(
-                  child: _isLoadingMessages
-                      ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2.5))
-                      : _messages.isEmpty
-                          ? Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: const [
-                                    BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 3)),
-                                  ],
-                                ),
-                                child: const Text(
-                                  'No messages yet',
-                                  style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                            )
-                          : ListView.builder(
-                              controller: _scrollController,
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              itemCount: _messages.length,
-                              itemBuilder: (context, index) {
-                                return _buildMessageBubble(_messages[index]);
-                              },
-                            ),
-                ),
-              ],
-            ),
+            child: _isLoadingMessages
+                ? const Center(child: CircularProgressIndicator(color: Color(0xFF059669), strokeWidth: 2.5))
+                : _messages.isEmpty
+                    ? Center(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x0A000000), blurRadius: 8, offset: Offset(0, 3)),
+                            ],
+                          ),
+                          child: const Text(
+                            'No messages yet',
+                            style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final msg = _messages[index];
+                          final bool isFirst = index == 0;
+                          final bool isNewDay = isFirst || !_isSameDay(_messages[index - 1].timestamp, msg.timestamp);
+
+                          if (isNewDay) {
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildDateDivider(_getDateDividerText(msg.timestamp)),
+                                _buildMessageBubble(msg),
+                              ],
+                            );
+                          }
+                          return _buildMessageBubble(msg);
+                        },
+                      ),
           ),
         ),
 
@@ -2133,7 +2515,10 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _buildNeumorphicCircleButton(
             icon: Icons.arrow_back_rounded,
             tooltip: 'Back to chats',
-            onTap: () => setState(() => _selectedChat = null),
+            onTap: () {
+              MetaWhatsAppChatScreen.activeChatId = null;
+              setState(() => _selectedChat = null);
+            },
           ),
           const SizedBox(width: 8),
 
@@ -2342,14 +2727,14 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Floating "Today" date divider pill
-  Widget _buildDateDivider() {
+  /// Floating date divider pill ("Today", "Yesterday", or formatted date)
+  Widget _buildDateDivider(String label) {
     return Center(
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4.5),
         decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0).withValues(alpha: 0.7),
+          color: const Color(0xFFE2E8F0).withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(14),
           boxShadow: const [
             BoxShadow(
@@ -2359,16 +2744,42 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
           ],
         ),
-        child: const Text(
-          'Today',
-          style: TextStyle(
+        child: Text(
+          label,
+          style: const TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: Color(0xFF475569),
           ),
         ),
       ),
     );
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) {
+    final aLocal = a.toLocal();
+    final bLocal = b.toLocal();
+    return aLocal.year == bLocal.year && aLocal.month == bLocal.month && aLocal.day == bLocal.day;
+  }
+
+  String _getDateDividerText(DateTime dt) {
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final msgDate = DateTime(local.year, local.month, local.day);
+
+    if (msgDate == today) {
+      return 'Today';
+    } else if (msgDate == yesterday) {
+      return 'Yesterday';
+    } else if (now.difference(local).inDays < 7 && msgDate.isAfter(DateTime(now.year, now.month, now.day - 7))) {
+      return DateFormat('EEEE').format(local);
+    } else if (local.year == now.year) {
+      return DateFormat('d MMMM').format(local);
+    } else {
+      return DateFormat('d MMMM yyyy').format(local);
+    }
   }
 
 
@@ -3130,8 +3541,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     final hasError = msg.status.toUpperCase() == 'FAILED' || (msg.error != null && msg.error!.isNotEmpty);
 
     final double maxBubbleWidth = (screenWidth >= 900
-        ? 520.0
-        : (screenWidth >= 680 ? 420.0 : screenWidth * 0.78)).clamp(220.0, 560.0);
+        ? 340.0
+        : (screenWidth >= 680 ? 320.0 : screenWidth * 0.74)).clamp(210.0, 310.0);
 
     final timeWidget = Row(
       mainAxisSize: MainAxisSize.min,
@@ -3140,8 +3551,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         Text(
           _formatTime(msg.timestamp),
           style: TextStyle(
-            fontSize: 10.5,
-            color: isOutgoing ? const Color(0xFF475569) : const Color(0xFF64748B),
+            fontSize: 10,
+            color: isOutgoing ? const Color(0xFF166534) : const Color(0xFF64748B),
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -3159,8 +3570,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           maxWidth: maxBubbleWidth,
         ),
         child: Container(
-          margin: const EdgeInsets.symmetric(vertical: 3.5),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          margin: const EdgeInsets.symmetric(vertical: 2.5),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
           decoration: BoxDecoration(
             color: isOutgoing ? const Color(0xFFD9FDD3) : Colors.white,
             borderRadius: BorderRadius.only(
@@ -3177,9 +3588,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: isOutgoing ? const Color(0x0C000000) : const Color(0x0E000000),
-                offset: const Offset(0, 2),
-                blurRadius: 6,
+                color: isOutgoing ? const Color(0x0A000000) : const Color(0x0C000000),
+                offset: const Offset(0, 1.5),
+                blurRadius: 5,
               ),
             ],
           ),
@@ -3250,29 +3661,36 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                     timeWidget,
                     if (hasError && msg.error != null && msg.error!.isNotEmpty) ...[
                       const SizedBox(height: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF2F2),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
-                            const SizedBox(width: 5),
-                            Flexible(
-                              child: Text(
-                                msg.error!,
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  color: Color(0xFFDC2626),
-                                  fontWeight: FontWeight.w600,
+                      GestureDetector(
+                        onTap: () => _showReEngagementHelpDialog(msg.error!),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFFECACA), width: 0.8),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.info_outline_rounded, size: 12, color: Color(0xFFDC2626)),
+                              const SizedBox(width: 5),
+                              Flexible(
+                                child: Text(
+                                  _formatErrorMessage(msg.error!),
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    color: Color(0xFFDC2626),
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                              if (_isReEngagementError(msg.error!)) ...[
+                                const SizedBox(width: 4),
+                                const Icon(Icons.help_outline_rounded, size: 11, color: Color(0xFFDC2626)),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -3299,23 +3717,113 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   }
 
   String _formatTimestamp(DateTime dt) {
+    final local = dt.toLocal();
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final msgDate = DateTime(dt.year, dt.month, dt.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+    final msgDate = DateTime(local.year, local.month, local.day);
 
     if (msgDate == today) {
-      return _formatTime(dt);
-    } else if (msgDate == today.subtract(const Duration(days: 1))) {
+      return _formatTime(local);
+    } else if (msgDate == yesterday) {
       return 'Yesterday';
+    } else if (now.difference(local).inDays < 7 && msgDate.isAfter(DateTime(now.year, now.month, now.day - 7))) {
+      return DateFormat('EEEE').format(local);
     } else {
-      return '${dt.day}/${dt.month}';
+      return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}';
     }
   }
 
   String _formatTime(DateTime dt) {
-    final hour = dt.hour > 12 ? dt.hour - 12 : (dt.hour == 0 ? 12 : dt.hour);
-    final minute = dt.minute.toString().padLeft(2, '0');
-    final period = dt.hour >= 12 ? 'PM' : 'AM';
+    final local = dt.toLocal();
+    final hour = local.hour > 12 ? local.hour - 12 : (local.hour == 0 ? 12 : local.hour);
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
     return '$hour:$minute $period';
+  }
+
+  bool _isReEngagementError(String err) {
+    final lower = err.toLowerCase();
+    return lower.contains('re-engagement') ||
+        lower.contains('24-hour') ||
+        lower.contains('24 hour') ||
+        lower.contains('131047');
+  }
+
+  String _formatErrorMessage(String rawError) {
+    if (_isReEngagementError(rawError)) {
+      return '24-hr window expired (Tap for info)';
+    }
+    if (rawError.contains('131030') || rawError.toLowerCase().contains('sandbox')) {
+      return 'Meta sandbox: recipient not whitelisted';
+    }
+    return rawError;
+  }
+
+  void _showReEngagementHelpDialog(String rawError) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: const [
+            Icon(Icons.info_outline_rounded, color: Color(0xFFDC2626), size: 22),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                '24-Hour Policy Window',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Meta WhatsApp Cloud API enforces a strict 24-hour customer service window rule:',
+              style: TextStyle(fontSize: 13, color: Color(0xFF334155), height: 1.4),
+            ),
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEF2F2),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFECACA)),
+              ),
+              child: const Text(
+                '• Free-form text messages can only be sent within 24 hours of the customer\'s last reply.\n• Since >24 hours have passed without customer reply, Meta blocked regular text to protect users from spam.',
+                style: TextStyle(fontSize: 11.5, color: Color(0xFF991B1B), height: 1.45),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'How to re-open the conversation:',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              '1. Ask the customer to reply with any message (e.g. "Hi") from their WhatsApp. This reopens the 24-hour window immediately for free-form replies.\n\n2. Or send an approved Meta Message Template (like an eBill or utility template) from the POS.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.45),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF00A884),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+            ),
+            child: const Text('Understood', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 }

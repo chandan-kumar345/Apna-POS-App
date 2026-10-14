@@ -69,9 +69,10 @@ class SoundService {
   static void playNotificationSound() {
     if (!soundEnabled) return;
 
-    // Debounce within 400ms to avoid overlapping audio
+    // Generous debounce (1200ms) to guarantee that a single incoming notification
+    // cannot trigger multiple overlapping sounds from different listeners
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastNotificationSoundTime < 400) {
+    if (now - _instance._lastNotificationSoundTime < 1200) {
       return;
     }
     _instance._lastNotificationSoundTime = now;
@@ -95,31 +96,39 @@ class SoundService {
     } catch (_) {}
   }
 
-  /// Play light button click sound on button/interactive tap with safe debouncing
+  /// Play crisp real-time button click sound on interactive tap without double-trigger
   static void playButtonClick() {
     if (!soundEnabled) return;
 
-    // Strong debounce within 140ms to protect Android message queue from flooding
+    // Safe debounce (220ms) to ensure one click produces exactly one sound
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastButtonClickTime < 140) {
+    if (now - _instance._lastButtonClickTime < 220) {
       return;
     }
     _instance._lastButtonClickTime = now;
 
-    // Fast native hardware sound & haptic feedback
+    // 1. Instant zero-latency native hardware sound
+    try {
+      SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
+
+    // 2. Hardware haptic feedback
     try {
       HapticFeedback.selectionClick();
     } catch (_) {}
 
-    // Low-latency asset playback
+    // 3. Audio asset playback (if initialized or auto-initialize)
     if (_instance._isInitialized) {
       _instance._playButtonAsset();
+    } else {
+      _instance.init().then((_) => _instance._playButtonAsset()).catchError((_) {});
     }
   }
 
   void _playButtonAsset() {
     try {
-      _buttonPlayer?.play(AssetSource('sounds/ios_click.wav'), mode: PlayerMode.lowLatency);
+      _buttonPlayer?.stop();
+      _buttonPlayer?.play(AssetSource('sounds/ios_click.wav'));
     } catch (_) {}
   }
 
@@ -128,10 +137,14 @@ class SoundService {
     if (!soundEnabled) return;
 
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastKeyPressTime < 120) {
+    if (now - _instance._lastKeyPressTime < 150) {
       return;
     }
     _instance._lastKeyPressTime = now;
+
+    try {
+      SystemSound.play(SystemSoundType.click);
+    } catch (_) {}
 
     try {
       HapticFeedback.selectionClick();
@@ -139,12 +152,15 @@ class SoundService {
 
     if (_instance._isInitialized) {
       _instance._playKeyAsset();
+    } else {
+      _instance.init().then((_) => _instance._playKeyAsset()).catchError((_) {});
     }
   }
 
   void _playKeyAsset() {
     try {
-      _keyPlayer?.play(AssetSource('sounds/ios_keypress.wav'), mode: PlayerMode.lowLatency);
+      _keyPlayer?.stop();
+      _keyPlayer?.play(AssetSource('sounds/ios_keypress.wav'));
     } catch (_) {}
   }
 }

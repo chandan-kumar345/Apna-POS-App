@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiEndpoints {
   /// Current local development LAN IP (auto-updated to your machine's IP)
-  static const String defaultLanIp = '172.16.2.2';
+  static const String defaultLanIp = '172.16.2.4';
   static const int defaultPort = 5000;
 
   /// Compile-time environment variable support e.g. flutter run --dart-define=API_URL=https://api.apnapos.com/api/v1
@@ -345,6 +345,8 @@ class ApiEndpoints {
   static const String register = '/auth/register';
   static const String login = '/auth/login';
   static const String staffLogin = '/auth/staff-login';
+  static const String sendWhatsappOtp = '/auth/send-whatsapp-otp';
+  static const String verifyWhatsappOtp = '/auth/verify-whatsapp-otp';
   static const String resetPassword = '/auth/reset-password';
   static const String refresh = '/auth/refresh';
   static const String logout = '/auth/logout';
