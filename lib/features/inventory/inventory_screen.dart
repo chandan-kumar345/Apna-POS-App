@@ -58,11 +58,26 @@ class _InventoryScreenState extends State<InventoryScreen> {
   Map<String, dynamic>? _stockReportData;
   List<Map<String, dynamic>> _productAnalyticsData = [];
 
+  // In-memory cache across screen visits for instant loading
+  static Map<String, dynamic>? _cachedSummary;
+  static List<RawMaterialModel>? _cachedMaterials;
+  static List<RecipeModel>? _cachedRecipes;
+  static List<InventoryMovementModel>? _cachedMovements;
+  static Map<String, dynamic>? _cachedStockReport;
+  static List<Map<String, dynamic>>? _cachedAnalytics;
+
   @override
   void initState() {
     super.initState();
     _db.addListener(_onDbChange);
-    _initializeLocalSeeds();
+    // Restore from cache if available for instant render
+    if (_cachedMaterials != null) _rawMaterials = _cachedMaterials!;
+    if (_cachedRecipes != null) _recipes = _cachedRecipes!;
+    if (_cachedSummary != null) _dashboardSummary = _cachedSummary;
+    if (_cachedMovements != null) _movementsLedger = _cachedMovements!;
+    if (_cachedStockReport != null) _stockReportData = _cachedStockReport;
+    if (_cachedAnalytics != null) _productAnalyticsData = _cachedAnalytics!;
+
     _loadData();
   }
 
@@ -85,173 +100,66 @@ class _InventoryScreenState extends State<InventoryScreen> {
     );
   }
 
-  /// Initialize local default materials & recipes if empty
-  void _initializeLocalSeeds() {
-    if (_rawMaterials.isEmpty) {
-      _rawMaterials = [
-        RawMaterialModel(
-          id: 'seed_rm_1',
-          sku: 'RM-0001',
-          name: 'Fresh Paneer',
-          category: 'Dairy',
-          baseUnit: 'g',
-          purchaseUnit: 'kg',
-          conversionFactor: 1000,
-          currentStock: 12000,
-          minimumStock: 2500,
-          averageUnitCost: 340,
-          costPerBaseUnit: 0.34,
-          preferredSupplier: 'Amul Dairy Dist.',
-          inventoryMode: 'automatic',
-        ),
-        RawMaterialModel(
-          id: 'seed_rm_2',
-          sku: 'RM-0002',
-          name: 'Cooking Butter',
-          category: 'Dairy',
-          baseUnit: 'g',
-          purchaseUnit: 'kg',
-          conversionFactor: 1000,
-          currentStock: 6500,
-          minimumStock: 1500,
-          averageUnitCost: 520,
-          costPerBaseUnit: 0.52,
-          preferredSupplier: 'Amul Dairy Dist.',
-          inventoryMode: 'automatic',
-        ),
-        RawMaterialModel(
-          id: 'seed_rm_3',
-          sku: 'RM-0003',
-          name: 'Fresh Cooking Cream',
-          category: 'Dairy',
-          baseUnit: 'ml',
-          purchaseUnit: 'L',
-          conversionFactor: 1000,
-          currentStock: 8000,
-          minimumStock: 2000,
-          averageUnitCost: 210,
-          costPerBaseUnit: 0.21,
-          preferredSupplier: 'Amul Dairy Dist.',
-          inventoryMode: 'automatic',
-        ),
-        RawMaterialModel(
-          id: 'seed_rm_4',
-          sku: 'RM-0004',
-          name: 'Tomatoes',
-          category: 'Vegetables',
-          baseUnit: 'g',
-          purchaseUnit: 'kg',
-          conversionFactor: 1000,
-          currentStock: 15000,
-          minimumStock: 3000,
-          averageUnitCost: 40,
-          costPerBaseUnit: 0.04,
-          preferredSupplier: 'Mandi Direct',
-          inventoryMode: 'automatic',
-        ),
-        RawMaterialModel(
-          id: 'seed_rm_5',
-          sku: 'RM-0005',
-          name: 'Basmati Rice Premium',
-          category: 'Grains & Flour',
-          baseUnit: 'g',
-          purchaseUnit: 'kg',
-          conversionFactor: 1000,
-          currentStock: 45000,
-          minimumStock: 10000,
-          averageUnitCost: 110,
-          costPerBaseUnit: 0.11,
-          preferredSupplier: 'Punjab Grain Store',
-          inventoryMode: 'automatic',
-        ),
-        RawMaterialModel(
-          id: 'seed_rm_6',
-          sku: 'RM-0006',
-          name: 'Cold Drink Glass Bottles (300ml)',
-          category: 'Beverages',
-          baseUnit: 'pcs',
-          purchaseUnit: 'box',
-          conversionFactor: 24,
-          currentStock: 48,
-          minimumStock: 24,
-          averageUnitCost: 480,
-          costPerBaseUnit: 20.0,
-          preferredSupplier: 'Coca Cola Agency',
-          inventoryMode: 'manual',
-        ),
-      ];
-
-      _recipes = [
-        RecipeModel(
-          id: 'seed_rec_1',
-          productId: 'prod_paneer_butter',
-          productName: 'Paneer Butter Masala',
-          recipeName: 'Standard Paneer Butter Masala',
-          servingSize: 1,
-          version: 'v1.0',
-          sellingPrice: 320,
-          totalFoodCost: 98.4,
-          foodCostPercentage: 30.75,
-          ingredients: [
-            RecipeIngredientModel(
-              materialId: 'seed_rm_1',
-              materialName: 'Fresh Paneer',
-              quantity: 200,
-              unit: 'g',
-              quantityBaseUnits: 200,
-              effectiveQuantityBaseUnits: 200,
-              unitCost: 0.34,
-              totalCost: 68.0,
-            ),
-            RecipeIngredientModel(
-              materialId: 'seed_rm_2',
-              materialName: 'Cooking Butter',
-              quantity: 40,
-              unit: 'g',
-              quantityBaseUnits: 40,
-              effectiveQuantityBaseUnits: 40,
-              unitCost: 0.52,
-              totalCost: 20.8,
-            ),
-          ],
-        ),
-      ];
-    }
-  }
-
-  /// Dynamic backend load with real-time API syncing
+  /// High-performance progressive data load with instant rendering and background synchronization
   Future<void> _loadData() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    final bool hasCached = _rawMaterials.isNotEmpty || _dashboardSummary != null;
+    if (!hasCached) {
+      setState(() => _isLoading = true);
+    }
 
     try {
-      final results = await Future.wait([
+      // 1. Fast Primary Fetch: Summary, Materials, and Recipes
+      final primary = await Future.wait([
         _inventoryService.fetchDashboardSummary(),
         _inventoryService.fetchRawMaterials(),
         _inventoryService.fetchRecipes(),
-        _inventoryService.fetchMovementsLedger(),
-        _inventoryService.fetchStockReport(),
-        _inventoryService.fetchProductAnalytics(),
       ]);
 
       if (mounted) {
         setState(() {
-          if (results[0] != null) _dashboardSummary = results[0] as Map<String, dynamic>;
-          final materials = results[1] as List<RawMaterialModel>;
-          if (materials.isNotEmpty) _rawMaterials = materials;
-          final recipes = results[2] as List<RecipeModel>;
-          if (recipes.isNotEmpty) _recipes = recipes;
-          final movements = results[3] as List<InventoryMovementModel>;
-          if (movements.isNotEmpty) _movementsLedger = movements;
-          if (results[4] != null) _stockReportData = results[4] as Map<String, dynamic>;
-          final analytics = results[5] as List<Map<String, dynamic>>;
-          if (analytics.isNotEmpty) _productAnalyticsData = analytics;
+          if (primary[0] != null) {
+            _dashboardSummary = primary[0] as Map<String, dynamic>;
+            _cachedSummary = _dashboardSummary;
+          }
+          final materials = primary[1] as List<RawMaterialModel>;
+          _rawMaterials = materials;
+          _cachedMaterials = materials;
+
+          final recipes = primary[2] as List<RecipeModel>;
+          _recipes = recipes;
+          _cachedRecipes = recipes;
 
           _isLoading = false;
         });
       }
+
+      // 2. Secondary Non-blocking Background Fetch: Ledger, Stock Report, Analytics
+      Future.wait([
+        _inventoryService.fetchMovementsLedger(),
+        _inventoryService.fetchStockReport(),
+        _inventoryService.fetchProductAnalytics(),
+      ]).then((secondary) {
+        if (!mounted) return;
+        setState(() {
+          final movements = secondary[0] as List<InventoryMovementModel>;
+          _movementsLedger = movements;
+          _cachedMovements = movements;
+
+          if (secondary[1] != null) {
+            _stockReportData = secondary[1] as Map<String, dynamic>;
+            _cachedStockReport = _stockReportData;
+          }
+
+          final analytics = secondary[2] as List<Map<String, dynamic>>;
+          _productAnalyticsData = analytics;
+          _cachedAnalytics = analytics;
+        });
+      }).catchError((err) {
+        debugPrint('[InventoryScreen._loadData] Secondary sync notice: $err');
+      });
     } catch (e) {
-      debugPrint('[InventoryScreen._loadData] API Sync notice: $e');
+      debugPrint('[InventoryScreen._loadData] Primary API Sync error: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }

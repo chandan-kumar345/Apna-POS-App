@@ -634,6 +634,7 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
 
   void _showEditTableDialog(TableModel table, {VoidCallback? onUpdated}) {
     final nameCtrl = TextEditingController(text: table.name);
+    final positionCtrl = TextEditingController(text: table.position > 0 ? table.position.toString() : '');
     String selectedFloor = table.floor.trim().isNotEmpty ? table.floor.trim() : 'Ground Floor';
     int selectedCapacity = table.capacity > 0 ? table.capacity : 4;
     final editFloorCtrl = TextEditingController(text: selectedFloor);
@@ -879,6 +880,41 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                   );
                                 }).toList(),
                               ),
+
+                              // 4. Table Display Position
+                              const SizedBox(height: 14),
+                              Row(
+                                children: const [
+                                  Text(
+                                    'Display Position / Order',
+                                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                  ),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    '(Optional)',
+                                    style: TextStyle(fontSize: 10, color: Color(0xFF94A3B8), fontWeight: FontWeight.w500),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
+                                ),
+                                child: TextField(
+                                  controller: positionCtrl,
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Color(0xFF0F172A)),
+                                  decoration: const InputDecoration(
+                                    hintText: 'e.g. 1, 2, 3...',
+                                    hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                                    border: InputBorder.none,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                  ),
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -914,11 +950,13 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                               onTap: () async {
                                 final cleanName = nameCtrl.text.trim().isEmpty ? table.name : nameCtrl.text.trim();
                                 final cleanFloor = selectedFloor.trim().isEmpty ? table.floor : selectedFloor.trim();
+                                final parsedPos = int.tryParse(positionCtrl.text.trim()) ?? table.position;
 
                                 final updated = table.copyWith(
                                   name: cleanName,
                                   floor: cleanFloor,
                                   capacity: selectedCapacity,
+                                  position: parsedPos,
                                 );
 
                                 await db.updateTable(updated);
@@ -2614,24 +2652,45 @@ class _TableManagementScreenState extends State<TableManagementScreen> with Auto
                                         itemCount: floorTables.length,
                                         itemBuilder: (context, idx) {
                                           final table = floorTables[idx];
-                                          return LongPressDraggable<TableModel>(
-                                            data: table,
-                                            delay: const Duration(milliseconds: 180),
-                                            feedback: Material(
-                                              color: Colors.transparent,
-                                              elevation: 8,
-                                              borderRadius: BorderRadius.circular(16),
-                                              child: SizedBox(
-                                                width: isMobileGrid ? 110 : 130,
-                                                height: isMobileGrid ? 130 : 145,
-                                                child: _buildTableCard(table, isMobileGrid, isFeedback: true),
-                                              ),
-                                            ),
-                                            childWhenDragging: Opacity(
-                                              opacity: 0.35,
-                                              child: _buildTableCard(table, isMobileGrid),
-                                            ),
-                                            child: _buildTableCard(table, isMobileGrid),
+                                          return DragTarget<TableModel>(
+                                            onWillAcceptWithDetails: (details) => details.data.id != table.id,
+                                            onAcceptWithDetails: (details) async {
+                                              final dragged = details.data;
+                                              if (dragged.id == table.id) return;
+                                              await db.reorderTablePosition(dragged.id, table.id);
+                                              if (mounted) setState(() {});
+                                            },
+                                            builder: (context, candidateData, rejectedData) {
+                                              final isHovered = candidateData.isNotEmpty;
+                                              return AnimatedContainer(
+                                                duration: const Duration(milliseconds: 180),
+                                                decoration: isHovered
+                                                    ? BoxDecoration(
+                                                        borderRadius: BorderRadius.circular(16),
+                                                        border: Border.all(color: const Color(0xFF0B2253), width: 2),
+                                                      )
+                                                    : null,
+                                                child: LongPressDraggable<TableModel>(
+                                                  data: table,
+                                                  delay: const Duration(milliseconds: 180),
+                                                  feedback: Material(
+                                                    color: Colors.transparent,
+                                                    elevation: 8,
+                                                    borderRadius: BorderRadius.circular(16),
+                                                    child: SizedBox(
+                                                      width: isMobileGrid ? 110 : 130,
+                                                      height: isMobileGrid ? 130 : 145,
+                                                      child: _buildTableCard(table, isMobileGrid, isFeedback: true),
+                                                    ),
+                                                  ),
+                                                  childWhenDragging: Opacity(
+                                                    opacity: 0.35,
+                                                    child: _buildTableCard(table, isMobileGrid),
+                                                  ),
+                                                  child: _buildTableCard(table, isMobileGrid),
+                                                ),
+                                              );
+                                            },
                                           );
                                         },
                                       );

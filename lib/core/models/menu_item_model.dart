@@ -229,6 +229,12 @@ class MenuItemModel {
       parsedAliases.addAll(rawAliases.split(',').map((s) => s.trim().toLowerCase()).where((s) => s.isNotEmpty));
     }
 
+    final resolvedStock = (json['availablePortions'] as num?)?.toInt() ??
+        (json['stockQuantity'] as num?)?.toInt() ??
+        (json['stock'] as num?)?.toInt() ??
+        (json['inventory'] as num?)?.toInt() ??
+        50;
+
     return MenuItemModel(
       id: resolvedId.isNotEmpty ? resolvedId : 'PRD-${DateTime.now().millisecondsSinceEpoch}',
       productId: resolvedProductId.isNotEmpty ? resolvedProductId : resolvedId,
@@ -243,18 +249,14 @@ class MenuItemModel {
       imageUrl: resolvedImage,
       images: imagesList,
       videoUrl: resolvedVideo,
-      stockQuantity: (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? (json['inventory'] as num?)?.toInt() ?? 50,
+      stockQuantity: resolvedStock,
       stockStatus: json['stockStatus']?.toString() ??
           (json['trackInventory'] == false
               ? 'not_configured'
-              : (((json['availablePortions'] as num?)?.toInt() ?? (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? 50) <= 0
+              : (resolvedStock <= 0
                   ? 'out_of_stock'
-                  : (((json['availablePortions'] as num?)?.toInt() ?? (json['stockQuantity'] as num?)?.toInt() ?? (json['stock'] as num?)?.toInt() ?? 50) <= 5 ? 'low_stock' : 'in_stock'))),
-      availablePortions: (json['availablePortions'] as num?)?.toInt() ??
-          (json['stockQuantity'] as num?)?.toInt() ??
-          (json['stock'] as num?)?.toInt() ??
-          (json['inventory'] as num?)?.toInt() ??
-          50,
+                  : (resolvedStock <= 5 ? 'low_stock' : 'in_stock'))),
+      availablePortions: resolvedStock,
       inventoryType: json['inventoryType']?.toString() ?? (json['trackInventory'] == false ? 'not_configured' : 'direct'),
       itemType: foodTypeStr,
       hasDiscount: hasDisc,

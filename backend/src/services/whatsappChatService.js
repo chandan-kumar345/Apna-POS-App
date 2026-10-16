@@ -38,6 +38,98 @@ class WhatsAppChatService {
       WhatsAppChat.countDocuments(query),
     ]);
 
+    // Enrich chats with profile avatar & name from Customer & User models
+    if (chats && chats.length > 0) {
+      const customerPhones = [...new Set(chats.map((c) => c.customerPhone).filter(Boolean))];
+      if (customerPhones.length > 0) {
+        const phoneQueries = [];
+        customerPhones.forEach((p) => {
+          const pClean = p.replace(/\D/g, '');
+          const last10 = pClean.slice(-10);
+          if (p) phoneQueries.push(p);
+          if (pClean) phoneQueries.push(pClean);
+          if (last10) {
+            phoneQueries.push(last10);
+            phoneQueries.push(`+91${last10}`);
+            phoneQueries.push(`91${last10}`);
+            phoneQueries.push(`+${pClean}`);
+          }
+        });
+
+        const [customers, users] = await Promise.all([
+          Customer.find({
+            businessId: bId,
+            phone: { $in: [...new Set(phoneQueries)] },
+          }).select('name phone avatarUrl profileImage').lean(),
+          User.find({
+            businessId: bId,
+            phone: { $in: [...new Set(phoneQueries)] },
+          }).select('name phone profilePhotoPath').lean(),
+        ]);
+
+        const avatarMap = new Map();
+        const nameMap = new Map();
+
+        customers.forEach((c) => {
+          const cClean = (c.phone || '').replace(/\D/g, '');
+          const last10 = cClean.slice(-10);
+          const av = c.avatarUrl || c.profileImage || '';
+          if (av) {
+            if (last10) avatarMap.set(last10, av);
+            if (c.phone) avatarMap.set(c.phone, av);
+          }
+          if (c.name) {
+            if (last10) nameMap.set(last10, c.name);
+            if (c.phone) nameMap.set(c.phone, c.name);
+          }
+        });
+
+        users.forEach((u) => {
+          const uClean = (u.phone || '').replace(/\D/g, '');
+          const last10 = uClean.slice(-10);
+          const av = u.profilePhotoPath || '';
+          if (av && av !== 'assets/images/logo.png') {
+            if (last10 && !avatarMap.has(last10)) avatarMap.set(last10, av);
+            if (u.phone && !avatarMap.has(u.phone)) avatarMap.set(u.phone, av);
+          }
+        });
+
+        const whatsappProfilePicService = require('./whatsappProfilePicService');
+        chats.forEach((chat) => {
+          const pClean = (chat.customerPhone || '').replace(/\D/g, '');
+          const last10 = pClean.slice(-10);
+          const matchedAvatar = avatarMap.get(last10) || avatarMap.get(chat.customerPhone);
+          if (matchedAvatar && !chat.avatarUrl) {
+            chat.avatarUrl = matchedAvatar;
+          } else if (!chat.avatarUrl) {
+            const cachedLocal = whatsappProfilePicService.hasCachedLocalAvatar(pClean);
+            if (cachedLocal) {
+              chat.avatarUrl = cachedLocal;
+            }
+          }
+          const matchedName = nameMap.get(last10) || nameMap.get(chat.customerPhone);
+          if (matchedName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
+            chat.customerName = matchedName;
+          }
+        });
+
+        // Asynchronous non-blocking background DP sync for chats missing avatar
+        setImmediate(async () => {
+          try {
+            for (const chat of chats) {
+              if (!chat.avatarUrl && chat.customerPhone) {
+                await whatsappProfilePicService.resolveProfilePic({
+                  phone: chat.customerPhone,
+                  businessId: bId,
+                  chatId: chat._id,
+                });
+              }
+            }
+          } catch (_) {}
+        });
+      }
+    }
+
     return {
       chats,
       total,
@@ -72,6 +164,24 @@ class WhatsAppChatService {
       .sort({ timestamp: 1 })
       .limit(Math.max(1, Number(limit)))
       .lean();
+
+    if (chat && !chat.avatarUrl) {
+      const whatsappProfilePicService = require('./whatsappProfilePicService');
+      const pClean = (chat.customerPhone || '').replace(/\D/g, '');
+      const localCached = whatsappProfilePicService.hasCachedLocalAvatar(pClean);
+      if (localCached) {
+        chat.avatarUrl = localCached;
+      } else {
+        const last10 = pClean.slice(-10);
+        const cust = await Customer.findOne({
+          businessId: bId,
+          phone: { $in: [chat.customerPhone, pClean, last10, `+91${last10}`, `91${last10}`] },
+        }).select('name avatarUrl profileImage').lean();
+        if (cust && (cust.avatarUrl || cust.profileImage)) {
+          chat.avatarUrl = cust.avatarUrl || cust.profileImage;
+        }
+      }
+    }
 
     return {
       chat,
@@ -188,12 +298,16 @@ class WhatsAppChatService {
     });
 
     let resolvedName = customerName || '';
-    if (!resolvedName) {
-      const customer = await Customer.findOne({
-        businessId: bId,
-        phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
-      }).lean();
-      if (customer?.name) resolvedName = customer.name;
+    let resolvedAvatar = '';
+    const customer = await Customer.findOne({
+      businessId: bId,
+      phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
+    }).lean();
+    if (customer) {
+      if (!resolvedName && customer.name) resolvedName = customer.name;
+      if (customer.avatarUrl || customer.profileImage) {
+        resolvedAvatar = customer.avatarUrl || customer.profileImage;
+      }
     }
 
     if (!chat) {
@@ -206,6 +320,7 @@ class WhatsAppChatService {
         phoneNumberId: phoneNumberId || '',
         customerPhone: normalizedPhone,
         customerName: resolvedName || `Customer ${normalizedPhone.slice(-4)}`,
+        avatarUrl: resolvedAvatar || '',
         lastMessage: initialMessage || 'Conversation started',
         lastMessageAt: new Date(),
         lastMessageDirection: initialMessage ? 'OUTGOING' : 'INCOMING',
@@ -215,6 +330,9 @@ class WhatsAppChatService {
     } else {
       if (resolvedName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
         chat.customerName = resolvedName;
+      }
+      if (resolvedAvatar && !chat.avatarUrl) {
+        chat.avatarUrl = resolvedAvatar;
       }
       if (user?.whatsappSettings?.phoneNumberId && !chat.phoneNumberId) {
         chat.phoneNumberId = user.whatsappSettings.phoneNumberId.trim();
@@ -516,14 +634,16 @@ class WhatsAppChatService {
     let chat = await WhatsAppChat.findOne(chatFilter);
 
     let customerName = incomingMsg.customerName || '';
-    if (!customerName) {
-      const customerRecord = await Customer.findOne({
-        businessId: bId,
-        phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
-      }).lean();
-      if (customerRecord?.name) {
+    let customerAvatar = '';
+    const customerRecord = await Customer.findOne({
+      businessId: bId,
+      phone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
+    }).lean();
+    if (customerRecord) {
+      if (!customerName && customerRecord.name) {
         customerName = customerRecord.name;
       }
+      customerAvatar = customerRecord.avatarUrl || customerRecord.profileImage || '';
     }
 
     const hasPendingMedia = !incomingMsg.mediaUrl && Boolean(incomingMsg.mediaId);
@@ -540,6 +660,7 @@ class WhatsAppChatService {
         phoneNumberId: phoneNumberId || business.whatsappSettings?.phoneNumberId || '',
         customerPhone: normalizedPhone,
         customerName: customerName || `Customer ${normalizedPhone.slice(-4)}`,
+        avatarUrl: customerAvatar || '',
         lastMessage: lastMsgDisplay,
         lastMessageAt: incomingMsg.timestamp || new Date(),
         lastMessageDirection: 'INCOMING',
@@ -552,6 +673,9 @@ class WhatsAppChatService {
       }
       if (customerName && (!chat.customerName || chat.customerName.startsWith('Customer '))) {
         chat.customerName = customerName;
+      }
+      if (customerAvatar && !chat.avatarUrl) {
+        chat.avatarUrl = customerAvatar;
       }
       chat.lastMessage = lastMsgDisplay;
       chat.lastMessageAt = incomingMsg.timestamp || new Date();
@@ -618,12 +742,117 @@ class WhatsAppChatService {
         sendPush: true,
         idempotencyKey: incomingMsg.messageId ? `wa_notif_${incomingMsg.messageId}` : undefined,
       });
-      console.log(`[WhatsAppChatService] 🔔 Instant push notification dispatched for ${senderDisplay}`);
     } catch (notifErr) {
-      console.warn('[WhatsAppChatService] Non-blocking notification creation notice:', notifErr.message);
+      console.warn('[WhatsAppChatService] Push notification dispatch notice:', notifErr.message);
     }
 
-    // 3. Asynchronous background media hydration (non-blocking for instant responsiveness)
+    // 3. Autonomous AI Chat Agent Auto-Reply on WhatsApp
+    try {
+      const aiSettings = business.aiChatAgentSettings;
+      const isAiEnabled = aiSettings && aiSettings.enabled === true;
+
+      // Only trigger if AI is enabled and incoming message is valid customer text
+      if (isAiEnabled && incomingMsg.body && incomingMsg.body.trim()) {
+        const delaySeconds = Math.max(1, aiSettings.autoReplyDelaySeconds || 2);
+        console.log(`[WhatsAppChatService] 🤖 Scheduling AI Chat Agent reply in ${delaySeconds}s for ${normalizedPhone}...`);
+
+        setTimeout(async () => {
+          try {
+            const aiAgentService = require('./aiAgentService');
+            const aiResult = await aiAgentService.generateReply({
+              business,
+              chatId: chat._id,
+              customerPhone: normalizedPhone,
+              customerName: customerName || chat.customerName,
+              messageText: incomingMsg.body,
+            });
+
+            if (aiResult && aiResult.replyText && aiResult.replyText.trim()) {
+              let finalReplyText = aiResult.replyText.trim();
+
+              // DIRECT ORDER TAKING: Automatically create order in POS if order intent detected
+              if (aiResult.orderPayload && Array.isArray(aiResult.orderPayload.items) && aiResult.orderPayload.items.length > 0) {
+                try {
+                  const orderService = require('./orderService');
+                  const orderResult = await orderService.generatePosOrder(bId, {
+                    ...aiResult.orderPayload,
+                    customerPhone: normalizedPhone,
+                    customerName: customerName || chat.customerName || 'WhatsApp Customer',
+                    status: 'pending',
+                    paymentStatus: 'pending',
+                    paymentMethod: 'unpaid',
+                    source: 'whatsapp_ai',
+                  });
+
+                  const createdOrder = orderResult?.order || orderResult;
+                  if (createdOrder && createdOrder.orderNumber) {
+                    finalReplyText += `\n\n📌 *Order Placed!* Order #${createdOrder.orderNumber} (₹${createdOrder.totalAmount})\n⏳ *Status*: Preparing\nWe will update you as soon as your order is ready! 🍽️`;
+                    console.log(`[WhatsAppChatService] 🛒 Direct POS Order #${createdOrder.orderNumber} created via WhatsApp AI for ${normalizedPhone}`);
+                  }
+                } catch (orderErr) {
+                  console.error('[WhatsAppChatService] Direct order creation notice:', orderErr.message);
+                }
+              }
+
+              const activePhoneId =
+                chat.phoneNumberId ||
+                business.whatsappSettings?.phoneNumberId ||
+                whatsappService.phoneNumberId;
+
+              const activeToken =
+                business.whatsappSettings?.accessToken ||
+                whatsappService.accessToken;
+
+              // Send reply to customer on WhatsApp via Meta API
+              const sendResult = await whatsappService.sendChatMessage({
+                to: normalizedPhone,
+                text: finalReplyText,
+                message: finalReplyText,
+                phoneNumberId: activePhoneId,
+                accessToken: activeToken,
+              });
+
+              // Create OUTGOING AI Message Record
+              const aiMsg = await WhatsAppMessage.create({
+                businessId: bId,
+                chatId: chat._id,
+                customerPhone: normalizedPhone,
+                direction: 'OUTGOING',
+                messageType: 'text',
+                text: finalReplyText,
+                whatsappMessageId: sendResult?.messageId || `wamid.ai.${Date.now()}`,
+                isAiGenerated: true,
+                status: 'SENT',
+                timestamp: new Date(),
+              });
+
+              // Update Chat
+              chat.lastMessage = `🤖 ${aiResult.replyText.trim().slice(0, 80)}`;
+              chat.lastMessageAt = new Date();
+              chat.lastMessageDirection = 'OUTGOING';
+              await chat.save();
+
+              // Broadcast via WebSocket to all connected terminals
+              const socketService = require('./socketService');
+              socketService.emitWhatsAppMessageReceived(bId, {
+                chat,
+                message: aiMsg,
+                targetUserId,
+                ownerId: business?.ownerId,
+              });
+
+              console.log(`[WhatsAppChatService] 🤖 ✅ Autonomous AI Chat Agent replied to ${normalizedPhone}: "${aiResult.replyText.slice(0, 60)}..."`);
+            }
+          } catch (aiDispatchErr) {
+            console.error('[WhatsAppChatService] ❌ Autonomous AI Chat Agent dispatch error:', aiDispatchErr.message);
+          }
+        }, delaySeconds * 1000);
+      }
+    } catch (aiErr) {
+      console.warn('[WhatsAppChatService] Non-blocking AI Chat Agent notice:', aiErr.message);
+    }
+
+    // 4. Asynchronous background media hydration (non-blocking for instant responsiveness)
     if (hasPendingMedia) {
       setImmediate(async () => {
         try {
@@ -681,6 +910,123 @@ class WhatsAppChatService {
       }
     }
     await message.save();
+  }
+
+  /**
+   * Get AI Agent settings for business
+   */
+  async getAiAgentSettings(businessId, userId) {
+    let business = null;
+    if (businessId) {
+      business = await Business.findById(businessId).lean();
+    }
+    if (!business && userId) {
+      business = await Business.findOne({ ownerId: userId }).lean();
+    }
+    if (!business) {
+      business = await Business.findOne().sort({ updatedAt: -1 }).lean();
+    }
+    if (!business) {
+      throw ApiError.notFound('Business not found');
+    }
+
+    return business.aiChatAgentSettings || {
+      enabled: false,
+      persona: 'friendly',
+      agentName: 'Apna AI Assistant',
+      greeting: "Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today's special offers, or table bookings!",
+      autoMenuSuggest: true,
+      autoOrderTaking: true,
+      systemPrompt: 'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.',
+      customInstructions: '',
+      apiKey: '',
+      model: 'gemini-3.8-flash',
+      businessHoursOnly: false,
+      autoReplyDelaySeconds: 2,
+    };
+  }
+
+  /**
+   * Update AI Agent settings for business
+   */
+  async updateAiAgentSettings(businessId, settings = {}, userId) {
+    let business = null;
+    if (businessId) {
+      business = await Business.findById(businessId);
+    }
+    if (!business && userId) {
+      business = await Business.findOne({ ownerId: userId });
+    }
+    if (!business) {
+      business = await Business.findOne().sort({ updatedAt: -1 });
+    }
+    if (!business) {
+      throw ApiError.notFound('Business not found');
+    }
+
+    // Require Meta WhatsApp API integration before enabling AI Chat Agent
+    if (settings.enabled === true) {
+      const hasMetaCredentials = Boolean(
+        (business.whatsappSettings?.phoneNumberId && business.whatsappSettings?.accessToken) ||
+        (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN)
+      );
+      if (!hasMetaCredentials) {
+        throw ApiError.badRequest(
+          'Meta WhatsApp Cloud API integration is required before enabling the AI Chat Agent. Please connect your Meta Phone Number ID and Access Token.'
+        );
+      }
+    }
+
+    business.aiChatAgentSettings = {
+      ...(business.aiChatAgentSettings?.toObject?.() || business.aiChatAgentSettings || {}),
+      ...settings,
+    };
+
+    await business.save();
+    return business.aiChatAgentSettings;
+  }
+
+  /**
+   * Simulate AI Chat for Testing in Settings UI
+   */
+  async simulateAiChat(businessId, messageText, settingsOverride, userId) {
+    let business = null;
+    if (businessId) {
+      business = await Business.findById(businessId).lean();
+    }
+    if (!business && userId) {
+      business = await Business.findOne({ ownerId: userId }).lean();
+    }
+    if (!business) {
+      business = await Business.findOne().sort({ updatedAt: -1 }).lean();
+    }
+    if (!business) {
+      throw ApiError.notFound('Business not found');
+    }
+
+    const aiAgentService = require('./aiAgentService');
+    const result = await aiAgentService.generateReply({
+      business,
+      chatId: null,
+      customerPhone: '919999999999',
+      customerName: 'Guest',
+      messageText,
+      settingsOverride,
+    });
+
+    let reply = result?.replyText || 'Hello!';
+    if (result?.orderPayload && result.orderPayload.items && result.orderPayload.items.length > 0) {
+      const itemsDesc = result.orderPayload.items.map((i) => `${i.quantity}x ${i.name}`).join(', ');
+      reply += `\n\n💡 _[Direct POS Order Verified: Detected ${itemsDesc} (₹${result.orderPayload.totalAmount}). In live WhatsApp chat, this automatically creates an Order in POS and alerts your register!]_`;
+    }
+
+    return {
+      replyText: reply,
+      isAiGenerated: result?.isAiGenerated ?? true,
+      model: result?.model,
+      source: result?.source,
+      orderPayload: result?.orderPayload || null,
+    };
   }
 }
 

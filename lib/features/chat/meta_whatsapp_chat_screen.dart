@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import '../../core/database/database_service.dart';
 import '../../core/network/api_endpoints.dart';
+import '../../core/services/upload_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
@@ -238,6 +240,23 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
       _selectedChat = chat;
       _isLoadingMessages = true;
     });
+
+    // Background silent DP sync if chat currently has no avatar
+    if (_resolveChatAvatar(chat) == null || _resolveChatAvatar(chat)!.isEmpty) {
+      _chatService.syncChatDp(chat.id).then((resolvedAvatar) {
+        if (resolvedAvatar != null && resolvedAvatar.isNotEmpty && mounted) {
+          setState(() {
+            if (_selectedChat?.id == chat.id) {
+              _selectedChat = _selectedChat!.copyWith(avatarUrl: resolvedAvatar);
+            }
+            final idx = _chats.indexWhere((c) => c.id == chat.id);
+            if (idx != -1) {
+              _chats[idx] = _chats[idx].copyWith(avatarUrl: resolvedAvatar);
+            }
+          });
+        }
+      }).catchError((_) {});
+    }
 
     try {
       final msgs = await _chatService.getChatMessages(chat.id);
@@ -2222,6 +2241,783 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
+  /// Resolves the contact's profile photo path/URL (from chat model or local database match)
+  String? _resolveChatAvatar(WhatsAppChatModel chat) {
+    if (chat.avatarUrl != null && chat.avatarUrl!.trim().isNotEmpty) {
+      return chat.avatarUrl!.trim();
+    }
+    return _db.getProfilePhotoByPhone(chat.customerPhone);
+  }
+
+  /// Resolves the contact's friendly display name (from chat model or customer database)
+  String _resolveChatDisplayName(WhatsAppChatModel chat) {
+    if (chat.customerName.isNotEmpty && !chat.customerName.startsWith('Customer ')) {
+      return chat.customerName;
+    }
+    final cust = _db.getCustomerByPhone(chat.customerPhone);
+    if (cust != null && cust.name.isNotEmpty && cust.name != 'Customer') {
+      return cust.name;
+    }
+    return chat.displayName;
+  }
+
+  /// Resolves initials from customer name or phone
+  String _resolveInitials(WhatsAppChatModel chat) {
+    final dispName = _resolveChatDisplayName(chat);
+    if (dispName.isNotEmpty && !dispName.startsWith('Customer ') && !dispName.startsWith('+')) {
+      final parts = dispName.trim().split(RegExp(r'\s+'));
+      if (parts.length >= 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+        return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+      } else if (parts.isNotEmpty && parts[0].isNotEmpty) {
+        return parts[0][0].toUpperCase();
+      }
+    }
+    return chat.avatarInitials;
+  }
+
+  /// Builds a dynamic avatar circle displaying the number's DP if available, falling back to initials
+  Widget _buildChatAvatar(
+    WhatsAppChatModel chat, {
+    double size = 46,
+    bool isSelected = false,
+    double? fontSize,
+    VoidCallback? onTap,
+  }) {
+    final rawPhoto = _resolveChatAvatar(chat);
+    final photo = ApiEndpoints.resolveMediaUrl(rawPhoto);
+    final initials = _resolveInitials(chat);
+    final effectiveFontSize = fontSize ?? (size * 0.38);
+    Widget avatarContent;
+
+    if (photo.isNotEmpty) {
+      if (photo.startsWith('data:image') || photo.startsWith('data:') || (photo.length > 80 && !photo.contains('/') && !photo.contains('\\'))) {
+        try {
+          final commaIdx = photo.indexOf(',');
+          final cleanBase64 = commaIdx != -1 ? photo.substring(commaIdx + 1) : photo;
+          final bytes = base64Decode(cleanBase64.replaceAll('\n', '').replaceAll('\r', '').trim());
+          avatarContent = Image.memory(
+            bytes,
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(
+              initials,
+              size: size,
+              isSelected: isSelected,
+              fontSize: effectiveFontSize,
+            ),
+          );
+        } catch (_) {
+          avatarContent = _buildAvatarFallback(
+            initials,
+            size: size,
+            isSelected: isSelected,
+            fontSize: effectiveFontSize,
+          );
+        }
+      } else if (photo.startsWith('http://') || photo.startsWith('https://')) {
+        avatarContent = Image.network(
+          photo,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(
+            initials,
+            size: size,
+            isSelected: isSelected,
+            fontSize: effectiveFontSize,
+          ),
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: size,
+              height: size,
+              color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+              child: Center(
+                child: SizedBox(
+                  width: size * 0.45,
+                  height: size * 0.45,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Color(0xFF00A884),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      } else if (photo.startsWith('assets/')) {
+        avatarContent = Image.asset(
+          photo,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(
+            initials,
+            size: size,
+            isSelected: isSelected,
+            fontSize: effectiveFontSize,
+          ),
+        );
+      } else if (!photo.contains('_selected') && File(photo).existsSync()) {
+        avatarContent = Image.file(
+          File(photo),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(
+            initials,
+            size: size,
+            isSelected: isSelected,
+            fontSize: effectiveFontSize,
+          ),
+        );
+      } else {
+        avatarContent = _buildAvatarFallback(
+          initials,
+          size: size,
+          isSelected: isSelected,
+          fontSize: effectiveFontSize,
+        );
+      }
+    } else {
+      avatarContent = _buildAvatarFallback(
+        initials,
+        size: size,
+        isSelected: isSelected,
+        fontSize: effectiveFontSize,
+      );
+    }
+
+    final avatarWidget = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: isSelected ? const Color(0xFF10B981) : Colors.white,
+          width: isSelected ? 1.8 : 1.2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: (isSelected ? const Color(0xFF10B981) : const Color(0xFF0F172A)).withValues(alpha: 0.08),
+            blurRadius: 4,
+            offset: const Offset(0, 1.5),
+          ),
+        ],
+      ),
+      child: ClipOval(child: avatarContent),
+    );
+
+    if (onTap != null) {
+      return GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: avatarWidget,
+      );
+    }
+    return avatarWidget;
+  }
+
+  /// Fallback circle with initials when no DP exists or image fails to load
+  Widget _buildAvatarFallback(
+    String initials, {
+    required double size,
+    required bool isSelected,
+    required double fontSize,
+  }) {
+    return Container(
+      width: size,
+      height: size,
+      color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
+      child: Center(
+        child: Text(
+          initials,
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            fontSize: fontSize,
+            color: isSelected ? const Color(0xFF065F46) : const Color(0xFF334155),
+            letterSpacing: -0.2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Displays the full Contact Profile bottom sheet with DP zoom, CRM details, and option to update photo
+  void _showContactProfileSheet(WhatsAppChatModel chat) {
+    final cust = _db.getCustomerByPhone(chat.customerPhone);
+    final dispName = _resolveChatDisplayName(chat);
+    bool isUploadingPhoto = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (sheetCtx) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          final currentPhoto = _resolveChatAvatar(chat);
+
+          Future<void> pickPhoto(ImageSource source) async {
+            try {
+              final picker = ImagePicker();
+              final picked = await picker.pickImage(source: source, imageQuality: 85, maxWidth: 800);
+              if (picked == null) return;
+
+              setSheetState(() => isUploadingPhoto = true);
+
+              final file = File(picked.path);
+              String? uploadedUrl;
+              try {
+                uploadedUrl = await UploadService().uploadImage(file, folder: 'profiles');
+              } catch (e) {
+                debugPrint('[ContactProfile] Upload failed, falling back to local file: $e');
+              }
+
+              final effectivePath = (uploadedUrl != null && uploadedUrl.isNotEmpty) ? uploadedUrl : file.path;
+
+              // Save to customer in DatabaseService
+              await _db.saveCustomer(
+                name: (cust != null && cust.name.isNotEmpty && cust.name != 'Customer')
+                    ? cust.name
+                    : (chat.customerName.isNotEmpty && !chat.customerName.startsWith('Customer ')
+                        ? chat.customerName
+                        : 'Customer'),
+                phone: chat.customerPhone,
+                avatarUrl: effectivePath,
+                email: cust?.email,
+                address: cust?.address,
+              );
+
+              // Update backend MongoDB
+              _chatService.updateChatAvatar(chat.id, effectivePath);
+
+              // Update active chat object
+              final updated = chat.copyWith(avatarUrl: effectivePath);
+              final idx = _chats.indexWhere((c) => c.id == chat.id || c.customerPhone == chat.customerPhone);
+              if (idx >= 0) {
+                _chats[idx] = _chats[idx].copyWith(avatarUrl: effectivePath);
+              }
+              if (_selectedChat != null &&
+                  (_selectedChat!.id == chat.id || _selectedChat!.customerPhone == chat.customerPhone)) {
+                _selectedChat = updated;
+              }
+
+              setSheetState(() => isUploadingPhoto = false);
+              setState(() {});
+
+              if (mounted && sheetCtx.mounted) {
+                ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                  const SnackBar(
+                    content: Text('Profile photo updated successfully!'),
+                    backgroundColor: Color(0xFF00A884),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            } catch (err) {
+              setSheetState(() => isUploadingPhoto = false);
+              debugPrint('[ContactProfile] Error picking photo: $err');
+            }
+          }
+
+          bool isSyncingDp = false;
+
+          Future<void> syncWhatsAppDp() async {
+            setSheetState(() => isSyncingDp = true);
+            try {
+              final newAvatar = await _chatService.syncChatDp(chat.id);
+              if (newAvatar != null && newAvatar.isNotEmpty) {
+                // Update local customer
+                await _db.saveCustomer(
+                  name: (cust != null && cust.name.isNotEmpty && cust.name != 'Customer')
+                      ? cust.name
+                      : (chat.customerName.isNotEmpty && !chat.customerName.startsWith('Customer ')
+                          ? chat.customerName
+                          : 'Customer'),
+                  phone: chat.customerPhone,
+                  avatarUrl: newAvatar,
+                  email: cust?.email,
+                  address: cust?.address,
+                );
+
+                final updated = chat.copyWith(avatarUrl: newAvatar);
+                final idx = _chats.indexWhere((c) => c.id == chat.id || c.customerPhone == chat.customerPhone);
+                if (idx >= 0) {
+                  _chats[idx] = _chats[idx].copyWith(avatarUrl: newAvatar);
+                }
+                if (_selectedChat != null &&
+                    (_selectedChat!.id == chat.id || _selectedChat!.customerPhone == chat.customerPhone)) {
+                  _selectedChat = updated;
+                }
+
+                setSheetState(() => isSyncingDp = false);
+                setState(() {});
+
+                if (mounted && sheetCtx.mounted) {
+                  ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                    const SnackBar(
+                      content: Row(
+                        children: [
+                          Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+                          SizedBox(width: 8),
+                          Text('WhatsApp DP updated successfully!'),
+                        ],
+                      ),
+                      backgroundColor: Color(0xFF00A884),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              } else {
+                setSheetState(() => isSyncingDp = false);
+                if (mounted && sheetCtx.mounted) {
+                  ScaffoldMessenger.of(sheetCtx).showSnackBar(
+                    const SnackBar(
+                      content: Text('No public WhatsApp DP found for this contact. You can set a custom photo.'),
+                      backgroundColor: Color(0xFF475569),
+                      behavior: SnackBarBehavior.floating,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              }
+            } catch (err) {
+              setSheetState(() => isSyncingDp = false);
+              debugPrint('[ContactProfile] Error syncing DP: $err');
+            }
+          }
+
+          void showUrlInputDialog() {
+            final urlCtrl = TextEditingController();
+            showDialog(
+              context: sheetCtx,
+              builder: (dCtx) => AlertDialog(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                title: const Text('Enter Image URL', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                content: TextField(
+                  controller: urlCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'https://example.com/photo.jpg',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dCtx),
+                    child: const Text('Cancel'),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final url = urlCtrl.text.trim();
+                      if (url.isEmpty) return;
+                      Navigator.pop(dCtx);
+                      setSheetState(() => isUploadingPhoto = true);
+                      await _db.saveCustomer(
+                        name: (cust != null && cust.name.isNotEmpty && cust.name != 'Customer')
+                            ? cust.name
+                            : (chat.customerName.isNotEmpty && !chat.customerName.startsWith('Customer ')
+                                ? chat.customerName
+                                : 'Customer'),
+                        phone: chat.customerPhone,
+                        avatarUrl: url,
+                        email: cust?.email,
+                        address: cust?.address,
+                      );
+                      await _chatService.updateChatAvatar(chat.id, url);
+                      final updated = chat.copyWith(avatarUrl: url);
+                      final idx = _chats.indexWhere((c) => c.id == chat.id || c.customerPhone == chat.customerPhone);
+                      if (idx >= 0) {
+                        _chats[idx] = _chats[idx].copyWith(avatarUrl: url);
+                      }
+                      if (_selectedChat != null &&
+                          (_selectedChat!.id == chat.id || _selectedChat!.customerPhone == chat.customerPhone)) {
+                        _selectedChat = updated;
+                      }
+                      setSheetState(() => isUploadingPhoto = false);
+                      setState(() {});
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00A884),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Save'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          void showPhotoSourceDialog() {
+            showModalBottomSheet(
+              context: sheetCtx,
+              backgroundColor: Colors.transparent,
+              builder: (ctx) => Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(color: const Color(0xFFE2E8F0), borderRadius: BorderRadius.circular(4)),
+                      ),
+                      const Text(
+                        'Set Profile Picture',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF0F172A)),
+                      ),
+                      const SizedBox(height: 16),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFE8FDF2),
+                          child: Icon(Icons.sync_rounded, color: Color(0xFF00A884)),
+                        ),
+                        title: const Text('Sync WhatsApp DP', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        subtitle: const Text('Fetch active profile picture from WhatsApp', style: TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          syncWhatsAppDp();
+                        },
+                      ),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFEFF6FF),
+                          child: Icon(Icons.photo_library_rounded, color: Color(0xFF2563EB)),
+                        ),
+                        title: const Text('Choose from Gallery', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          pickPhoto(ImageSource.gallery);
+                        },
+                      ),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFE0F2FE),
+                          child: Icon(Icons.camera_alt_rounded, color: Color(0xFF0284C7)),
+                        ),
+                        title: const Text('Take a Photo', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          pickPhoto(ImageSource.camera);
+                        },
+                      ),
+                      ListTile(
+                        leading: const CircleAvatar(
+                          backgroundColor: Color(0xFFF1F5F9),
+                          child: Icon(Icons.link_rounded, color: Color(0xFF475569)),
+                        ),
+                        title: const Text('Paste Image URL', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          showUrlInputDialog();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
+          return Align(
+            alignment: Alignment.bottomCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  boxShadow: [
+                    BoxShadow(color: Color(0x26000000), blurRadius: 28, offset: Offset(0, -8)),
+                  ],
+                ),
+                child: SafeArea(
+                  top: false,
+                  bottom: true,
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Drag handle
+                        Center(
+                          child: Container(
+                            width: 44,
+                            height: 4.5,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(color: const Color(0xFFCBD5E1), borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+
+                        // Header Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Contact Info',
+                              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 20, color: Color(0xFF64748B)),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              onPressed: () => Navigator.pop(sheetCtx),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+
+                        // Large DP with Camera Badge
+                        Center(
+                          child: Stack(
+                            alignment: Alignment.bottomRight,
+                            children: [
+                              GestureDetector(
+                                onTap: showPhotoSourceDialog,
+                                child: Container(
+                                  width: 96,
+                                  height: 96,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: const Color(0xFF10B981), width: 2.5),
+                                    boxShadow: const [
+                                      BoxShadow(color: Color(0x1A000000), blurRadius: 10, offset: Offset(0, 4)),
+                                    ],
+                                  ),
+                                  child: isUploadingPhoto
+                                      ? const Center(
+                                          child: SizedBox(
+                                            width: 32,
+                                            height: 32,
+                                            child: CircularProgressIndicator(color: Color(0xFF00A884), strokeWidth: 3),
+                                          ),
+                                        )
+                                      : _buildChatAvatar(
+                                          chat,
+                                          size: 96,
+                                          isSelected: true,
+                                          fontSize: 32,
+                                        ),
+                                ),
+                              ),
+                              GestureDetector(
+                                onTap: showPhotoSourceDialog,
+                                child: Container(
+                                  width: 32,
+                                  height: 32,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF00A884),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(color: Colors.white, width: 2),
+                                    boxShadow: const [
+                                      BoxShadow(color: Color(0x22000000), blurRadius: 4, offset: Offset(0, 2)),
+                                    ],
+                                  ),
+                                  child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
+                        // Contact Name
+                        Text(
+                          dispName,
+                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 4),
+
+                        // Phone Number
+                        Text(
+                          chat.customerPhone.startsWith('+') ? chat.customerPhone : '+${chat.customerPhone}',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Badges Row
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE8FDF2),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFF86EFAC), width: 0.8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: const [
+                                  Icon(Icons.check_circle_rounded, size: 13, color: Color(0xFF059669)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'WhatsApp Verified',
+                                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF065F46)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (cust != null) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFEFF6FF),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(color: const Color(0xFF93C5FD), width: 0.8),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: const [
+                                    Icon(Icons.storefront_rounded, size: 13, color: Color(0xFF2563EB)),
+                                    SizedBox(width: 4),
+                                    Text(
+                                      'Store Customer',
+                                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF1E40AF)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+
+                        if (cust != null) ...[
+                          const SizedBox(height: 18),
+                          // Stats Card
+                          Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      const Text('Orders', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${cust.totalOrders}',
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Container(width: 1, height: 32, color: const Color(0xFFCBD5E1)),
+                                Expanded(
+                                  child: Column(
+                                    children: [
+                                      const Text('Total Spent', style: TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '₹${cust.totalSpent.toStringAsFixed(0)}',
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF00A884)),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+
+                        const SizedBox(height: 20),
+
+                        // Action Buttons: Sync WhatsApp DP + Add/Change Photo + Done
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: isSyncingDp ? null : syncWhatsAppDp,
+                                    icon: isSyncingDp
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF00A884)),
+                                          )
+                                        : const Icon(Icons.sync_rounded, size: 16, color: Color(0xFF00A884)),
+                                    label: Text(
+                                      isSyncingDp ? 'Syncing...' : 'Sync WhatsApp DP',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF00A884)),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFF00A884), width: 1.2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: showPhotoSourceDialog,
+                                    icon: const Icon(Icons.camera_alt_outlined, size: 16, color: Color(0xFF0284C7)),
+                                    label: Text(
+                                      currentPhoto != null && currentPhoto.isNotEmpty ? 'Change Photo' : 'Add Photo',
+                                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF0284C7)),
+                                    ),
+                                    style: OutlinedButton.styleFrom(
+                                      side: const BorderSide(color: Color(0xFF0284C7), width: 1.2),
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(sheetCtx),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF00A884),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                                padding: const EdgeInsets.symmetric(vertical: 13),
+                              ),
+                              child: const Text('Done', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700)),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   /// Floating Neumorphic Chat Card matching reference image
   Widget _buildChatCard(WhatsAppChatModel chat) {
     final isSelected = _selectedChat != null && _selectedChat!.id == chat.id;
@@ -2253,25 +3049,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             child: Row(
               children: [
-                // Soft avatar circle
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFFBBF7D0) : const Color(0xFFE2E8F0),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      chat.avatarInitials,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 16,
-                        color: isSelected ? const Color(0xFF065F46) : const Color(0xFF334155),
-                      ),
-                    ),
-                  ),
-                ),
+                // Soft avatar circle with DP support
+                _buildChatAvatar(chat, size: 46, isSelected: isSelected),
                 const SizedBox(width: 14),
                 // Chat Info
                 Expanded(
@@ -2283,7 +3062,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              chat.displayName,
+                              _resolveChatDisplayName(chat),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
@@ -2522,72 +3301,62 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
           const SizedBox(width: 8),
 
-          // Contact Avatar
-          Container(
-            width: 40,
-            height: 40,
-            decoration: const BoxDecoration(
-              color: Color(0xFFE2E8F0),
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                _selectedChat!.avatarInitials,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF0F172A),
-                  fontSize: 14,
-                ),
-              ),
-            ),
+          // Contact Avatar (Tap to view/update profile DP)
+          GestureDetector(
+            onTap: () => _showContactProfileSheet(_selectedChat!),
+            child: _buildChatAvatar(_selectedChat!, size: 40),
           ),
           const SizedBox(width: 10),
 
           // Contact Name & Phone / Status
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _selectedChat!.displayName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Row(
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: Color(0xFF22C55E),
-                        shape: BoxShape.circle,
-                      ),
+            child: InkWell(
+              onTap: () => _showContactProfileSheet(_selectedChat!),
+              borderRadius: BorderRadius.circular(8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _resolveChatDisplayName(_selectedChat!),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                      color: Color(0xFF0F172A),
                     ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        _selectedChat!.customerPhone.startsWith('+')
-                            ? _selectedChat!.customerPhone
-                            : '+${_selectedChat!.customerPhone}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF64748B),
-                          fontWeight: FontWeight.w500,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Container(
+                        width: 6,
+                        height: 6,
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF22C55E),
+                          shape: BoxShape.circle,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          _selectedChat!.customerPhone.startsWith('+')
+                              ? _selectedChat!.customerPhone
+                              : '+${_selectedChat!.customerPhone}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF64748B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -2645,8 +3414,26 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           onSelected: (val) {
             if (val == 'refresh') _loadMessages(_selectedChat!.id);
             if (val == 'new_chat') _showNewChatDialog();
+            if (val == 'contact_info') _showContactProfileSheet(_selectedChat!);
           },
           itemBuilder: (ctx) => [
+            PopupMenuItem(
+              value: 'contact_info',
+              child: Row(
+                children: const [
+                  Icon(Icons.account_circle_outlined, size: 17, color: Color(0xFF0F172A)),
+                  SizedBox(width: 10),
+                  Text(
+                    'Contact Profile & DP',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF0F172A),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             PopupMenuItem(
               value: 'refresh',
               child: Row(

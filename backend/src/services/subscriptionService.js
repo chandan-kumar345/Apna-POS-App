@@ -252,10 +252,6 @@ class SubscriptionService {
     if (!subDoc && user?.email) {
       subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ createdAt: -1 });
     }
-    if (!subDoc) {
-      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
-    }
-
     let isSubscribed = false;
     let plan = 'starter';
     let amount = 0;
@@ -295,21 +291,25 @@ class SubscriptionService {
       const userSub = user?.subscription || {};
       const staffSub = staff?.subscription || {};
 
-      if (bizSub.isSubscriptionActive !== undefined && bizSub.isSubscriptionActive !== null) {
-        isSubscribed = Boolean(bizSub.isSubscriptionActive);
-      } else if (bizSub.isActive !== undefined && bizSub.isActive !== null) {
-        isSubscribed = Boolean(bizSub.isActive);
-      } else if (bizSub.status !== undefined && bizSub.status !== null) {
-        isSubscribed = bizSub.status === 'active';
-      } else if (userSub.isSubscriptionActive !== undefined && userSub.isSubscriptionActive !== null) {
-        isSubscribed = Boolean(userSub.isSubscriptionActive);
-      } else if (userSub.isActive !== undefined && userSub.isActive !== null) {
-        isSubscribed = Boolean(userSub.isActive);
-      } else if (userSub.status !== undefined && userSub.status !== null) {
-        isSubscribed = userSub.status === 'active';
-      } else if (staffSub.isActive !== undefined) {
-        isSubscribed = Boolean(staffSub.isActive);
-      }
+      const isBizActive = Boolean(
+        bizSub.isSubscriptionActive === true ||
+        bizSub.isActive === true ||
+        bizSub.isSubscribed === true ||
+        bizSub.status === 'active'
+      );
+      const isUserActive = Boolean(
+        userSub.isSubscriptionActive === true ||
+        userSub.isActive === true ||
+        userSub.isSubscribed === true ||
+        userSub.status === 'active'
+      );
+      const isStaffActive = Boolean(
+        staffSub.isSubscriptionActive === true ||
+        staffSub.isActive === true ||
+        staffSub.isSubscribed === true ||
+        staffSub.status === 'active'
+      );
+      isSubscribed = isBizActive || isUserActive || isStaffActive;
 
       plan = bizSub.plan || userSub.plan || staffSub.plan || 'starter';
       amount = bizSub.amount || 300;

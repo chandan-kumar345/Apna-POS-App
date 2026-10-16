@@ -47,6 +47,11 @@ const whatsAppMessageSchema = new mongoose.Schema(
       enum: ['PENDING', 'SENT', 'DELIVERED', 'READ', 'FAILED'],
       default: 'SENT',
     },
+    isAiGenerated: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
     error: {
       type: String,
       default: null,

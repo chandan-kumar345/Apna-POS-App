@@ -113,7 +113,7 @@ class OrderController {
 
   async deleteOrder(req, res, next) {
     try {
-      const result = await orderService.deleteOrder(req.businessId, req.params.id);
+      const result = await orderService.deleteOrder(req.businessId, req.params.id, req.user);
       return ApiResponse.success(res, result, 'Order deleted successfully');
     } catch (error) {
       next(error);
@@ -122,7 +122,7 @@ class OrderController {
 
   async deleteOrderByNumber(req, res, next) {
     try {
-      const result = await orderService.deleteOrderByNumber(req.businessId, req.params.orderNumber);
+      const result = await orderService.deleteOrderByNumber(req.businessId, req.params.orderNumber, req.user);
       return ApiResponse.success(res, result, 'Order deleted successfully');
     } catch (error) {
       next(error);

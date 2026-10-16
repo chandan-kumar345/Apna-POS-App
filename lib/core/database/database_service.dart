@@ -1701,6 +1701,11 @@ class DatabaseService extends ChangeNotifier {
         } else {
           for (int i = 0; i < tables.length; i++) {
             if (tables[i].status != merged[i].status ||
+                tables[i].position != merged[i].position ||
+                tables[i].tableNumber != merged[i].tableNumber ||
+                tables[i].name != merged[i].name ||
+                tables[i].floor != merged[i].floor ||
+                tables[i].capacity != merged[i].capacity ||
                 tables[i].activeOrderTotal != merged[i].activeOrderTotal ||
                 tables[i].activeOrderId != merged[i].activeOrderId ||
                 tables[i].activeOrderNumber != merged[i].activeOrderNumber ||
@@ -1789,20 +1794,26 @@ class DatabaseService extends ChangeNotifier {
 
           final rawBizSub = b?['subscription'];
           final rawUserSub = u['subscription'];
-          final rawSub = rawBizSub is Map ? rawBizSub : (rawUserSub is Map ? rawUserSub : null);
 
-          bool isSubActive = false;
-          if (rawSub != null) {
-            if (rawSub['isSubscriptionActive'] != null) {
-              isSubActive = rawSub['isSubscriptionActive'] == true;
-            } else if (rawSub['isActive'] != null) {
-              isSubActive = rawSub['isActive'] == true;
-            } else if (rawSub['isSubscribed'] != null) {
-              isSubActive = rawSub['isSubscribed'] == true;
-            } else if (rawSub['status'] != null) {
-              isSubActive = rawSub['status'] == 'active';
-            }
+          bool isBizActive = false;
+          if (rawBizSub is Map) {
+            isBizActive = rawBizSub['isSubscriptionActive'] == true ||
+                rawBizSub['isActive'] == true ||
+                rawBizSub['isSubscribed'] == true ||
+                rawBizSub['status'] == 'active';
           }
+
+          bool isUserActive = false;
+          if (rawUserSub is Map) {
+            isUserActive = rawUserSub['isSubscriptionActive'] == true ||
+                rawUserSub['isActive'] == true ||
+                rawUserSub['isSubscribed'] == true ||
+                rawUserSub['status'] == 'active';
+          }
+
+          final bool isSubActive = isBizActive || isUserActive;
+          final bool isExplicitlyCancelled = (rawBizSub is Map && (rawBizSub['status'] == 'cancelled' || rawBizSub['status'] == 'expired')) ||
+              (rawUserSub is Map && (rawUserSub['status'] == 'cancelled' || rawUserSub['status'] == 'expired'));
 
           if (b != null) {
             restaurant = RestaurantModel(
@@ -1815,7 +1826,7 @@ class DatabaseService extends ChangeNotifier {
               taxRate: (ordSet?['tax']?['percentage'] as num?)?.toDouble() ?? 5.0,
               tableCount: (ordSet?['tableCount'] as num?)?.toInt() ?? 12,
               isOnboarded: u['onboardingCompleted'] == true,
-              isSubscribed: isSubActive,
+              isSubscribed: isSubActive || (!isExplicitlyCancelled && isSubscribed),
               upiId: ordSet?['upiId']?.toString() ?? 'apnapos@upi',
               posViewMode: ordSet?['posViewMode']?.toString() ?? 'with_image',
               enableChotuVoice: ordSet?['enableChotuVoice'] ?? true,
@@ -1823,7 +1834,12 @@ class DatabaseService extends ChangeNotifier {
             );
             await _saveRestaurantToPrefs();
           }
-          await updateSubscriptionStatus(isSubActive);
+
+          if (isSubActive) {
+            await updateSubscriptionStatus(true);
+          } else if (isExplicitlyCancelled) {
+            await updateSubscriptionStatus(false);
+          }
 
           if (cleanLogo != null && cleanLogo.isNotEmpty) {
             await _prefs?.setString('apna_pos_company_logo', cleanLogo);
@@ -3856,7 +3872,7 @@ class DatabaseService extends ChangeNotifier {
     for (final t in reordered) {
       final isAutoName = RegExp(r'^(T|Table)[-\s]?\d+$', caseSensitive: false).hasMatch(t.name.trim());
       final newName = isAutoName ? 'T-$seq' : t.name;
-      finalTables.add(t.copyWith(tableNumber: seq, name: newName));
+      finalTables.add(t.copyWith(tableNumber: seq, name: newName, position: seq));
       seq++;
     }
 
@@ -3880,6 +3896,39 @@ class DatabaseService extends ChangeNotifier {
     }());
   }
 
+  /// Reorders table position after a drag-and-drop gesture and persists across devices
+  Future<void> reorderTablePosition(String sourceTableId, String targetTableId) async {
+    final sourceIdx = tables.indexWhere((t) => t.id == sourceTableId);
+    final targetIdx = tables.indexWhere((t) => t.id == targetTableId);
+    if (sourceIdx < 0 || targetIdx < 0 || sourceIdx == targetIdx) return;
+
+    final movedItem = tables.removeAt(sourceIdx);
+    tables.insert(targetIdx, movedItem);
+
+    // Reassign sequential positions
+    for (int i = 0; i < tables.length; i++) {
+      tables[i] = tables[i].copyWith(position: i + 1);
+    }
+
+    _sortTablesSequentially();
+    await _saveTablesToPrefs();
+    notifyListeners();
+
+    // Async sync positions to backend API
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          for (final t in tables) {
+            await _tableService.updateTable(t);
+          }
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.reorderTablePosition] API sync error: $e');
+      }
+    }());
+  }
+
   /// Synchronize total number of dining tables to target count
   Future<void> syncTableCount(int count) async {
     final target = count > 0 ? count : 1;
@@ -3899,6 +3948,7 @@ class DatabaseService extends ChangeNotifier {
           floor: floorsList.first,
           capacity: 4,
           status: TableStatus.free,
+          position: maxNum,
         ));
       }
       tables.addAll(newTablesToAdd);
@@ -3937,6 +3987,7 @@ class DatabaseService extends ChangeNotifier {
         activeOrderNumber: oldTable.activeOrderNumber,
         activeOrderTotal: oldTable.activeOrderTotal,
         activeItemCount: oldTable.activeItemCount,
+        position: updatedTable.position > 0 ? updatedTable.position : oldTable.position,
       );
     } else {
       tables.add(updatedTable);
@@ -3955,7 +4006,10 @@ class DatabaseService extends ChangeNotifier {
           if (res != null && res.id.isNotEmpty) {
             final refreshedIdx = tables.indexWhere((t) => t.id == updatedTable.id || isSameTable(t.name, updatedTable.name));
             if (refreshedIdx >= 0) {
-              tables[refreshedIdx] = tables[refreshedIdx].copyWith(id: res.id);
+              tables[refreshedIdx] = tables[refreshedIdx].copyWith(
+                id: res.id,
+                position: res.position > 0 ? res.position : tables[refreshedIdx].position,
+              );
               await _saveTablesToPrefs();
             }
           }
@@ -3968,6 +4022,12 @@ class DatabaseService extends ChangeNotifier {
 
   void _sortTablesSequentially() {
     tables.sort((a, b) {
+      if (a.position > 0 && b.position > 0 && a.position != b.position) {
+        return a.position.compareTo(b.position);
+      }
+      if (a.position > 0 && b.position == 0) return -1;
+      if (b.position > 0 && a.position == 0) return 1;
+
       final numA = a.tableNumber > 0
           ? a.tableNumber
           : (int.tryParse(a.name.replaceAll(RegExp(r'[^0-9]'), '')) ?? 9999);
@@ -4694,9 +4754,33 @@ class DatabaseService extends ChangeNotifier {
     required String orderNumber,
     String? targetUserId,
     String? targetRestaurantId,
+    bool forceSuperAdmin = false,
   }) async {
     final cleanNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
     if (cleanNum.isEmpty) return false;
+
+    // 0. Strict Immutability Protection: Completed orders can NEVER be deleted
+    // except through database or Superadmin panel.
+    final matchingOrder = orders.cast<OrderModel?>().firstWhere(
+      (o) {
+        if (o == null) return false;
+        final oNum = o.orderNumber.replaceAll(RegExp(r'^#'), '').trim().toLowerCase();
+        final oId = o.id.toLowerCase().trim();
+        return oNum == cleanNum || oId == cleanNum || o.orderNumber.toLowerCase() == cleanNum;
+      },
+      orElse: () => null,
+    );
+
+    final isSuperAdmin = forceSuperAdmin ||
+        (currentUser?.isSuperAdmin == true) ||
+        ((currentUser?.email ?? '').toLowerCase() == 'chandanyaduvanshi190@gmail.com');
+
+    if (matchingOrder != null &&
+        (matchingOrder.status == OrderStatus.completed || matchingOrder.isPaid) &&
+        !isSuperAdmin) {
+      debugPrint('[DatabaseService] PROTECTED_COMPLETED_ORDER: Blocked deletion of completed order #$cleanNum. Completed orders can only be deleted from database or Superadmin panel.');
+      return false;
+    }
 
     // 1. Locate and remove matching order from in-memory orders list
     OrderModel? removedOrder;
@@ -5064,13 +5148,24 @@ class DatabaseService extends ChangeNotifier {
     required String phone,
     String? email,
     String? address,
+    String? avatarUrl,
   }) async {
     final cleanPhone = phone.trim();
     final cleanName = name.trim().isNotEmpty ? name.trim() : 'Customer';
-    final existingIdx = customers.indexWhere((c) =>
-      c.phone.replaceAll(RegExp(r'[^0-9]'), '') == cleanPhone.replaceAll(RegExp(r'[^0-9]'), '') ||
-      c.phone.trim() == cleanPhone
-    );
+    final cleanDigits = cleanPhone.replaceAll(RegExp(r'[^0-9]'), '');
+    final last10 = cleanDigits.length >= 10 ? cleanDigits.substring(cleanDigits.length - 10) : cleanDigits;
+
+    final existingIdx = customers.indexWhere((c) {
+      final cDigits = c.phone.replaceAll(RegExp(r'[^0-9]'), '');
+      if (cDigits == cleanDigits) return true;
+      if (c.phone.trim() == cleanPhone) return true;
+      if (last10.length >= 7) {
+        if (cDigits.endsWith(last10) || cleanDigits.endsWith(cDigits)) return true;
+        final cLast10 = cDigits.length >= 10 ? cDigits.substring(cDigits.length - 10) : cDigits;
+        if (cLast10 == last10) return true;
+      }
+      return false;
+    });
 
     CustomerModel customer;
     if (existingIdx >= 0) {
@@ -5080,6 +5175,7 @@ class DatabaseService extends ChangeNotifier {
         phone: cleanPhone,
         email: (email != null && email.trim().isNotEmpty) ? email : existing.email,
         address: (address != null && address.trim().isNotEmpty) ? address.trim() : existing.address,
+        avatarUrl: (avatarUrl != null && avatarUrl.trim().isNotEmpty) ? avatarUrl.trim() : existing.avatarUrl,
         lastVisit: DateTime.now().toIso8601String(),
         totalOrders: existing.totalOrders + 1,
       );
@@ -5091,6 +5187,7 @@ class DatabaseService extends ChangeNotifier {
         phone: cleanPhone,
         email: email ?? '',
         address: (address != null && address.trim().isNotEmpty) ? address.trim() : '',
+        avatarUrl: avatarUrl?.trim() ?? '',
         totalOrders: 1,
         lastVisit: DateTime.now().toIso8601String(),
       );
@@ -5106,6 +5203,7 @@ class DatabaseService extends ChangeNotifier {
       phone: cleanPhone,
       email: email,
       address: customer.address,
+      avatarUrl: customer.avatarUrl,
     ).then((remoteCustomer) {
       if (remoteCustomer != null) {
         final idx = customers.indexWhere((c) => c.phone.trim() == cleanPhone);
@@ -5152,11 +5250,66 @@ class DatabaseService extends ChangeNotifier {
   CustomerModel? getCustomerByPhone(String phone) {
     final cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '').trim();
     if (cleanDigits.isEmpty) return null;
-    return customers.where((c) =>
-      (cleanDigits.length >= 6 && c.phone.replaceAll(RegExp(r'[^0-9]'), '').endsWith(cleanDigits)) ||
-      c.phone.replaceAll(RegExp(r'[^0-9]'), '') == cleanDigits ||
-      c.phone.trim() == phone.trim()
-    ).firstOrNull;
+    final last10 = cleanDigits.length >= 10 ? cleanDigits.substring(cleanDigits.length - 10) : cleanDigits;
+    return customers.where((c) {
+      final cDigits = c.phone.replaceAll(RegExp(r'[^0-9]'), '').trim();
+      if (cDigits.isEmpty) return false;
+      if (cDigits == cleanDigits) return true;
+      if (c.phone.trim() == phone.trim()) return true;
+      if (last10.length >= 7) {
+        if (cDigits.endsWith(last10) || cleanDigits.endsWith(cDigits)) return true;
+        final cLast10 = cDigits.length >= 10 ? cDigits.substring(cDigits.length - 10) : cDigits;
+        if (cLast10 == last10) return true;
+      }
+      return false;
+    }).firstOrNull;
+  }
+
+  /// Looks up profile photo / DP across Customers, Staff, and Registered Users by phone number
+  String? getProfilePhotoByPhone(String phone) {
+    final cleanDigits = phone.replaceAll(RegExp(r'[^0-9]'), '').trim();
+    if (cleanDigits.isEmpty) return null;
+    final last10 = cleanDigits.length >= 10 ? cleanDigits.substring(cleanDigits.length - 10) : cleanDigits;
+
+    bool matchPhone(String? targetPhone) {
+      if (targetPhone == null) return false;
+      final tDigits = targetPhone.replaceAll(RegExp(r'[^0-9]'), '').trim();
+      if (tDigits.isEmpty) return false;
+      if (tDigits == cleanDigits) return true;
+      if (targetPhone.trim() == phone.trim()) return true;
+      if (last10.length >= 7) {
+        if (tDigits.endsWith(last10) || cleanDigits.endsWith(tDigits)) return true;
+        final tLast10 = tDigits.length >= 10 ? tDigits.substring(tDigits.length - 10) : tDigits;
+        if (tLast10 == last10) return true;
+      }
+      return false;
+    }
+
+    // 1. Check customer database
+    for (final c in customers) {
+      if (matchPhone(c.phone) && c.avatarUrl.trim().isNotEmpty) {
+        return c.avatarUrl.trim();
+      }
+    }
+
+    // 2. Check staff list
+    for (final s in staffList) {
+      if (matchPhone(s.phone) && s.avatarUrl.trim().isNotEmpty) {
+        return s.avatarUrl.trim();
+      }
+    }
+
+    // 3. Check registered users / owners
+    for (final u in registeredUsers) {
+      if (matchPhone(u.phone) &&
+          u.profilePhotoPath != null &&
+          u.profilePhotoPath!.trim().isNotEmpty &&
+          u.profilePhotoPath!.trim() != 'assets/images/logo.png') {
+        return u.profilePhotoPath!.trim();
+      }
+    }
+
+    return null;
   }
 
   Future<void> syncExtrasFromBackend() async {
@@ -6174,6 +6327,26 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString('apna_pos_ai_agent_system_prompt') ??
       'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.';
 
+  String get aiChatAgentName =>
+      _prefs?.getString(_businessKey('ai_agent_name')) ??
+      _prefs?.getString('apna_pos_ai_agent_name') ??
+      'Apna AI Assistant';
+
+  String get aiChatAgentModel =>
+      _prefs?.getString(_businessKey('ai_agent_model')) ??
+      _prefs?.getString('apna_pos_ai_agent_model') ??
+      'gemini-3.8-flash';
+
+  String get aiChatAgentCustomInstructions =>
+      _prefs?.getString(_businessKey('ai_agent_custom_instructions')) ??
+      _prefs?.getString('apna_pos_ai_agent_custom_instructions') ??
+      '';
+
+  int get aiChatAgentAutoReplyDelay =>
+      _prefs?.getInt(_businessKey('ai_agent_reply_delay')) ??
+      _prefs?.getInt('apna_pos_ai_agent_reply_delay') ??
+      2;
+
   String get aiChatAgentApiKey =>
       _prefs?.getString(_businessKey('ai_agent_api_key')) ??
       _prefs?.getString('apna_pos_ai_agent_api_key') ??
@@ -6187,9 +6360,16 @@ class DatabaseService extends ChangeNotifier {
     required bool autoOrderTaking,
     required String systemPrompt,
     required String apiKey,
+    String agentName = 'Apna AI Assistant',
+    String model = 'gemini-3.8-flash',
+    String customInstructions = '',
+    int autoReplyDelay = 2,
   }) async {
     await _prefs?.setBool(_businessKey('ai_agent_enabled'), enabled);
     await _prefs?.setBool('apna_pos_ai_agent_enabled', enabled);
+
+    await _prefs?.setString(_businessKey('ai_agent_name'), agentName.trim());
+    await _prefs?.setString('apna_pos_ai_agent_name', agentName.trim());
 
     await _prefs?.setString(_businessKey('ai_agent_persona'), persona.trim());
     await _prefs?.setString('apna_pos_ai_agent_persona', persona.trim());
@@ -6206,10 +6386,39 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_businessKey('ai_agent_system_prompt'), systemPrompt.trim());
     await _prefs?.setString('apna_pos_ai_agent_system_prompt', systemPrompt.trim());
 
+    await _prefs?.setString(_businessKey('ai_agent_custom_instructions'), customInstructions.trim());
+    await _prefs?.setString('apna_pos_ai_agent_custom_instructions', customInstructions.trim());
+
+    await _prefs?.setString(_businessKey('ai_agent_model'), model.trim());
+    await _prefs?.setString('apna_pos_ai_agent_model', model.trim());
+
+    await _prefs?.setInt(_businessKey('ai_agent_reply_delay'), autoReplyDelay);
+    await _prefs?.setInt('apna_pos_ai_agent_reply_delay', autoReplyDelay);
+
     await _prefs?.setString(_businessKey('ai_agent_api_key'), apiKey.trim());
     await _prefs?.setString('apna_pos_ai_agent_api_key', apiKey.trim());
 
     notifyListeners();
+
+    // Asynchronously synchronize settings to the backend WhatsApp server
+    unawaited(
+      WhatsAppChatService().updateAiAgentSettings({
+        'enabled': enabled,
+        'persona': persona.trim(),
+        'agentName': agentName.trim(),
+        'greeting': greeting.trim(),
+        'autoMenuSuggest': autoMenuSuggest,
+        'autoOrderTaking': autoOrderTaking,
+        'systemPrompt': systemPrompt.trim(),
+        'customInstructions': customInstructions.trim(),
+        'model': model.trim(),
+        'autoReplyDelaySeconds': autoReplyDelay,
+        'apiKey': apiKey.trim(),
+      }).catchError((e) {
+        debugPrint('[DatabaseService] sync AI agent settings notice: $e');
+        return false;
+      }),
+    );
   }
 
   // ==================== META CHATS SETTINGS ====================
@@ -6338,6 +6547,17 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_businessKey('wallet_payout_upi'), businessPayoutUpi.trim());
     await _prefs?.setString('apna_pos_wallet_payout_upi', businessPayoutUpi.trim());
 
+    notifyListeners();
+  }
+
+  double get walletBalance =>
+      _prefs?.getDouble(_businessKey('wallet_balance')) ??
+      _prefs?.getDouble('apna_pos_wallet_balance') ??
+      0.0;
+
+  Future<void> setWalletBalance(double balance) async {
+    await _prefs?.setDouble(_businessKey('wallet_balance'), balance);
+    await _prefs?.setDouble('apna_pos_wallet_balance', balance);
     notifyListeners();
   }
 }

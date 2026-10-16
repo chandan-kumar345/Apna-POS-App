@@ -170,10 +170,9 @@ class ProductService {
               break;
             }
             const currentStock = Number(mat.currentStock) || 0;
-            const minStock = Number(mat.minimumStock) || 0;
-            const usableStock = Math.max(0, currentStock - minStock);
+            const usableStock = Math.max(0, currentStock);
             const reqPerPortion = Number(ing.effectiveQuantityBaseUnits || ing.quantityBaseUnits || ing.quantity) || 1;
-            const portionsForIng = Math.floor(usableStock / reqPerPortion);
+            const portionsForIng = reqPerPortion > 0 ? Math.floor(usableStock / reqPerPortion) : 0;
             if (portionsForIng < minPortions) {
               minPortions = portionsForIng;
             }

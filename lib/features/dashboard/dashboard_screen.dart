@@ -559,7 +559,6 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
           Builder(
             builder: (context) {
               final currency = _db.restaurant?.currencySymbol ?? '₹';
-              final double totalRoundOff = _summaryData.totalRoundOff;
 
               Widget buildMetricWell(String title, String value, Color color) {
                 return _buildNeumorphicInset(
@@ -595,39 +594,11 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
                 );
               }
 
-              if (isMobile) {
-                return Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(child: buildMetricWell('Total Orders', '$totalOrdersCount', const Color(0xFF059669))),
-                        const SizedBox(width: 10),
-                        Expanded(child: buildMetricWell('Total Revenue', '$currency${totalRevenue.toStringAsFixed(2)}', const Color(0xFF0F172A))),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    buildMetricWell(
-                      'Total Round-Off Amount',
-                      '$currency${totalRoundOff >= 0 ? "+" : ""}${totalRoundOff.toStringAsFixed(2)}',
-                      totalRoundOff >= 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
-                    ),
-                  ],
-                );
-              }
-
               return Row(
                 children: [
                   Expanded(child: buildMetricWell('Total Orders', '$totalOrdersCount', const Color(0xFF059669))),
                   const SizedBox(width: 10),
                   Expanded(child: buildMetricWell('Total Revenue', '$currency${totalRevenue.toStringAsFixed(2)}', const Color(0xFF0F172A))),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: buildMetricWell(
-                      'Total Round-Off Amount',
-                      '$currency${totalRoundOff >= 0 ? "+" : ""}${totalRoundOff.toStringAsFixed(2)}',
-                      totalRoundOff >= 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
-                    ),
-                  ),
                 ],
               );
             },
@@ -1413,15 +1384,18 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
     }
   }
 
-  /// 5. Total Sales & Taxes Responsive Combined Layout
+  /// 5. Total Sales, Round Off & Taxes Responsive Combined Layout
   Widget _buildSalesAndTaxesSection(bool isMobile) {
     final salesCard = _buildTotalSales(isMobile);
+    final roundOffCard = _buildRoundOffCard(isMobile);
     final taxesCard = _buildTaxes(isMobile);
 
     if (isMobile) {
       return Column(
         children: [
           salesCard,
+          const SizedBox(height: 14),
+          roundOffCard,
           const SizedBox(height: 14),
           taxesCard,
         ],
@@ -1432,10 +1406,99 @@ class GlassDashboardScreenState extends State<GlassDashboardScreen> {
         children: [
           Expanded(child: salesCard),
           const SizedBox(width: 14),
+          Expanded(child: roundOffCard),
+          const SizedBox(width: 14),
           Expanded(child: taxesCard),
         ],
       );
     }
+  }
+
+  /// Round Off Value Breakdown Card
+  Widget _buildRoundOffCard(bool isMobile) {
+    final currency = _db.restaurant?.currencySymbol ?? '₹';
+    double totalRoundOff = 0.0;
+    double positiveRoundOff = 0.0;
+    double negativeRoundOff = 0.0;
+    int roundOffOrderCount = 0;
+
+    for (var o in _db.orders) {
+      if (o.status == OrderStatus.completed || o.isPaid) {
+        if (o.roundOff != 0.0) {
+          totalRoundOff += o.roundOff;
+          if (o.roundOff > 0) {
+            positiveRoundOff += o.roundOff;
+          } else {
+            negativeRoundOff += o.roundOff.abs();
+          }
+          roundOffOrderCount++;
+        }
+      }
+    }
+
+    final maxVal = [positiveRoundOff, negativeRoundOff, 1.0].reduce((a, b) => a > b ? a : b);
+
+    return _buildNeumorphicCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionHeader('Round Off'),
+          const SizedBox(height: 12),
+          _buildProgressBarRow(
+            'ROUND-UP (+)',
+            positiveRoundOff,
+            maxVal,
+            const Color(0xFF10B981),
+          ),
+          _buildProgressBarRow(
+            'ROUND-DOWN (-)',
+            negativeRoundOff,
+            maxVal,
+            const Color(0xFFEF4444),
+          ),
+          _buildProgressBarRow(
+            'ADJUSTED ORDERS',
+            roundOffOrderCount.toDouble(),
+            roundOffOrderCount > 0 ? roundOffOrderCount.toDouble() : 1.0,
+            const Color(0xFF6366F1),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF4F6FB),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Colors.white,
+                    offset: Offset(-2, -2),
+                    blurRadius: 4,
+                  ),
+                  BoxShadow(
+                    color: Color(0x14000000),
+                    offset: Offset(2, 2),
+                    blurRadius: 4,
+                  ),
+                ],
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'Net Round Off: $currency${totalRoundOff >= 0 ? "+" : ""}${totalRoundOff.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: totalRoundOff >= 0 ? const Color(0xFF2563EB) : const Color(0xFFDC2626),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Total Sales by Payment Method

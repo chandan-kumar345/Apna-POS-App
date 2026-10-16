@@ -293,7 +293,6 @@ class SubscriptionService {
       final response = await _api.get(ApiEndpoints.subscriptionStatus);
       if (response != null && response is Map<String, dynamic>) {
         final data = response['data'] ?? response;
-        if (data is Map<String, dynamic>) {
           bool isSub = false;
           if (data['isSubscriptionActive'] != null) {
             isSub = data['isSubscriptionActive'] == true;
@@ -304,9 +303,16 @@ class SubscriptionService {
           } else if (data['status'] != null) {
             isSub = data['status'] == 'active';
           }
-          await _db.updateSubscriptionStatus(isSub);
+
+          final statusStr = data['status']?.toString().toLowerCase();
+          final isExplicitlyInactive = statusStr == 'cancelled' || statusStr == 'expired';
+
+          if (isSub) {
+            await _db.updateSubscriptionStatus(true);
+          } else if (isExplicitlyInactive) {
+            await _db.updateSubscriptionStatus(false);
+          }
           return data;
-        }
       }
     } catch (e) {
       debugPrint('[SubscriptionService.getStatus] error: $e');

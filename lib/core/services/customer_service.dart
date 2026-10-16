@@ -230,6 +230,7 @@ class CustomerService {
     required String phone,
     String? email,
     String? address,
+    String? avatarUrl,
   }) async {
     try {
       final response = await _apiClient.post(
@@ -239,6 +240,7 @@ class CustomerService {
           'phone': phone,
           'email': email ?? '',
           'address': address ?? '',
+          if (avatarUrl != null && avatarUrl.trim().isNotEmpty) 'avatarUrl': avatarUrl.trim(),
         },
       );
 

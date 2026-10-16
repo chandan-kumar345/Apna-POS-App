@@ -17,6 +17,7 @@ class WhatsAppChatModel {
   final int unreadCount;
   final String status;
   final String phoneNumberId;
+  final String? avatarUrl;
 
   const WhatsAppChatModel({
     required this.id,
@@ -28,6 +29,7 @@ class WhatsAppChatModel {
     this.unreadCount = 0,
     this.status = 'ACTIVE',
     this.phoneNumberId = '',
+    this.avatarUrl,
   });
 
   WhatsAppChatModel copyWith({
@@ -40,6 +42,7 @@ class WhatsAppChatModel {
     int? unreadCount,
     String? status,
     String? phoneNumberId,
+    String? avatarUrl,
   }) {
     return WhatsAppChatModel(
       id: id ?? this.id,
@@ -51,6 +54,7 @@ class WhatsAppChatModel {
       unreadCount: unreadCount ?? this.unreadCount,
       status: status ?? this.status,
       phoneNumberId: phoneNumberId ?? this.phoneNumberId,
+      avatarUrl: avatarUrl ?? this.avatarUrl,
     );
   }
 
@@ -71,6 +75,12 @@ class WhatsAppChatModel {
       unreadCount: (json['unreadCount'] as num?)?.toInt() ?? 0,
       status: json['status']?.toString() ?? 'ACTIVE',
       phoneNumberId: json['phoneNumberId']?.toString() ?? '',
+      avatarUrl: (json['avatarUrl'] ??
+              json['profilePictureUrl'] ??
+              json['profileImage'] ??
+              json['avatar'] ??
+              json['photoUrl'])
+          ?.toString(),
     );
   }
 
@@ -84,6 +94,7 @@ class WhatsAppChatModel {
     'unreadCount': unreadCount,
     'status': status,
     'phoneNumberId': phoneNumberId,
+    'avatarUrl': avatarUrl,
   };
 
   String get displayName {
@@ -750,6 +761,101 @@ class WhatsAppChatService {
       await _apiClient.put(ApiEndpoints.whatsappMarkChatRead(chatId));
     } catch (e) {
       debugPrint('[WhatsAppChatService] markRead error: $e');
+    }
+  }
+
+  /// Request backend to resolve and cache contact's WhatsApp DP
+  Future<String?> syncChatDp(String chatId) async {
+    try {
+      final response = await _apiClient.post(ApiEndpoints.whatsappSyncChatDp(chatId));
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final avatarUrl = data['avatarUrl']?.toString();
+        if (avatarUrl != null && avatarUrl.isNotEmpty && _chatsCache != null) {
+          final idx = _chatsCache!.indexWhere((c) => c.id == chatId);
+          if (idx != -1) {
+            _chatsCache![idx] = _chatsCache![idx].copyWith(avatarUrl: avatarUrl);
+            _saveChatsToPrefs(_chatsCache!);
+            _chatsStreamController.add(List.from(_chatsCache!));
+          }
+        }
+        return avatarUrl;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] syncChatDp error: $e');
+      return null;
+    }
+  }
+
+  /// Manually update contact's avatar URL or photo path
+  Future<bool> updateChatAvatar(String chatId, String avatarUrl) async {
+    try {
+      // Optimistic cache update
+      if (_chatsCache != null) {
+        final idx = _chatsCache!.indexWhere((c) => c.id == chatId);
+        if (idx != -1) {
+          _chatsCache![idx] = _chatsCache![idx].copyWith(avatarUrl: avatarUrl);
+          _saveChatsToPrefs(_chatsCache!);
+          _chatsStreamController.add(List.from(_chatsCache!));
+        }
+      }
+      await _apiClient.put(
+        ApiEndpoints.whatsappUpdateChatAvatar(chatId),
+        data: {'avatarUrl': avatarUrl},
+      );
+      return true;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] updateChatAvatar error: $e');
+      return false;
+    }
+  }
+
+  /// Fetch AI Chat Agent settings from backend
+  Future<Map<String, dynamic>?> getAiAgentSettings() async {
+    try {
+      final res = await _apiClient.get(ApiEndpoints.whatsappAiAgent);
+      if (res != null && res is Map<String, dynamic>) {
+        return (res['data'] as Map<String, dynamic>?) ?? res;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] getAiAgentSettings error: $e');
+      return null;
+    }
+  }
+
+  /// Update AI Chat Agent settings on backend
+  Future<bool> updateAiAgentSettings(Map<String, dynamic> settings) async {
+    try {
+      final res = await _apiClient.put(
+        ApiEndpoints.whatsappAiAgent,
+        data: settings,
+      );
+      return res != null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] updateAiAgentSettings error: $e');
+      return false;
+    }
+  }
+
+  /// Simulate customer chat with AI Agent
+  Future<Map<String, dynamic>?> simulateAiChat(String message, [Map<String, dynamic>? settingsOverride]) async {
+    try {
+      final res = await _apiClient.post(
+        ApiEndpoints.whatsappAiAgentSimulate,
+        data: {
+          'message': message,
+          if (settingsOverride != null) 'settings': settingsOverride,
+        },
+      );
+      if (res != null && res is Map<String, dynamic>) {
+        return (res['data'] as Map<String, dynamic>?) ?? res;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] simulateAiChat error: $e');
+      return null;
     }
   }
 }

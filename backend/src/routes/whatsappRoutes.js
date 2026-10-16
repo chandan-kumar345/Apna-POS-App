@@ -40,4 +40,15 @@ router.post('/chats/:chatId/messages', (req, res, next) => whatsappChatControlle
 // Mark chat as read
 router.put('/chats/:chatId/read', (req, res, next) => whatsappChatController.markRead(req, res, next));
 
+// Sync contact's WhatsApp DP
+router.post('/chats/:chatId/sync-dp', (req, res, next) => whatsappChatController.syncChatDp(req, res, next));
+
+// Manually update contact avatar
+router.put('/chats/:chatId/avatar', (req, res, next) => whatsappChatController.updateChatAvatar(req, res, next));
+
+// AI Chat Agent Settings & Simulation
+router.get('/chats/ai-agent', (req, res, next) => whatsappChatController.getAiAgentSettings(req, res, next));
+router.put('/chats/ai-agent', (req, res, next) => whatsappChatController.updateAiAgentSettings(req, res, next));
+router.post('/chats/ai-agent/simulate', (req, res, next) => whatsappChatController.simulateAiChat(req, res, next));
+
 module.exports = router;

@@ -258,7 +258,7 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                           color: isOnline
                               ? const Color(0xFF22C55E).withOpacity(0.4)
                               : const Color(0xFFEF4444).withOpacity(0.4),
-                          width: 1.2,
+                          width: 1.1,
                         ),
                       )
                     : BoxDecoration(
@@ -266,18 +266,18 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: Colors.white,
-                          width: 1.5,
+                          width: 1.2,
                         ),
                         boxShadow: const [
                           BoxShadow(
                             color: Colors.white,
-                            offset: Offset(-2.5, -2.5),
-                            blurRadius: 5,
+                            offset: Offset(-2.0, -2.0),
+                            blurRadius: 4,
                             spreadRadius: 1,
                           ),
                           BoxShadow(
                             color: Color(0xFFC0D2E6),
-                            offset: Offset(2.5, 2.5),
+                            offset: Offset(2.0, 2.0),
                             blurRadius: 5,
                             spreadRadius: 1,
                           ),
@@ -299,8 +299,8 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                             boxShadow: [
                               BoxShadow(
                                 color: dotColor.withOpacity(0.4 + (_pulseController.value * 0.4)),
-                                blurRadius: 6 + (_pulseController.value * 4),
-                                spreadRadius: _pulseController.value * 2,
+                                blurRadius: 6 + (_pulseController.value * 3),
+                                spreadRadius: _pulseController.value * 1.5,
                               ),
                             ],
                           ),
@@ -311,10 +311,10 @@ class _GlassConnectionStatusBadgeState extends State<GlassConnectionStatusBadge>
                     // Sync spinner if actively syncing
                     if (isSyncing)
                       SizedBox(
-                        width: 24,
-                        height: 24,
+                        width: 28,
+                        height: 28,
                         child: CircularProgressIndicator(
-                          strokeWidth: 1.8,
+                          strokeWidth: 2.0,
                           color: dotColor,
                         ),
                       ),

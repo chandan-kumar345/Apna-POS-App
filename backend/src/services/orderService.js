@@ -1668,7 +1668,7 @@ class OrderService {
    * Permanently delete an order across MongoDB Order, Sale, and PrintLog collections,
    * freeing any associated table and broadcasting real-time socket events.
    */
-  async deleteOrder(businessId, orderId) {
+  async deleteOrder(businessId, orderId, user = null) {
     const bId = businessId && mongoose.Types.ObjectId.isValid(businessId) ? new mongoose.Types.ObjectId(businessId) : businessId;
     const rawLookup = (orderId || '').toString().trim();
     const cleanNum = rawLookup.replace(/^#/, '');
@@ -1702,6 +1702,22 @@ class OrderService {
 
     if (!order) {
       throw new ApiError(404, `Order '${rawLookup}' not found in database`);
+    }
+
+    // STRICT IMMUTABILITY CHECK FOR COMPLETED ORDERS:
+    // Completed or paid orders can NEVER be deleted by staff, cashiers, owners, or normal app operations.
+    // They can ONLY be deleted directly from database or Superadmin panel by a verified SuperAdmin.
+    const isSuperAdmin = user && (
+      user.role === 'superadmin' ||
+      user.isSuperAdmin === true ||
+      (user.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com'
+    );
+
+    const isOrderCompleted = order.status === 'completed' || order.isPaid === true || order.paymentStatus === 'paid';
+    if (isOrderCompleted && !isSuperAdmin) {
+      throw ApiError.forbidden(
+        'Completed orders cannot be deleted. Completed orders are permanently protected and can only be deleted directly from database or Superadmin panel.'
+      );
     }
 
     const orderNumber = order.orderNumber;
@@ -1747,8 +1763,8 @@ class OrderService {
       }
     }
 
-    // 4. Delete the order document itself
-    await Order.deleteOne({ _id: order._id });
+    // 4. Delete the order document itself (allowCompletedDelete: true passes model pre-hooks for authorized superadmin deletion)
+    await Order.deleteOne({ _id: order._id }, { allowCompletedDelete: true });
 
     // 5. Broadcast real-time deletion to all connected clients
     try {
@@ -1766,8 +1782,8 @@ class OrderService {
     };
   }
 
-  async deleteOrderByNumber(businessId, orderNumber) {
-    return this.deleteOrder(businessId, orderNumber);
+  async deleteOrderByNumber(businessId, orderNumber, user = null) {
+    return this.deleteOrder(businessId, orderNumber, user);
   }
 }
 

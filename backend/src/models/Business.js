@@ -123,6 +123,26 @@ const businessSchema = new mongoose.Schema(
       webhookVerifyToken: { type: String, default: '', trim: true },
       connectedAt: { type: Date, default: null },
     },
+    aiChatAgentSettings: {
+      enabled: { type: Boolean, default: false },
+      persona: { type: String, default: 'friendly' }, // 'friendly', 'professional', 'chef', 'sales', 'hinglish'
+      agentName: { type: String, default: 'Apna AI Assistant', trim: true },
+      greeting: {
+        type: String,
+        default: "Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today's special offers, or table bookings!",
+      },
+      autoMenuSuggest: { type: Boolean, default: true },
+      autoOrderTaking: { type: Boolean, default: true },
+      systemPrompt: {
+        type: String,
+        default: 'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.',
+      },
+      customInstructions: { type: String, default: '' },
+      apiKey: { type: String, default: '', trim: true },
+      model: { type: String, default: 'gemini-3.8-flash' },
+      businessHoursOnly: { type: Boolean, default: false },
+      autoReplyDelaySeconds: { type: Number, default: 2 },
+    },
     subscription: {
       isActive: { type: Boolean, default: false }, // false for new user until unlocked/paid!
       status: {

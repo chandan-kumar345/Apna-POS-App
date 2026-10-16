@@ -22,6 +22,10 @@ const tableSchema = new mongoose.Schema(
       default: 'Ground Floor',
       trim: true,
     },
+    position: {
+      type: Number,
+      default: 0,
+    },
     capacity: {
       type: Number,
       default: 4,

@@ -15,6 +15,8 @@ import 'superadmin_order_deletion_screen.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 import '../coupon/screens/coupon_management_screen.dart';
+import '../wallet/wallet_screen.dart';
+import 'ai_chat_agent_screen.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -3010,382 +3012,12 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   // MODAL 11: AI CHAT AGENT (AUTONOMOUS ASSISTANT)
   // ==========================================
   void _showAiChatAgentModal() {
-    bool isEnabled = db.isAiChatAgentEnabled;
-    String persona = db.aiChatAgentPersona;
-    final greetingCtrl = TextEditingController(text: db.aiChatAgentGreeting);
-    bool autoMenuSuggest = db.isAiChatAgentAutoMenuSuggest;
-    bool autoOrderTaking = db.isAiChatAgentAutoOrderTaking;
-    final promptCtrl = TextEditingController(text: db.aiChatAgentSystemPrompt);
-    final apiKeyCtrl = TextEditingController(text: db.aiChatAgentApiKey);
-    bool obscureApiKey = true;
-    bool isSaving = false;
-    bool isTesting = false;
-    String? modalError;
-    String? testSimResponse;
-
-    showDialog(
-      context: context,
-      barrierDismissible: true,
-      useRootNavigator: true,
-      builder: (dialogCtx) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            final screenWidth = MediaQuery.of(context).size.width;
-            final dialogWidth = screenWidth >= 680 ? 620.0 : (screenWidth * 0.94);
-
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              elevation: 0,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: dialogWidth,
-                  maxHeight: MediaQuery.of(context).size.height * 0.90,
-                ),
-                child: _buildNeumorphicDialogContainer(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Header
-                        Row(
-                          children: [
-                            _buildNeumorphicIconBadge(
-                              icon: Icons.smart_toy_rounded,
-                              accentColor: const Color(0xFF8B5CF6),
-                              size: 44,
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
-                                    'AI Chat Agent',
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.w900,
-                                      color: _NeumorphicTheme.textDark,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'Autonomous Hospitality & Order Assistant',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: _NeumorphicTheme.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
-                              icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        const Divider(color: Color(0xFFD3DFEE), height: 1),
-                        const SizedBox(height: 14),
-
-                        if (modalError != null) ...[
-                          _buildNeumorphicErrorAlert(modalError!),
-                          const SizedBox(height: 12),
-                        ],
-
-                        // Master Toggle
-                        _buildNeumorphicToggleTile(
-                          title: 'Enable AI Chat Agent',
-                          subtitle: 'Autonomous AI responds to guest inquiries 24/7',
-                          value: isEnabled,
-                          accentColor: const Color(0xFF8B5CF6),
-                          onChanged: (val) => setModalState(() => isEnabled = val),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Persona Selector
-                        const Text(
-                          'AI AGENT PERSONALITY / TONE',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF475569),
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildProviderChip(
-                                label: 'Friendly & Warm',
-                                isSelected: persona == 'friendly',
-                                onTap: () => setModalState(() => persona = 'friendly'),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: _buildProviderChip(
-                                label: 'Professional',
-                                isSelected: persona == 'professional',
-                                onTap: () => setModalState(() => persona = 'professional'),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: _buildProviderChip(
-                                label: 'Chef & Foodie',
-                                isSelected: persona == 'chef',
-                                onTap: () => setModalState(() => persona = 'chef'),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: _buildProviderChip(
-                                label: 'Upsell Focus',
-                                isSelected: persona == 'sales',
-                                onTap: () => setModalState(() => persona = 'sales'),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Greeting Message
-                        _buildNeumorphicInputField(
-                          controller: greetingCtrl,
-                          label: 'AI Welcome Greeting Message',
-                          hint: 'Namaste! Welcome to {restaurant_name}...',
-                          prefixIcon: Icons.waving_hand_rounded,
-                          maxLines: 2,
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Autonomous Feature Toggles
-                        const Text(
-                          'AUTONOMOUS CAPABILITIES',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF475569),
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-
-                        _buildNeumorphicToggleTile(
-                          title: 'Smart Menu Recommendations',
-                          subtitle: 'Suggest bestsellers, pairings & chef specials',
-                          value: autoMenuSuggest,
-                          accentColor: const Color(0xFF059669),
-                          onChanged: (val) => setModalState(() => autoMenuSuggest = val),
-                        ),
-                        const SizedBox(height: 8),
-
-                        _buildNeumorphicToggleTile(
-                          title: 'Direct Order & Cart Taking',
-                          subtitle: 'Allow customers to specify items and place orders in chat',
-                          value: autoOrderTaking,
-                          accentColor: const Color(0xFF2563EB),
-                          onChanged: (val) => setModalState(() => autoOrderTaking = val),
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Custom System Instructions
-                        _buildNeumorphicInputField(
-                          controller: promptCtrl,
-                          label: 'Custom AI System Prompt & Rules',
-                          hint: 'e.g. Highlight pure veg items, explain today special 15% discount...',
-                          prefixIcon: Icons.psychology_rounded,
-                          maxLines: 3,
-                        ),
-                        const SizedBox(height: 14),
-
-                        // Custom API Key Field (Optional)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                    'Custom LLM API Key (Optional - Default: Built-in)',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w700,
-                                      color: Color(0xFF334155),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                InkWell(
-                                  onTap: () => setModalState(() => obscureApiKey = !obscureApiKey),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        obscureApiKey ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                                        size: 14,
-                                        color: const Color(0xFF64748B),
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Text(
-                                        obscureApiKey ? 'Show' : 'Hide',
-                                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 5),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: _NeumorphicTheme.sunkenSurface,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
-                              ),
-                              child: TextField(
-                                controller: apiKeyCtrl,
-                                obscureText: obscureApiKey,
-                                style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: _NeumorphicTheme.textDark),
-                                decoration: const InputDecoration(
-                                  hintText: 'AIzaSy... / sk-... (Leave empty to use built-in engine)',
-                                  hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11.5),
-                                  prefixIcon: Icon(Icons.key_rounded, color: _NeumorphicTheme.navyBrand, size: 18),
-                                  border: InputBorder.none,
-                                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-
-                        // Interactive Test Simulation Box
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF3E8FF),
-                            borderRadius: BorderRadius.circular(14),
-                            border: Border.all(color: const Color(0xFFC084FC), width: 1.2),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  const Icon(Icons.auto_awesome_rounded, color: Color(0xFF7E22CE), size: 18),
-                                  const SizedBox(width: 6),
-                                  const Text(
-                                    'AI Agent Simulator',
-                                    style: TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF6B21A8), fontSize: 12.5),
-                                  ),
-                                  const Spacer(),
-                                  TextButton(
-                                    onPressed: isTesting
-                                        ? null
-                                        : () async {
-                                            setModalState(() {
-                                              isTesting = true;
-                                              testSimResponse = null;
-                                            });
-                                            await Future.delayed(const Duration(milliseconds: 700));
-                                            setModalState(() {
-                                              isTesting = false;
-                                              testSimResponse =
-                                                  'Bot: "${greetingCtrl.text.replaceAll('{restaurant_name}', db.restaurant?.name ?? 'Apna POS')}\n\nOur top specialties today: Paneer Butter Masala & Garlic Naan combo! Would you like me to book a table for you?"';
-                                            });
-                                          },
-                                    child: isTesting
-                                        ? const SizedBox(
-                                            width: 14,
-                                            height: 14,
-                                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF7E22CE)),
-                                          )
-                                        : const Text('Simulate Chat', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: Color(0xFF7E22CE))),
-                                  ),
-                                ],
-                              ),
-                              if (testSimResponse != null) ...[
-                                const SizedBox(height: 6),
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: Text(
-                                    testSimResponse!,
-                                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF1E293B), height: 1.35),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 18),
-
-                        // Action Buttons
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildNeumorphicButton(
-                                label: 'Cancel',
-                                isSecondary: true,
-                                onPressed: () => Navigator.of(dialogCtx, rootNavigator: true).pop(),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              flex: 2,
-                              child: _buildNeumorphicButton(
-                                label: isSaving ? 'Saving...' : 'Save AI Agent',
-                                icon: Icons.check_rounded,
-                                isLoading: isSaving,
-                                onPressed: isSaving
-                                    ? null
-                                    : () async {
-                                        setModalState(() {
-                                          isSaving = true;
-                                          modalError = null;
-                                        });
-
-                                        await db.saveAiChatAgentSettings(
-                                          enabled: isEnabled,
-                                          persona: persona,
-                                          greeting: greetingCtrl.text,
-                                          autoMenuSuggest: autoMenuSuggest,
-                                          autoOrderTaking: autoOrderTaking,
-                                          systemPrompt: promptCtrl.text,
-                                          apiKey: apiKeyCtrl.text,
-                                        );
-
-                                        if (dialogCtx.mounted) {
-                                          Navigator.of(dialogCtx, rootNavigator: true).pop();
-                                        }
-                                        _refreshState();
-                                        _showSuccessSnackBar('AI Chat Agent settings saved successfully!');
-                                      },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AiChatAgentScreen()),
+    ).then((_) {
+      if (mounted) setState(() {});
+    });
   }
 
   // ==========================================
@@ -3929,6 +3561,72 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         const Divider(color: Color(0xFFD3DFEE), height: 1),
                         const SizedBox(height: 14),
 
+                        // Quick Navigate to Payments Khazana & Ledger Screen
+                        InkWell(
+                          onTap: () {
+                            Navigator.of(dialogCtx, rootNavigator: true).pop();
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const WalletScreen(),
+                              ),
+                            );
+                          },
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFF031B4E), Color(0xFF0D9488)],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(0xFF0D9488).withValues(alpha: 0.25),
+                                  offset: const Offset(0, 4),
+                                  blurRadius: 10,
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(7),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(9),
+                                  ),
+                                  child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 18),
+                                ),
+                                const SizedBox(width: 10),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Open Payments Khazana & Ledger',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 12.5,
+                                        ),
+                                      ),
+                                      Text(
+                                        'Instant recharge, balances & communication pricing',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white, size: 14),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+
                         if (modalError != null) ...[
                           _buildNeumorphicErrorAlert(modalError!),
                           const SizedBox(height: 12),
@@ -4277,7 +3975,14 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             icon: Icons.account_balance_wallet_rounded,
                             accentColor: const Color(0xFF0D9488),
                             badgeText: db.isWalletEnabled ? '${db.walletCashbackPercentage}% Back' : 'Setup',
-                            onTap: _showWalletModal,
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const WalletScreen(),
+                                ),
+                              );
+                            },
                           ),
                           _buildSettingCard(
                             width: cardWidth,

@@ -231,12 +231,15 @@ class LocalNotificationService {
     NotificationVisibility visibility = NotificationVisibility.public,
     AndroidNotificationCategory? category,
   }) async {
-    // 0. Deduplicate notifications within 3.5 seconds
-    final dedupeKey = '$title::$body::$entityId';
+    // 0. Deduplicate notifications across Socket & FCM using normalized title and body
+    final cleanTitle = title.trim().toLowerCase();
+    final cleanBody = body.trim().toLowerCase();
+    final dedupeKey = '$cleanTitle::$cleanBody';
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (_recentNotificationDedupe.containsKey(dedupeKey)) {
       final prev = _recentNotificationDedupe[dedupeKey]!;
-      if (nowMs - prev < 3500) {
+      if (nowMs - prev < 4500) {
+        debugPrint('[LocalNotificationService] Suppressing duplicate push: "$title" within debounce window');
         return;
       }
     }
@@ -245,12 +248,16 @@ class LocalNotificationService {
       _recentNotificationDedupe.removeWhere((_, time) => nowMs - time > 10000);
     }
 
-    // 1. Play immediate in-app audio feedback from assets
-    if (playSound) {
+    // 1. Play in-app audio feedback ONLY on platforms without native channel sound
+    // (Android/iOS channels already play notification_sound natively via system NotificationManager)
+    if (playSound && (defaultTargetPlatform != TargetPlatform.android && defaultTargetPlatform != TargetPlatform.iOS)) {
       SoundService.playNotificationSound();
     }
 
     if (!_isSupportedPlatform) {
+      if (playSound) {
+        SoundService.playNotificationSound();
+      }
       debugPrint('[LocalNotificationService] Push notification delivered (in-app): "$title"');
       return;
     }

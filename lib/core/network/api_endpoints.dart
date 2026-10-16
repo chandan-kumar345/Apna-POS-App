@@ -387,6 +387,10 @@ class ApiEndpoints {
   static const String whatsappConnect = '/whatsapp/chats/connect';
   static const String whatsappConnectionStatus = '/whatsapp/chats/connection';
   static String whatsappMarkChatRead(String chatId) => '/whatsapp/chats/$chatId/read';
+  static String whatsappSyncChatDp(String chatId) => '/whatsapp/chats/$chatId/sync-dp';
+  static String whatsappUpdateChatAvatar(String chatId) => '/whatsapp/chats/$chatId/avatar';
+  static const String whatsappAiAgent = '/whatsapp/chats/ai-agent';
+  static const String whatsappAiAgentSimulate = '/whatsapp/chats/ai-agent/simulate';
 
   // Business Wallet endpoints
   static const String walletBalance = '/wallet/balance';

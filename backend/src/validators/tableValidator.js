@@ -5,6 +5,7 @@ const createTableSchema = Joi.object({
   name: Joi.string().trim().min(1).max(50).optional().allow(''),
   floor: Joi.string().trim().default('Ground Floor').allow(''),
   capacity: Joi.number().integer().min(1).default(4),
+  position: Joi.number().integer().min(0).optional(),
   count: Joi.number().integer().min(1).max(100).default(1),
 });
 
@@ -12,6 +13,7 @@ const updateTableSchema = Joi.object({
   tableNumber: Joi.number().integer().min(1).optional(),
   name: Joi.string().trim().min(1).max(50).optional(),
   floor: Joi.string().trim().optional(),
+  position: Joi.number().integer().min(0).optional(),
   capacity: Joi.number().integer().min(1).optional(),
   status: Joi.string().valid('free', 'occupied', 'runningKot', 'running_kot', 'billed', 'reserved').optional(),
   occupiedSince: Joi.alternatives().try(Joi.date(), Joi.string()).allow(null, '').optional(),

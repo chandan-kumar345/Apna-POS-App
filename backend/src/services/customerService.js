@@ -43,7 +43,7 @@ class CustomerService {
     const customers = await Customer.find(query)
       .sort({ lastVisit: -1 })
       .limit(10)
-      .select('name phone email address totalOrders totalSpent lastVisit gender birthday anniversary bonusPointsAwarded');
+      .select('name phone email address avatarUrl profileImage totalOrders totalSpent lastVisit gender birthday anniversary bonusPointsAwarded');
 
     return customers;
   }
@@ -54,6 +54,7 @@ class CustomerService {
     const gender = (customerData.gender || '').toString().trim();
     const email = customerData.email ? customerData.email.trim() : '';
     const address = customerData.address || '';
+    const avatarUrl = (customerData.avatarUrl || customerData.profileImage || customerData.photoUrl || '').toString().trim();
     const birthday = customerData.birthday || customerData.dob || null;
     const anniversary = customerData.anniversary || null;
 
@@ -66,6 +67,8 @@ class CustomerService {
         name,
         email,
         address,
+        avatarUrl,
+        profileImage: avatarUrl,
         gender,
         birthday,
         anniversary,
@@ -76,6 +79,10 @@ class CustomerService {
       if (name) customer.name = name;
       if (email) customer.email = email;
       if (address) customer.address = address;
+      if (avatarUrl) {
+        customer.avatarUrl = avatarUrl;
+        customer.profileImage = avatarUrl;
+      }
       if (gender) customer.gender = gender;
       if (birthday) customer.birthday = birthday;
       if (anniversary) customer.anniversary = anniversary;

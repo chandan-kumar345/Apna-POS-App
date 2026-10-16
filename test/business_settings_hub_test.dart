@@ -388,19 +388,19 @@ void main() {
     await tester.tap(metaChatsCard);
     await tester.pumpAndSettle();
 
-    expect(find.text('Messenger & Instagram Direct Automated Inboxes'), findsOneWidget);
-    expect(find.text('Enable Meta Chats Automation'), findsOneWidget);
+    expect(find.text('Live 2-Way Customer Inbox'), findsOneWidget);
+    expect(find.text('Meta API Credentials'), findsOneWidget);
+    expect(find.text('Phone Number ID *'), findsOneWidget);
+    expect(find.text('Inbound Chat Processing'), findsOneWidget);
     expect(find.text('Auto Welcome Greeting'), findsOneWidget);
-    expect(find.text('Social Lead Capture'), findsOneWidget);
-    expect(find.text('Staff / Human Handover Trigger Keywords'), findsOneWidget);
-    expect(find.text('Save Meta Chats'), findsOneWidget);
+    expect(find.text('Save Settings'), findsOneWidget);
 
-    final saveBtn = find.text('Save Meta Chats');
+    final saveBtn = find.text('Save Settings');
     await tester.ensureVisible(saveBtn);
     await tester.tap(saveBtn);
     await tester.pumpAndSettle();
 
-    expect(find.text('Messenger & Instagram Direct Automated Inboxes'), findsNothing);
+    expect(find.text('Live 2-Way Customer Inbox'), findsNothing);
   });
 
   testWidgets('Tapping Wallet card opens Wallet settings modal and saves', (tester) async {
@@ -415,6 +415,15 @@ void main() {
     expect(walletCard, findsOneWidget);
     await tester.ensureVisible(walletCard);
     await tester.tap(walletCard);
+    await tester.pumpAndSettle();
+
+    // Opens WalletScreen directly
+    expect(find.text('Payments Khazana'), findsOneWidget);
+
+    // Tap wallet settings / rules button in top bar to configure Customer & Outlet Wallet
+    final settingsBtn = find.byIcon(Icons.tune_rounded);
+    expect(settingsBtn, findsOneWidget);
+    await tester.tap(settingsBtn);
     await tester.pumpAndSettle();
 
     expect(find.text('Customer & Outlet Wallet'), findsOneWidget);

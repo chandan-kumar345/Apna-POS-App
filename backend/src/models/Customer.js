@@ -30,6 +30,16 @@ const customerSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    avatarUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
+    profileImage: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     gender: {
       type: String,
       default: '',

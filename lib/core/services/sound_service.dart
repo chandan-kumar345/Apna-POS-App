@@ -69,10 +69,10 @@ class SoundService {
   static void playNotificationSound() {
     if (!soundEnabled) return;
 
-    // Generous debounce (1200ms) to guarantee that a single incoming notification
+    // Generous debounce (3500ms) to guarantee that a single incoming notification
     // cannot trigger multiple overlapping sounds from different listeners
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastNotificationSoundTime < 1200) {
+    if (now - _instance._lastNotificationSoundTime < 3500) {
       return;
     }
     _instance._lastNotificationSoundTime = now;

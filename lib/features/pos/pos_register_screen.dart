@@ -24,6 +24,7 @@ import 'widgets/pos_product_media_box.dart';
 import 'widgets/chotu_mic_button.dart';
 import '../../core/services/chotu_service.dart';
 import '../../core/services/coupon_service.dart';
+import '../../core/utils/ai_nutrition_estimator.dart';
 
 enum ManualItemPersistenceMode { temporary, permanent }
 
@@ -1238,6 +1239,209 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       );
                     }
 
+                    Widget buildNutritionMiniPill({
+                      required String label,
+                      required String value,
+                      required IconData icon,
+                      required Color iconColor,
+                      required Color bgColor,
+                    }) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: bgColor,
+                          borderRadius: BorderRadius.circular(9),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(icon, size: 13, color: iconColor),
+                            const SizedBox(width: 4.5),
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    label,
+                                    style: const TextStyle(
+                                      fontSize: 8.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  Text(
+                                    value,
+                                    style: const TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+
+                    Widget buildAiNutritionCard() {
+                      final stats = AiNutritionEstimator.estimate(item);
+                      return Container(
+                        margin: const EdgeInsets.only(top: 10, bottom: 4),
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Color(0x0A000000),
+                              blurRadius: 4,
+                              offset: Offset(0, 1.5),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [Color(0xFF4F46E5), Color(0xFF7C3AED)],
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 11),
+                                      SizedBox(width: 3.5),
+                                      Text(
+                                        'AI Nutrition & Health',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: 0.2,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const Spacer(),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: stats.healthColor.withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: stats.healthColor.withValues(alpha: 0.25)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.favorite_rounded, size: 9.5, color: stats.healthColor),
+                                      const SizedBox(width: 3),
+                                      Text(
+                                        'Score: ${stats.healthScore}/100',
+                                        style: TextStyle(
+                                          fontSize: 9.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: stats.healthColor,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+
+                            // 4 Core Nutrients
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildNutritionMiniPill(
+                                    label: 'Calories',
+                                    value: '${stats.calories} kcal',
+                                    icon: Icons.local_fire_department_rounded,
+                                    iconColor: const Color(0xFFEA580C),
+                                    bgColor: const Color(0xFFFFF7ED),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: buildNutritionMiniPill(
+                                    label: 'Cholesterol',
+                                    value: '${stats.cholesterol} mg',
+                                    icon: Icons.favorite_border_rounded,
+                                    iconColor: const Color(0xFF0284C7),
+                                    bgColor: const Color(0xFFF0F9FF),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 5),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: buildNutritionMiniPill(
+                                    label: 'Protein',
+                                    value: '${stats.protein.toStringAsFixed(1)}g',
+                                    icon: Icons.fitness_center_rounded,
+                                    iconColor: const Color(0xFF059669),
+                                    bgColor: const Color(0xFFECFDF5),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: buildNutritionMiniPill(
+                                    label: 'Carbs',
+                                    value: '${stats.carbs.toStringAsFixed(1)}g',
+                                    icon: Icons.grain_rounded,
+                                    iconColor: const Color(0xFF8B5CF6),
+                                    bgColor: const Color(0xFFF5F3FF),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            if (stats.highlights.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Wrap(
+                                spacing: 4,
+                                runSpacing: 3,
+                                children: stats.highlights.take(3).map((h) {
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF1F5F9),
+                                      borderRadius: BorderRadius.circular(5),
+                                    ),
+                                    child: Text(
+                                      '• $h',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.w600,
+                                        color: Color(0xFF475569),
+                                      ),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }
+
                     Widget buildDetailsContent() {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1442,7 +1646,10 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             ),
                           ],
 
-                          const SizedBox(height: 16),
+                          // AI Health & Nutrition Insights
+                          buildAiNutritionCard(),
+
+                          const SizedBox(height: 14),
 
                           // Quantity and Add to Cart Section
                           Row(
@@ -1587,46 +1794,65 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       );
                     }
 
-                    return Container(
-                      width: dialogWidth,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF8FAFD),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white, width: 1.5),
-                        boxShadow: const [
-                          BoxShadow(
-                            color: Colors.white,
-                            offset: Offset(-3, -3),
-                            blurRadius: 8,
-                          ),
-                          BoxShadow(
-                            color: Color(0xFFCBD5E1),
-                            offset: Offset(4, 4),
-                            blurRadius: 12,
-                          ),
-                        ],
+                    return ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: dialogWidth,
+                        maxHeight: MediaQuery.of(context).size.height * 0.90,
                       ),
-                      padding: const EdgeInsets.all(16),
-                      child: isTwoColumn
-                          ? Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(flex: 5, child: buildMediaBox()),
-                                const SizedBox(width: 16),
-                                Expanded(flex: 6, child: buildDetailsContent()),
-                              ],
-                            )
-                          : SingleChildScrollView(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
+                      child: Container(
+                        width: dialogWidth,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFD),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(color: Colors.white, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.white,
+                              offset: Offset(-3, -3),
+                              blurRadius: 8,
+                            ),
+                            BoxShadow(
+                              color: Color(0xFFCBD5E1),
+                              offset: Offset(4, 4),
+                              blurRadius: 12,
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(16),
+                        child: isTwoColumn
+                            ? Row(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  buildMediaBox(),
-                                  const SizedBox(height: 12),
-                                  buildDetailsContent(),
+                                  Expanded(
+                                    flex: 5,
+                                    child: SingleChildScrollView(
+                                      physics: const BouncingScrollPhysics(),
+                                      child: buildMediaBox(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    flex: 6,
+                                    child: SingleChildScrollView(
+                                      physics: const BouncingScrollPhysics(),
+                                      child: buildDetailsContent(),
+                                    ),
+                                  ),
                                 ],
+                              )
+                            : SingleChildScrollView(
+                                physics: const BouncingScrollPhysics(),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    buildMediaBox(),
+                                    const SizedBox(height: 12),
+                                    buildDetailsContent(),
+                                  ],
+                                ),
                               ),
-                            ),
+                      ),
                     );
                   },
                 ),

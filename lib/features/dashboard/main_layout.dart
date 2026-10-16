@@ -7,6 +7,7 @@ import '../../core/database/database_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
+import '../../core/widgets/liquid_wallet_balance_popup.dart';
 import '../pos/pos_register_screen.dart';
 import '../tables/table_management_screen.dart';
 import '../orders/orders_screen.dart';
@@ -31,6 +32,7 @@ import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
 import '../staff/screens/staff_profile_screen.dart';
 import '../../core/services/sound_service.dart';
+import '../../core/services/wallet_service.dart';
 
 
 /// Declarative Navigation Item Definition for dynamic sidebar rendering
@@ -72,6 +74,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   bool _isSidebarOpen = false;
   bool _isPosFullScreen = false;
   bool _isStaffDropdownOpen = false;
+  bool _isWalletBalancePopupOpen = false;
   String? _selectedTableForPos;
   OrderType? _selectedOrderTypeForPos;
   int _posTableSelectionToken = 0;
@@ -1397,6 +1400,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   }
 
   void _openNotificationScreen() {
+    if (_isWalletBalancePopupOpen) {
+      setState(() => _isWalletBalancePopupOpen = false);
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const NotificationsScreen(),
@@ -1419,7 +1425,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
             color: Colors.transparent,
             child: InkWell(
               onTap: _openNotificationScreen,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: BorderRadius.circular(18),
               child: Container(
                 width: 36,
                 height: 36,
@@ -1435,8 +1441,8 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                         boxShadow: [
                           BoxShadow(
                             color: const Color(0xFF0F2B48).withValues(alpha: 0.08),
-                            offset: const Offset(1.5, 2.5),
-                            blurRadius: 5,
+                            offset: const Offset(1.5, 2.0),
+                            blurRadius: 4,
                           ),
                         ],
                       )
@@ -1459,22 +1465,22 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                     ),
                     if (hasNotification)
                       Positioned(
-                        top: 2,
-                        right: 2,
+                        top: 2.5,
+                        right: 2.5,
                         child: Container(
-                          width: 8.5,
-                          height: 8.5,
+                          width: 8,
+                          height: 8,
                           decoration: BoxDecoration(
                             color: const Color(0xFFEF4444),
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: isNeumorphic ? const Color(0xFFF7FAFD) : const Color(0xFF051C48),
-                              width: 1.5,
+                              width: 1.2,
                             ),
                             boxShadow: const [
                               BoxShadow(
                                 color: Color(0x66EF4444),
-                                blurRadius: 4,
+                                blurRadius: 3,
                                 offset: Offset(0, 1),
                               ),
                             ],
@@ -1488,6 +1494,82 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           ),
         );
       },
+    );
+  }
+
+  Widget _buildWalletButton({bool isNeumorphic = false}) {
+    final bool isActive = _isWalletBalancePopupOpen;
+
+    return Tooltip(
+      message: 'Khazana Wallet',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            SoundService.playButtonClick();
+            setState(() {
+              _isWalletBalancePopupOpen = !_isWalletBalancePopupOpen;
+            });
+            if (_isWalletBalancePopupOpen) {
+              WalletService().getWalletDetails().then((_) {}, onError: (_) {});
+            }
+          },
+          borderRadius: BorderRadius.circular(18),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: isActive
+                ? BoxDecoration(
+                    color: const Color(0xFF007AFF),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: const Color(0xFF60A5FA),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFF007AFF).withValues(alpha: 0.55),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  )
+                : isNeumorphic
+                    ? BoxDecoration(
+                        color: const Color(0xFFF7FAFD),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFE2E8F0),
+                          width: 1.0,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFF0F2B48).withValues(alpha: 0.08),
+                            offset: const Offset(1.5, 2.0),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      )
+                    : BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.25),
+                          width: 1.1,
+                        ),
+                      ),
+            child: Image.asset(
+              'assets/images/wallet_icon.png',
+              width: 22,
+              height: 22,
+              fit: BoxFit.contain,
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -1553,62 +1635,68 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
               builder: (context, constraints) {
               final isSmallScreen = constraints.maxWidth < 900;
 
-              return Column(
+              return Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  // TOP HEADER BAR (Always on dark navy background like reference UI)
-                    AnimatedCrossFade(
-                      firstChild: Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        color: Colors.transparent,
-                        child: Row(
-                          children: [
-                            // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
-                            Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                // Circular Brand Logo (Toggles Sidebar)
-                                InkWell(
-                                  onTap: _toggleSidebar,
-                                  borderRadius: BorderRadius.circular(24),
-                                  child: Container(
-                                    width: 44,
-                                    height: 44,
-                                    padding: const EdgeInsets.all(2.5),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                      boxShadow: const [
-                                        BoxShadow(color: Colors.black26, blurRadius: 6, offset: Offset(0, 2)),
-                                      ],
-                                    ),
-                                    child: ClipOval(
-                                      child: _buildCompanyProfileLogo(38),
+                  Column(
+                    children: [
+                      // TOP HEADER BAR (Always on dark navy background like reference UI)
+                      AnimatedCrossFade(
+                        firstChild: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8.5),
+                          color: Colors.transparent,
+                          child: Row(
+                            children: [
+                              // LOGO AND HIGHLIGHTED SEMI-CURVED COMPANY NAME TOGETHER ON LEFT
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Circular Brand Logo (Toggles Sidebar)
+                                  InkWell(
+                                    onTap: _toggleSidebar,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      width: 38,
+                                      height: 38,
+                                      padding: const EdgeInsets.all(2.0),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.white,
+                                        shape: BoxShape.circle,
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0, 1.5)),
+                                        ],
+                                      ),
+                                      child: ClipOval(
+                                        child: _buildCompanyProfileLogo(34),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 10),
+                                  const SizedBox(width: 9),
 
-                                // HIGHLIGHTED COMPANY NAME WITH DROPDOWN IF STAFF MEMBERS EXIST
-                                GlassCompanyNameBadge(
-                                  name: companyTitle,
-                                  hasDropdown: db.staffList.isNotEmpty,
-                                  isDropdownOpen: _isStaffDropdownOpen,
-                                  isNeumorphic: false,
-                                  onTap: () {
-                                    if (db.staffList.isNotEmpty) {
-                                      _openStaffProfileDropdown();
-                                    } else {
-                                      _toggleSidebar();
-                                    }
-                                  },
-                                ),
-                              ],
-                            ),
-                            const Spacer(),
+                                  // HIGHLIGHTED COMPANY NAME WITH DROPDOWN IF STAFF MEMBERS EXIST
+                                  GlassCompanyNameBadge(
+                                    name: companyTitle,
+                                    hasDropdown: db.staffList.isNotEmpty,
+                                    isDropdownOpen: _isStaffDropdownOpen,
+                                    isNeumorphic: false,
+                                    onTap: () {
+                                      if (db.staffList.isNotEmpty) {
+                                        _openStaffProfileDropdown();
+                                      } else {
+                                        _toggleSidebar();
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const Spacer(),
                             // ONLINE / OFFLINE STATUS DOT INDICATOR
                             const GlassConnectionStatusBadge(isDarkTheme: true),
-                            const SizedBox(width: 8),
+                            const SizedBox(width: 9),
+                            // WALLET KHAZANA BUTTON
+                            _buildWalletButton(isNeumorphic: false),
+                            const SizedBox(width: 9),
                             // NOTIFICATION BELL BUTTON
                             _buildNotificationBellButton(isNeumorphic: false),
                           ],
@@ -1868,7 +1956,22 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                       ),
                     ),
                   ],
-                );
+                ),
+
+                // LIQUID AVAILABLE BALANCE POPUP (ANCHORED UNDER TOP WALLET BUTTON)
+                LiquidWalletBalancePopup(
+                  isOpen: _isWalletBalancePopupOpen,
+                  balance: db.walletBalance,
+                  onClose: () {
+                    if (mounted) {
+                      setState(() => _isWalletBalancePopupOpen = false);
+                    }
+                  },
+                  topOffset: 50,
+                  rightOffset: 12,
+                ),
+              ],
+            );
               },
             ),
           ),

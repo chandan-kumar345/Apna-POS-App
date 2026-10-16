@@ -15,6 +15,7 @@ import '../../core/services/ebill_service.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/network_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
+import '../wallet/wallet_screen.dart';
 
 enum EbillUiStatus {
   loading,
@@ -86,6 +87,24 @@ class _ReceiptDialogState extends State<ReceiptDialog> {
                     ? 'Insufficient wallet balance (${widget.currency}${_formatAmount(_walletBalance)}). Please recharge your wallet to send eBill.'
                     : 'Insufficient wallet balance to send eBill. Please recharge your business wallet.',
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const WalletScreen(),
+                  ),
+                );
+              },
+              child: const Text(
+                'RECHARGE',
+                style: TextStyle(
+                  color: Colors.amberAccent,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
               ),
             ),
           ],

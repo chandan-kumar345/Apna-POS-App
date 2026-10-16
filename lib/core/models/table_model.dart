@@ -3,6 +3,7 @@ enum TableStatus { free, occupied, runningKot, reserved }
 class TableModel {
   final String id;
   final int tableNumber;
+  final int position;
   final String name;
   final String floor; // Ground Floor, Terrace, Main Hall
   final int capacity;
@@ -17,6 +18,7 @@ class TableModel {
   TableModel({
     required this.id,
     required this.tableNumber,
+    this.position = 0,
     required this.name,
     this.floor = 'Ground Floor',
     this.capacity = 4,
@@ -31,6 +33,7 @@ class TableModel {
   Map<String, dynamic> toJson() => {
         'id': id,
         'tableNumber': tableNumber,
+        'position': position,
         'name': name,
         'floor': floor,
         'capacity': capacity,
@@ -74,9 +77,15 @@ class TableModel {
         ? (rawOccupiedSince ?? activeOrderCreatedAt ?? DateTime.now().toIso8601String())
         : rawOccupiedSince;
 
+    final int tblNum = (json['tableNumber'] as num?)?.toInt() ?? 1;
+    final int pos = (json['position'] as num?)?.toInt() ??
+        (json['sortOrder'] as num?)?.toInt() ??
+        tblNum;
+
     return TableModel(
       id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
-      tableNumber: (json['tableNumber'] as num?)?.toInt() ?? 1,
+      tableNumber: tblNum,
+      position: pos,
       name: json['name']?.toString() ?? 'T-1',
       floor: json['floor']?.toString() ?? 'Ground Floor',
       capacity: (json['capacity'] as num?)?.toInt() ?? 4,
@@ -95,6 +104,7 @@ class TableModel {
     String? floor,
     int? capacity,
     int? tableNumber,
+    int? position,
     TableStatus? status,
     String? currentOrderId,
     String? occupiedSince,
@@ -109,6 +119,7 @@ class TableModel {
     return TableModel(
       id: id ?? this.id,
       tableNumber: tableNumber ?? this.tableNumber,
+      position: position ?? this.position,
       name: name ?? this.name,
       floor: floor ?? this.floor,
       capacity: capacity ?? this.capacity,

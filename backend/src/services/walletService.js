@@ -57,6 +57,24 @@ class WalletService {
     const fee = await this.getEbillFee(businessId);
     const hasSufficientBalance = wallet.isActive && wallet.balance >= fee;
 
+    const bId = mongoose.Types.ObjectId.isValid(businessId)
+      ? new mongoose.Types.ObjectId(businessId)
+      : businessId;
+
+    // Aggregate real metrics dynamically from transactions
+    let usedBalance = 0.0;
+    try {
+      const debitAgg = await WalletTransaction.aggregate([
+        { $match: { businessId: bId, type: 'DEBIT', status: 'SUCCESS' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]);
+      if (debitAgg && debitAgg.length > 0 && debitAgg[0].total) {
+        usedBalance = Number(debitAgg[0].total.toFixed(2));
+      }
+    } catch (_) {}
+
+    const khazanaTotal = Number((wallet.balance + usedBalance).toFixed(2));
+
     return {
       eligible: hasSufficientBalance,
       balance: wallet.balance,
@@ -64,6 +82,12 @@ class WalletService {
       currency: wallet.currency || 'INR',
       isActive: wallet.isActive,
       remainingAfterSend: Math.max(0, wallet.balance - fee),
+      khazanaTotal: khazanaTotal > 0 ? khazanaTotal : wallet.balance,
+      holdAmount: 0.00,
+      bonusAmount: 0.00,
+      usedBalance: usedBalance,
+      commissionAmount: 0.00,
+      cashbackAmount: 0.00,
     };
   }
 

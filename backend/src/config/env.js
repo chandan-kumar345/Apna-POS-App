@@ -71,5 +71,8 @@ module.exports = {
   WHATSAPP_APP_SECRET: process.env.WHATSAPP_APP_SECRET || '',
   WHATSAPP_EBILL_TEMPLATE: process.env.WHATSAPP_EBILL_TEMPLATE || 'pos_ebill_receipt',
   EBILL_CHARGE_INR: process.env.EBILL_CHARGE_INR ? Number(process.env.EBILL_CHARGE_INR) : 2.00,
+
+  // Google Gemini AI Configuration
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '',
 };
 

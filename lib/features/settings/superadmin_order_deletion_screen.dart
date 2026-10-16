@@ -234,6 +234,7 @@ class _SuperAdminOrderDeletionScreenState extends State<SuperAdminOrderDeletionS
         orderNumber: order.orderNumber.isNotEmpty ? order.orderNumber : order.id,
         targetUserId: _selectedProfileId,
         targetRestaurantId: _db.restaurant?.id,
+        forceSuperAdmin: true,
       );
 
       if (!mounted) return;
@@ -374,6 +375,7 @@ class _SuperAdminOrderDeletionScreenState extends State<SuperAdminOrderDeletionS
         orderNumber: clean,
         targetUserId: _selectedProfileId,
         targetRestaurantId: _db.restaurant?.id,
+        forceSuperAdmin: true,
       );
 
       if (!mounted) return;

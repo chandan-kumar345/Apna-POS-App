@@ -8,7 +8,7 @@ const socketService = require('./socketService');
 
 class TableService {
   async getTables(businessId) {
-    let tables = await Table.find({ businessId }).sort({ tableNumber: 1 });
+    let tables = await Table.find({ businessId }).sort({ position: 1, tableNumber: 1, createdAt: 1 });
 
     const business = await Business.findById(businessId);
     const configuredCount = business?.orderSettings?.tableCount && business.orderSettings.tableCount > 0
@@ -22,6 +22,7 @@ class TableService {
         defaultTables.push({
           businessId,
           tableNumber: i,
+          position: i,
           name: `T-${i}`,
           floor: i <= 8 ? 'Ground Floor' : '1st Floor',
           capacity: i <= 4 ? 2 : i <= 8 ? 4 : 6,
@@ -39,6 +40,7 @@ class TableService {
         additionalTables.push({
           businessId,
           tableNumber: maxNum,
+          position: maxNum,
           name: `T-${maxNum}`,
           floor: maxNum <= 8 ? 'Ground Floor' : '1st Floor',
           capacity: maxNum <= 4 ? 2 : maxNum <= 8 ? 4 : 6,
@@ -47,7 +49,7 @@ class TableService {
       }
       if (additionalTables.length > 0) {
         await Table.insertMany(additionalTables);
-        tables = await Table.find({ businessId }).sort({ tableNumber: 1 });
+        tables = await Table.find({ businessId }).sort({ position: 1, tableNumber: 1, createdAt: 1 });
       }
     }
 
@@ -280,7 +282,7 @@ class TableService {
     }
   }
 
-  async createTable(businessId, { tableNumber, name, floor, capacity, count = 1 }) {
+  async createTable(businessId, { tableNumber, name, floor, capacity, count = 1, position }) {
     const qty = Math.max(1, parseInt(count, 10) || 1);
     
     // Find current highest tableNumber for this business
@@ -296,6 +298,7 @@ class TableService {
         const newT = await Table.create({
           businessId,
           tableNumber: maxNum,
+          position: maxNum,
           name: tName,
           floor: floor || 'Ground Floor',
           capacity: capacity || 4,
@@ -319,9 +322,12 @@ class TableService {
       }
     }
 
+    const pos = (position !== undefined && position !== null) ? parseInt(position, 10) : num;
+
     const table = await Table.create({
       businessId,
       tableNumber: num,
+      position: pos,
       name: name || `T-${num}`,
       floor: floor || 'Ground Floor',
       capacity: capacity || 4,
@@ -338,6 +344,11 @@ class TableService {
     const isObjectId = mongoose.Types.ObjectId.isValid(cleanId);
     const numOnly = parseInt(cleanId.replace(/\D/g, ''), 10) || (data.tableNumber ? parseInt(data.tableNumber, 10) : 0);
 
+    const updatePayload = { ...data };
+    if (updatePayload.position !== undefined) {
+      updatePayload.position = parseInt(updatePayload.position, 10) || 0;
+    }
+
     const query = {
       businessId,
       $or: [
@@ -349,7 +360,7 @@ class TableService {
 
     let table = await Table.findOneAndUpdate(
       query,
-      { $set: data },
+      { $set: updatePayload },
       { new: true, runValidators: true }
     );
 
@@ -358,10 +369,12 @@ class TableService {
       const allTables = await Table.find({ businessId }).sort({ tableNumber: -1 });
       const maxNum = allTables.length > 0 ? (allTables[0].tableNumber || allTables.length) : 0;
       const finalNum = data.tableNumber || (numOnly > 0 ? numOnly : maxNum + 1);
+      const finalPos = data.position !== undefined ? parseInt(data.position, 10) : finalNum;
 
       table = await Table.create({
         businessId,
         tableNumber: finalNum,
+        position: finalPos,
         name: data.name || (cleanId.length > 0 && !cleanId.startsWith('TBL-') ? cleanId : `T-${finalNum}`),
         floor: data.floor || 'Ground Floor',
         capacity: data.capacity || 4,

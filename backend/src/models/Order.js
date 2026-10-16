@@ -403,6 +403,51 @@ orderSchema.index({ businessId: 1, clientSyncId: 1 });
 const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
 orderSchema.plugin(tenantIsolationPlugin);
 
+// Strict Immutability Protection: Completed or paid orders can NEVER be deleted
+// unless explicitly authorized by a Superadmin ({ allowCompletedDelete: true }).
+orderSchema.pre('deleteOne', { document: true, query: false }, async function (next) {
+  if (this.status === 'completed' || this.isPaid || this.paymentStatus === 'paid') {
+    return next(new Error('PROTECTED_COMPLETED_ORDER: Completed orders cannot be deleted. Only Superadmin or direct database administrators can delete completed orders.'));
+  }
+  next();
+});
+
+orderSchema.pre('deleteOne', { document: false, query: true }, async function (next) {
+  const options = this.getOptions();
+  if (options && options.allowCompletedDelete) return next();
+  const filter = this.getFilter();
+  const doc = await this.model.findOne(filter);
+  if (doc && (doc.status === 'completed' || doc.isPaid || doc.paymentStatus === 'paid')) {
+    return next(new Error('PROTECTED_COMPLETED_ORDER: Completed orders cannot be deleted. Only Superadmin or direct database administrators can delete completed orders.'));
+  }
+  next();
+});
+
+orderSchema.pre('findOneAndDelete', async function (next) {
+  const options = this.getOptions();
+  if (options && options.allowCompletedDelete) return next();
+  const filter = this.getFilter();
+  const doc = await this.model.findOne(filter);
+  if (doc && (doc.status === 'completed' || doc.isPaid || doc.paymentStatus === 'paid')) {
+    return next(new Error('PROTECTED_COMPLETED_ORDER: Completed orders cannot be deleted. Only Superadmin or direct database administrators can delete completed orders.'));
+  }
+  next();
+});
+
+orderSchema.pre('deleteMany', async function (next) {
+  const options = this.getOptions();
+  if (options && options.allowCompletedDelete) return next();
+  const filter = this.getFilter();
+  const count = await this.model.countDocuments({
+    ...filter,
+    $or: [{ status: 'completed' }, { isPaid: true }, { paymentStatus: 'paid' }],
+  });
+  if (count > 0) {
+    return next(new Error(`PROTECTED_COMPLETED_ORDER: Cannot delete ${count} completed order(s). Completed orders are permanently protected.`));
+  }
+  next();
+});
+
 const Order = mongoose.model('Order', orderSchema);
 
 module.exports = Order;

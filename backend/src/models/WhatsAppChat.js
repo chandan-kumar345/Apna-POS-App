@@ -30,6 +30,11 @@ const whatsAppChatSchema = new mongoose.Schema(
       default: '',
       trim: true,
     },
+    avatarUrl: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     lastMessage: {
       type: String,
       default: '',

@@ -120,6 +120,7 @@ class TableService {
         'floor': table.floor,
         'capacity': table.capacity,
         'tableNumber': table.tableNumber,
+        'position': table.position,
       };
       final response = await _apiClient.put(
         '${ApiEndpoints.tables}/${table.id}',
