@@ -4,12 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../network/api_endpoints.dart';
 import '../models/table_model.dart';
+import '../models/order_model.dart';
 import '../security/secure_storage_service.dart';
 import 'local_notification_service.dart';
 import 'sound_service.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
-import '../../features/orders/whatsapp_order_action_dialog.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -18,6 +18,7 @@ typedef TableDeleteCallback = void Function(String tableId);
 typedef SocketReconnectCallback = void Function();
 typedef OrderSettledCallback = void Function(Map<String, dynamic> data);
 typedef OrderUpdatedCallback = void Function(Map<String, dynamic> data);
+typedef OrderCreatedCallback = void Function(OrderModel order);
 typedef OrderDeletedCallback = void Function(Map<String, dynamic> data);
 typedef SubscriptionUpdateCallback = void Function(Map<String, dynamic> data);
 typedef WhatsAppMessageCallback = void Function(Map<String, dynamic> data);
@@ -46,6 +47,7 @@ class SocketService {
   SocketReconnectCallback? onReconnected;
   OrderSettledCallback? onOrderSettled;
   OrderUpdatedCallback? onOrderUpdated;
+  OrderCreatedCallback? onOrderCreated;
   OrderDeletedCallback? onOrderDeleted;
   SubscriptionUpdateCallback? onSubscriptionUpdated;
   WhatsAppMessageCallback? onWhatsAppMessage;
@@ -78,7 +80,7 @@ class SocketService {
 
       // Extract stored token / businessId if not provided
       final activeToken = token ?? _currentToken ?? await _storage.getAccessToken();
-      final activeBusinessId = businessId ?? _currentBusinessId;
+      final activeBusinessId = businessId ?? _currentBusinessId ?? await _storage.getBusinessId();
 
       _currentToken = activeToken;
       _currentBusinessId = activeBusinessId;
@@ -158,7 +160,8 @@ class SocketService {
       // Table deleted
       socket.on('table:deleted', (data) => _handleTableDeleted(data));
 
-      // Order settled & updated events
+      // Order created, settled & updated events
+      socket.on('order:created', (data) => _handleOrderCreated(data));
       socket.on('order:settled', (data) => _handleOrderSettled(data));
       socket.on('order:updated', (data) => _handleOrderUpdated(data));
       socket.on('order:deleted', (data) => _handleOrderDeleted(data));
@@ -323,6 +326,67 @@ class SocketService {
       onOrderDeleted?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing order:deleted event: $e');
+    }
+  }
+
+  void _handleOrderCreated(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      final orderMap = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
+      if (orderMap.isNotEmpty) {
+        final orderModel = OrderModel.fromJson(orderMap);
+        debugPrint('[SocketService] 🛒 Received order:created event for: #${orderModel.orderNumber} (Status: ${orderModel.status.name})');
+        onOrderCreated?.call(orderModel);
+
+        // If order is PENDING, trigger instant sound, notification, and Accept / Reject popup dialog!
+        if (orderModel.status == OrderStatus.pending) {
+          final isWhatsApp = (orderModel.orderSource?.toLowerCase() == 'whatsapp') ||
+              rawMap['source']?.toString().toLowerCase() == 'whatsapp' ||
+              rawMap['type'] == 'whatsapp_order_request' ||
+              rawMap['type'] == 'whatsapp_new_order';
+
+          // 1. Play loud notification sound
+          SoundService.playNotificationSound();
+
+          // 2. High priority notification in native notification bar
+          LocalNotificationService().showPushNotification(
+            title: isWhatsApp
+                ? '🔔 New WhatsApp Order: #${orderModel.orderNumber}'
+                : '🔔 New Order Received: #${orderModel.orderNumber}',
+            body: '${orderModel.customerName ?? "Customer"} ordered ₹${orderModel.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+            payload: jsonEncode({
+              'type': 'whatsapp_order_request',
+              'orderId': orderModel.id,
+              'orderNumber': orderModel.orderNumber,
+              'customerPhone': orderModel.customerPhone,
+              'customerName': orderModel.customerName,
+              'totalAmount': orderModel.totalAmount.toString(),
+              'orderType': orderModel.orderType.name,
+              'deliveryAddress': orderModel.deliveryAddress,
+              'items': orderModel.items.map((i) => i.toJson()).toList(),
+            }),
+            type: NotificationType.whatsappOrderRequest,
+            channelId: 'apna_pos_whatsapp_orders_v1',
+            playSound: true,
+          );
+
+          // 3. Trigger interactive Accept / Reject screen modal
+          LocalNotificationService.handlePayloadDirectly({
+            'type': 'whatsapp_order_request',
+            'orderId': orderModel.id,
+            'orderNumber': orderModel.orderNumber,
+            'customerPhone': orderModel.customerPhone,
+            'customerName': orderModel.customerName,
+            'totalAmount': orderModel.totalAmount.toString(),
+            'orderType': orderModel.orderType.name,
+            'deliveryAddress': orderModel.deliveryAddress,
+            'items': orderModel.items.map((i) => i.toJson()).toList(),
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error processing order:created event: $e');
     }
   }
 
@@ -527,21 +591,18 @@ class SocketService {
         playSound: true,
       );
 
-      // 3. If app is currently visible, directly pop up the WhatsAppOrderActionDialog!
-      final ctx = LocalNotificationService.navigatorKey.currentContext;
-      if (ctx != null) {
-        WhatsAppOrderActionDialog.show(
-          ctx,
-          orderId: orderId,
-          orderNumber: orderNumber,
-          customerPhone: customerPhone,
-          customerName: customerName,
-          totalAmount: totalAmount,
-          orderType: orderType,
-          deliveryAddress: deliveryAddress,
-          itemsPayload: items,
-        );
-      }
+      // 3. Resiliently trigger the incoming WhatsApp order action dialog
+      LocalNotificationService.handlePayloadDirectly({
+        'type': 'whatsapp_order_request',
+        'orderId': orderId,
+        'orderNumber': orderNumber,
+        'customerPhone': customerPhone,
+        'customerName': customerName,
+        'totalAmount': totalAmount.toString(),
+        'orderType': orderType,
+        'deliveryAddress': deliveryAddress,
+        'items': items,
+      });
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:order:request: $e');
     }

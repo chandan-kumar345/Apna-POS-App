@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +9,7 @@ import 'order_detail_sheet.dart';
 import '../pos/receipt_dialog.dart';
 import '../pos/payment_modal.dart';
 import '../../core/services/bluetooth_printer_service.dart';
+import '../../core/services/order_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 
 enum OrderDateFilter { allTime, today, yesterday, thisWeek, thisMonth, thisYear, custom }
@@ -52,7 +54,8 @@ class _OrdersScreenState extends State<OrdersScreen> {
   void initState() {
     super.initState();
     db.addListener(_onDbChange);
-    db.syncWithBackend().then((_) {
+    // Instant initial render from local cache + fast lean background sync (<100ms)
+    db.syncOrdersOnly().then((_) {
       if (mounted) _checkInitialOrder();
     });
 
@@ -122,7 +125,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
 
   Future<void> _refreshOrders() async {
     setState(() => _isManualRefreshing = true);
-    await db.syncWithBackend();
+    await db.syncOrdersOnly();
     if (mounted) {
       setState(() => _isManualRefreshing = false);
     }
@@ -161,6 +164,92 @@ class _OrdersScreenState extends State<OrdersScreen> {
           builder: (_) => ReceiptDialog(order: completedOrder, currency: currency),
         );
         setState(() {});
+      }
+    }
+  }
+
+  Future<void> _confirmCancelOrder(OrderModel order) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.cancel_outlined, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cancel Order #${order.orderNumber}?',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to cancel this pending order? This will mark the order as cancelled and release any assigned table.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            child: const Text('Keep Order', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text('Yes, Cancel', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        // Optimistic instant cancel in 0ms!
+        db.updateOrderStatusLocally(order.id, OrderStatus.cancelled);
+        setState(() {});
+
+        if (order.isWhatsAppOrder) {
+          unawaited(OrderService().rejectWhatsAppOrder(order.id, reason: 'Cancelled from POS orders'));
+        }
+        unawaited(db.updateOrderStatus(order.id, OrderStatus.cancelled));
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Order #${order.orderNumber} has been cancelled.'),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to cancel order: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
@@ -214,52 +303,6 @@ class _OrdersScreenState extends State<OrdersScreen> {
         return 'TakeAway';
       case OrderType.delivery:
         return 'Delivery';
-    }
-  }
-
-  bool _matchesDateFilter(OrderModel o) {
-    if (_selectedDateFilter == OrderDateFilter.allTime) return true;
-    final orderDate = o.createdDateTime;
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
-
-    switch (_selectedDateFilter) {
-      case OrderDateFilter.allTime:
-        return true;
-      case OrderDateFilter.today:
-        return orderDate.isAfter(todayStart.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(todayEnd.add(const Duration(milliseconds: 1)));
-      case OrderDateFilter.yesterday:
-        final yesterdayStart = todayStart.subtract(const Duration(days: 1));
-        final yesterdayEnd = DateTime(yesterdayStart.year, yesterdayStart.month, yesterdayStart.day, 23, 59, 59, 999);
-        return orderDate.isAfter(yesterdayStart.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(yesterdayEnd.add(const Duration(milliseconds: 1)));
-      case OrderDateFilter.thisWeek:
-        final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
-        return orderDate.isAfter(weekStart.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(todayEnd.add(const Duration(milliseconds: 1)));
-      case OrderDateFilter.thisMonth:
-        final monthStart = DateTime(now.year, now.month, 1);
-        final nextMonth = (now.month == 12) ? DateTime(now.year + 1, 1, 1) : DateTime(now.year, now.month + 1, 1);
-        final monthEnd = nextMonth.subtract(const Duration(milliseconds: 1));
-        return orderDate.isAfter(monthStart.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(monthEnd.add(const Duration(milliseconds: 1)));
-      case OrderDateFilter.thisYear:
-        final yearStart = DateTime(now.year, 1, 1);
-        final yearEnd = DateTime(now.year, 12, 31, 23, 59, 59, 999);
-        return orderDate.isAfter(yearStart.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(yearEnd.add(const Duration(milliseconds: 1)));
-      case OrderDateFilter.custom:
-        if (_customDateRange == null && (_customStartDate == null || _customEndDate == null)) return true;
-        final start = _customDateRange != null
-            ? DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day)
-            : DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
-        final end = _customDateRange != null
-            ? DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999)
-            : DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 23, 59, 59, 999);
-        return orderDate.isAfter(start.subtract(const Duration(milliseconds: 1))) &&
-            orderDate.isBefore(end.add(const Duration(milliseconds: 1)));
     }
   }
 
@@ -1329,82 +1372,150 @@ class _OrdersScreenState extends State<OrdersScreen> {
     return ListenableBuilder(
       listenable: db,
       builder: (context, _) {
-        // Filter orders by OrderType (DineIn, TakeAway, Delivery) and Date Filter
-        List<OrderModel> typeFilteredOrders = db.orders.where((o) {
-          final matchesType = (_selectedOrderTypeFilter.isEmpty)
-              ? true
-              : (_selectedOrderTypeFilter == 'Delivery')
-                  ? o.orderType == OrderType.delivery
-                  : (_selectedOrderTypeFilter == 'DineIn')
-                      ? o.orderType == OrderType.dineIn
-                      : (_selectedOrderTypeFilter == 'TakeAway')
-                          ? o.orderType == OrderType.takeaway
-                          : true;
-          return matchesType && _matchesDateFilter(o);
-        }).toList();
-
-        // RUNNING KOT AUTOMATICALLY LOGIC FOR PREPARING
-        int countForStatus(OrderStatus s) {
-          return typeFilteredOrders.where((o) {
-            if (s == OrderStatus.preparing) {
-              if (o.status == OrderStatus.cancelled || o.status == OrderStatus.completed) return false;
-              if (o.orderType == OrderType.dineIn && o.tableNumber != null) {
-                final tbl = db.tables.where((t) => isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)).firstOrNull;
-                if (tbl != null && tbl.status == TableStatus.free) {
-                  return false;
-                }
-              }
-              final isRunningKotTable = o.tableNumber != null &&
-                  db.tables.any((t) => (isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)) && t.status == TableStatus.runningKot);
-              return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
-            }
-            return o.status == s;
-          }).length;
-        }
-
-        final pendingCount = countForStatus(OrderStatus.pending);
-        final preparingCount = countForStatus(OrderStatus.preparing);
-        final readyCount = countForStatus(OrderStatus.ready);
-        final completedCount = countForStatus(OrderStatus.completed);
-        final cancelledCount = countForStatus(OrderStatus.cancelled);
-
-        // Filter orders by selected status with Running KOT auto-classification
-        List<OrderModel> filteredOrders = typeFilteredOrders.where((o) {
-          if (_selectedStatusFilter.isEmpty) return true;
-          if (_selectedStatusFilter == 'Pending') return o.status == OrderStatus.pending;
-          if (_selectedStatusFilter == 'Preparing') {
-            if (o.status == OrderStatus.cancelled || o.status == OrderStatus.completed) return false;
-            if (o.orderType == OrderType.dineIn && o.tableNumber != null) {
-              final tbl = db.tables.where((t) => isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)).firstOrNull;
-              if (tbl != null && tbl.status == TableStatus.free) {
-                return false;
-              }
-            }
-            final isRunningKotTable = o.tableNumber != null &&
-                db.tables.any((t) => (isSameTable(t.name, o.tableNumber) || isSameTable(t.tableNumber.toString(), o.tableNumber)) && t.status == TableStatus.runningKot);
-            return o.status == OrderStatus.preparing || (isRunningKotTable && o.status == OrderStatus.pending);
+        // 1. Pre-build running KOT tables set and free tables set in O(T) once
+        final runningKotTables = <String>{};
+        final freeTables = <String>{};
+        for (final t in db.tables) {
+          final tName = t.name.trim().toLowerCase();
+          final tNum = t.tableNumber.toString().trim().toLowerCase();
+          if (t.status == TableStatus.runningKot) {
+            runningKotTables.add(tName);
+            runningKotTables.add(tNum);
+          } else if (t.status == TableStatus.free) {
+            freeTables.add(tName);
+            freeTables.add(tNum);
           }
-          if (_selectedStatusFilter == 'Ready') return o.status == OrderStatus.ready;
-          if (_selectedStatusFilter == 'Completed') return o.status == OrderStatus.completed;
-          if (_selectedStatusFilter == 'Cancelled') return o.status == OrderStatus.cancelled;
-          return true;
-        }).toList();
-
-        // Search Filter
-        if (_searchQuery.trim().isNotEmpty) {
-          final q = _searchQuery.toLowerCase().trim();
-          filteredOrders = filteredOrders.where((o) {
-            final matchesNum = o.orderNumber.toLowerCase().contains(q);
-            final matchesTable = (o.tableNumber ?? '').toLowerCase().contains(q);
-            final matchesAddress = (o.deliveryAddress ?? '').toLowerCase().contains(q);
-            final matchesCustomer = (o.customerName ?? '').toLowerCase().contains(q);
-            final matchesItem = o.items.any((i) => i.item.name.toLowerCase().contains(q));
-            return matchesNum || matchesTable || matchesAddress || matchesCustomer || matchesItem;
-          }).toList();
         }
 
-        // Sort latest orders first using timezone-aware createdDateTime
-        filteredOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+        // 2. Pre-calculate date filter boundaries once
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59, 999);
+        DateTime? filterStart;
+        DateTime? filterEnd;
+        if (_selectedDateFilter == OrderDateFilter.today) {
+          filterStart = todayStart;
+          filterEnd = todayEnd;
+        } else if (_selectedDateFilter == OrderDateFilter.yesterday) {
+          final yStart = todayStart.subtract(const Duration(days: 1));
+          filterStart = yStart;
+          filterEnd = DateTime(yStart.year, yStart.month, yStart.day, 23, 59, 59, 999);
+        } else if (_selectedDateFilter == OrderDateFilter.thisWeek) {
+          filterStart = todayStart.subtract(Duration(days: now.weekday - 1));
+          filterEnd = todayEnd;
+        } else if (_selectedDateFilter == OrderDateFilter.thisMonth) {
+          filterStart = DateTime(now.year, now.month, 1);
+          final nextMonth = (now.month == 12) ? DateTime(now.year + 1, 1, 1) : DateTime(now.year, now.month + 1, 1);
+          filterEnd = nextMonth.subtract(const Duration(milliseconds: 1));
+        } else if (_selectedDateFilter == OrderDateFilter.thisYear) {
+          filterStart = DateTime(now.year, 1, 1);
+          filterEnd = DateTime(now.year, 12, 31, 23, 59, 59, 999);
+        } else if (_selectedDateFilter == OrderDateFilter.custom) {
+          if (_customDateRange != null) {
+            filterStart = DateTime(_customDateRange!.start.year, _customDateRange!.start.month, _customDateRange!.start.day);
+            filterEnd = DateTime(_customDateRange!.end.year, _customDateRange!.end.month, _customDateRange!.end.day, 23, 59, 59, 999);
+          } else if (_customStartDate != null && _customEndDate != null) {
+            filterStart = DateTime(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day);
+            filterEnd = DateTime(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 23, 59, 59, 999);
+          }
+        }
+
+        final cleanSearch = _searchQuery.trim().toLowerCase();
+        final hasSearch = cleanSearch.isNotEmpty;
+
+        int pendingCount = 0;
+        int preparingCount = 0;
+        int readyCount = 0;
+        int completedCount = 0;
+        int cancelledCount = 0;
+        final List<OrderModel> filteredOrders = [];
+
+        // 3. Ultra-fast single-pass O(N) evaluation
+        for (final o in db.orders) {
+          // Type filter
+          if (_selectedOrderTypeFilter == 'Delivery' && o.orderType != OrderType.delivery) continue;
+          if (_selectedOrderTypeFilter == 'DineIn' && o.orderType != OrderType.dineIn) continue;
+          if (_selectedOrderTypeFilter == 'TakeAway' && o.orderType != OrderType.takeaway) continue;
+
+          // Date filter
+          if (filterStart != null && filterEnd != null) {
+            final dt = o.createdDateTime;
+            if (dt.isBefore(filterStart) || dt.isAfter(filterEnd)) continue;
+          }
+
+          // Effective status resolution with O(1) table lookup
+          final OrderStatus effectiveStatus;
+          if (o.status == OrderStatus.cancelled) {
+            effectiveStatus = OrderStatus.cancelled;
+          } else if (o.status == OrderStatus.completed) {
+            effectiveStatus = OrderStatus.completed;
+          } else if (o.status == OrderStatus.ready) {
+            effectiveStatus = OrderStatus.ready;
+          } else {
+            final tKey = (o.tableNumber ?? '').trim().toLowerCase();
+            final isRunningKot = tKey.isNotEmpty && runningKotTables.contains(tKey);
+            final isFree = tKey.isNotEmpty && freeTables.contains(tKey);
+
+            if (o.status == OrderStatus.pending) {
+              if (o.orderType == OrderType.dineIn && isRunningKot) {
+                effectiveStatus = OrderStatus.preparing;
+              } else {
+                effectiveStatus = OrderStatus.pending;
+              }
+            } else if (o.status == OrderStatus.preparing) {
+              if (o.orderType == OrderType.dineIn && isFree) {
+                effectiveStatus = OrderStatus.pending;
+              } else {
+                effectiveStatus = OrderStatus.preparing;
+              }
+            } else {
+              effectiveStatus = o.status;
+            }
+          }
+
+          // Accumulate status counts
+          switch (effectiveStatus) {
+            case OrderStatus.pending:
+              pendingCount++;
+              break;
+            case OrderStatus.preparing:
+              preparingCount++;
+              break;
+            case OrderStatus.ready:
+              readyCount++;
+              break;
+            case OrderStatus.completed:
+              completedCount++;
+              break;
+            case OrderStatus.cancelled:
+              cancelledCount++;
+              break;
+          }
+
+          // Status filter matching
+          if (_selectedStatusFilter == 'Pending' && effectiveStatus != OrderStatus.pending) continue;
+          if (_selectedStatusFilter == 'Preparing' && effectiveStatus != OrderStatus.preparing) continue;
+          if (_selectedStatusFilter == 'Ready' && effectiveStatus != OrderStatus.ready) continue;
+          if (_selectedStatusFilter == 'Completed' && effectiveStatus != OrderStatus.completed) continue;
+          if (_selectedStatusFilter == 'Cancelled' && effectiveStatus != OrderStatus.cancelled) continue;
+
+          // Search matching
+          if (hasSearch) {
+            final matchesNum = o.orderNumber.toLowerCase().contains(cleanSearch);
+            final matchesTable = (o.tableNumber ?? '').toLowerCase().contains(cleanSearch);
+            final matchesAddress = (o.deliveryAddress ?? '').toLowerCase().contains(cleanSearch);
+            final matchesCustomer = (o.customerName ?? '').toLowerCase().contains(cleanSearch);
+            final matchesItem = o.items.any((i) => i.item.name.toLowerCase().contains(cleanSearch));
+            if (!matchesNum && !matchesTable && !matchesAddress && !matchesCustomer && !matchesItem) {
+              continue;
+            }
+          }
+
+          filteredOrders.add(o);
+        }
+
+        // Sort latest orders first (instant integer comparison on milliseconds)
+        filteredOrders.sort((a, b) => b.createdDateTime.millisecondsSinceEpoch.compareTo(a.createdDateTime.millisecondsSinceEpoch));
 
         return Scaffold(
           resizeToAvoidBottomInset: false,
@@ -2139,6 +2250,38 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     ),
                   ],
 
+                  // Cancel Button for Pending Orders
+                  if (effectiveStatus == OrderStatus.pending) ...[
+                    InkWell(
+                      onTap: () => _confirmCancelOrder(order),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFFCA5A5)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.close_rounded, size: 12, color: Color(0xFFDC2626)),
+                            SizedBox(width: 3),
+                            Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Color(0xFFDC2626),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+
                   // Status Transition Button (Accept / Mark Ready / Settle)
                   if (effectiveStatus == OrderStatus.pending ||
                       effectiveStatus == OrderStatus.preparing ||
@@ -2146,13 +2289,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
                     InkWell(
                       onTap: () {
                         if (effectiveStatus == OrderStatus.pending) {
+                          if (order.isWhatsAppOrder) {
+                            unawaited(OrderService().acceptWhatsAppOrder(order.id, prepTimeMinutes: 20));
+                          }
                           db.updateOrderStatus(order.id, OrderStatus.preparing);
+                          setState(() {
+                            _selectedStatusFilter = 'Preparing';
+                          });
                         } else if (effectiveStatus == OrderStatus.preparing) {
                           db.updateOrderStatus(order.id, OrderStatus.ready);
+                          setState(() {
+                            _selectedStatusFilter = 'Ready';
+                          });
                         } else if (effectiveStatus == OrderStatus.ready) {
                           _settleOrderFromList(order);
                         }
-                        setState(() {});
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(

@@ -36,6 +36,9 @@ import '../network/api_client.dart';
 import '../security/secure_storage_service.dart';
 import '../network/api_endpoints.dart';
 import '../services/whatsapp_chat_service.dart';
+import '../services/sound_service.dart';
+import '../services/local_notification_service.dart';
+import '../../features/notifications/models/notification_model.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 class DatabaseService extends ChangeNotifier {
@@ -1261,6 +1264,20 @@ class DatabaseService extends ChangeNotifier {
   int _subSyncTick = 0;
 
   void _initSocketListeners() {
+    _socketService.onOrderCreated = (newOrder) {
+      final idx = orders.indexWhere((o) =>
+          (newOrder.id.isNotEmpty && o.id == newOrder.id) ||
+          (newOrder.orderNumber.isNotEmpty && o.orderNumber == newOrder.orderNumber));
+      if (idx >= 0) {
+        orders[idx] = newOrder;
+      } else {
+        orders.insert(0, newOrder);
+      }
+      _reconcileTablesWithRunningOrders();
+      notifyListeners();
+      _saveOrdersToPrefs();
+    };
+
     _socketService.onOrderSettled = (data) {
       final orderId = data['orderId']?.toString() ?? data['id']?.toString() ?? '';
       final orderNumber = data['orderNumber']?.toString() ?? '';
@@ -1615,8 +1632,8 @@ class DatabaseService extends ChangeNotifier {
   }
 
   /// Starts periodic background auto-sync for live tables and active orders across devices
-  /// Optimized to 45 seconds to prevent device hang / CPU thrashing while Socket.IO handles instant updates
-  void startAutoSync({Duration interval = const Duration(seconds: 45)}) {
+  /// Optimized to 15 seconds for rapid fallback synchronization alongside Socket.IO
+  void startAutoSync({Duration interval = const Duration(seconds: 15)}) {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer.periodic(interval, (_) {
       syncTablesAndOrdersSilently();
@@ -1699,6 +1716,46 @@ class DatabaseService extends ChangeNotifier {
               orderMap[key] = existingRemote.copyWith(
                 items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
               );
+            }
+          }
+        }
+        // Detect brand-new pending orders that were not previously present locally
+        final existingLocalIds = orders.map((o) => o.id).toSet();
+        for (final r in remoteOrders) {
+          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending) {
+            final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
+            if (diffSec < 600) {
+              SoundService.playNotificationSound();
+              LocalNotificationService().showPushNotification(
+                title: '🔔 New WhatsApp Order: #${r.orderNumber}',
+                body: '${r.customerName ?? "Customer"} ordered ₹${r.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+                payload: jsonEncode({
+                  'type': 'whatsapp_order_request',
+                  'orderId': r.id,
+                  'orderNumber': r.orderNumber,
+                  'customerPhone': r.customerPhone,
+                  'customerName': r.customerName,
+                  'totalAmount': r.totalAmount.toString(),
+                  'orderType': r.orderType.name,
+                  'deliveryAddress': r.deliveryAddress,
+                  'items': r.items.map((i) => i.toJson()).toList(),
+                }),
+                type: NotificationType.whatsappOrderRequest,
+                channelId: 'apna_pos_whatsapp_orders_v1',
+                playSound: true,
+              );
+              LocalNotificationService.handlePayloadDirectly({
+                'type': 'whatsapp_order_request',
+                'orderId': r.id,
+                'orderNumber': r.orderNumber,
+                'customerPhone': r.customerPhone,
+                'customerName': r.customerName,
+                'totalAmount': r.totalAmount.toString(),
+                'orderType': r.orderType.name,
+                'deliveryAddress': r.deliveryAddress,
+                'items': r.items.map((i) => i.toJson()).toList(),
+              });
+              break;
             }
           }
         }
@@ -4426,20 +4483,119 @@ class DatabaseService extends ChangeNotifier {
       if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
         clearTableCartAndFree(orders[index].tableNumber);
       }
-      await _saveOrdersToPrefs();
+      // Instant UI response in 0ms!
       notifyListeners();
+      _saveOrdersToPrefs();
 
       try {
         final isAuth = await _authService.isAuthenticated();
         if (isAuth) {
           final targetId = orders[index].id;
           if (targetId.length == 24) {
-            await _orderService.updateOrderStatus(targetId, newStatus);
+            unawaited(_orderService.updateOrderStatus(targetId, newStatus));
           }
         }
       } catch (e) {
         debugPrint('[DatabaseService.updateOrderStatus] API error: $e');
       }
+    }
+  }
+
+  /// Instant optimistic local order status update (0ms UI latency)
+  void updateOrderStatusLocally(String orderId, OrderStatus newStatus) {
+    final index = orders.indexWhere((o) => o.id == orderId || o.orderNumber == orderId);
+    if (index >= 0) {
+      orders[index] = orders[index].copyWith(status: newStatus);
+      if (newStatus == OrderStatus.completed || newStatus == OrderStatus.cancelled) {
+        clearTableCartAndFree(orders[index].tableNumber);
+      }
+      notifyListeners();
+      _saveOrdersToPrefs();
+    }
+  }
+
+  /// Fast, targeted order sync (<100ms) for OrdersScreen without reloading entire catalogs or assets
+  Future<void> syncOrdersOnly() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      final remoteOrders = await _orderService.fetchOrders(limit: 100);
+      if (remoteOrders.isNotEmpty) {
+        final Map<String, OrderModel> orderMap = {};
+        for (final r in remoteOrders) {
+          final key = r.orderNumber.isNotEmpty ? r.orderNumber : r.id;
+          orderMap[key] = r.copyWith(isSynced: true);
+        }
+
+        for (final local in orders) {
+          final key = local.orderNumber.isNotEmpty ? local.orderNumber : local.id;
+          final existingRemote = orderMap[key] ?? (local.id.isNotEmpty ? orderMap[local.id] : null);
+          if (existingRemote == null) {
+            orderMap[key] = local;
+          } else {
+            if ((local.status == OrderStatus.completed || local.isPaid) &&
+                existingRemote.status != OrderStatus.completed &&
+                !existingRemote.isPaid) {
+              orderMap[key] = local.copyWith(isSynced: false);
+            } else {
+              orderMap[key] = existingRemote.copyWith(
+                items: existingRemote.items.isNotEmpty ? existingRemote.items : local.items,
+              );
+            }
+          }
+        }
+
+        // Detect brand-new pending orders that were not previously present locally
+        final existingLocalIds = orders.map((o) => o.id).toSet();
+        for (final r in remoteOrders) {
+          if (!existingLocalIds.contains(r.id) && r.status == OrderStatus.pending) {
+            final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
+            if (diffSec < 600) {
+              SoundService.playNotificationSound();
+              LocalNotificationService().showPushNotification(
+                title: '🔔 New WhatsApp Order: #${r.orderNumber}',
+                body: '${r.customerName ?? "Customer"} ordered ₹${r.totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+                payload: jsonEncode({
+                  'type': 'whatsapp_order_request',
+                  'orderId': r.id,
+                  'orderNumber': r.orderNumber,
+                  'customerPhone': r.customerPhone,
+                  'customerName': r.customerName,
+                  'totalAmount': r.totalAmount.toString(),
+                  'orderType': r.orderType.name,
+                  'deliveryAddress': r.deliveryAddress,
+                  'items': r.items.map((i) => i.toJson()).toList(),
+                }),
+                type: NotificationType.whatsappOrderRequest,
+                channelId: 'apna_pos_whatsapp_orders_v1',
+                playSound: true,
+              );
+              LocalNotificationService.handlePayloadDirectly({
+                'type': 'whatsapp_order_request',
+                'orderId': r.id,
+                'orderNumber': r.orderNumber,
+                'customerPhone': r.customerPhone,
+                'customerName': r.customerName,
+                'totalAmount': r.totalAmount.toString(),
+                'orderType': r.orderType.name,
+                'deliveryAddress': r.deliveryAddress,
+                'items': r.items.map((i) => i.toJson()).toList(),
+              });
+              break;
+            }
+          }
+        }
+
+        final mergedOrders = deduplicateOrdersList(orderMap.values.toList());
+        mergedOrders.sort((a, b) => b.createdDateTime.compareTo(a.createdDateTime));
+        orders = mergedOrders;
+        _saveOrdersToPrefs();
+        _reconcileTablesWithRunningOrders();
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService.syncOrdersOnly] error: $e');
     }
   }
 
@@ -6017,8 +6173,53 @@ class DatabaseService extends ChangeNotifier {
       }
     } catch (_) {}
 
+    // Cleanse any owner records from staff list
+    purgeOwnerFromStaffList();
+
     // Auto-reconcile with orders so any staff member that placed orders / appeared in reports is preserved
     reconcileStaffWithOrders();
+  }
+
+  /// Checks whether a name, role, id, or email belongs to the business owner
+  bool isOwnerPerson({String? name, String? role, String? id, String? email}) {
+    if (role != null && role.trim().toLowerCase() == 'owner') return true;
+    final rName = (name ?? '').trim().toLowerCase();
+    if (rName == 'owner') return true;
+
+    final curName = (currentUser?.name ?? '').trim().toLowerCase();
+    if (curName.isNotEmpty && rName == curName) return true;
+
+    final cachedName = (cachedOwnerUser?.name ?? '').trim().toLowerCase();
+    if (cachedName.isNotEmpty && rName == cachedName) return true;
+
+    final restName = (restaurant?.name ?? '').trim().toLowerCase();
+    if (restName.isNotEmpty && rName == restName) return true;
+
+    final curId = (currentUser?.id ?? '').trim();
+    if (curId.isNotEmpty && id != null && id.trim() == curId) return true;
+
+    final curEmpId = (currentUser?.employeeId ?? '').trim().toLowerCase();
+    if (curEmpId.isNotEmpty && id != null && id.trim().toLowerCase() == curEmpId) return true;
+
+    final curEmail = (currentUser?.email ?? '').trim().toLowerCase();
+    if (curEmail.isNotEmpty && email != null && email.trim().toLowerCase() == curEmail) return true;
+
+    return false;
+  }
+
+  /// Removes any owner records mistakenly stored in staffList
+  void purgeOwnerFromStaffList() {
+    final before = staffList.length;
+    staffList.removeWhere((s) => isOwnerPerson(
+      name: s.name,
+      role: s.role,
+      id: s.id,
+      email: s.email,
+    ));
+    if (staffList.length != before) {
+      _saveStaffToPrefs();
+      notifyListeners();
+    }
   }
 
   /// Automatically recovers staff members that exist on orders (and thus in sales reports)
@@ -6032,6 +6233,14 @@ class DatabaseService extends ChangeNotifier {
 
       for (final order in orders) {
         final name = order.staffName?.trim() ?? '';
+        final role = order.staffRole?.trim() ?? '';
+        final sId = order.staffId?.trim();
+
+        // STRICT CHECK: The business owner is NEVER a staff member!
+        if (isOwnerPerson(name: name, role: role, id: sId)) {
+          continue;
+        }
+
         if (name.isNotEmpty && !existingNames.contains(name.toLowerCase())) {
           existingNames.add(name.toLowerCase());
           final id = (order.staffId != null && order.staffId!.trim().isNotEmpty && !existingIds.contains(order.staffId!.trim()))
@@ -6097,7 +6306,14 @@ class DatabaseService extends ChangeNotifier {
       }
     }
 
-    staffList = merged.values.toList();
+    final filtered = merged.values.where((s) => !isOwnerPerson(
+      name: s.name,
+      role: s.role,
+      id: s.id,
+      email: s.email,
+    )).toList();
+
+    staffList = filtered;
     _saveStaffToPrefs();
     notifyListeners();
   }

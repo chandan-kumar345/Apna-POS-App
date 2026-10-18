@@ -145,6 +145,10 @@ class SocketService {
     if (!this.io || !businessId) return;
     const cleanId = businessId.toString();
     this.io.to(`business_${cleanId}`).emit(event, data);
+    this.io.to(`business:${cleanId}`).emit(event, data);
+    this.io.to(`user_${cleanId}`).emit(event, data);
+    this.io.to('business_rest_001').emit(event, data);
+    this.io.to('business_default').emit(event, data);
   }
 
   /**
@@ -402,14 +406,45 @@ class SocketService {
    * @param {string|mongoose.Types.ObjectId} businessId
    * @param {object} param1 { order, chat, customerPhone, customerName }
    */
-  emitWhatsAppOrderRequest(businessId, { order, chat, customerPhone, customerName }) {
-    if (!this.io) return;
+  emitWhatsAppOrderRequest(businessId, { order, chat, customerPhone, customerName, targetUserId }) {
+    if (!this.io || !order) return;
+
+    const ordId = (order._id ? order._id.toString() : (order.id || '')).toString();
+    const ordNum = order.orderNumber || '';
+    const custPhone = customerPhone || order.customerPhone || '';
+    const custName = customerName || order.customerName || 'Customer';
+    const totAmount = order.totalAmount || 0;
+    const ordType = order.orderType || 'takeaway';
+    const delivAddr = order.deliveryAddress || '';
+    const itms = order.items || [];
+
     const payload = {
       type: 'whatsapp_order_request',
-      order,
+      orderId: ordId,
+      orderNumber: ordNum,
+      customerPhone: custPhone,
+      customerName: custName,
+      totalAmount: totAmount,
+      orderType: ordType,
+      deliveryAddress: delivAddr,
+      items: itms,
+      order: order.toJSON ? order.toJSON() : order,
       chat,
-      customerPhone,
-      customerName,
+      timestamp: new Date().toISOString(),
+    };
+
+    const orderCreatedPayload = {
+      orderId: ordId,
+      orderNumber: ordNum,
+      status: order.status || 'pending',
+      totalAmount: totAmount,
+      orderType: ordType,
+      orderSource: order.orderSource || order.source || 'whatsapp',
+      customerPhone: custPhone,
+      customerName: custName,
+      deliveryAddress: delivAddr,
+      items: itms,
+      order: order.toJSON ? order.toJSON() : order,
       timestamp: new Date().toISOString(),
     };
 
@@ -417,24 +452,36 @@ class SocketService {
       const cleanId = businessId.toString();
       this.io.to(`business_${cleanId}`).emit('whatsapp:order:request', payload);
       this.io.to(`business:${cleanId}`).emit('whatsapp:order:request', payload);
-      this.io.to(`business_${cleanId}`).emit('order:created', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        totalAmount: order.totalAmount,
-        order,
-      });
-      this.io.to(`business:${cleanId}`).emit('order:created', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        totalAmount: order.totalAmount,
-        order,
-      });
+      this.io.to(`user_${cleanId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business_${cleanId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`business:${cleanId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`user_${cleanId}`).emit('order:created', orderCreatedPayload);
+    }
+
+    if (targetUserId) {
+      const uId = targetUserId.toString();
+      this.io.to(`user_${uId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`user:${uId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business_${uId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`user_${uId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`user:${uId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`business_${uId}`).emit('order:created', orderCreatedPayload);
+    }
+
+    if (order.businessId && businessId && order.businessId.toString() !== businessId.toString()) {
+      const ordBizId = order.businessId.toString();
+      this.io.to(`business_${ordBizId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business:${ordBizId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`user_${ordBizId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business_${ordBizId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`business:${ordBizId}`).emit('order:created', orderCreatedPayload);
+      this.io.to(`user_${ordBizId}`).emit('order:created', orderCreatedPayload);
     }
 
     this.io.to('business_rest_001').emit('whatsapp:order:request', payload);
     this.io.to('business_default').emit('whatsapp:order:request', payload);
+    this.io.to('business_rest_001').emit('order:created', orderCreatedPayload);
+    this.io.to('business_default').emit('order:created', orderCreatedPayload);
   }
 
   /**

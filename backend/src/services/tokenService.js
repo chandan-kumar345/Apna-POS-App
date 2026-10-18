@@ -10,6 +10,13 @@ class TokenService {
       sub: user._id || user.id,
       email: user.email,
       role: user.role,
+      businessId: user.businessId
+        ? user.businessId.toString()
+        : user.business
+        ? user.business.toString()
+        : user.restaurantId
+        ? user.restaurantId.toString()
+        : null,
     };
     return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
       expiresIn: env.JWT_ACCESS_EXPIRES_IN,

@@ -4,6 +4,7 @@ import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/models/table_model.dart';
 import '../../core/services/bluetooth_printer_service.dart';
+import '../../core/services/order_service.dart';
 import '../../core/widgets/printer_selection_dialog.dart';
 import '../pos/payment_modal.dart';
 import '../pos/receipt_dialog.dart';
@@ -245,6 +246,122 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
   }
 
+  Future<void> _cancelOrder() async {
+    if (_order == null) return;
+    final order = _order!;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+        contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFEE2E2),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.cancel_outlined, color: Color(0xFFDC2626), size: 22),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Cancel Order #${order.orderNumber}?',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+            ),
+          ],
+        ),
+        content: const Text(
+          'Are you sure you want to cancel this pending order? This will mark the order as cancelled and release any assigned table.',
+          style: TextStyle(fontSize: 13, color: Color(0xFF64748B), height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            ),
+            child: const Text('Keep Order', style: TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFDC2626),
+              foregroundColor: Colors.white,
+              elevation: 0,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            ),
+            child: const Text('Yes, Cancel', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        if (order.isWhatsAppOrder) {
+          await OrderService().rejectWhatsAppOrder(order.id, reason: 'Cancelled from order details');
+        } else {
+          await _db.updateOrderStatus(order.id, OrderStatus.cancelled);
+        }
+        await _loadOrder();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Order #${order.orderNumber} has been cancelled.'),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to cancel order: $e'), backgroundColor: Colors.red),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _acceptOrder() async {
+    if (_order == null) return;
+    final order = _order!;
+
+    try {
+      if (order.isWhatsAppOrder) {
+        await OrderService().acceptWhatsAppOrder(order.id);
+      } else {
+        await _db.updateOrderStatus(order.id, OrderStatus.preparing);
+      }
+      await _loadOrder();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Order #${order.orderNumber} accepted! Status updated to Preparing.'),
+            backgroundColor: const Color(0xFF10B981),
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to accept order: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currency = _db.restaurant?.currencySymbol ?? '₹';
@@ -361,7 +478,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     border: Border.all(color: const Color(0xFFE2E8F0)),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.04),
+                        color: Colors.black.withValues(alpha: 0.04),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
@@ -375,7 +492,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: const Color(0xFF082559).withOpacity(0.08),
+                              color: const Color(0xFF082559).withValues(alpha: 0.08),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(_getOrderTypeIcon(order.orderType),
@@ -416,9 +533,9 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.12),
+                              color: statusColor.withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: statusColor.withOpacity(0.4)),
+                              border: Border.all(color: statusColor.withValues(alpha: 0.4)),
                             ),
                             child: Text(
                               _getStatusLabel(effectiveStatus),
@@ -434,13 +551,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
                               color: order.isPaid
-                                  ? const Color(0xFF10B981).withOpacity(0.12)
-                                  : const Color(0xFFF59E0B).withOpacity(0.12),
+                                  ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                                  : const Color(0xFFF59E0B).withValues(alpha: 0.12),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: order.isPaid
-                                    ? const Color(0xFF10B981).withOpacity(0.4)
-                                    : const Color(0xFFF59E0B).withOpacity(0.4),
+                                    ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                                    : const Color(0xFFF59E0B).withValues(alpha: 0.4),
                               ),
                             ),
                             child: Text(
@@ -865,8 +982,43 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                 ),
                 const SizedBox(width: 10),
 
-                // Settle / Pay Button (if unpaid and not cancelled)
-                if (!order.isPaid && effectiveStatus != OrderStatus.cancelled) ...[
+                // Pending Order Actions: Prominent Cancel & Accept Buttons
+                if (effectiveStatus == OrderStatus.pending) ...[
+                  // Cancel Button
+                  Expanded(
+                    flex: 1,
+                    child: OutlinedButton.icon(
+                      onPressed: _cancelOrder,
+                      icon: const Icon(Icons.close_rounded, size: 16),
+                      label: const Text('Cancel'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFFDC2626),
+                        side: const BorderSide(color: Color(0xFFFCA5A5)),
+                        backgroundColor: const Color(0xFFFEE2E2),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+
+                  // Accept Order Button
+                  Expanded(
+                    flex: 2,
+                    child: ElevatedButton.icon(
+                      onPressed: _acceptOrder,
+                      icon: const Icon(Icons.check_circle_rounded, size: 18),
+                      label: const Text('Accept Order'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 0,
+                      ),
+                    ),
+                  ),
+                ] else if (!order.isPaid && effectiveStatus != OrderStatus.cancelled) ...[
                   Expanded(
                     flex: 2,
                     child: ElevatedButton.icon(

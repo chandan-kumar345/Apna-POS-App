@@ -9,9 +9,10 @@ import '../../features/notifications/models/notification_model.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/orders/whatsapp_order_action_dialog.dart';
 
-class LocalNotificationService {
+class LocalNotificationService with WidgetsBindingObserver {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
   factory LocalNotificationService() => _instance;
   LocalNotificationService._internal();
@@ -70,7 +71,9 @@ class LocalNotificationService {
               '';
           final itemsPayload = metadata['items'] ?? decoded['items'];
 
+          int attempts = 0;
           void tryShowOrderDialog() {
+            attempts++;
             final ctx = navigatorKey.currentContext;
             if (ctx != null) {
               WhatsAppOrderActionDialog.show(
@@ -84,8 +87,8 @@ class LocalNotificationService {
                 deliveryAddress: deliveryAddress,
                 itemsPayload: itemsPayload,
               );
-            } else {
-              Future.delayed(const Duration(milliseconds: 350), tryShowOrderDialog);
+            } else if (attempts < 30) {
+              Future.delayed(const Duration(milliseconds: 250), tryShowOrderDialog);
             }
           }
 
@@ -244,10 +247,49 @@ class LocalNotificationService {
         }
       }
 
+      try {
+        WidgetsBinding.instance.addObserver(this);
+      } catch (_) {}
+
+      // Check if launched by tapping a local notification or via FullScreenIntent
+      final launchDetails = await _notificationsPlugin.getNotificationAppLaunchDetails();
+      if (launchDetails != null && launchDetails.didNotificationLaunchApp) {
+        final payload = launchDetails.notificationResponse?.payload;
+        if (payload != null && payload.isNotEmpty) {
+          debugPrint('[LocalNotificationService] App launched via local notification fullScreenIntent: $payload');
+          _handleNotificationPayload(payload);
+        }
+      }
+
+      // Check SharedPreferences for any pending incoming orders delivered during background/sleep
+      checkAndShowPendingIncomingOrder();
+
       _isInitialized = true;
       debugPrint('[LocalNotificationService] Initialized with all Android channels successfully');
     } catch (e) {
       debugPrint('[LocalNotificationService] Initialization error: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      checkAndShowPendingIncomingOrder();
+    }
+  }
+
+  /// Check if a high-priority WhatsApp order was received while the phone was locked or app was killed
+  static Future<void> checkAndShowPendingIncomingOrder() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingJson = prefs.getString('pending_incoming_order_payload');
+      if (pendingJson != null && pendingJson.isNotEmpty) {
+        await prefs.remove('pending_incoming_order_payload');
+        debugPrint('[LocalNotificationService] Found pending background order in SharedPreferences: $pendingJson');
+        _handleNotificationPayload(pendingJson);
+      }
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error checking pending incoming order: $e');
     }
   }
 

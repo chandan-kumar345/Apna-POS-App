@@ -65,11 +65,23 @@ class AIAgentService {
         let desc = p.description ? ` - ${p.description}` : '';
         let tag = p.isVeg === false ? ' [Non-Veg]' : ' [Veg]';
         let best = p.isBestseller ? ' ⭐ Bestseller' : '';
-        let priceStr = `₹${p.price || 0}`;
-
+        let priceStr = '';
         if (p.variants && p.variants.length > 0) {
-          const varPrices = p.variants.map((v) => `${v.name}: ₹${v.price || v.salePrice}`).join(', ');
-          priceStr += ` (${varPrices})`;
+          const validVariantPrices = p.variants
+            .map((v) => (typeof v.price === 'number' && v.price > 0 ? v.price : (parseFloat(v.salePrice) || 0)))
+            .filter((pr) => pr > 0);
+          const minVariantPrice = validVariantPrices.length > 0 ? Math.min(...validVariantPrices) : (p.price || 0);
+          const varPrices = p.variants
+            .map((v) => `${v.name}: ₹${v.price || v.salePrice || minVariantPrice}`)
+            .join(', ');
+
+          if (minVariantPrice > 0) {
+            priceStr = `From ₹${minVariantPrice} (${varPrices})`;
+          } else {
+            priceStr = `(${varPrices})`;
+          }
+        } else {
+          priceStr = `₹${p.price || 0}`;
         }
 
         menuByCategory[catName].push(`• *${p.name}*: ${priceStr}${tag}${best}${desc}`);
@@ -245,6 +257,10 @@ CAPABILITIES & RULES:
 5. ${autoOrder ? `DIRECT ORDER TAKING INSTRUCTIONS:
 If the customer wants to order items from the menu (e.g. "pack 2 Masala Chai and 1 Sandwich", "order 1 Burger", "send 2 Pizza to ..."):
 - Warmly confirm the items, quantities, and calculate the exact total price in ₹ in your message text.
+- VARIANT PRICING RULE: If an item has variants (e.g. "Paneer Pizza" with "Half: ₹100, Full: ₹180") and the customer mentions a variant or portion size (Half, Full, Regular, Large, 500g, 1kg, etc.):
+  * Set "variant" to the chosen variant name (e.g. "Half").
+  * Set "price" to the exact price of that variant (e.g. 100), NEVER ₹0!
+  * If the customer did not specify a variant for a multi-variant item, pick the starting/standard variant price, NEVER ₹0!
 - AT THE VERY END OF YOUR RESPONSE, append a strict JSON block wrapped in \`\`\`order_data ... \`\`\` with:
 \`\`\`order_data
 {
@@ -254,8 +270,9 @@ If the customer wants to order items from the menu (e.g. "pack 2 Masala Chai and
   "items": [
     {
       "name": "Exact Name matching the LIVE RESTAURANT MENU",
+      "variant": "Half / Full / Regular / Large or empty string",
       "quantity": 2,
-      "price": 50,
+      "price": 100,
       "note": ""
     }
   ]
@@ -357,6 +374,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
                 for (const it of parsed.items) {
                   const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
                   const rawName = (it.name || '').trim();
+                  const rawVariant = (it.variant || '').trim();
                   if (!rawName) continue;
 
                   const matched = productsList.find(
@@ -365,13 +383,72 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
                            rawName.toLowerCase().includes(p.name.toLowerCase())
                   );
 
-                  const finalPrice = matched ? (matched.price || 0) : (parseFloat(it.price) || 0);
-                  const finalName = matched ? matched.name : rawName;
+                  let finalPrice = 0;
+                  let finalName = matched ? matched.name : rawName;
+                  let chosenVariant = null;
+
+                  if (matched) {
+                    if (Array.isArray(matched.variants) && matched.variants.length > 0) {
+                      // 1. Match variant by rawVariant
+                      if (rawVariant) {
+                        chosenVariant = matched.variants.find(
+                          (v) => v.name && v.name.toLowerCase() === rawVariant.toLowerCase()
+                        ) || matched.variants.find(
+                          (v) => v.name && (v.name.toLowerCase().includes(rawVariant.toLowerCase()) || rawVariant.toLowerCase().includes(v.name.toLowerCase()))
+                        );
+                      }
+                      // 2. Match variant mentioned in rawName
+                      if (!chosenVariant) {
+                        chosenVariant = matched.variants.find(
+                          (v) => v.name && rawName.toLowerCase().includes(v.name.toLowerCase())
+                        );
+                      }
+                      // 3. Match variant mentioned in incoming customer message text
+                      if (!chosenVariant && messageText) {
+                        chosenVariant = matched.variants.find(
+                          (v) => v.name && new RegExp(`\\b${v.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i').test(messageText)
+                        );
+                      }
+                      // 4. Match variant by provided it.price
+                      const parsedItPrice = parseFloat(it.price) || 0;
+                      if (!chosenVariant && parsedItPrice > 0) {
+                        chosenVariant = matched.variants.find(
+                          (v) => (v.price === parsedItPrice || v.salePrice === parsedItPrice)
+                        );
+                      }
+                      // 5. Fallback to first positive variant price
+                      if (!chosenVariant) {
+                        chosenVariant = matched.variants.find(
+                          (v) => (typeof v.price === 'number' && v.price > 0) || (parseFloat(v.salePrice) > 0)
+                        ) || matched.variants[0];
+                      }
+
+                      if (chosenVariant) {
+                        finalPrice = chosenVariant.price || chosenVariant.salePrice || 0;
+                        finalName = `${matched.name} (${chosenVariant.name})`;
+                      } else {
+                        finalPrice = matched.price || 0;
+                      }
+                    } else {
+                      finalPrice = (typeof matched.price === 'number' && matched.price > 0)
+                        ? matched.price
+                        : (parseFloat(it.price) || 0);
+                    }
+                  } else {
+                    finalPrice = parseFloat(it.price) || 0;
+                  }
+
+                  // If still 0 and it.price is positive, use it.price
+                  if (finalPrice <= 0 && parseFloat(it.price) > 0) {
+                    finalPrice = parseFloat(it.price);
+                  }
+
                   const foodType = matched ? (matched.isVeg === false ? 'non_veg' : 'veg') : 'veg';
 
                   validItems.push({
                     productId: matched ? matched._id : undefined,
                     name: finalName,
+                    variant: chosenVariant ? chosenVariant.name : (rawVariant || undefined),
                     price: finalPrice,
                     quantity: qty,
                     foodType,
@@ -552,10 +629,18 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     }
 
     // Order taking intent & direct POS order processing
-    if (/(order|chahiye|pack|deliver|parcel|bhejo|mangwa|send|lao|de do)/i.test(raw) && settings.autoOrderTaking !== false) {
+    const productsList = context.products || [];
+    const orderKeywordsRegex = /(order|chahiye|pack|deliver|parcel|bhejo|mangwa|send|lao|de do|please|want|need|give|send me|bring|plate|plates|half|full|glass|\d+\s*(?:x|plate|plates|pcs|half|full)?)/i;
+    const hasOrderKeyword = orderKeywordsRegex.test(raw);
+    const mentionsAnyProduct = productsList.some((prod) => {
+      if (!prod || !prod.name) return false;
+      const cleanName = prod.name.trim().toLowerCase();
+      return cleanName.length >= 3 && raw.includes(cleanName);
+    });
+
+    if ((hasOrderKeyword || mentionsAnyProduct) && settings.autoOrderTaking !== false) {
       const validItems = [];
       let calculatedSubtotal = 0;
-      const productsList = context.products || [];
 
       for (const prod of productsList) {
         if (!prod || !prod.name) continue;
@@ -567,10 +652,33 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
         const match = raw.match(regex);
         if (match) {
           const qty = parseInt(match[1] || match[2] || '1', 10) || 1;
-          const pPrice = typeof prod.price === 'number' ? prod.price : (parseFloat(prod.price) || 0);
+          let pPrice = typeof prod.price === 'number' ? prod.price : (parseFloat(prod.price) || 0);
+          let itemName = prod.name;
+          let variantName = '';
+
+          if (Array.isArray(prod.variants) && prod.variants.length > 0) {
+            let matchedVariant = null;
+            // Check if any variant name is mentioned in user message
+            for (const v of prod.variants) {
+              if (v.name && new RegExp(`\\b${v.name.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}\\b`, 'i').test(raw)) {
+                matchedVariant = v;
+                break;
+              }
+            }
+            if (!matchedVariant) {
+              matchedVariant = prod.variants.find((v) => (typeof v.price === 'number' && v.price > 0) || (parseFloat(v.salePrice) > 0)) || prod.variants[0];
+            }
+            if (matchedVariant) {
+              pPrice = matchedVariant.price || matchedVariant.salePrice || pPrice;
+              variantName = matchedVariant.name;
+              itemName = `${prod.name} (${matchedVariant.name})`;
+            }
+          }
+
           validItems.push({
             productId: prod._id,
-            name: prod.name,
+            name: itemName,
+            variant: variantName || undefined,
             price: pPrice,
             quantity: qty,
             foodType: prod.isVeg === false ? 'non_veg' : 'veg',

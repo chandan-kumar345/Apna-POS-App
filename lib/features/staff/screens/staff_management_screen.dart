@@ -91,17 +91,36 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       );
 
       if (result != null && mounted) {
-        if (result.staff.isEmpty && _db.orders.isNotEmpty) {
+        final cleanStaff = result.staff
+            .where((s) => !_db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email))
+            .toList();
+
+        if (cleanStaff.isEmpty && _db.orders.isNotEmpty) {
           _db.reconcileStaffWithOrders();
           _applyLocalFilter();
           setState(() => _isLoading = false);
           return;
         }
+
+        int act = 0;
+        int inact = 0;
+        int adm = 0;
+        for (final s in cleanStaff) {
+          if (s.isActive) act++;
+          if (!s.isActive) inact++;
+          if (s.isAdmin) adm++;
+        }
+
         setState(() {
-          _staffList = result.staff;
-          _totalCount = result.totalCount;
-          _totalPages = result.totalPages;
-          _stats = result.stats;
+          _staffList = cleanStaff;
+          _totalCount = cleanStaff.length;
+          _totalPages = (cleanStaff.length / _pageSize).ceil() > 0 ? (cleanStaff.length / _pageSize).ceil() : 1;
+          _stats = StaffStatsModel(
+            total: cleanStaff.length,
+            active: act,
+            inactive: inact,
+            admins: adm,
+          );
           _isLoading = false;
         });
         return;
@@ -117,10 +136,15 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
   }
 
   void _applyLocalFilter() {
+    _db.purgeOwnerFromStaffList();
     if (_db.staffList.isEmpty) {
       _db.reconcileStaffWithOrders();
     }
-    List<StaffModel> list = List.from(_db.staffList);
+    final nonOwnerStaff = _db.staffList
+        .where((s) => !_db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email))
+        .toList();
+
+    List<StaffModel> list = List.from(nonOwnerStaff);
 
     if (_selectedRole != 'All Roles') {
       list = list.where((s) => s.role.toLowerCase() == _selectedRole.toLowerCase()).toList();
@@ -155,7 +179,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
     int act = 0;
     int inact = 0;
     int adm = 0;
-    for (final s in _db.staffList) {
+    for (final s in nonOwnerStaff) {
       if (s.isActive) act++;
       if (!s.isActive) inact++;
       if (s.isAdmin) adm++;
@@ -166,7 +190,7 @@ class _StaffManagementScreenState extends State<StaffManagementScreen> {
       _totalCount = total;
       _totalPages = totalP;
       _stats = StaffStatsModel(
-        total: _db.staffList.length,
+        total: nonOwnerStaff.length,
         active: act,
         inactive: inact,
         admins: adm,

@@ -28,6 +28,7 @@ import 'dashboard_screen.dart';
 import '../subscription/screens/subscription_screen.dart';
 import '../subscription/widgets/subscription_locked_bottom_sheet.dart';
 import '../../core/services/subscription_service.dart';
+import '../../core/services/socket_service.dart';
 import '../campaign/screens/campaign_screen.dart';
 import '../staff/screens/staff_management_screen.dart';
 import '../staff/screens/staff_profile_screen.dart';
@@ -243,7 +244,10 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
         imageAsset: 'assets/images/Side bar icons/staff.png',
         iconColor: const Color(0xFF2563EB),
         iconBgColor: const Color(0xFFEFF6FF),
-        getBadge: (db) => '${db.staffList.length}',
+        getBadge: (db) {
+          final count = db.staffList.where((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email)).length;
+          return count > 0 ? '$count' : null;
+        },
         canAccess: (user) => _canAccessTab(10),
       ),
       NavItemDef(
@@ -477,6 +481,17 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     // Fetch latest subscription status from backend
     SubscriptionService().getStatus().catchError((_) => <String, dynamic>{});
+
+    // Ensure socket connection & rooms are active for real-time order alerts & notifications
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final bizId = db.currentBusinessId.isNotEmpty
+          ? db.currentBusinessId
+          : (db.currentUser?.businessId ?? db.restaurant?.id);
+      if (bizId != null && bizId.isNotEmpty) {
+        SocketService().connect(businessId: bizId);
+        SocketService().joinAllRelevantRooms(businessId: bizId, userId: db.currentUser?.id);
+      }
+    });
   }
 
   @override
@@ -803,8 +818,13 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
   }
 
   void _openStaffProfileDropdown() async {
-    final staffList = db.staffList;
-    if (staffList.isEmpty) return;
+    // Strictly exclude owner from staff list
+    final staffList = db.staffList.where((s) => !db.isOwnerPerson(
+      name: s.name,
+      role: s.role,
+      id: s.id,
+      email: s.email,
+    )).toList();
 
     final currentUser = db.currentUser;
     final rest = db.restaurant;
@@ -902,7 +922,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${staffList.length} staff member${staffList.length > 1 ? 's' : ''} available',
+                                staffList.isEmpty
+                                    ? 'No staff profiles added'
+                                    : '${staffList.length} staff member${staffList.length > 1 ? 's' : ''} available',
                                 style: const TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w500,
@@ -989,33 +1011,68 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                               ),
                             ),
 
-                            ...staffList.map((staff) {
-                              final bool isThisStaffActive = !isCurrentOwner &&
-                                  (currentUser.id == staff.id ||
-                                      (currentUser.employeeId != null && currentUser.employeeId == staff.employeeId));
-
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 8),
-                                child: _buildProfileSelectCard(
-                                  name: staff.name,
-                                  subtitle: staff.employeeId.isNotEmpty ? 'ID: ${staff.employeeId}' : 'Staff Member',
-                                  role: staff.role,
-                                  roleBgColor: staff.roleBgColor,
-                                  roleTextColor: staff.roleTextColor,
-                                  avatarUrl: staff.avatarUrl,
-                                  fallbackInitials: staff.initials,
-                                  isOwner: false,
-                                  isActive: isThisStaffActive,
-                                  onTap: () async {
-                                    Navigator.of(ctx).pop();
-                                    if (!isThisStaffActive) {
-                                      await db.switchToStaff(staff);
-                                      _onProfileSwitched(staff.name, staff.role, defaultScreen: staff.defaultScreen);
-                                    }
-                                  },
+                            if (staffList.isEmpty)
+                              Container(
+                                margin: const EdgeInsets.only(top: 6, bottom: 10),
+                                padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(color: const Color(0xFFE2E8F0)),
                                 ),
-                              );
-                            }),
+                                alignment: Alignment.center,
+                                child: const Column(
+                                  children: [
+                                    Icon(Icons.badge_outlined, size: 32, color: Color(0xFF94A3B8)),
+                                    SizedBox(height: 8),
+                                    Text(
+                                      'No Staff Profiles Added',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF475569),
+                                      ),
+                                    ),
+                                    SizedBox(height: 3),
+                                    Text(
+                                      'Add staff members in Staff Setting to switch profiles.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Color(0xFF94A3B8),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              ...staffList.map((staff) {
+                                final bool isThisStaffActive = !isCurrentOwner &&
+                                    (currentUser.id == staff.id ||
+                                        (currentUser.employeeId != null && currentUser.employeeId == staff.employeeId));
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8),
+                                  child: _buildProfileSelectCard(
+                                    name: staff.name,
+                                    subtitle: staff.employeeId.isNotEmpty ? 'ID: ${staff.employeeId}' : 'Staff Member',
+                                    role: staff.role,
+                                    roleBgColor: staff.roleBgColor,
+                                    roleTextColor: staff.roleTextColor,
+                                    avatarUrl: staff.avatarUrl,
+                                    fallbackInitials: staff.initials,
+                                    isOwner: false,
+                                    isActive: isThisStaffActive,
+                                    onTap: () async {
+                                      Navigator.of(ctx).pop();
+                                      if (!isThisStaffActive) {
+                                        await db.switchToStaff(staff);
+                                        _onProfileSwitched(staff.name, staff.role, defaultScreen: staff.defaultScreen);
+                                      }
+                                    },
+                                  ),
+                                );
+                              }),
                           ],
                         ),
                       ),
@@ -1677,11 +1734,12 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                   // HIGHLIGHTED COMPANY NAME WITH DROPDOWN IF STAFF MEMBERS EXIST
                                   GlassCompanyNameBadge(
                                     name: companyTitle,
-                                    hasDropdown: db.staffList.isNotEmpty,
+                                    hasDropdown: db.staffList.where((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email)).isNotEmpty,
                                     isDropdownOpen: _isStaffDropdownOpen,
                                     isNeumorphic: false,
                                     onTap: () {
-                                      if (db.staffList.isNotEmpty) {
+                                      final hasStaff = db.staffList.any((s) => !db.isOwnerPerson(name: s.name, role: s.role, id: s.id, email: s.email));
+                                      if (hasStaff) {
                                         _openStaffProfileDropdown();
                                       } else {
                                         _toggleSidebar();

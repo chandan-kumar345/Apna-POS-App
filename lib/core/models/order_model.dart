@@ -433,11 +433,18 @@ class OrderModel {
     return totalAmount > 0 ? totalAmount : calc;
   }
 
+  DateTime? _cachedDateTime;
+
   /// Helper to safely resolve the exact DateTime of this order in local timezone
   DateTime get createdDateTime {
+    if (_cachedDateTime != null) return _cachedDateTime!;
+
     if (createdAt.isNotEmpty) {
       final parsed = DateTime.tryParse(createdAt);
-      if (parsed != null) return parsed.isUtc ? parsed.toLocal() : parsed;
+      if (parsed != null) {
+        _cachedDateTime = parsed.isUtc ? parsed.toLocal() : parsed;
+        return _cachedDateTime!;
+      }
     }
     // Fallback 1: try parsing orderNumber if formatted with date/time prefix (e.g. YYYYMMDD-HHmmss...)
     final cleanNum = orderNumber.replaceAll(RegExp(r'^#'), '').trim();
@@ -459,7 +466,8 @@ class OrderModel {
           if (parsedM != null) min = parsedM;
           if (parsedS != null) sec = parsedS;
         }
-        return DateTime(y, m, d, hour, min, sec);
+        _cachedDateTime = DateTime(y, m, d, hour, min, sec);
+        return _cachedDateTime!;
       }
     }
     // Fallback 2: If createdAt is a time format like "19:42" or "19:42:00"
@@ -468,9 +476,11 @@ class OrderModel {
       final h = int.tryParse(parts[0]) ?? 0;
       final m = int.tryParse(parts.length > 1 ? parts[1].substring(0, 2) : '0') ?? 0;
       final now = DateTime.now();
-      return DateTime(now.year, now.month, now.day, h, m);
+      _cachedDateTime = DateTime(now.year, now.month, now.day, h, m);
+      return _cachedDateTime!;
     }
-    return DateTime.now();
+    _cachedDateTime = DateTime.now();
+    return _cachedDateTime!;
   }
 
   /// Whether this order originated from WhatsApp

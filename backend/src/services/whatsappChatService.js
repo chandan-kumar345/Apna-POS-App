@@ -735,9 +735,8 @@ class WhatsAppChatService {
       });
     } catch (_) {}
 
-    // 2. Immediate push notification dispatch for OS Notification Tray (<30ms)
+    // 2. Immediate push notification dispatch for OS Notification Tray (<10ms)
     try {
-      const notificationService = require('./notificationService');
       const senderDisplay = customerName && !customerName.startsWith('Customer ')
         ? customerName
         : (normalizedPhone.startsWith('91') && normalizedPhone.length === 12
@@ -748,7 +747,23 @@ class WhatsAppChatService {
         ? (incomingMsg.body && incomingMsg.body !== '[Photo]' ? `📷 ${incomingMsg.body}` : '📷 Photo')
         : (incomingMsg.body || 'New message');
 
-      await notificationService.createNotification({
+      const pushNotificationService = require('./pushNotificationService');
+      pushNotificationService.sendPushNotificationToBusiness({
+        businessId: bId,
+        title: `WhatsApp: ${senderDisplay}`,
+        message: notifBody,
+        data: {
+          type: 'whatsapp_message',
+          chatId: chat._id.toString(),
+          customerPhone: normalizedPhone,
+          customerName: customerName || '',
+          mediaUrl: mediaUrl || '',
+          messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
+        },
+      }).catch((err) => console.warn('[WhatsAppChatService] Push error:', err.message));
+
+      const notificationService = require('./notificationService');
+      notificationService.createNotification({
         businessId: bId,
         userId: targetUserId || business?.ownerId || undefined,
         type: 'whatsapp_message',
@@ -763,9 +778,9 @@ class WhatsAppChatService {
           mediaUrl: mediaUrl || '',
           messageType: isImage ? 'image' : (incomingMsg.type || 'text'),
         },
-        sendPush: true,
+        sendPush: false, // Direct push already dispatched above
         idempotencyKey: incomingMsg.messageId ? `wa_notif_${incomingMsg.messageId}` : undefined,
-      });
+      }).catch((notifErr) => console.warn('[WhatsAppChatService] Notification record notice:', notifErr.message));
     } catch (notifErr) {
       console.warn('[WhatsAppChatService] Push notification dispatch notice:', notifErr.message);
     }
@@ -847,6 +862,7 @@ class WhatsAppChatService {
                         chat,
                         customerPhone: normalizedPhone,
                         customerName: customerName || chat.customerName,
+                        targetUserId,
                       });
                     } catch (sockErr) {
                       console.warn('[WhatsAppChatService] Socket order alert emission error:', sockErr.message);

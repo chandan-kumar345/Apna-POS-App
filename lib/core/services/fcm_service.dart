@@ -7,6 +7,9 @@ import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
 import '../security/secure_storage_service.dart';
 import 'local_notification_service.dart';
+import '../../features/notifications/models/notification_model.dart';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Top-level background message handler invoked by OS when app is terminated or in background
 @pragma('vm:entry-point')
@@ -16,6 +19,18 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   } catch (_) {}
   debugPrint('[FCM Background] Message received in background/terminated state: ${message.messageId} (Data: ${message.data})');
   try {
+    final data = message.data;
+    final typeStr = data['type']?.toString();
+    if (typeStr == 'whatsapp_order_request' ||
+        typeStr == 'whatsapp_new_order' ||
+        typeStr == 'whatsapp_order') {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_incoming_order_payload', jsonEncode(data));
+      } catch (err) {
+        debugPrint('[FCM Background] Error caching pending order in prefs: $err');
+      }
+    }
     await LocalNotificationService.showNotificationFromRemoteMessage(message);
   } catch (e) {
     debugPrint('[FCM Background] Error displaying native notification: $e');
@@ -99,6 +114,9 @@ class FcmService {
         _handleNotificationTap(initialMessage);
       }
 
+      // Proactively check if a pending incoming order was queued while app was sleeping/locked
+      LocalNotificationService.checkAndShowPendingIncomingOrder();
+
       _isInitialized = true;
       debugPrint('[FcmService] Initialized successfully');
     } catch (e) {
@@ -114,26 +132,31 @@ class FcmService {
     final body = notification?.body ?? data['message'] ?? '';
     final typeStr = data['type']?.toString() ?? 'system';
 
-    // Suppress regular internal POS order notifications, but NEVER suppress WhatsApp incoming orders!
     final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
+        typeStr == 'whatsapp_order' ||
         typeStr == 'whatsapp_new_order' ||
-        typeStr == 'whatsapp_order';
+        data['entityType'] == 'whatsapp_order';
 
-    if (!isWhatsAppOrder && (typeStr == 'new_order' || typeStr == 'newOrder')) return;
+    final isOrder = isWhatsAppOrder ||
+        typeStr == 'new_order' ||
+        typeStr == 'newOrder' ||
+        typeStr == 'order_created';
 
     LocalNotificationService().showPushNotification(
       title: title,
       body: body,
       payload: jsonEncode(data),
-      type: LocalNotificationService().resolveNotificationType(typeStr),
+      type: isWhatsAppOrder
+          ? NotificationType.whatsappOrderRequest
+          : LocalNotificationService().resolveNotificationType(typeStr),
       entityType: data['entityType']?.toString(),
       entityId: data['entityId']?.toString(),
       metadata: data,
       playSound: true,
     );
 
-    // If app is currently in foreground, directly trigger the action dialog
-    if (isWhatsAppOrder) {
+    // If order alert received, directly trigger the action dialog
+    if (isOrder) {
       LocalNotificationService.handlePayloadDirectly(data);
     }
   }

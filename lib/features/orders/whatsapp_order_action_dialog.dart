@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../../core/database/database_service.dart';
+import '../../core/models/order_model.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/sound_service.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
@@ -75,24 +76,27 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
       SoundService.playNotificationSound();
     } catch (_) {}
 
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => WhatsAppOrderActionDialog(
-        orderId: orderId,
-        orderNumber: orderNumber,
-        customerPhone: customerPhone,
-        customerName: customerName ?? 'Customer',
-        totalAmount: totalAmount,
-        orderType: orderType ?? 'takeaway',
-        deliveryAddress: deliveryAddress ?? '',
-        items: parsedItems,
-        createdAt: createdAt ?? DateTime.now(),
-      ),
-    );
-
-    _isShowing = false;
-    _currentShowingOrderId = null;
+    try {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        useRootNavigator: true,
+        builder: (_) => WhatsAppOrderActionDialog(
+          orderId: orderId,
+          orderNumber: orderNumber,
+          customerPhone: customerPhone,
+          customerName: customerName ?? 'Customer',
+          totalAmount: totalAmount,
+          orderType: orderType ?? 'takeaway',
+          deliveryAddress: deliveryAddress ?? '',
+          items: parsedItems,
+          createdAt: createdAt ?? DateTime.now(),
+        ),
+      );
+    } finally {
+      _isShowing = false;
+      _currentShowingOrderId = null;
+    }
   }
 
   @override
@@ -129,43 +133,36 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     setState(() => _isProcessing = true);
 
     try {
-      final success = await _orderService.acceptWhatsAppOrder(
+      // 1. Optimistic instant local status change to preparing (0ms!)
+      _db.updateOrderStatusLocally(widget.orderId, OrderStatus.preparing);
+
+      // 2. Dispatch backend acceptance in parallel
+      await _orderService.acceptWhatsAppOrder(
         widget.orderId,
         prepTimeMinutes: _selectedPrepTime,
       );
 
       if (mounted) {
-        if (success) {
-          _db.syncTablesAndOrdersSilently().catchError((_) {});
-          Navigator.of(context, rootNavigator: true).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.check_circle_rounded, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Order #${widget.orderNumber} Accepted! Confirmation sent to customer on WhatsApp.',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle_rounded, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Order #${widget.orderNumber} Accepted! Confirmation sent to customer on WhatsApp.',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                ],
-              ),
-              backgroundColor: const Color(0xFF0F9D58),
-              duration: const Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
+                ),
+              ],
             ),
-          );
-        } else {
-          setState(() => _isProcessing = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to accept order. Please check network connection.'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
+            backgroundColor: const Color(0xFF0F9D58),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -293,43 +290,36 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     setState(() => _isProcessing = true);
 
     try {
-      final success = await _orderService.rejectWhatsAppOrder(
+      // 1. Optimistic instant local status change to cancelled (0ms!)
+      _db.updateOrderStatusLocally(widget.orderId, OrderStatus.cancelled);
+
+      // 2. Dispatch backend rejection in parallel
+      await _orderService.rejectWhatsAppOrder(
         widget.orderId,
         reason: finalReason,
       );
 
       if (mounted) {
-        if (success) {
-          _db.syncTablesAndOrdersSilently().catchError((_) {});
-          Navigator.of(context, rootNavigator: true).pop();
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Row(
-                children: [
-                  const Icon(Icons.info_outline, color: Colors.white),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      'Order #${widget.orderNumber} declined. Customer notified on WhatsApp.',
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.info_outline, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Order #${widget.orderNumber} declined. Customer notified on WhatsApp.',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                ],
-              ),
-              backgroundColor: Colors.blueGrey.shade800,
-              duration: const Duration(seconds: 4),
-              behavior: SnackBarBehavior.floating,
+                ),
+              ],
             ),
-          );
-        } else {
-          setState(() => _isProcessing = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to decline order. Please check network connection.'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
-        }
+            backgroundColor: Colors.blueGrey.shade800,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
