@@ -6,8 +6,9 @@ import '../../core/services/whatsapp_chat_service.dart';
 
 /// Clean Modern Theme for AI Chat Agent Screen matching reference design
 class _AiTheme {
-  static const Color headerNavyStart = Color(0xFF1E3A8A);
-  static const Color headerNavyEnd = Color(0xFF172554);
+  static const Color headerNavyStart = Color(0xFF031024); // Deep Midnight Navy (from POS screen)
+  static const Color headerNavyMid = Color(0xFF072146);   // Rich Royal Navy (from POS screen)
+  static const Color headerNavyEnd = Color(0xFF0A2E5C);   // Deep Indigo Blue (from POS screen)
   static const Color pageBackground = Color(0xFFF1F5F9);
   static const Color cardBg = Colors.white;
   static const Color cardBorder = Color(0xFFE2E8F0);
@@ -459,7 +460,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     final restaurantName = _db.restaurant?.name ?? 'Pizza 47';
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1E3A8A), // Seamless background behind top bar
+      backgroundColor: _AiTheme.headerNavyStart, // Matching POS screen midnight navy
       body: SafeArea(
         bottom: false,
         child: Column(
@@ -534,14 +535,18 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 1. Top Header Bar (Matching the uploaded image)
+  // 1. Top Header Bar (Matching the POS Screen palette)
   Widget _buildTopAppBar(String restaurantName) {
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [_AiTheme.headerNavyStart, _AiTheme.headerNavyEnd],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          colors: [
+            _AiTheme.headerNavyStart, // Deep Midnight Navy
+            _AiTheme.headerNavyMid,   // Rich Royal Navy
+            _AiTheme.headerNavyEnd,   // Deep Indigo Blue
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
       ),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
@@ -837,39 +842,34 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           ),
           const SizedBox(height: 14),
 
-          // Two side-by-side sub-cards (Mint Green & Lavender Purple)
+          // Two side-by-side compact sub-cards (NO ICONS, SMALLER SIZE)
           Row(
             children: [
               // Sub-card 1: Auto-Create POS Order
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFFDCFCE7), width: 1.0),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFDCFCE7),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.receipt_long_rounded, size: 16, color: _AiTheme.greenBrand),
-                          ),
                           Transform.scale(
-                            scale: 0.8,
+                            scale: 0.72,
+                            alignment: Alignment.centerRight,
                             child: Switch(
                               value: _autoOrderTaking,
                               activeTrackColor: const Color(0xFF22C55E),
                               activeThumbColor: Colors.white,
                               inactiveTrackColor: const Color(0xFFCBD5E1),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               onChanged: (val) {
                                 HapticFeedback.lightImpact();
                                 setState(() => _autoOrderTaking = val);
@@ -878,60 +878,58 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 2),
                       const Text(
-                        'Auto-Create\nPOS Order',
+                        'Auto-Create POS Order',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: _AiTheme.textDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Directly take orders from chat.',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          color: _AiTheme.textMuted,
                           height: 1.2,
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        'Directly take orders from WhatsApp chat.',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: _AiTheme.textMuted,
-                          height: 1.25,
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               // Sub-card 2: Suggest Bestsellers
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFAF5FF),
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: const Color(0xFFF3E8FF), width: 1.0),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF3E8FF),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Icon(Icons.star_rounded, size: 16, color: _AiTheme.purpleBrand),
-                          ),
                           Transform.scale(
-                            scale: 0.8,
+                            scale: 0.72,
+                            alignment: Alignment.centerRight,
                             child: Switch(
                               value: _autoMenuSuggest,
                               activeTrackColor: const Color(0xFF22C55E),
                               activeThumbColor: Colors.white,
                               inactiveTrackColor: const Color(0xFFCBD5E1),
+                              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               onChanged: (val) {
                                 HapticFeedback.lightImpact();
                                 setState(() => _autoMenuSuggest = val);
@@ -940,24 +938,27 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 2),
                       const Text(
-                        'Suggest\nBestsellers',
+                        'Suggest Bestsellers',
                         style: TextStyle(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
                           color: _AiTheme.textDark,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 2),
+                      const Text(
+                        'Recommend popular items.',
+                        style: TextStyle(
+                          fontSize: 9.5,
+                          color: _AiTheme.textMuted,
                           height: 1.2,
                         ),
-                      ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        'Recommend popular items to customers.',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          color: _AiTheme.textMuted,
-                          height: 1.25,
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
@@ -1145,7 +1146,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? const Color(0xFFF5F3FF) : const Color(0xFFF8FAFC),
           borderRadius: BorderRadius.circular(12),
@@ -1158,44 +1159,30 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           children: [
             // Persona Circle Icon
             Container(
-              width: 32,
-              height: 32,
+              width: 30,
+              height: 30,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isSelected ? _AiTheme.purpleBrand : const Color(0xFFE2E8F0),
               ),
               child: Icon(
                 p['icon'] as IconData,
-                size: 16,
+                size: 15,
                 color: isSelected ? Colors.white : const Color(0xFF475569),
               ),
             ),
             const SizedBox(width: 8),
-            // Title & Description
+            // Label only (description removed)
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    p['label'] as String,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: isSelected ? _AiTheme.purpleBrand : _AiTheme.textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    p['desc'] as String,
-                    style: const TextStyle(
-                      fontSize: 10,
-                      color: _AiTheme.textMuted,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+              child: Text(
+                p['label'] as String,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: isSelected ? _AiTheme.purpleBrand : _AiTheme.textDark,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
             // Trailing Checked / Radio Icon
@@ -1534,7 +1521,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
   Widget _buildSaveButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF0F172A),
+        backgroundColor: _AiTheme.headerNavyStart,
         padding: const EdgeInsets.symmetric(vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 2,
