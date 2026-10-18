@@ -3193,38 +3193,40 @@ class DatabaseService extends ChangeNotifier {
     await _saveMenuToPrefs();
     notifyListeners();
 
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-') || item.id.startsWith('item_')) {
-          final created = await _productService.createProduct(item);
-          final newIdx = menuItems.indexWhere((element) =>
-              element.id == item.id ||
-              (element.productId.isNotEmpty && element.productId == item.productId) ||
-              element.name.trim().toLowerCase() == cleanName);
-          if (newIdx >= 0) {
-            menuItems[newIdx] = created;
-            _deduplicateMenuItems();
-            await _saveMenuToPrefs();
-            notifyListeners();
-          }
-        } else {
-          final updated = await _productService.updateProduct(item);
-          final newIdx = menuItems.indexWhere((element) =>
-              element.id == item.id ||
-              (element.productId.isNotEmpty && element.productId == item.productId) ||
-              element.name.trim().toLowerCase() == cleanName);
-          if (newIdx >= 0) {
-            menuItems[newIdx] = updated;
-            _deduplicateMenuItems();
-            await _saveMenuToPrefs();
-            notifyListeners();
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          if (isNewItem || item.id.startsWith('prod_') || item.id.startsWith('TEMP_') || item.id.startsWith('PRD-') || item.id.startsWith('item_')) {
+            final created = await _productService.createProduct(item);
+            final newIdx = menuItems.indexWhere((element) =>
+                element.id == item.id ||
+                (element.productId.isNotEmpty && element.productId == item.productId) ||
+                element.name.trim().toLowerCase() == cleanName);
+            if (newIdx >= 0) {
+              menuItems[newIdx] = created;
+              _deduplicateMenuItems();
+              await _saveMenuToPrefs();
+              notifyListeners();
+            }
+          } else {
+            final updated = await _productService.updateProduct(item);
+            final newIdx = menuItems.indexWhere((element) =>
+                element.id == item.id ||
+                (element.productId.isNotEmpty && element.productId == item.productId) ||
+                element.name.trim().toLowerCase() == cleanName);
+            if (newIdx >= 0) {
+              menuItems[newIdx] = updated;
+              _deduplicateMenuItems();
+              await _saveMenuToPrefs();
+              notifyListeners();
+            }
           }
         }
+      } catch (e) {
+        debugPrint('[DatabaseService.saveMenuItem] API error: $e');
       }
-    } catch (e) {
-      debugPrint('[DatabaseService.saveMenuItem] API error: $e');
-    }
+    }());
   }
 
   /// Bulk import products from CSV and sync to both local cache and cloud MongoDB backend
@@ -3286,14 +3288,16 @@ class DatabaseService extends ChangeNotifier {
     await _saveMenuToPrefs();
     notifyListeners();
 
-    try {
-      final isAuth = await _authService.isAuthenticated();
-      if (isAuth) {
-        await _productService.deleteProduct(id);
+    unawaited(() async {
+      try {
+        final isAuth = await _authService.isAuthenticated();
+        if (isAuth) {
+          await _productService.deleteProduct(id);
+        }
+      } catch (e) {
+        debugPrint('[DatabaseService.deleteMenuItem] API error: $e');
       }
-    } catch (e) {
-      debugPrint('[DatabaseService.deleteMenuItem] API error: $e');
-    }
+    }());
   }
 
   Future<void> toggleMenuItemAvailability(String id) async {
@@ -3304,14 +3308,16 @@ class DatabaseService extends ChangeNotifier {
       await _saveMenuToPrefs();
       notifyListeners();
 
-      try {
-        final isAuth = await _authService.isAuthenticated();
-        if (isAuth) {
-          await _productService.updateProduct(updated);
+      unawaited(() async {
+        try {
+          final isAuth = await _authService.isAuthenticated();
+          if (isAuth) {
+            await _productService.updateProduct(updated);
+          }
+        } catch (e) {
+          debugPrint('[DatabaseService.toggleMenuItemAvailability] API error: $e');
         }
-      } catch (e) {
-        debugPrint('[DatabaseService.toggleMenuItemAvailability] API error: $e');
-      }
+      }());
     }
   }
 

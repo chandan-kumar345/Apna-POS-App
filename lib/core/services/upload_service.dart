@@ -60,7 +60,11 @@ class UploadService {
       final response = await _client.post(
         '${ApiEndpoints.uploadImage}?folder=$folder',
         data: formData,
-        options: Options(contentType: 'multipart/form-data'),
+        options: Options(
+          contentType: 'multipart/form-data',
+          sendTimeout: const Duration(seconds: 8),
+          receiveTimeout: const Duration(seconds: 12),
+        ),
       );
 
       if (response != null && response is Map<String, dynamic>) {

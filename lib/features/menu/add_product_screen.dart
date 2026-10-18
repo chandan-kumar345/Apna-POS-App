@@ -21,6 +21,7 @@ class ProductImageItem {
   String? remoteUrl;
   bool isUploading;
   String? error;
+  Future<void>? uploadFuture;
 
   ProductImageItem({
     this.path,
@@ -29,6 +30,7 @@ class ProductImageItem {
     this.remoteUrl,
     this.isUploading = false,
     this.error,
+    this.uploadFuture,
   });
 
   bool get isRemote =>
@@ -268,8 +270,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
               name: file.name,
               isUploading: true,
             );
+            item.uploadFuture = _startBackgroundUpload(item);
             _selectedImages.add(item);
-            _startBackgroundUpload(item);
             count++;
           }
         }
@@ -300,8 +302,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
             name: pf.name,
             isUploading: true,
           );
+          item.uploadFuture = _startBackgroundUpload(item);
           _selectedImages.add(item);
-          _startBackgroundUpload(item);
         }
         setState(() {
           _isImageLoading = false;
@@ -322,6 +324,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       item.isUploading = false;
       return;
     }
+    item.isUploading = true;
     try {
       String? uploadedUrl;
       if (item.bytes != null && item.bytes!.isNotEmpty) {
@@ -330,11 +333,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
           fileName: (item.name != null && item.name!.isNotEmpty)
               ? item.name!
               : 'prod_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        );
+        ).timeout(const Duration(seconds: 8), onTimeout: () => null);
       } else if (item.path != null && item.path!.isNotEmpty) {
         final f = File(item.path!);
         if (f.existsSync()) {
-          uploadedUrl = await UploadService().uploadImage(f);
+          uploadedUrl = await UploadService().uploadImage(f).timeout(const Duration(seconds: 8), onTimeout: () => null);
         }
       }
       if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
@@ -381,7 +384,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       }
 
-      final playablePath = await YouTubeService.getPlayableVideoPath(cleanSource);
+      final playablePath = await YouTubeService.getPlayableVideoPath(cleanSource).timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
       if (playablePath == null || playablePath.isEmpty) {
         throw Exception('Could not resolve playable video: $cleanSource');
       }
@@ -419,7 +425,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       }
 
-      await _previewVideoController!.initialize();
+      await _previewVideoController!.initialize().timeout(const Duration(seconds: 4));
       await _previewVideoController!.setVolume(_isVideoMuted ? 0.0 : 1.0);
       await _previewVideoController!.setLooping(true);
       _previewVideoController!.addListener(() {
@@ -531,6 +537,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
     });
   }
 
+  static final Map<String, Uint8List> _base64Cache = {};
+
   Widget _buildProductImageItem(ProductImageItem item) {
     Widget content;
     if (item.bytes != null && item.bytes!.isNotEmpty) {
@@ -543,8 +551,36 @@ class _AddProductScreenState extends State<AddProductScreen> {
         cacheHeight: 400,
       );
     } else {
-      final resolvedUrl = ApiEndpoints.resolveMediaUrl(item.remoteUrl ?? item.path);
-      if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+      final rawPath = item.remoteUrl ?? item.path ?? '';
+      final resolvedUrl = ApiEndpoints.resolveMediaUrl(rawPath);
+      if (resolvedUrl.startsWith('data:image') || resolvedUrl.startsWith('data:')) {
+        Uint8List? cached = _base64Cache[resolvedUrl];
+        if (cached == null) {
+          final comma = resolvedUrl.indexOf(',');
+          if (comma != -1) {
+            try {
+              cached = base64Decode(resolvedUrl.substring(comma + 1).replaceAll('\n', '').replaceAll('\r', '').trim());
+              if (_base64Cache.length > 150) _base64Cache.clear();
+              _base64Cache[resolvedUrl] = cached;
+            } catch (_) {}
+          }
+        }
+        if (cached != null) {
+          content = Image.memory(
+            cached,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            cacheWidth: 400,
+            cacheHeight: 400,
+          );
+        } else {
+          content = Container(
+            color: const Color(0xFFE5EDF6),
+            child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
+          );
+        }
+      } else if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
         content = Image.network(
           resolvedUrl,
           fit: BoxFit.cover,
@@ -889,57 +925,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
       final stockVal = int.tryParse(_stockController.text.trim()) ?? 50;
 
-      // 1. Process & Upload All Images Concurrently
+      // 1. Process & Upload All Images Concurrently (Fast, non-blocking pipeline)
       final uploadTasks = _selectedImages.map((img) async {
-        // A. Already uploaded in background or remote
+        // A. Already uploaded in background or remote URL
         if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
           return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
         }
 
-        // B. Wait if background upload is in-flight
-        while (img.isUploading) {
-          await Future.delayed(const Duration(milliseconds: 50));
-        }
-        if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
-          return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
-        }
-
-        // C. Upload bytes in parallel
-        if (img.bytes != null && img.bytes!.isNotEmpty) {
+        // B. Await in-flight background upload with a strict 3-second cap
+        if (img.uploadFuture != null && img.isUploading) {
           try {
-            final uploadedUrl = await UploadService().uploadImageBytes(
-              img.bytes!,
-              fileName: (img.name != null && img.name!.isNotEmpty)
-                  ? img.name!
-                  : 'product_${DateTime.now().millisecondsSinceEpoch}.jpg',
-            );
-            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-              img.remoteUrl = uploadedUrl;
-              return ApiEndpoints.resolveMediaUrl(uploadedUrl);
-            }
-          } catch (e) {
-            debugPrint('[AddProductScreen] image bytes upload error: $e');
-          }
+            await img.uploadFuture!.timeout(const Duration(seconds: 3));
+          } catch (_) {}
+        }
+        if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
+          return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
+        }
+
+        // C. Ultra-fast fallback: use compressed bytes as base64 or local path (never hangs!)
+        if (img.bytes != null && img.bytes!.isNotEmpty) {
           return 'data:image/jpeg;base64,${base64Encode(img.bytes!)}';
         }
-
-        // D. Upload local file in parallel
         if (img.path != null && img.path!.isNotEmpty) {
-          if (img.path!.startsWith('http://') || img.path!.startsWith('https://') || img.path!.startsWith('data:')) {
-            return img.path!;
-          }
-          try {
-            final file = File(img.path!);
-            if (file.existsSync()) {
-              final uploadedUrl = await UploadService().uploadImage(file);
-              if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-                img.remoteUrl = uploadedUrl;
-                return ApiEndpoints.resolveMediaUrl(uploadedUrl);
-              }
-            }
-          } catch (e) {
-            debugPrint('[AddProductScreen] image file upload error: $e');
-          }
           return img.path!;
         }
         return '';
@@ -966,7 +973,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         try {
           final file = File(_selectedVideoPath!);
           if (file.existsSync()) {
-            final uploadedVideo = await UploadService().uploadVideo(file, folder: 'products/videos');
+            final uploadedVideo = await UploadService().uploadVideo(file, folder: 'products/videos').timeout(
+              const Duration(seconds: 12),
+              onTimeout: () => null,
+            );
             if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
               finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);
             }
@@ -980,6 +990,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
             _selectedVideoBytes!,
             fileName: _selectedVideoFileName ?? 'video_${DateTime.now().millisecondsSinceEpoch}.mp4',
             folder: 'products/videos',
+          ).timeout(
+            const Duration(seconds: 12),
+            onTimeout: () => null,
           );
           if (uploadedVideo != null && uploadedVideo.isNotEmpty) {
             finalVideoUrl = ApiEndpoints.resolveMediaUrl(uploadedVideo);
@@ -1047,7 +1060,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       backgroundColor: const Color(0xFF021B54),
       body: Center(
         child: ConstrainedBox(

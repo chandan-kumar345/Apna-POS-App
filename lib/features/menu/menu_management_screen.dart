@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -55,6 +56,47 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   final Set<String> _selectedProductIds = {};
   final Set<String> _disabledCategories = {};
 
+  Timer? _searchDebounceTimer;
+
+  Map<String, int> _getCategoryProductCounts() {
+    final Map<String, int> counts = {};
+    for (final m in _db.menuItems) {
+      final c = m.category.trim().toLowerCase();
+      counts[c] = (counts[c] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  void _onGlobalSearchChanged(String val) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _globalSearch = val);
+    });
+  }
+
+  void _clearGlobalSearch() {
+    _searchDebounceTimer?.cancel();
+    setState(() {
+      _globalSearch = '';
+      _productsSearchController.clear();
+    });
+  }
+
+  void _onCategorySearchChanged(String val) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(const Duration(milliseconds: 150), () {
+      if (mounted) setState(() => _categorySearchQuery = val);
+    });
+  }
+
+  void _clearCategorySearch() {
+    _searchDebounceTimer?.cancel();
+    setState(() {
+      _categorySearchQuery = '';
+      _categorySearchController.clear();
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -65,6 +107,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _db.removeListener(_onDbChange);
     _categorySearchController.dispose();
     _categorySearchFocus.dispose();
@@ -204,19 +247,6 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     }
 
     return list;
-  }
-
-  // --- Category Statistics ---
-  int _getCategoryActiveCount(String category) {
-    final catLower = category.trim().toLowerCase();
-    return _db.menuItems.where((m) => m.category.trim().toLowerCase() == catLower && m.isAvailable).length;
-  }
-
-  int _getCategoryTotalStock(String category) {
-    final catLower = category.trim().toLowerCase();
-    return _db.menuItems
-        .where((m) => m.category.trim().toLowerCase() == catLower)
-        .fold(0, (sum, m) => sum + (m.stockQuantity > 0 ? m.stockQuantity : 0));
   }
 
   // --- Category Actions ---
@@ -583,6 +613,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     final isDesktop = MediaQuery.of(context).size.width >= 850;
 
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       backgroundColor: isDesktop ? const Color(0xFFF8FAFC) : const Color(0xFFEDF3FA),
       body: SafeArea(
         child: Column(
@@ -706,7 +737,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                     border: Border.all(color: const Color(0xFFCBD5E1), width: 1.1),
                   ),
                   child: TextField(
-                    onChanged: (val) => setState(() => _globalSearch = val),
+                    onChanged: _onGlobalSearchChanged,
                     style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                     decoration: InputDecoration(
                       hintText: 'Search menu...',
@@ -715,7 +746,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       suffixIcon: _globalSearch.isNotEmpty
                           ? IconButton(
                               icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF64748B)),
-                              onPressed: () => setState(() => _globalSearch = ''),
+                              onPressed: _clearGlobalSearch,
                             )
                           : null,
                       border: InputBorder.none,
@@ -867,7 +898,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               ),
               child: TextField(
                 autofocus: true,
-                onChanged: (val) => setState(() => _globalSearch = val),
+                onChanged: _onGlobalSearchChanged,
                 style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w600),
                 decoration: InputDecoration(
                   hintText: 'Search products by name or category...',
@@ -876,7 +907,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                   suffixIcon: _globalSearch.isNotEmpty
                       ? IconButton(
                           icon: const Icon(Icons.close_rounded, size: 14, color: Color(0xFF64748B)),
-                          onPressed: () => setState(() => _globalSearch = ''),
+                          onPressed: _clearGlobalSearch,
                         )
                       : null,
                   border: InputBorder.none,
@@ -947,31 +978,34 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
           Expanded(
             child: categories.isEmpty
                 ? _buildEmptyCategoriesState()
-                : ReorderableListView.builder(
-                    proxyDecorator: _reorderProxyDecorator,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    itemCount: categories.length,
-                    buildDefaultDragHandles: false,
-                    onReorder: (oldIndex, newIndex) {
-                      _db.reorderCategories(oldIndex, newIndex);
-                    },
-                    itemBuilder: (context, index) {
-                      final cat = categories[index];
-                      final isSelected = _selectedCategory == cat;
-                      final isDisabled = _disabledCategories.contains(cat);
-                      final productCount = _db.menuItems.where((m) => m.category.trim().toLowerCase() == cat.trim().toLowerCase()).length;
+                : Builder(builder: (context) {
+                    final categoryCounts = _getCategoryProductCounts();
+                    return ReorderableListView.builder(
+                      proxyDecorator: _reorderProxyDecorator,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      itemCount: categories.length,
+                      buildDefaultDragHandles: false,
+                      onReorder: (oldIndex, newIndex) {
+                        _db.reorderCategories(oldIndex, newIndex);
+                      },
+                      itemBuilder: (context, index) {
+                        final cat = categories[index];
+                        final isSelected = _selectedCategory == cat;
+                        final isDisabled = _disabledCategories.contains(cat);
+                        final productCount = categoryCounts[cat.trim().toLowerCase()] ?? 0;
 
-                      return _buildCategoryCard(
-                        key: ValueKey('cat_$cat'),
-                        category: cat,
-                        index: index,
-                        productCount: productCount,
-                        isSelected: isSelected,
-                        isDisabled: isDisabled,
-                        totalCategories: categories.length,
-                      );
-                    },
-                  ),
+                        return _buildCategoryCard(
+                          key: ValueKey('cat_$cat'),
+                          category: cat,
+                          index: index,
+                          productCount: productCount,
+                          isSelected: isSelected,
+                          isDisabled: isDisabled,
+                          totalCategories: categories.length,
+                        );
+                      },
+                    );
+                  }),
           ),
         ],
       ),
@@ -1160,12 +1194,22 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   Widget _buildProductsPanel({required bool isDesktop}) {
     final String category = _selectedCategory ?? 'All';
     final products = _selectedCategory == null ? _getAllProductsFiltered() : _getCategoryProducts(category);
-    final activeCount = _selectedCategory == null
-        ? _db.menuItems.where((m) => m.isAvailable).length
-        : _getCategoryActiveCount(category);
-    final totalStock = _selectedCategory == null
-        ? _db.menuItems.fold(0, (sum, m) => sum + (m.stockQuantity > 0 ? m.stockQuantity : 0))
-        : _getCategoryTotalStock(category);
+    int activeCount = 0;
+    int totalStock = 0;
+    if (_selectedCategory == null) {
+      for (final m in _db.menuItems) {
+        if (m.isAvailable) activeCount++;
+        if (m.stockQuantity > 0) totalStock += m.stockQuantity;
+      }
+    } else {
+      final catLower = category.trim().toLowerCase();
+      for (final m in _db.menuItems) {
+        if (m.category.trim().toLowerCase() == catLower) {
+          if (m.isAvailable) activeCount++;
+          if (m.stockQuantity > 0) totalStock += m.stockQuantity;
+        }
+      }
+    }
 
     return Container(
       color: const Color(0xFFF8FAFC),
@@ -2462,7 +2506,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         child: TextField(
                           controller: _categorySearchController,
                           focusNode: _categorySearchFocus,
-                          onChanged: (val) => setState(() => _categorySearchQuery = val),
+                          onChanged: _onCategorySearchChanged,
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF0F172A),
@@ -2479,12 +2523,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       ),
                       if (_categorySearchQuery.isNotEmpty)
                         GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _categorySearchQuery = '';
-                              _categorySearchController.clear();
-                            });
-                          },
+                          onTap: _clearCategorySearch,
                           child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF64748B)),
                         ),
                     ],
@@ -2536,22 +2575,24 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         Expanded(
           child: categories.isEmpty
               ? _buildEmptyCategoriesState()
-              : ReorderableListView.builder(
-                  proxyDecorator: _reorderProxyDecorator,
-                  buildDefaultDragHandles: false,
-                  physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                  padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
-                  itemCount: categories.length,
-                  onReorder: (oldIndex, newIndex) {
-                    _db.reorderCategories(oldIndex, newIndex);
-                  },
-                  itemBuilder: (context, index) {
-                    final cat = categories[index];
-                    final isDisabled = _disabledCategories.contains(cat);
-                    final productCount = _db.menuItems.where((m) => m.category.trim().toLowerCase() == cat.trim().toLowerCase()).length;
+              : Builder(builder: (context) {
+                  final categoryCounts = _getCategoryProductCounts();
+                  return ReorderableListView.builder(
+                    proxyDecorator: _reorderProxyDecorator,
+                    buildDefaultDragHandles: false,
+                    physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+                    padding: const EdgeInsets.fromLTRB(12, 2, 12, 16),
+                    itemCount: categories.length,
+                    onReorder: (oldIndex, newIndex) {
+                      _db.reorderCategories(oldIndex, newIndex);
+                    },
+                    itemBuilder: (context, index) {
+                      final cat = categories[index];
+                      final isDisabled = _disabledCategories.contains(cat);
+                      final productCount = categoryCounts[cat.trim().toLowerCase()] ?? 0;
 
-                    return Container(
-                      key: ValueKey('mob_cat_$cat'),
+                      return Container(
+                        key: ValueKey('mob_cat_$cat'),
                       margin: const EdgeInsets.only(bottom: 6),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       decoration: BoxDecoration(
@@ -2717,7 +2758,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       ),
                     );
                   },
-                ),
+                );
+              }),
         ),
       ],
     );
@@ -2765,7 +2807,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                         child: TextField(
                           controller: _productsSearchController,
                           focusNode: _productsSearchFocus,
-                          onChanged: (val) => setState(() => _globalSearch = val),
+                          onChanged: _onGlobalSearchChanged,
                           style: const TextStyle(
                             fontSize: 12,
                             color: Color(0xFF0F172A),
@@ -2782,12 +2824,7 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                       ),
                       if (_globalSearch.isNotEmpty)
                         GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _globalSearch = '';
-                              _productsSearchController.clear();
-                            });
-                          },
+                          onTap: _clearGlobalSearch,
                           child: const Icon(Icons.close_rounded, size: 16, color: Color(0xFF64748B)),
                         ),
                     ],
@@ -2935,63 +2972,65 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
 
         // 2. Category Quick Filter Chips
         if (categories.isNotEmpty)
-          Container(
-            height: 36,
-            margin: const EdgeInsets.only(top: 6, bottom: 8),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              itemCount: categories.length + 1,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  final isAllSelected = _selectedCategory == null;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: InkWell(
-                      onTap: () => setState(() => _selectedCategory = null),
-                      borderRadius: BorderRadius.circular(18),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: isAllSelected ? const Color(0xFF0F2B48) : const Color(0xFFEDF3FA),
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(
-                            color: isAllSelected ? const Color(0xFF0F2B48) : Colors.white,
-                            width: 1.2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isAllSelected
-                                  ? const Color(0xFF0F2B48).withValues(alpha: 0.25)
-                                  : const Color(0xFF0F2B48).withValues(alpha: 0.05),
-                              offset: const Offset(1, 2),
-                              blurRadius: 3,
+          Builder(builder: (context) {
+            final categoryCounts = _getCategoryProductCounts();
+            return Container(
+              height: 36,
+              margin: const EdgeInsets.only(top: 6, bottom: 8),
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                itemCount: categories.length + 1,
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    final isAllSelected = _selectedCategory == null;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedCategory = null),
+                        borderRadius: BorderRadius.circular(18),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isAllSelected ? const Color(0xFF0F2B48) : const Color(0xFFEDF3FA),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: isAllSelected ? const Color(0xFF0F2B48) : Colors.white,
+                              width: 1.2,
                             ),
-                            if (!isAllSelected)
+                            boxShadow: [
                               BoxShadow(
-                                color: Colors.white.withValues(alpha: 0.8),
-                                offset: const Offset(-1, -1),
+                                color: isAllSelected
+                                    ? const Color(0xFF0F2B48).withValues(alpha: 0.25)
+                                    : const Color(0xFF0F2B48).withValues(alpha: 0.05),
+                                offset: const Offset(1, 2),
                                 blurRadius: 3,
                               ),
-                          ],
-                        ),
-                        child: Text(
-                          'All (${_db.menuItems.length})',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: isAllSelected ? Colors.white : const Color(0xFF475569),
+                              if (!isAllSelected)
+                                BoxShadow(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  offset: const Offset(-1, -1),
+                                  blurRadius: 3,
+                                ),
+                            ],
+                          ),
+                          child: Text(
+                            'All (${_db.menuItems.length})',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: isAllSelected ? Colors.white : const Color(0xFF475569),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }
+                    );
+                  }
 
-                final cat = categories[index - 1];
-                final isSelected = _selectedCategory == cat;
-                final count = _db.menuItems.where((m) => m.category.trim().toLowerCase() == cat.trim().toLowerCase()).length;
+                  final cat = categories[index - 1];
+                  final isSelected = _selectedCategory == cat;
+                  final count = categoryCounts[cat.trim().toLowerCase()] ?? 0;
 
                 return Padding(
                   padding: const EdgeInsets.only(right: 8),
@@ -3044,7 +3083,8 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
                 );
               },
             ),
-          ),
+          );
+        }),
 
         // 3. Reorderable Products List with Compact Neumorphic Cards
         Expanded(
