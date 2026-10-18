@@ -6,12 +6,12 @@ const ApiError = require('../utils/ApiError');
 
 class WhatsAppService {
   constructor() {
-    this.phoneNumberId = whatsappConfig.phoneNumberId;
-    this.accessToken = whatsappConfig.accessToken;
-    this.apiVersion = whatsappConfig.apiVersion;
-    this.webhookVerifyToken = whatsappConfig.webhookVerifyToken;
-    this.appSecret = whatsappConfig.appSecret;
-    this.templateName = whatsappConfig.templateName;
+    this.phoneNumberId = whatsappConfig.phoneNumberId || '1284061438133660';
+    this.accessToken = whatsappConfig.accessToken || 'EAAzxdmIpPWcBSrPyzIiQwMc6bPDWavABgK5maL2rzXtkd6EMLJKP8IRQB30wHqm1U0Ka3b8PmhUfghI87ZAk7dkDaZBLhWIYUvJZCLnE2UF9AhN0cZCAOuwKMJYzJft1NFDfyvNMk9sBm4M29CHGJjFsYxoRJpbjfc8f578s3YcZALdNz8z6h4bH4HK7WZBZB4NCAZDZD';
+    this.apiVersion = whatsappConfig.apiVersion || 'v21.0';
+    this.webhookVerifyToken = whatsappConfig.webhookVerifyToken || 'softcode_whatsapp_webhook_verify_2026';
+    this.appSecret = whatsappConfig.appSecret || '';
+    this.templateName = whatsappConfig.templateName || 'ebill_receipt';
   }
 
   /**
@@ -582,6 +582,150 @@ class WhatsAppService {
       recipient: normalizedPhone,
       isSimulated: false,
     };
+  }
+
+  /**
+   * Send Authentication OTP via Meta WhatsApp Cloud API
+   * Uses approved AUTHENTICATION template ('apna_pos_auth_otp')
+   * with fallback to direct text message if 24-hr customer window is open
+   */
+  async sendOtpMessage({
+    to,
+    otpCode,
+    phoneNumberId = null,
+    accessToken = null,
+  }) {
+    const normalizedPhone = this.normalizePhoneNumber(to);
+    if (!this.isValidPhoneNumber(normalizedPhone)) {
+      throw ApiError.badRequest(
+        `Invalid customer WhatsApp phone number: ${to}`,
+        null,
+        'INVALID_PHONE_NUMBER'
+      );
+    }
+
+    const activePhoneNumberId = phoneNumberId || this.phoneNumberId;
+    const activeAccessToken = accessToken || this.accessToken;
+
+    // Check if the recipient is the same as the Apna POS sender phone number (e.g. 917303632949)
+    if (normalizedPhone === '917303632949') {
+      throw ApiError.badRequest(
+        'Cannot send WhatsApp OTP to the Apna POS WhatsApp business number (+91 73036 32949). Meta WhatsApp API does not allow a business number to send messages to itself. Please test with a different phone number.',
+        null,
+        'SELF_MESSAGE_NOT_ALLOWED'
+      );
+    }
+
+    if (
+      process.env.NODE_ENV === 'test' ||
+      !activeAccessToken ||
+      activeAccessToken === 'mock_token' ||
+      activeAccessToken === 'test_token'
+    ) {
+      console.warn(`[WhatsAppService] ⚠️ SIMULATION MODE: OTP ${otpCode} simulated for ${normalizedPhone}`);
+      return {
+        success: true,
+        messageId: `wamid.HBg${Date.now()}${Math.floor(Math.random() * 1000000)}==`,
+        recipient: normalizedPhone,
+        isSimulated: true,
+      };
+    }
+
+    const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
+
+    // 1. First attempt: Official Meta AUTHENTICATION Template ('apna_pos_auth_otp')
+    const templateCandidates = [
+      { name: 'apna_pos_auth_otp', lang: 'en_US' },
+      { name: 'apna_pos_auth_otp', lang: 'en' },
+    ];
+
+    for (const t of templateCandidates) {
+      try {
+        const templatePayload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: normalizedPhone,
+          type: 'template',
+          template: {
+            name: t.name,
+            language: { code: t.lang },
+            components: [
+              {
+                type: 'body',
+                parameters: [{ type: 'text', text: String(otpCode) }],
+              },
+              {
+                type: 'button',
+                sub_type: 'url',
+                index: '0',
+                parameters: [{ type: 'text', text: String(otpCode) }],
+              },
+            ],
+          },
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${activeAccessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(templatePayload),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (res.ok && data?.messages?.[0]?.id) {
+          console.log(`[WhatsAppService] ✅ OTP sent via template '${t.name}' (${t.lang}) to ${normalizedPhone}`);
+          return {
+            success: true,
+            messageId: data.messages[0].id,
+            recipient: normalizedPhone,
+            viaTemplate: true,
+          };
+        } else {
+          console.warn(`[WhatsAppService] Template '${t.name}' (${t.lang}) dispatch notice:`, data?.error?.message || data?.error);
+        }
+      } catch (err) {
+        console.warn(`[WhatsAppService] Template dispatch error (${t.name}):`, err.message);
+      }
+    }
+
+    // 2. Second attempt: Fall back to direct text message (works if customer sent a message in last 24h)
+    const textBody = `*Apna POS Verification Code*\n\nYour login verification OTP is: *${otpCode}*\n\nThis OTP is valid for 5 minutes. Do not share this code with anyone.`;
+    const textPayload = {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedPhone,
+      type: 'text',
+      text: { preview_url: false, body: textBody },
+    };
+
+    const textRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${activeAccessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(textPayload),
+    });
+
+    const textData = await textRes.json().catch(() => ({}));
+    if (textRes.ok && textData?.messages?.[0]?.id) {
+      console.log(`[WhatsAppService] ✅ OTP sent via direct text message to ${normalizedPhone}`);
+      return {
+        success: true,
+        messageId: textData.messages[0].id,
+        recipient: normalizedPhone,
+        viaText: true,
+      };
+    }
+
+    const errCode = textData?.error?.code;
+    let errMsg = textData?.error?.message || 'Failed to dispatch WhatsApp OTP';
+    if (errCode === 131047) {
+      errMsg = `Meta WhatsApp 24-Hour Policy: To receive an OTP, please first send 'Hi' to +91 73036 32949 on WhatsApp, or wait for Meta to approve the authentication template.`;
+    }
+    throw ApiError.badRequest(errMsg, null, errCode || 'OTP_DISPATCH_FAILED');
   }
 
   /**

@@ -2543,7 +2543,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
       item: item,
       fit: BoxFit.cover,
       showDots: true,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(12),
     );
   }
 

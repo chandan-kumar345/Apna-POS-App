@@ -889,16 +889,15 @@ class _PosProductMediaBoxState extends State<PosProductMediaBox> implements _Pos
       width: double.infinity,
       height: double.infinity,
       color: const Color(0xFFEDF3FA),
-      padding: EdgeInsets.all(widget.isMini ? 4 : 8),
       child: Image.asset(
         'assets/images/product_placeholder.png',
-        fit: BoxFit.contain,
+        fit: widget.fit,
         alignment: Alignment.center,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 320,
-        cacheHeight: 320,
-        filterQuality: FilterQuality.medium,
+        cacheWidth: 480,
+        cacheHeight: 480,
+        filterQuality: FilterQuality.high,
         errorBuilder: (context, error, stackTrace) {
           return Container(
             color: const Color(0xFFF1F5F9),
