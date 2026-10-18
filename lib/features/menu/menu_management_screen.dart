@@ -30,6 +30,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
   static const Color _navyTint = Color(0xFFEFF4FA);
   static const Color _navyBorder = Color(0xFFCBDDF7);
 
+  // Fast In-Memory Image Cache (prevents CPU lag and repeated base64 decoding)
+  static final Map<String, Uint8List> _base64ImageCache = {};
+
   // Selection & View State
   String? _selectedCategory;
   bool _isGridView = false; // List vs Grid View Toggle
@@ -305,20 +308,31 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
       rawUrl = product.images.firstWhere((img) => img.trim().isNotEmpty, orElse: () => '');
     }
 
+    final int targetCacheWidth = (width * 2.5).round();
+    final int targetCacheHeight = (height * 2.5).round();
+
     Widget? imageWidget;
     if (rawUrl != null && rawUrl.isNotEmpty) {
       final trimmed = rawUrl.trim();
       if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
         try {
-          final commaIdx = trimmed.indexOf(',');
-          final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
-          final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          Uint8List? bytes = _base64ImageCache[trimmed];
+          if (bytes == null) {
+            final commaIdx = trimmed.indexOf(',');
+            final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+            bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+            if (_base64ImageCache.length > 250) _base64ImageCache.clear();
+            _base64ImageCache[trimmed] = bytes;
+          }
           imageWidget = Image.memory(
             bytes,
             width: width,
             height: height,
             fit: BoxFit.cover,
+            cacheWidth: targetCacheWidth,
+            cacheHeight: targetCacheHeight,
             gaplessPlayback: true,
+            filterQuality: FilterQuality.low,
             errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
           );
         } catch (_) {}
@@ -329,15 +343,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         if (resolved.isNotEmpty) {
           if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
             try {
-              final commaIdx = resolved.indexOf(',');
-              final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
-              final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+              Uint8List? bytes = _base64ImageCache[resolved];
+              if (bytes == null) {
+                final commaIdx = resolved.indexOf(',');
+                final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
+                bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+                if (_base64ImageCache.length > 250) _base64ImageCache.clear();
+                _base64ImageCache[resolved] = bytes;
+              }
               imageWidget = Image.memory(
                 bytes,
                 width: width,
                 height: height,
                 fit: BoxFit.cover,
+                cacheWidth: targetCacheWidth,
+                cacheHeight: targetCacheHeight,
                 gaplessPlayback: true,
+                filterQuality: FilterQuality.low,
                 errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
               );
             } catch (_) {}
@@ -347,6 +369,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               width: width,
               height: height,
               fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
               errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
             );
           } else if (resolved.startsWith('assets/')) {
@@ -355,19 +380,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               width: width,
               height: height,
               fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
               errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
             );
           } else {
             final file = File(resolved);
-            if (file.existsSync()) {
-              imageWidget = Image.file(
-                file,
-                width: width,
-                height: height,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
-              );
-            }
+            imageWidget = Image.file(
+              file,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
+              errorBuilder: (context, error, stackTrace) => _buildFallbackProductIcon(width, height),
+            );
           }
         }
       }
@@ -413,19 +442,30 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
     final imagePath = _db.getCategoryImage(category);
     Widget? imageWidget;
 
+    final int targetCacheWidth = (width * 2.5).round();
+    final int targetCacheHeight = (height * 2.5).round();
+
     if (imagePath != null && imagePath.trim().isNotEmpty) {
       final trimmed = imagePath.trim();
       if (trimmed.startsWith('data:image') || trimmed.startsWith('data:') || (trimmed.length > 80 && !trimmed.contains('/') && !trimmed.contains('\\'))) {
         try {
-          final commaIdx = trimmed.indexOf(',');
-          final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
-          final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+          Uint8List? bytes = _base64ImageCache[trimmed];
+          if (bytes == null) {
+            final commaIdx = trimmed.indexOf(',');
+            final base64Clean = commaIdx != -1 ? trimmed.substring(commaIdx + 1) : trimmed;
+            bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+            if (_base64ImageCache.length > 250) _base64ImageCache.clear();
+            _base64ImageCache[trimmed] = bytes;
+          }
           imageWidget = Image.memory(
             bytes,
             width: width,
             height: height,
             fit: BoxFit.cover,
+            cacheWidth: targetCacheWidth,
+            cacheHeight: targetCacheHeight,
             gaplessPlayback: true,
+            filterQuality: FilterQuality.low,
             errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
           );
         } catch (_) {}
@@ -436,15 +476,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
         if (resolved.isNotEmpty) {
           if (resolved.startsWith('data:image') || resolved.startsWith('data:')) {
             try {
-              final commaIdx = resolved.indexOf(',');
-              final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
-              final bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+              Uint8List? bytes = _base64ImageCache[resolved];
+              if (bytes == null) {
+                final commaIdx = resolved.indexOf(',');
+                final base64Clean = commaIdx != -1 ? resolved.substring(commaIdx + 1) : resolved;
+                bytes = base64Decode(base64Clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+                if (_base64ImageCache.length > 250) _base64ImageCache.clear();
+                _base64ImageCache[resolved] = bytes;
+              }
               imageWidget = Image.memory(
                 bytes,
                 width: width,
                 height: height,
                 fit: BoxFit.cover,
+                cacheWidth: targetCacheWidth,
+                cacheHeight: targetCacheHeight,
                 gaplessPlayback: true,
+                filterQuality: FilterQuality.low,
                 errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
               );
             } catch (_) {}
@@ -454,6 +502,9 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               width: width,
               height: height,
               fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
               errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
             );
           } else if (resolved.startsWith('assets/')) {
@@ -462,19 +513,23 @@ class _MenuManagementScreenState extends State<MenuManagementScreen> {
               width: width,
               height: height,
               fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
               errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
             );
           } else {
             final file = File(resolved);
-            if (file.existsSync()) {
-              imageWidget = Image.file(
-                file,
-                width: width,
-                height: height,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
-              );
-            }
+            imageWidget = Image.file(
+              file,
+              width: width,
+              height: height,
+              fit: BoxFit.cover,
+              cacheWidth: targetCacheWidth,
+              cacheHeight: targetCacheHeight,
+              filterQuality: FilterQuality.low,
+              errorBuilder: (context, error, stackTrace) => _buildCategoryIconFallback(category, width, height, isSelected),
+            );
           }
         }
       }

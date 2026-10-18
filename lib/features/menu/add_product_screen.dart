@@ -18,13 +18,17 @@ class ProductImageItem {
   final String? path;
   final Uint8List? bytes;
   final String? name;
-  final String? remoteUrl;
+  String? remoteUrl;
+  bool isUploading;
+  String? error;
 
   ProductImageItem({
     this.path,
     this.bytes,
     this.name,
     this.remoteUrl,
+    this.isUploading = false,
+    this.error,
   });
 
   bool get isRemote =>
@@ -128,11 +132,13 @@ class _AddProductScreenState extends State<AddProductScreen> {
         ));
       }
 
-      // Populate Video
+      // Populate Video (deferred to post-frame so edit screen loads instantly)
       if (item.videoUrl.trim().isNotEmpty) {
         _remoteVideoUrl = item.videoUrl.trim();
         _videoUrlController.text = item.videoUrl.trim();
-        _initPreviewVideo(item.videoUrl.trim());
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _initPreviewVideo(item.videoUrl.trim());
+        });
       }
 
       _addDiscount = item.hasDiscount;
@@ -256,11 +262,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
             } catch (_) {}
           }
           if ((bytes != null && bytes.isNotEmpty) || (file.path != null && file.path!.isNotEmpty)) {
-            _selectedImages.add(ProductImageItem(
+            final item = ProductImageItem(
               path: file.path,
               bytes: bytes,
               name: file.name,
-            ));
+              isUploading: true,
+            );
+            _selectedImages.add(item);
+            _startBackgroundUpload(item);
             count++;
           }
         }
@@ -268,7 +277,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           _isImageLoading = false;
           _activeImagePreviewIndex = _selectedImages.length - 1;
         });
-        _showSuccessSnackBar('$count image(s) added successfully!');
+        _showSuccessSnackBar('$count image(s) added & uploading in background!');
         return;
       }
     } catch (e) {
@@ -280,28 +289,64 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final pickedFiles = await picker.pickMultiImage(
         maxWidth: 1024,
         maxHeight: 1024,
-        imageQuality: 85,
+        imageQuality: 82,
       );
       if (pickedFiles.isNotEmpty) {
         for (final pf in pickedFiles) {
           final bytes = await pf.readAsBytes();
-          _selectedImages.add(ProductImageItem(
+          final item = ProductImageItem(
             path: pf.path,
             bytes: bytes,
             name: pf.name,
-          ));
+            isUploading: true,
+          );
+          _selectedImages.add(item);
+          _startBackgroundUpload(item);
         }
         setState(() {
           _isImageLoading = false;
           _activeImagePreviewIndex = _selectedImages.length - 1;
         });
-        _showSuccessSnackBar('${pickedFiles.length} image(s) added successfully!');
+        _showSuccessSnackBar('${pickedFiles.length} image(s) added & uploading in background!');
         return;
       }
     } catch (e) {
       _showErrorSnackBar('Gallery pick error: $e');
     } finally {
       if (mounted) setState(() => _isImageLoading = false);
+    }
+  }
+
+  Future<void> _startBackgroundUpload(ProductImageItem item) async {
+    if (item.isRemote) {
+      item.isUploading = false;
+      return;
+    }
+    try {
+      String? uploadedUrl;
+      if (item.bytes != null && item.bytes!.isNotEmpty) {
+        uploadedUrl = await UploadService().uploadImageBytes(
+          item.bytes!,
+          fileName: (item.name != null && item.name!.isNotEmpty)
+              ? item.name!
+              : 'prod_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        );
+      } else if (item.path != null && item.path!.isNotEmpty) {
+        final f = File(item.path!);
+        if (f.existsSync()) {
+          uploadedUrl = await UploadService().uploadImage(f);
+        }
+      }
+      if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+        item.remoteUrl = uploadedUrl;
+        item.isUploading = false;
+      }
+    } catch (e) {
+      debugPrint('[AddProductScreen] background upload error: $e');
+      item.error = e.toString();
+    } finally {
+      item.isUploading = false;
+      if (mounted) setState(() {});
     }
   }
 
@@ -487,32 +532,76 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   Widget _buildProductImageItem(ProductImageItem item) {
+    Widget content;
     if (item.bytes != null && item.bytes!.isNotEmpty) {
-      return Image.memory(item.bytes!, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
-    }
-    final resolvedUrl = ApiEndpoints.resolveMediaUrl(item.remoteUrl ?? item.path);
-    if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
-      return Image.network(
-        resolvedUrl,
+      content = Image.memory(
+        item.bytes!,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        errorBuilder: (context, error, stackTrace) => Container(
+        cacheWidth: 400,
+        cacheHeight: 400,
+      );
+    } else {
+      final resolvedUrl = ApiEndpoints.resolveMediaUrl(item.remoteUrl ?? item.path);
+      if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+        content = Image.network(
+          resolvedUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          cacheWidth: 400,
+          cacheHeight: 400,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: const Color(0xFFE5EDF6),
+            child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
+          ),
+        );
+      } else if (item.path != null && item.path!.isNotEmpty) {
+        final f = File(item.path!);
+        if (f.existsSync()) {
+          content = Image.file(
+            f,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            cacheWidth: 400,
+            cacheHeight: 400,
+          );
+        } else {
+          content = Container(
+            color: const Color(0xFFE5EDF6),
+            child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
+          );
+        }
+      } else {
+        content = Container(
           color: const Color(0xFFE5EDF6),
           child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
-        ),
-      );
-    }
-    if (item.path != null && item.path!.isNotEmpty) {
-      final f = File(item.path!);
-      if (f.existsSync()) {
-        return Image.file(f, fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+        );
       }
     }
-    return Container(
-      color: const Color(0xFFE5EDF6),
-      child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
-    );
+
+    if (item.isUploading) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          content,
+          Container(
+            color: Colors.black38,
+            child: const Center(
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return content;
   }
 
   void _addVariantDialog() {
@@ -800,55 +889,64 @@ class _AddProductScreenState extends State<AddProductScreen> {
       final discountVal = double.tryParse(_discountController.text.trim()) ?? 0.0;
       final stockVal = int.tryParse(_stockController.text.trim()) ?? 50;
 
-      // 1. Process & Upload All Images
-      List<String> finalImageUrls = [];
-      for (int i = 0; i < _selectedImages.length; i++) {
-        final img = _selectedImages[i];
+      // 1. Process & Upload All Images Concurrently
+      final uploadTasks = _selectedImages.map((img) async {
+        // A. Already uploaded in background or remote
         if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
-          finalImageUrls.add(ApiEndpoints.resolveMediaUrl(img.remoteUrl!));
-        } else if (img.bytes != null && img.bytes!.isNotEmpty) {
-          String? uploadedUrl;
+          return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
+        }
+
+        // B. Wait if background upload is in-flight
+        while (img.isUploading) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {
+          return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
+        }
+
+        // C. Upload bytes in parallel
+        if (img.bytes != null && img.bytes!.isNotEmpty) {
           try {
-            uploadedUrl = await UploadService().uploadImageBytes(
+            final uploadedUrl = await UploadService().uploadImageBytes(
               img.bytes!,
-              fileName: (img.name != null && img.name!.isNotEmpty) ? img.name! : 'product_${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
+              fileName: (img.name != null && img.name!.isNotEmpty)
+                  ? img.name!
+                  : 'product_${DateTime.now().millisecondsSinceEpoch}.jpg',
             );
+            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+              img.remoteUrl = uploadedUrl;
+              return ApiEndpoints.resolveMediaUrl(uploadedUrl);
+            }
           } catch (e) {
             debugPrint('[AddProductScreen] image bytes upload error: $e');
           }
-          if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-            finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
-          } else {
-            final base64Data = 'data:image/jpeg;base64,${base64Encode(img.bytes!)}';
-            finalImageUrls.add(base64Data);
-          }
-        } else if (img.path != null && img.path!.isNotEmpty) {
-          if (img.path!.startsWith('http://') || img.path!.startsWith('https://') || img.path!.startsWith('data:')) {
-            finalImageUrls.add(img.path!);
-          } else {
-            String? uploadedUrl;
-            Uint8List? localBytes;
-            try {
-              final file = File(img.path!);
-              if (file.existsSync()) {
-                localBytes = await file.readAsBytes();
-                uploadedUrl = await UploadService().uploadImage(file);
-              }
-            } catch (e) {
-              debugPrint('[AddProductScreen] image file upload error: $e');
-            }
-
-            if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
-              finalImageUrls.add(ApiEndpoints.resolveMediaUrl(uploadedUrl));
-            } else if (localBytes != null && localBytes.isNotEmpty) {
-              final base64Data = 'data:image/jpeg;base64,${base64Encode(localBytes)}';
-              finalImageUrls.add(base64Data);
-            } else {
-              finalImageUrls.add(img.path!);
-            }
-          }
+          return 'data:image/jpeg;base64,${base64Encode(img.bytes!)}';
         }
-      }
+
+        // D. Upload local file in parallel
+        if (img.path != null && img.path!.isNotEmpty) {
+          if (img.path!.startsWith('http://') || img.path!.startsWith('https://') || img.path!.startsWith('data:')) {
+            return img.path!;
+          }
+          try {
+            final file = File(img.path!);
+            if (file.existsSync()) {
+              final uploadedUrl = await UploadService().uploadImage(file);
+              if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
+                img.remoteUrl = uploadedUrl;
+                return ApiEndpoints.resolveMediaUrl(uploadedUrl);
+              }
+            }
+          } catch (e) {
+            debugPrint('[AddProductScreen] image file upload error: $e');
+          }
+          return img.path!;
+        }
+        return '';
+      }).toList();
+
+      final results = await Future.wait(uploadTasks);
+      final List<String> finalImageUrls = results.where((url) => url.isNotEmpty).toList();
 
       // 2. Process & Upload Video
       String finalVideoUrl = '';
@@ -1709,9 +1807,21 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         color: isCover ? const Color(0xFF16A34A) : Colors.black.withValues(alpha: 0.65),
                         borderRadius: BorderRadius.circular(6),
                       ),
-                      child: Text(
-                        isCover ? 'PRIMARY COVER' : 'Image ${safeIndex + 1} of ${_selectedImages.length}',
-                        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            isCover ? 'PRIMARY COVER' : 'Image ${safeIndex + 1} of ${_selectedImages.length}',
+                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                          ),
+                          if (activeItem.isUploading) ...[
+                            const SizedBox(width: 5),
+                            const Text('• Uploading...', style: TextStyle(color: Color(0xFFFDE047), fontSize: 9, fontWeight: FontWeight.bold)),
+                          ] else if (activeItem.remoteUrl != null && activeItem.remoteUrl!.isNotEmpty) ...[
+                            const SizedBox(width: 5),
+                            const Text('• Ready', style: TextStyle(color: Color(0xFF86EFAC), fontSize: 9, fontWeight: FontWeight.bold)),
+                          ],
+                        ],
                       ),
                     ),
                   ),
@@ -1790,6 +1900,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: const Text('Cover', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      if (!item.isUploading && item.remoteUrl != null && item.remoteUrl!.isNotEmpty)
+                        Positioned(
+                          top: 2,
+                          right: 2,
+                          child: Container(
+                            padding: const EdgeInsets.all(1.5),
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF16A34A),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(Icons.check, color: Colors.white, size: 8),
                           ),
                         ),
                       Positioned(
