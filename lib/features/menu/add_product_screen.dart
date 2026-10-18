@@ -13,15 +13,18 @@ import '../../core/models/menu_item_model.dart';
 import '../../core/network/api_endpoints.dart';
 import '../../core/services/upload_service.dart';
 import '../../core/services/youtube_service.dart';
+import '../../core/utils/image_compress_helper.dart';
 
 class ProductImageItem {
   final String? path;
-  final Uint8List? bytes;
+  Uint8List? bytes;
   final String? name;
   String? remoteUrl;
   bool isUploading;
   String? error;
   Future<void>? uploadFuture;
+  String? _resolvedUrl;
+  String? _lastResolvedRawPath;
 
   ProductImageItem({
     this.path,
@@ -31,13 +34,39 @@ class ProductImageItem {
     this.isUploading = false,
     this.error,
     this.uploadFuture,
-  });
+  }) {
+    // If bytes are not provided, check if remoteUrl or path is a data URI or Base64 string
+    // and decode it ONCE upon initialization to avoid any UI thread pauses during builds/scrolling
+    if (bytes == null || bytes!.isEmpty) {
+      final str = remoteUrl ?? path;
+      if (str != null && str.isNotEmpty && (str.startsWith('data:') || str.startsWith('data:image'))) {
+        try {
+          final comma = str.indexOf(',');
+          if (comma != -1) {
+            final clean = str.substring(comma + 1).replaceAll('\n', '').replaceAll('\r', '').trim();
+            bytes = base64Decode(clean);
+          }
+        } catch (_) {}
+      }
+    }
+  }
 
   bool get isRemote =>
       remoteUrl != null &&
       remoteUrl!.isNotEmpty &&
       (remoteUrl!.startsWith('http://') || remoteUrl!.startsWith('https://'));
+
+  String getResolvedUrl() {
+    final rawPath = remoteUrl ?? path ?? '';
+    if (_resolvedUrl != null && _lastResolvedRawPath == rawPath) {
+      return _resolvedUrl!;
+    }
+    _lastResolvedRawPath = rawPath;
+    _resolvedUrl = ApiEndpoints.resolveMediaUrl(rawPath);
+    return _resolvedUrl!;
+  }
 }
+
 
 class AddProductScreen extends StatefulWidget {
   final MenuItemModel? editItem;
@@ -281,6 +310,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         });
         _showSuccessSnackBar('$count image(s) added & uploading in background!');
         return;
+      } else if (result == null) {
+        // User cancelled picker dialog
+        if (mounted) setState(() => _isImageLoading = false);
+        return;
       }
     } catch (e) {
       debugPrint('[AddProductScreen] FilePicker multiple: $e');
@@ -328,16 +361,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
     try {
       String? uploadedUrl;
       if (item.bytes != null && item.bytes!.isNotEmpty) {
+        // Compress image in background isolate: shrinks 10MB to ~80KB and frees UI thread RAM
+        final compressed = await ImageCompressHelper.compressImageBytes(item.bytes!);
+        item.bytes = compressed;
         uploadedUrl = await UploadService().uploadImageBytes(
-          item.bytes!,
+          compressed,
           fileName: (item.name != null && item.name!.isNotEmpty)
               ? item.name!
               : 'prod_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          skipCompression: true,
         ).timeout(const Duration(seconds: 25), onTimeout: () => null);
       } else if (item.path != null && item.path!.isNotEmpty) {
         final f = File(item.path!);
         if (f.existsSync()) {
-          uploadedUrl = await UploadService().uploadImage(f).timeout(const Duration(seconds: 25), onTimeout: () => null);
+          final compressed = await ImageCompressHelper.compressImageFile(f);
+          item.bytes = compressed;
+          uploadedUrl = await UploadService().uploadImageBytes(
+            compressed,
+            fileName: (item.name != null && item.name!.isNotEmpty)
+                ? item.name!
+                : 'prod_${DateTime.now().millisecondsSinceEpoch}.jpg',
+            skipCompression: true,
+          ).timeout(const Duration(seconds: 25), onTimeout: () => null);
         }
       }
       if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
@@ -428,9 +473,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       await _previewVideoController!.initialize().timeout(const Duration(seconds: 4));
       await _previewVideoController!.setVolume(_isVideoMuted ? 0.0 : 1.0);
       await _previewVideoController!.setLooping(true);
-      _previewVideoController!.addListener(() {
-        if (mounted) setState(() {});
-      });
+      // NOTE: Removed 60fps setState listener so parent screen never stutters during scrolling!
       await _previewVideoController!.play();
 
       if (mounted) {
@@ -537,57 +580,35 @@ class _AddProductScreenState extends State<AddProductScreen> {
     });
   }
 
-  static final Map<String, Uint8List> _base64Cache = {};
-
-  Widget _buildProductImageItem(ProductImageItem item) {
+  Widget _buildProductImageItem(ProductImageItem item, {bool isThumbnail = false}) {
+    final int cacheDimension = isThumbnail ? 140 : 500;
     Widget content;
+
     if (item.bytes != null && item.bytes!.isNotEmpty) {
       content = Image.memory(
         item.bytes!,
         fit: BoxFit.cover,
         width: double.infinity,
         height: double.infinity,
-        cacheWidth: 400,
-        cacheHeight: 400,
+        cacheWidth: cacheDimension,
+        cacheHeight: cacheDimension,
+        gaplessPlayback: true,
+        errorBuilder: (context, error, stackTrace) => Container(
+          color: const Color(0xFFE5EDF6),
+          child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
+        ),
       );
     } else {
-      final rawPath = item.remoteUrl ?? item.path ?? '';
-      final resolvedUrl = ApiEndpoints.resolveMediaUrl(rawPath);
-      if (resolvedUrl.startsWith('data:image') || resolvedUrl.startsWith('data:')) {
-        Uint8List? cached = _base64Cache[resolvedUrl];
-        if (cached == null) {
-          final comma = resolvedUrl.indexOf(',');
-          if (comma != -1) {
-            try {
-              cached = base64Decode(resolvedUrl.substring(comma + 1).replaceAll('\n', '').replaceAll('\r', '').trim());
-              if (_base64Cache.length > 150) _base64Cache.clear();
-              _base64Cache[resolvedUrl] = cached;
-            } catch (_) {}
-          }
-        }
-        if (cached != null) {
-          content = Image.memory(
-            cached,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            cacheWidth: 400,
-            cacheHeight: 400,
-          );
-        } else {
-          content = Container(
-            color: const Color(0xFFE5EDF6),
-            child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
-          );
-        }
-      } else if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
+      final resolvedUrl = item.getResolvedUrl();
+      if (resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')) {
         content = Image.network(
           resolvedUrl,
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
-          cacheWidth: 400,
-          cacheHeight: 400,
+          cacheWidth: cacheDimension,
+          cacheHeight: cacheDimension,
+          gaplessPlayback: true,
           errorBuilder: (context, error, stackTrace) => Container(
             color: const Color(0xFFE5EDF6),
             child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
@@ -595,21 +616,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
         );
       } else if (item.path != null && item.path!.isNotEmpty) {
         final f = File(item.path!);
-        if (f.existsSync()) {
-          content = Image.file(
-            f,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: double.infinity,
-            cacheWidth: 400,
-            cacheHeight: 400,
-          );
-        } else {
-          content = Container(
+        content = Image.file(
+          f,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          cacheWidth: cacheDimension,
+          cacheHeight: cacheDimension,
+          gaplessPlayback: true,
+          errorBuilder: (context, error, stackTrace) => Container(
             color: const Color(0xFFE5EDF6),
             child: const Center(child: Icon(Icons.broken_image_rounded, color: Color(0xFF94A3B8), size: 20)),
-          );
-        }
+          ),
+        );
       } else {
         content = Container(
           color: const Color(0xFFE5EDF6),
@@ -623,13 +642,15 @@ class _AddProductScreenState extends State<AddProductScreen> {
         fit: StackFit.expand,
         children: [
           content,
-          Container(
-            color: Colors.black38,
-            child: const Center(
-              child: SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+          RepaintBoundary(
+            child: Container(
+              color: Colors.black38,
+              child: const Center(
+                child: SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
               ),
             ),
           ),
@@ -1266,27 +1287,29 @@ class _AddProductScreenState extends State<AddProductScreen> {
 
   // --- Helper: Neumorphic Outer Card ---
   Widget _buildNeumorphicCard({required Widget child, EdgeInsetsGeometry? padding, EdgeInsetsGeometry? margin}) {
-    return Container(
-      margin: margin ?? const EdgeInsets.only(bottom: 10),
-      padding: padding ?? const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEFF5FB),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white, width: 1.5),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x16002870),
-            blurRadius: 7,
-            offset: Offset(2, 3),
-          ),
-          BoxShadow(
-            color: Colors.white,
-            blurRadius: 5,
-            offset: Offset(-2, -2),
-          ),
-        ],
+    return RepaintBoundary(
+      child: Container(
+        margin: margin ?? const EdgeInsets.only(bottom: 10),
+        padding: padding ?? const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEFF5FB),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white, width: 1.5),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x16002870),
+              blurRadius: 7,
+              offset: Offset(2, 3),
+            ),
+            BoxShadow(
+              color: Colors.white,
+              blurRadius: 5,
+              offset: Offset(-2, -2),
+            ),
+          ],
+        ),
+        child: child,
       ),
-      child: child,
     );
   }
 
@@ -1563,11 +1586,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         children: [
           const Text('Food Type*', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 38,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: Row(
               children: [
                 _buildDietaryOption('Veg', const Color(0xFF10B981), _selectedType == 'Veg', () => setState(() => _selectedType = 'Veg')),
                 const SizedBox(width: 8),
@@ -1793,191 +1815,197 @@ class _AddProductScreenState extends State<AddProductScreen> {
               final activeItem = _selectedImages[safeIndex];
               final bool isCover = safeIndex == 0;
 
-              return Stack(
-                children: [
-                  Container(
-                    height: 140,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE5EDF6),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.white, width: 1.2),
-                      boxShadow: const [
-                        BoxShadow(color: Color(0x10002870), blurRadius: 4, offset: Offset(0, 2)),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: _buildProductImageItem(activeItem),
-                    ),
-                  ),
-                  Positioned(
-                    top: 6,
-                    left: 6,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+              return RepaintBoundary(
+                child: Stack(
+                  children: [
+                    Container(
+                      height: 140,
+                      width: double.infinity,
                       decoration: BoxDecoration(
-                        color: isCover ? const Color(0xFF16A34A) : Colors.black.withValues(alpha: 0.65),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            isCover ? 'PRIMARY COVER' : 'Image ${safeIndex + 1} of ${_selectedImages.length}',
-                            style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
-                          ),
-                          if (activeItem.isUploading) ...[
-                            const SizedBox(width: 5),
-                            const Text('• Uploading...', style: TextStyle(color: Color(0xFFFDE047), fontSize: 9, fontWeight: FontWeight.bold)),
-                          ] else if (activeItem.remoteUrl != null && activeItem.remoteUrl!.isNotEmpty) ...[
-                            const SizedBox(width: 5),
-                            const Text('• Ready', style: TextStyle(color: Color(0xFF86EFAC), fontSize: 9, fontWeight: FontWeight.bold)),
-                          ],
+                        color: const Color(0xFFE5EDF6),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: Colors.white, width: 1.2),
+                        boxShadow: const [
+                          BoxShadow(color: Color(0x10002870), blurRadius: 4, offset: Offset(0, 2)),
                         ],
                       ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: _buildProductImageItem(activeItem, isThumbnail: false),
+                      ),
                     ),
-                  ),
-                ],
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: isCover ? const Color(0xFF16A34A) : Colors.black.withValues(alpha: 0.65),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              isCover ? 'PRIMARY COVER' : 'Image ${safeIndex + 1} of ${_selectedImages.length}',
+                              style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold),
+                            ),
+                            if (activeItem.isUploading) ...[
+                              const SizedBox(width: 5),
+                              const Text('• Uploading...', style: TextStyle(color: Color(0xFFFDE047), fontSize: 9, fontWeight: FontWeight.bold)),
+                            ] else if (activeItem.remoteUrl != null && activeItem.remoteUrl!.isNotEmpty) ...[
+                              const SizedBox(width: 5),
+                              const Text('• Ready', style: TextStyle(color: Color(0xFF86EFAC), fontSize: 9, fontWeight: FontWeight.bold)),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               );
             }),
 
             const SizedBox(height: 8),
 
             // Thumbnail Strip
-            SizedBox(
-              height: 60,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                itemCount: _selectedImages.length + 1,
-                separatorBuilder: (context, index) => const SizedBox(width: 6),
-                itemBuilder: (context, index) {
-                  if (index == _selectedImages.length) {
-                    return InkWell(
-                      onTap: _pickImagesFromGallery,
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE5EDF6),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: Colors.white, width: 1.2),
-                        ),
-                        child: const Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF021B54), size: 18),
-                            SizedBox(height: 2),
-                            Text('+ Add', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF021B54))),
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-
-                  final item = _selectedImages[index];
-                  final isSelected = index == _activeImagePreviewIndex;
-                  final isCover = index == 0;
-
-                  return Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      GestureDetector(
-                        onTap: () => setState(() => _activeImagePreviewIndex = index),
+            RepaintBoundary(
+              child: SizedBox(
+                height: 60,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: _selectedImages.length + 1,
+                  separatorBuilder: (context, index) => const SizedBox(width: 6),
+                  itemBuilder: (context, index) {
+                    if (index == _selectedImages.length) {
+                      return InkWell(
+                        onTap: _pickImagesFromGallery,
+                        borderRadius: BorderRadius.circular(14),
                         child: Container(
                           width: 58,
                           height: 58,
                           decoration: BoxDecoration(
+                            color: const Color(0xFFE5EDF6),
                             borderRadius: BorderRadius.circular(14),
-                            border: Border.all(
-                              color: isSelected ? const Color(0xFF021B54) : Colors.white,
-                              width: isSelected ? 2 : 1.2,
-                            ),
+                            border: Border.all(color: Colors.white, width: 1.2),
                           ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: _buildProductImageItem(item),
-                          ),
-                        ),
-                      ),
-                      if (isCover)
-                        Positioned(
-                          top: 2,
-                          left: 2,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF16A34A),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text('Cover', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+                          child: const Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF021B54), size: 18),
+                              SizedBox(height: 2),
+                              Text('+ Add', style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFF021B54))),
+                            ],
                           ),
                         ),
-                      if (!item.isUploading && item.remoteUrl != null && item.remoteUrl!.isNotEmpty)
-                        Positioned(
-                          top: 2,
-                          right: 2,
-                          child: Container(
-                            padding: const EdgeInsets.all(1.5),
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF16A34A),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.check, color: Colors.white, size: 8),
-                          ),
-                        ),
-                      Positioned(
-                        bottom: 2,
-                        right: 2,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (!isCover)
-                              GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    final selected = _selectedImages.removeAt(index);
-                                    _selectedImages.insert(0, selected);
-                                    _activeImagePreviewIndex = 0;
-                                  });
-                                  _showSuccessSnackBar('Set as primary cover image!');
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(1),
-                                  margin: const EdgeInsets.only(right: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.65),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(Icons.star, color: Colors.amber, size: 10),
+                      );
+                    }
+
+                    final item = _selectedImages[index];
+                    final isSelected = index == _activeImagePreviewIndex;
+                    final isCover = index == 0;
+
+                    return RepaintBoundary(
+                      child: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          GestureDetector(
+                            onTap: () => setState(() => _activeImagePreviewIndex = index),
+                            child: Container(
+                              width: 58,
+                              height: 58,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: isSelected ? const Color(0xFF021B54) : Colors.white,
+                                  width: isSelected ? 2 : 1.2,
                                 ),
                               ),
-                            GestureDetector(
-                              onTap: () {
-                                setState(() {
-                                  _selectedImages.removeAt(index);
-                                  if (_activeImagePreviewIndex >= _selectedImages.length) {
-                                    _activeImagePreviewIndex = _selectedImages.isNotEmpty ? _selectedImages.length - 1 : 0;
-                                  }
-                                });
-                              },
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: _buildProductImageItem(item, isThumbnail: true),
+                              ),
+                            ),
+                          ),
+                          if (isCover)
+                            Positioned(
+                              top: 2,
+                              left: 2,
                               child: Container(
-                                padding: const EdgeInsets.all(1),
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                                 decoration: BoxDecoration(
-                                  color: Colors.red.withValues(alpha: 0.85),
+                                  color: const Color(0xFF16A34A),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('Cover', style: TextStyle(color: Colors.white, fontSize: 7, fontWeight: FontWeight.bold)),
+                              ),
+                            ),
+                          if (!item.isUploading && item.remoteUrl != null && item.remoteUrl!.isNotEmpty)
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: Container(
+                                padding: const EdgeInsets.all(1.5),
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF16A34A),
                                   shape: BoxShape.circle,
                                 ),
-                                child: const Icon(Icons.close, color: Colors.white, size: 10),
+                                child: const Icon(Icons.check, color: Colors.white, size: 8),
                               ),
                             ),
-                          ],
-                        ),
+                          Positioned(
+                            bottom: 2,
+                            right: 2,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!isCover)
+                                  GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        final selected = _selectedImages.removeAt(index);
+                                        _selectedImages.insert(0, selected);
+                                        _activeImagePreviewIndex = 0;
+                                      });
+                                      _showSuccessSnackBar('Set as primary cover image!');
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(1),
+                                      margin: const EdgeInsets.only(right: 2),
+                                      decoration: BoxDecoration(
+                                        color: Colors.black.withValues(alpha: 0.65),
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(Icons.star, color: Colors.amber, size: 10),
+                                    ),
+                                  ),
+                                GestureDetector(
+                                  onTap: () {
+                                    setState(() {
+                                      _selectedImages.removeAt(index);
+                                      if (_activeImagePreviewIndex >= _selectedImages.length) {
+                                        _activeImagePreviewIndex = _selectedImages.isNotEmpty ? _selectedImages.length - 1 : 0;
+                                      }
+                                    });
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.all(1),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red.withValues(alpha: 0.85),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(Icons.close, color: Colors.white, size: 10),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ] else ...[
@@ -2053,98 +2081,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
             ),
           ] else if (hasVideo) ...[
             if (_previewVideoController != null && _isVideoInitialized) ...[
-              // Video Player Preview
-              Stack(
-                children: [
-                  Container(
-                    height: 140,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.black,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: FittedBox(
-                        fit: BoxFit.contain,
-                        child: SizedBox(
-                          width: _previewVideoController!.value.size.width > 0 ? _previewVideoController!.value.size.width : 300,
-                          height: _previewVideoController!.value.size.height > 0 ? _previewVideoController!.value.size.height : 200,
-                          child: VideoPlayer(_previewVideoController!),
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 6,
-                    left: 6,
-                    right: 6,
-                    child: Row(
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (_previewVideoController!.value.isPlaying) {
-                                _previewVideoController!.pause();
-                              } else {
-                                _previewVideoController!.play();
-                              }
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _previewVideoController!.value.isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isVideoMuted = !_isVideoMuted;
-                              _previewVideoController!.setVolume(_isVideoMuted ? 0.0 : 1.0);
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Icon(
-                              _isVideoMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
-                              color: Colors.white,
-                              size: 16,
-                            ),
-                          ),
-                        ),
-                        const Spacer(),
-                        InkWell(
-                          onTap: () {
-                            _previewVideoController!.seekTo(Duration.zero);
-                            _previewVideoController!.play();
-                            setState(() {});
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.65),
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.replay_rounded, color: Colors.white, size: 16),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              _ProductVideoPlayerPreview(
+                controller: _previewVideoController!,
+                initialMuted: _isVideoMuted,
+                onMuteChanged: (muted) {
+                  _isVideoMuted = muted;
+                },
               ),
             ] else ...[
               Container(
@@ -2372,54 +2314,56 @@ class _AddProductScreenState extends State<AddProductScreen> {
             margin: const EdgeInsets.only(top: 4, bottom: 10),
             child: SizedBox(
               height: 34,
-              child: ListView(
+              child: SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
-                children: [0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
-                  final bool isNonGst = db.restaurant?.billingType == 'Non-GST';
-                  final isSel = _selectedGstPercent == rate ||
-                      (_selectedGstPercent == null && rate == (isNonGst ? 0.0 : (db.restaurant?.taxRate ?? 5.0)));
-                  final label = rate == 0.0 ? '0% GST' : '$rate%';
+                child: Row(
+                  children: [0.0, 5.0, 12.0, 18.0, 28.0].map((rate) {
+                    final bool isNonGst = db.restaurant?.billingType == 'Non-GST';
+                    final isSel = _selectedGstPercent == rate ||
+                        (_selectedGstPercent == null && rate == (isNonGst ? 0.0 : (db.restaurant?.taxRate ?? 5.0)));
+                    final label = rate == 0.0 ? '0% GST' : '$rate%';
 
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 6),
-                    child: InkWell(
-                      onTap: () => setState(() => _selectedGstPercent = rate),
-                      borderRadius: BorderRadius.circular(14),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSel ? const Color(0xFF021B54) : const Color(0xFFE5EDF6),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(color: isSel ? const Color(0xFF021B54) : Colors.white, width: 1.2),
-                          boxShadow: [
-                            BoxShadow(
-                              color: isSel ? const Color(0x25002870) : const Color(0x12002870),
-                              blurRadius: 3,
-                              offset: const Offset(1, 1),
-                            ),
-                            if (!isSel)
-                              const BoxShadow(
-                                color: Colors.white,
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedGstPercent = rate),
+                        borderRadius: BorderRadius.circular(14),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSel ? const Color(0xFF021B54) : const Color(0xFFE5EDF6),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(color: isSel ? const Color(0xFF021B54) : Colors.white, width: 1.2),
+                            boxShadow: [
+                              BoxShadow(
+                                color: isSel ? const Color(0x25002870) : const Color(0x12002870),
                                 blurRadius: 3,
-                                offset: Offset(-1, -1),
+                                offset: const Offset(1, 1),
                               ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              color: isSel ? Colors.white : const Color(0xFF0F172A),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w800,
+                              if (!isSel)
+                                const BoxShadow(
+                                  color: Colors.white,
+                                  blurRadius: 3,
+                                  offset: Offset(-1, -1),
+                                ),
+                            ],
+                          ),
+                          child: Center(
+                            child: Text(
+                              label,
+                              style: TextStyle(
+                                color: isSel ? Colors.white : const Color(0xFF0F172A),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }).toList(),
+                    );
+                  }).toList(),
+                ),
               ),
             ),
           ),
@@ -2484,51 +2428,203 @@ class _AddProductScreenState extends State<AddProductScreen> {
     required bool isExpanded,
     required VoidCallback onToggle,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      child: InkWell(
-        onTap: onToggle,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-          decoration: BoxDecoration(
-            color: isExpanded ? const Color(0xFF021B54) : const Color(0xFFE5EDF6),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: isExpanded ? const Color(0xFF021B54) : Colors.white, width: 1.2),
-            boxShadow: [
-              BoxShadow(
-                color: isExpanded ? const Color(0x20002870) : const Color(0x12002870),
-                blurRadius: 4,
-                offset: const Offset(1, 2),
-              ),
-              if (!isExpanded)
-                const BoxShadow(
-                  color: Colors.white,
-                  blurRadius: 3,
-                  offset: Offset(-1, -1),
+    return RepaintBoundary(
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 6),
+        child: InkWell(
+          onTap: onToggle,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+            decoration: BoxDecoration(
+              color: isExpanded ? const Color(0xFF021B54) : const Color(0xFFE5EDF6),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isExpanded ? const Color(0xFF021B54) : Colors.white, width: 1.2),
+              boxShadow: [
+                BoxShadow(
+                  color: isExpanded ? const Color(0x20002870) : const Color(0x12002870),
+                  blurRadius: 4,
+                  offset: const Offset(1, 2),
                 ),
-            ],
-          ),
-          child: Row(
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: 13.5,
-                  fontWeight: FontWeight.w800,
-                  color: isExpanded ? Colors.white : const Color(0xFF0F172A),
+                if (!isExpanded)
+                  const BoxShadow(
+                    color: Colors.white,
+                    blurRadius: 3,
+                    offset: Offset(-1, -1),
+                  ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: isExpanded ? Colors.white : const Color(0xFF0F172A),
+                  ),
                 ),
-              ),
-              const Spacer(),
-              Icon(
-                isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                color: isExpanded ? Colors.white : const Color(0xFF021B54),
-                size: 19,
-              ),
-            ],
+                const Spacer(),
+                Icon(
+                  isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                  color: isExpanded ? Colors.white : const Color(0xFF021B54),
+                  size: 19,
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 }
+
+class _ProductVideoPlayerPreview extends StatefulWidget {
+  final VideoPlayerController controller;
+  final bool initialMuted;
+  final ValueChanged<bool>? onMuteChanged;
+
+  const _ProductVideoPlayerPreview({
+    required this.controller,
+    required this.initialMuted,
+    this.onMuteChanged,
+  });
+
+  @override
+  State<_ProductVideoPlayerPreview> createState() => _ProductVideoPlayerPreviewState();
+}
+
+class _ProductVideoPlayerPreviewState extends State<_ProductVideoPlayerPreview> {
+  late bool _isMuted;
+
+  @override
+  void initState() {
+    super.initState();
+    _isMuted = widget.initialMuted;
+    widget.controller.addListener(_onControllerTick);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ProductVideoPlayerPreview oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_onControllerTick);
+      widget.controller.addListener(_onControllerTick);
+    }
+    if (oldWidget.initialMuted != widget.initialMuted) {
+      _isMuted = widget.initialMuted;
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerTick);
+    super.dispose();
+  }
+
+  void _onControllerTick() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = widget.controller;
+    final isPlaying = controller.value.isPlaying;
+    final width = controller.value.size.width > 0 ? controller.value.size.width : 300.0;
+    final height = controller.value.size.height > 0 ? controller.value.size.height : 200.0;
+
+    return RepaintBoundary(
+      child: Stack(
+        children: [
+          Container(
+            height: 140,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.black,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: FittedBox(
+                fit: BoxFit.contain,
+                child: SizedBox(
+                  width: width,
+                  height: height,
+                  child: VideoPlayer(controller),
+                ),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 6,
+            left: 6,
+            right: 6,
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () {
+                    if (isPlaying) {
+                      controller.pause();
+                    } else {
+                      controller.play();
+                    }
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isMuted = !_isMuted;
+                      controller.setVolume(_isMuted ? 0.0 : 1.0);
+                    });
+                    widget.onMuteChanged?.call(_isMuted);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      _isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                InkWell(
+                  onTap: () {
+                    controller.seekTo(Duration.zero);
+                    controller.play();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.65),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.replay_rounded, color: Colors.white, size: 16),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
