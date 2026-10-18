@@ -462,177 +462,200 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     return Scaffold(
       backgroundColor: _AiTheme.pageBackground,
       resizeToAvoidBottomInset: false,
-      body: Column(
-        children: [
-          // 1. Top Header Bar (Includes top SafeArea with navy gradient)
-          _buildTopAppBar(restaurantName),
-
-          // 2. Screen Content (Edge-to-edge flush with header, NO rounded black edges)
-          Expanded(
-            child: _isLoadingInitial
-                ? const Center(child: CircularProgressIndicator(color: _AiTheme.purpleBrand))
-                : SafeArea(
-                    top: false,
-                    bottom: true,
-                    child: SingleChildScrollView(
-                      physics: const ClampingScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                      child: Center(
-                        // Screen wrapping constraint for neat, responsive cards
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 580),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              // Card 1: Meta Cloud API Connected & Autonomous AI Auto-Reply
-                              _buildMetaStatusAndMasterCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 2: DIRECT ORDER TAKING IN CHAT
-                              _buildOrderTakingCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 3: IDENTITY & GREETING
-                              _buildIdentityCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 4: CONVERSATIONAL PERSONA
-                              _buildPersonaCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 5: KITCHEN & HOUSE RULES
-                              _buildHouseRulesCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 6: AI ENGINE & SPEED
-                              _buildEngineCard(),
-                              const SizedBox(height: 12),
-
-                              // Card 7: LIVE WHATSAPP SIMULATOR
-                              _buildSimulatorCard(),
-                              const SizedBox(height: 16),
-
-                              // Card 8: Save & Sync Button
-                              _buildSaveButton(),
-                              const SizedBox(height: 28),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 1. Top Header Bar (Matching the POS Screen palette with status bar overlay)
-  Widget _buildTopAppBar(String restaurantName) {
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.light,
-        statusBarBrightness: Brightness.dark,
-      ),
-      child: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              _AiTheme.headerNavyStart, // Deep Midnight Navy
-              _AiTheme.headerNavyMid,   // Rich Royal Navy
-              _AiTheme.headerNavyEnd,   // Deep Indigo Blue
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+      body: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          statusBarBrightness: Brightness.dark,
         ),
-        child: SafeArea(
-          bottom: false,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
-            child: Row(
+        child: Stack(
+          children: [
+            // 1. Continuous Top Midnight Navy Gradient (covers header & behind curved corners)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              height: 180,
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      _AiTheme.headerNavyStart, // Deep Midnight Navy
+                      _AiTheme.headerNavyMid,   // Rich Royal Navy
+                      _AiTheme.headerNavyEnd,   // Deep Indigo Blue
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+              ),
+            ),
+
+            // 2. Foreground: App Bar and Curved Content Sheet
+            Column(
               children: [
-                // Circular Back Button
-                InkWell(
-                  onTap: () => Navigator.of(context).pop(),
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.15),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 1.0),
-                    ),
-                    child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // Title & Subtitle
+                // Top Header Bar
+                _buildTopAppBar(restaurantName),
+
+                // Curved Sheet Container with Rounded Top Corners (No black edge)
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'AI Chat Agent Settings',
-                        style: TextStyle(
-                          fontSize: 15.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: -0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '$restaurantName • WhatsApp POS Assistant',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.white.withValues(alpha: 0.78),
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                // Standby / Online Status Pill Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.28),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 7,
-                        height: 7,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: _isEnabled ? const Color(0xFF22C55E) : const Color(0xFF94A3B8),
-                        ),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _isEnabled ? 'Online' : 'Standby',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  child: Container(
+                    width: double.infinity,
+                    decoration: const BoxDecoration(
+                      color: _AiTheme.pageBackground,
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                      child: _isLoadingInitial
+                          ? const Center(child: CircularProgressIndicator(color: _AiTheme.purpleBrand))
+                          : SafeArea(
+                              top: false,
+                              bottom: true,
+                              child: SingleChildScrollView(
+                                physics: const ClampingScrollPhysics(),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                child: Center(
+                                  // Screen wrapping constraint for neat, responsive cards
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(maxWidth: 580),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      children: [
+                                        // Card 1: Meta Cloud API Connected & Autonomous AI Auto-Reply
+                                        _buildMetaStatusAndMasterCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 2: DIRECT ORDER TAKING IN CHAT
+                                        _buildOrderTakingCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 3: IDENTITY & GREETING
+                                        _buildIdentityCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 4: CONVERSATIONAL PERSONA
+                                        _buildPersonaCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 5: KITCHEN & HOUSE RULES
+                                        _buildHouseRulesCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 6: AI ENGINE & SPEED
+                                        _buildEngineCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 7: LIVE WHATSAPP SIMULATOR
+                                        _buildSimulatorCard(),
+                                        const SizedBox(height: 16),
+
+                                        // Card 8: Save & Sync Button
+                                        _buildSaveButton(),
+                                        const SizedBox(height: 28),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                    ),
                   ),
                 ),
               ],
             ),
-          ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 1. Top Header Bar (Matching the POS Screen palette)
+  Widget _buildTopAppBar(String restaurantName) {
+    return SafeArea(
+      bottom: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
+        child: Row(
+          children: [
+            // Circular Back Button
+            InkWell(
+              onTap: () => Navigator.of(context).pop(),
+              borderRadius: BorderRadius.circular(20),
+              child: Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.15),
+                  border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 1.0),
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Title & Subtitle
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'AI Chat Agent Settings',
+                    style: TextStyle(
+                      fontSize: 15.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: -0.2,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$restaurantName • WhatsApp POS Assistant',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.white.withValues(alpha: 0.78),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Standby / Online Status Pill Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 7,
+                    height: 7,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _isEnabled ? const Color(0xFF22C55E) : const Color(0xFF94A3B8),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    _isEnabled ? 'Online' : 'Standby',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
