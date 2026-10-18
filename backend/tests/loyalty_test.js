@@ -10,16 +10,14 @@ async function runLoyaltyTests() {
   await mongoose.connect(mongoUri);
   console.log('✅ Connected to MongoDB');
 
-  // Find a business
-  let business = await Business.findOne();
-  if (!business) {
-    const user = await User.findOne();
-    if (user) {
-      business = await Business.create({
-        ownerId: user._id,
-        profile: { companyName: 'MISSION MEATZ', name: 'Mission Meatz Store' },
-      });
-    }
+  // Find dedicated test business
+  const testUser = await User.findOne({ email: 'tester@gmail.com' });
+  let business = testUser ? await Business.findOne({ ownerId: testUser._id }) : null;
+  if (!business && testUser) {
+    business = await Business.create({
+      ownerId: testUser._id,
+      profile: { companyName: 'Tester Check', name: 'Tester Store' },
+    });
   }
 
   const businessId = business ? business._id : new mongoose.Types.ObjectId();

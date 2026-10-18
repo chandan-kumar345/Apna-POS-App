@@ -317,4 +317,37 @@ class OrderService {
       return false;
     }
   }
+
+  /// Accept an incoming WhatsApp customer order from the POS alert dialog
+  Future<bool> acceptWhatsAppOrder(String orderId, {int prepTimeMinutes = 20, String? note}) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.orders}/$orderId/accept-whatsapp',
+        data: {
+          'prepTimeMinutes': prepTimeMinutes,
+          if (note != null && note.isNotEmpty) 'note': note,
+        },
+      );
+      return response != null && (response['success'] == true || response['status'] == 'success');
+    } catch (e) {
+      debugPrint('[OrderService.acceptWhatsAppOrder] error: $e');
+      return false;
+    }
+  }
+
+  /// Decline an incoming WhatsApp customer order with reason
+  Future<bool> rejectWhatsAppOrder(String orderId, {String? reason}) async {
+    try {
+      final response = await _apiClient.post(
+        '${ApiEndpoints.orders}/$orderId/reject-whatsapp',
+        data: {
+          'reason': reason ?? 'Kitchen unavailable at this time',
+        },
+      );
+      return response != null && (response['success'] == true || response['status'] == 'success');
+    } catch (e) {
+      debugPrint('[OrderService.rejectWhatsAppOrder] error: $e');
+      return false;
+    }
+  }
 }

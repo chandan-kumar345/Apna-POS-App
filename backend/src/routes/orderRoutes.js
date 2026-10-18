@@ -43,6 +43,12 @@ router.delete('/number/:orderNumber', (req, res, next) =>
 router.patch('/:id/status', validate(updateOrderStatusSchema), (req, res, next) =>
   orderController.updateStatus(req, res, next)
 );
+router.post('/:id/accept-whatsapp', (req, res, next) =>
+  orderController.acceptWhatsAppOrder(req, res, next)
+);
+router.post('/:id/reject-whatsapp', (req, res, next) =>
+  orderController.rejectWhatsAppOrder(req, res, next)
+);
 router.post('/:id/settle', (req, res, next) =>
   orderController.settleOrder(req, res, next)
 );

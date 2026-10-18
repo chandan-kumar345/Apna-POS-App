@@ -375,6 +375,46 @@ const orderSchema = new mongoose.Schema(
       latestEbillId: { type: mongoose.Schema.Types.ObjectId, ref: 'EBill', default: null },
       lastSentAt: { type: Date, default: null },
     },
+    orderSource: {
+      type: String,
+      enum: ['pos', 'whatsapp', 'online', 'qr'],
+      default: 'pos',
+      index: true,
+    },
+    whatsappDetails: {
+      chatId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'WhatsAppChat',
+      },
+      customerPhone: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      customerName: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      acceptanceStatus: {
+        type: String,
+        enum: ['pending_review', 'accepted', 'rejected'],
+        default: 'pending_review',
+        index: true,
+      },
+      estimatedPrepTimeMinutes: {
+        type: Number,
+        default: 20,
+      },
+      rejectionReason: {
+        type: String,
+        default: '',
+        trim: true,
+      },
+      respondedAt: {
+        type: Date,
+      },
+    },
   },
 
   {
@@ -399,6 +439,8 @@ orderSchema.index({ businessId: 1, customerId: 1 });
 orderSchema.index({ businessId: 1, tableNumber: 1 });
 orderSchema.index({ businessId: 1, idempotencyKey: 1 });
 orderSchema.index({ businessId: 1, clientSyncId: 1 });
+orderSchema.index({ businessId: 1, orderSource: 1, createdAt: -1 });
+orderSchema.index({ businessId: 1, 'whatsappDetails.acceptanceStatus': 1, createdAt: -1 });
 
 const tenantIsolationPlugin = require('../plugins/tenantIsolationPlugin');
 orderSchema.plugin(tenantIsolationPlugin);

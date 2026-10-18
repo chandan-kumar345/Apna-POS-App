@@ -397,6 +397,114 @@ class SocketService {
     this.io.to('business_default').emit('whatsapp:message:updated', payload);
   }
 
+  /**
+   * Emit incoming WhatsApp order request to POS terminals for urgent Accept/Reject prompt
+   * @param {string|mongoose.Types.ObjectId} businessId
+   * @param {object} param1 { order, chat, customerPhone, customerName }
+   */
+  emitWhatsAppOrderRequest(businessId, { order, chat, customerPhone, customerName }) {
+    if (!this.io) return;
+    const payload = {
+      type: 'whatsapp_order_request',
+      order,
+      chat,
+      customerPhone,
+      customerName,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:order:request', payload);
+      this.io.to(`business_${cleanId}`).emit('order:created', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        order,
+      });
+      this.io.to(`business:${cleanId}`).emit('order:created', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        totalAmount: order.totalAmount,
+        order,
+      });
+    }
+
+    this.io.to('business_rest_001').emit('whatsapp:order:request', payload);
+    this.io.to('business_default').emit('whatsapp:order:request', payload);
+  }
+
+  /**
+   * Emit WhatsApp order accepted event across terminals
+   */
+  emitWhatsAppOrderAccepted(businessId, { order, prepTimeMinutes }) {
+    if (!this.io) return;
+    const payload = {
+      type: 'whatsapp_order_accepted',
+      order,
+      prepTimeMinutes,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:order:accepted', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:order:accepted', payload);
+      this.io.to(`business_${cleanId}`).emit('order:updated', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order,
+      });
+      this.io.to(`business:${cleanId}`).emit('order:updated', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order,
+      });
+    }
+
+    this.io.to('business_rest_001').emit('whatsapp:order:accepted', payload);
+    this.io.to('business_default').emit('whatsapp:order:accepted', payload);
+  }
+
+  /**
+   * Emit WhatsApp order rejected event across terminals
+   */
+  emitWhatsAppOrderRejected(businessId, { order, reason }) {
+    if (!this.io) return;
+    const payload = {
+      type: 'whatsapp_order_rejected',
+      order,
+      reason,
+      timestamp: new Date().toISOString(),
+    };
+
+    if (businessId) {
+      const cleanId = businessId.toString();
+      this.io.to(`business_${cleanId}`).emit('whatsapp:order:rejected', payload);
+      this.io.to(`business:${cleanId}`).emit('whatsapp:order:rejected', payload);
+      this.io.to(`business_${cleanId}`).emit('order:updated', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order,
+      });
+      this.io.to(`business:${cleanId}`).emit('order:updated', {
+        orderId: order._id ? order._id.toString() : order.id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order,
+      });
+    }
+
+    this.io.to('business_rest_001').emit('whatsapp:order:rejected', payload);
+    this.io.to('business_default').emit('whatsapp:order:rejected', payload);
+  }
+
   getIO() {
     return this.io;
   }

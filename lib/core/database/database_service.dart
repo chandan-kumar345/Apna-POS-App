@@ -178,6 +178,88 @@ class DatabaseService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Whether the currently active profile is the Pizza 47 production profile
+  bool get isPizza47Profile {
+    final email = currentUser?.email.trim().toLowerCase() ?? '';
+    if (email == 'pizza@gmail.com') return true;
+    final rName = (restaurant?.name ?? '').trim().toLowerCase();
+    if (rName.contains('pizza 47')) return true;
+    final cName = (currentUser?.companyName ?? '').trim().toLowerCase();
+    if (cName.contains('pizza 47')) return true;
+    final bId = currentBusinessId.trim();
+    if (bId == '6ad46853ea47d6b3e13d633d') return true;
+    return false;
+  }
+
+  /// Whether the currently active profile is the dedicated test profile (tester@gmail.com)
+  bool get isTesterProfile {
+    final email = currentUser?.email.trim().toLowerCase() ?? '';
+    if (email == 'tester@gmail.com') return true;
+    final bId = currentBusinessId.trim();
+    if (bId == '6a889ca89b69ad99c5b624cf') return true;
+    return false;
+  }
+
+  /// Permanently removes any testing/demo/sample orders and live carts from the Pizza 47 production profile.
+  /// Production profiles are strictly protected; tests/simulations are reserved for tester@gmail.com.
+  Future<void> purgeTestingOrdersForPizza47({bool force = false}) async {
+    if (!isPizza47Profile && !force) return;
+
+    debugPrint('[DatabaseService] 🛡️ Purging test/sample orders for Pizza 47 production profile...');
+
+    // 1. Remove mock/demo orders matching known dummy patterns or non-pizza test menu items
+    orders.removeWhere((o) {
+      final id = o.id.toLowerCase();
+      final num = o.orderNumber.toLowerCase();
+      final isDemoId = id.startsWith('ord-882') ||
+          id.startsWith('test_') ||
+          num == '#100' ||
+          num == '#101' ||
+          num == '#102' ||
+          num.contains('test');
+      final hasDemoItems = o.items.any((ci) =>
+          ci.item.id.startsWith('m') ||
+          ci.item.name.toLowerCase().contains('paneer butter') ||
+          ci.item.name.toLowerCase().contains('dal makhani') ||
+          ci.item.name.toLowerCase().contains('basmati') ||
+          ci.item.name.toLowerCase().contains('chai') ||
+          ci.item.name.toLowerCase().contains('demo'));
+      return isDemoId || hasDemoItems;
+    });
+
+    final isPurgedKey = 'pizza47_testing_orders_purged_permanently_v2';
+    final alreadyPurged = _prefs?.getBool(isPurgedKey) ?? false;
+    if (!alreadyPurged || force) {
+      orders.clear();
+      _liveTableCarts.clear();
+      _liveCartTotals.clear();
+      _liveTableDiscounts.clear();
+      _liveDraftCustomerInfo.clear();
+      _liveDraftDeliveryInfo.clear();
+
+      for (int i = 0; i < tables.length; i++) {
+        tables[i] = tables[i].copyWith(
+          status: TableStatus.free,
+          clearOrderId: true,
+        );
+      }
+
+      await _prefs?.setBool(isPurgedKey, true);
+      await _prefs?.remove('apna_pos_orders');
+      await _prefs?.remove(_businessKey('orders'));
+      if (currentUser?.id != null) {
+        await _prefs?.remove('apna_pos_${currentUser!.id}_orders');
+      }
+      if (restaurant?.id != null) {
+        await _prefs?.remove('apna_pos_${restaurant!.id}_orders');
+      }
+      await _saveOrdersToPrefs();
+      await _saveTablesToPrefs();
+      await _saveLiveTableCartsToPrefs();
+      debugPrint('[DatabaseService] 🛡️ Pizza 47 testing orders and live carts successfully purged.');
+    }
+  }
+
   bool? _inMemorySubscriptionStatus;
 
   /// Whether the current business subscription is active / unlocked (false for new businesses until paid/unlocked)
@@ -1006,6 +1088,10 @@ class DatabaseService extends ChangeNotifier {
       orders = deduplicateOrdersList(loadedOrders);
     } else {
       orders = [];
+    }
+
+    if (isPizza47Profile) {
+      await purgeTestingOrdersForPizza47();
     }
 
     // 6. Load Inventory (Prioritizing Business-scoped key)
@@ -2051,6 +2137,10 @@ class DatabaseService extends ChangeNotifier {
 
       // 4. Multi-Device Bidirectional Order Syncing (Push Local Unsynced & Pull Cloud Orders)
       try {
+        if (isPizza47Profile) {
+          await purgeTestingOrdersForPizza47();
+        }
+
         // A. Push local unsynced offline orders to cloud backend
         final unsynced = orders.where((o) => !o.isSynced).toList();
         if (unsynced.isNotEmpty) {
@@ -2112,6 +2202,24 @@ class DatabaseService extends ChangeNotifier {
 
           // Reconcile and activate running table orders across devices
           _reconcileTablesWithRunningOrders();
+          await _saveTablesToPrefs();
+          await _saveLiveTableCartsToPrefs();
+          notifyListeners();
+        } else if (isPizza47Profile) {
+          // Pizza 47 in MongoDB has confirmed 0 orders. Ensure local state also reflects zero orders.
+          orders = [];
+          await _saveOrdersToPrefs();
+          _liveTableCarts.clear();
+          _liveCartTotals.clear();
+          _liveTableDiscounts.clear();
+          _liveDraftCustomerInfo.clear();
+          _liveDraftDeliveryInfo.clear();
+          for (int i = 0; i < tables.length; i++) {
+            tables[i] = tables[i].copyWith(
+              status: TableStatus.free,
+              clearOrderId: true,
+            );
+          }
           await _saveTablesToPrefs();
           await _saveLiveTableCartsToPrefs();
           notifyListeners();
@@ -2760,9 +2868,12 @@ class DatabaseService extends ChangeNotifier {
       menuItems = [];
       await _saveMenuToPrefs();
     }
-    if (_prefs?.getString(_userKey('orders')) == null && _prefs?.getString('apna_pos_orders') == null) {
+    if (isPizza47Profile || (_prefs?.getString(_userKey('orders')) == null && _prefs?.getString('apna_pos_orders') == null)) {
       orders = [];
       await _saveOrdersToPrefs();
+      if (isPizza47Profile) {
+        await purgeTestingOrdersForPizza47(force: true);
+      }
     }
     if (_prefs?.getString(_userKey('inventory')) == null && _prefs?.getString('apna_pos_inventory') == null) {
       inventoryItems = [];
@@ -5343,6 +5454,10 @@ class DatabaseService extends ChangeNotifier {
 
   // --- RE-SEED & RESET DATABASE ---
   Future<void> resetDatabase() async {
+    if (isPizza47Profile) {
+      debugPrint('[DatabaseService] 🛡️ Blocked resetDatabase on production Pizza 47 profile.');
+      return;
+    }
     await _prefs?.clear();
     menuItems.clear();
     tables.clear();
@@ -5406,6 +5521,10 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void seedDemoTestingData() {
+    if (isPizza47Profile) {
+      debugPrint('[DatabaseService] 🛡️ Blocked seedDemoTestingData on production Pizza 47 profile.');
+      return;
+    }
     _seedDefaultMenu();
     _seedDefaultTables(12);
     _seedSampleOrders();
@@ -5469,6 +5588,12 @@ class DatabaseService extends ChangeNotifier {
   }
 
   void _seedSampleOrders() {
+    if (isPizza47Profile) {
+      debugPrint('[DatabaseService] 🛡️ Blocked _seedSampleOrders on production Pizza 47 profile.');
+      orders = [];
+      _saveOrdersToPrefs();
+      return;
+    }
     orders = [
       OrderModel(
         id: 'ORD-8821',

@@ -9,6 +9,7 @@ import '../../features/notifications/models/notification_model.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
+import '../../features/orders/whatsapp_order_action_dialog.dart';
 
 class LocalNotificationService {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
@@ -38,6 +39,59 @@ class LocalNotificationService {
         final type = decoded['type']?.toString();
         final entityType = decoded['entityType']?.toString();
         final metadata = decoded['metadata'] as Map<String, dynamic>? ?? {};
+
+        // WhatsApp Urgent Order Request handling
+        if (type == 'whatsapp_order_request' ||
+            type == 'whatsapp_new_order' ||
+            type == 'whatsapp_order' ||
+            entityType == 'whatsapp_order') {
+          final orderId = metadata['orderId']?.toString() ??
+              decoded['orderId']?.toString() ??
+              decoded['entityId']?.toString() ??
+              '';
+          final orderNumber = metadata['orderNumber']?.toString() ??
+              decoded['orderNumber']?.toString() ??
+              '';
+          final phone = metadata['customerPhone']?.toString() ??
+              decoded['customerPhone']?.toString() ??
+              '';
+          final name = metadata['customerName']?.toString() ??
+              decoded['customerName']?.toString() ??
+              'Customer';
+          final totalAmount = double.tryParse(metadata['totalAmount']?.toString() ??
+                  decoded['totalAmount']?.toString() ??
+                  '0') ??
+              0.0;
+          final orderType = metadata['orderType']?.toString() ??
+              decoded['orderType']?.toString() ??
+              'takeaway';
+          final deliveryAddress = metadata['deliveryAddress']?.toString() ??
+              decoded['deliveryAddress']?.toString() ??
+              '';
+          final itemsPayload = metadata['items'] ?? decoded['items'];
+
+          void tryShowOrderDialog() {
+            final ctx = navigatorKey.currentContext;
+            if (ctx != null) {
+              WhatsAppOrderActionDialog.show(
+                ctx,
+                orderId: orderId,
+                orderNumber: orderNumber,
+                customerPhone: phone,
+                customerName: name,
+                totalAmount: totalAmount,
+                orderType: orderType,
+                deliveryAddress: deliveryAddress,
+                itemsPayload: itemsPayload,
+              );
+            } else {
+              Future.delayed(const Duration(milliseconds: 350), tryShowOrderDialog);
+            }
+          }
+
+          tryShowOrderDialog();
+          return;
+        }
 
         if (type == 'whatsappMessage' ||
             type == 'whatsapp_message' ||
@@ -77,6 +131,11 @@ class LocalNotificationService {
   NotificationType resolveNotificationType(String? type) {
     if (type == null) return NotificationType.system;
     final lower = type.toLowerCase();
+    if (lower == 'whatsapp_order_request' ||
+        lower == 'whatsapp_new_order' ||
+        lower == 'whatsapp_order') {
+      return NotificationType.whatsappOrderRequest;
+    }
     if (lower == 'whatsapp_message' || lower == 'whatsappmessage') {
       return NotificationType.whatsappMessage;
     }
@@ -127,6 +186,20 @@ class LocalNotificationService {
         final androidPlugin = _notificationsPlugin
             .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
         if (androidPlugin != null) {
+          // WhatsApp Orders & Urgent Alerts Channel - Highest Importance, Sound, Vibration, Full Screen Intent
+          await androidPlugin.createNotificationChannel(
+            const AndroidNotificationChannel(
+              'apna_pos_whatsapp_orders_v1',
+              'WhatsApp Orders & Alerts',
+              description: 'Urgent incoming WhatsApp customer orders with instant alert and popup',
+              importance: Importance.max,
+              playSound: true,
+              sound: RawResourceAndroidNotificationSound('notification_sound'),
+              enableVibration: true,
+              enableLights: true,
+            ),
+          );
+
           // WhatsApp Messages Channel - High Importance, Sound, Vibration, Lights
           await androidPlugin.createNotificationChannel(
             const AndroidNotificationChannel(
@@ -265,20 +338,30 @@ class LocalNotificationService {
     if (!_isInitialized) await init();
 
     try {
-      final isWhatsApp = type == NotificationType.whatsappMessage;
-      final effectiveChannelId = isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : channelId;
-      final effectiveChannelName = isWhatsApp ? 'WhatsApp Messages' : channelName;
-      final effectiveChannelDesc = isWhatsApp
-          ? 'Real-time notifications for incoming WhatsApp customer messages'
-          : channelDescription;
+      final isWhatsAppOrder = type == NotificationType.whatsappOrderRequest ||
+          channelId == 'apna_pos_whatsapp_orders_v1' ||
+          metadata['type'] == 'whatsapp_order_request' ||
+          metadata['type'] == 'whatsapp_new_order';
+      final isWhatsApp = isWhatsAppOrder || type == NotificationType.whatsappMessage;
+      final effectiveChannelId = isWhatsAppOrder
+          ? 'apna_pos_whatsapp_orders_v1'
+          : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : channelId);
+      final effectiveChannelName = isWhatsAppOrder
+          ? 'WhatsApp Orders & Alerts'
+          : (isWhatsApp ? 'WhatsApp Messages' : channelName);
+      final effectiveChannelDesc = isWhatsAppOrder
+          ? 'Urgent incoming WhatsApp customer orders with instant alert and popup'
+          : (isWhatsApp
+              ? 'Real-time notifications for incoming WhatsApp customer messages'
+              : channelDescription);
       final effectiveColor = isWhatsApp ? const Color(0xFF25D366) : color;
 
       final AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
         effectiveChannelId,
         effectiveChannelName,
         channelDescription: effectiveChannelDesc,
-        importance: isWhatsApp ? Importance.max : importance,
-        priority: isWhatsApp ? Priority.max : priority,
+        importance: (isWhatsApp || isWhatsAppOrder) ? Importance.max : importance,
+        priority: (isWhatsApp || isWhatsAppOrder) ? Priority.max : priority,
         showWhen: true,
         enableVibration: true,
         playSound: true,
@@ -287,9 +370,14 @@ class LocalNotificationService {
         largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
         actions: actions,
         color: effectiveColor,
+        fullScreenIntent: isWhatsAppOrder,
         visibility: NotificationVisibility.public,
-        category: isWhatsApp ? AndroidNotificationCategory.message : category,
-        ticker: isWhatsApp ? 'New WhatsApp Message' : null,
+        category: isWhatsAppOrder
+            ? AndroidNotificationCategory.call
+            : (isWhatsApp ? AndroidNotificationCategory.message : category),
+        ticker: isWhatsAppOrder
+            ? 'New WhatsApp Order!'
+            : (isWhatsApp ? 'New WhatsApp Message' : null),
       );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(

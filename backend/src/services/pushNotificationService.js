@@ -64,8 +64,11 @@ class PushNotificationService {
         return;
       }
 
+      const isOrderRequest = data.type === 'whatsapp_order_request' || data.type === 'whatsapp_new_order' || data.type === 'whatsapp_order';
       const isWhatsApp = data.type === 'whatsapp_message' || data.type === 'whatsappMessage';
-      const channelId = isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2';
+      const channelId = isOrderRequest
+        ? 'apna_pos_whatsapp_orders_v1'
+        : (isWhatsApp ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2');
 
       // Sanitize all data entries into strings (FCM requirement for data payload)
       const sanitizedData = {};
@@ -76,16 +79,28 @@ class PushNotificationService {
       }
       sanitizedData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
 
-      // FCM High-Priority Payload
+      // FCM High-Priority Payload (delivers even when screen is locked/off or app is killed)
       const fcmPayload = {
         to: token,
         priority: 'high',
+        content_available: true,
         notification: {
           title,
           body: message,
           sound: 'notification_sound',
           android_channel_id: channelId,
           click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        },
+        android: {
+          priority: 'high',
+          notification: {
+            channel_id: channelId,
+            sound: 'notification_sound',
+            priority: 'max',
+            visibility: 'public',
+            default_vibrate_timings: true,
+            default_light_settings: true,
+          },
         },
         data: sanitizedData,
       };
@@ -110,6 +125,50 @@ class PushNotificationService {
     } catch (error) {
       // Never throw or fail main business flow if push delivery fails
       console.warn(`[PushNotificationService] Push delivery notice: ${error.message}`);
+    }
+  }
+
+  /**
+   * Broadcast high-priority push notification to all logged-in devices/users of a business
+   * (Owner, cashiers, kitchen staff terminals)
+   */
+  async sendPushNotificationToBusiness({ businessId, title, message, data = {} }) {
+    try {
+      if (!businessId) return;
+      const Business = require('../models/Business');
+
+      // 1. Fetch all users belonging to this business that have push tokens
+      const users = await User.find({
+        businessId,
+        pushToken: { $exists: true, $ne: null },
+      })
+        .select('_id pushToken')
+        .lean();
+
+      const userIds = new Set(users.map((u) => u._id.toString()));
+
+      // 2. Also check business owner
+      const biz = await Business.findById(businessId).select('ownerId').lean();
+      if (biz?.ownerId) {
+        userIds.add(biz.ownerId.toString());
+      }
+
+      // 3. Dispatch in parallel
+      const dispatchPromises = [];
+      for (const uid of userIds) {
+        dispatchPromises.push(
+          this.sendPushNotification({
+            userId: uid,
+            title,
+            message,
+            data,
+          })
+        );
+      }
+
+      await Promise.allSettled(dispatchPromises);
+    } catch (err) {
+      console.warn('[PushNotificationService] Error broadcasting to business:', err.message);
     }
   }
 }

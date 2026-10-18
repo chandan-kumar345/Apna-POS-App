@@ -21,18 +21,19 @@ async function runTests() {
   console.log('✅ Connected to MongoDB');
 
   try {
-    let business = await Business.findOne();
+    const testUser = await User.findOne({ email: 'tester@gmail.com' });
+    let business = testUser ? await Business.findOne({ ownerId: testUser._id }) : null;
     if (!business) {
-      console.log('No business found, creating test business...');
+      console.log('No tester business found, creating dedicated tester business...');
       business = await Business.create({
-        ownerId: new mongoose.Types.ObjectId(),
-        profile: { name: 'Test Food Cafe', companyName: 'Test Food Cafe' },
-        orderSettings: { upiId: 'testcafe@okaxis' },
+        ownerId: testUser ? testUser._id : new mongoose.Types.ObjectId(),
+        profile: { name: 'Tester Check', companyName: 'Tester Check' },
+        orderSettings: { upiId: 'tester@okaxis' },
       });
     }
 
     const businessId = business._id;
-    console.log(`Using businessId: ${businessId}`);
+    console.log(`Using tester businessId: ${businessId}`);
 
     // Clean any prior test orders with specific test prefix
     const testOrderNum = `TEST-ORD-${Date.now().toString().slice(-5)}`;

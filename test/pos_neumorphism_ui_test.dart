@@ -85,7 +85,7 @@ void main() {
     // 1. Verify Top Action Bar elements
     expect(find.text('POS'), findsOneWidget);
     expect(find.text('Tables'), findsOneWidget);
-    expect(find.text('Add Item'), findsOneWidget);
+    expect(find.text('Add Items'), findsOneWidget);
 
     // 2. Verify Search Bar and Category Chips
     expect(find.byType(TextField), findsOneWidget);

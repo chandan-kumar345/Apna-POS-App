@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -10,6 +11,14 @@ class SoundService {
 
   static const String _prefKeySoundEnabled = 'sound_feedback_enabled';
   static bool soundEnabled = true;
+
+  @visibleForTesting
+  static VoidCallback? onButtonClickForTest;
+
+  @visibleForTesting
+  static void resetDebounceForTest() {
+    _instance._lastButtonClickTime = 0;
+  }
 
   AudioPlayer? _buttonPlayer;
   AudioPlayer? _keyPlayer;
@@ -26,6 +35,11 @@ class SoundService {
     try {
       final prefs = await SharedPreferences.getInstance();
       soundEnabled = prefs.getBool(_prefKeySoundEnabled) ?? true;
+
+      if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+        _isInitialized = true;
+        return;
+      }
 
       _buttonPlayer = AudioPlayer();
       _keyPlayer = AudioPlayer();
@@ -46,8 +60,8 @@ class SoundService {
       await _notificationPlayer?.setSource(AssetSource('sounds/Notification_sound.mp3'));
 
       // Clean, crisp acoustic volumes
-      await _buttonPlayer?.setVolume(0.40);
-      await _keyPlayer?.setVolume(0.30);
+      await _buttonPlayer?.setVolume(0.75);
+      await _keyPlayer?.setVolume(0.40);
       await _notificationPlayer?.setVolume(0.95);
 
       _isInitialized = true;
@@ -82,6 +96,10 @@ class SoundService {
       HapticFeedback.heavyImpact();
     } catch (_) {}
 
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+
     if (_instance._isInitialized) {
       _instance._playNotificationAsset();
     } else {
@@ -100,12 +118,18 @@ class SoundService {
   static void playButtonClick() {
     if (!soundEnabled) return;
 
-    // Safe debounce (220ms) to ensure one click produces exactly one sound
+    // Safe debounce (110ms) to ensure one click produces exactly one sound
     final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _instance._lastButtonClickTime < 220) {
+    if (now - _instance._lastButtonClickTime < 110) {
       return;
     }
     _instance._lastButtonClickTime = now;
+
+    onButtonClickForTest?.call();
+
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
 
     // 1. Instant zero-latency native hardware sound
     try {
@@ -127,7 +151,6 @@ class SoundService {
 
   void _playButtonAsset() {
     try {
-      _buttonPlayer?.stop();
       _buttonPlayer?.play(AssetSource('sounds/ios_click.wav'));
     } catch (_) {}
   }
@@ -141,6 +164,10 @@ class SoundService {
       return;
     }
     _instance._lastKeyPressTime = now;
+
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
 
     try {
       SystemSound.play(SystemSoundType.click);

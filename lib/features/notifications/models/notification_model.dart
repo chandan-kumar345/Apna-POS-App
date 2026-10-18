@@ -8,6 +8,7 @@ enum NotificationType {
   lowStock,
   system,
   whatsappMessage,
+  whatsappOrderRequest,
 }
 
 enum NotificationTarget {
@@ -82,6 +83,11 @@ class NotificationItem {
       case 'whatsapp':
         type = NotificationType.whatsappMessage;
         break;
+      case 'whatsapp_order_request':
+      case 'whatsapp_order':
+      case 'whatsapp_new_order':
+        type = NotificationType.whatsappOrderRequest;
+        break;
       default:
         type = NotificationType.system;
     }
@@ -153,6 +159,8 @@ class NotificationItem {
         return NotificationTarget.inventory;
       case NotificationType.whatsappMessage:
         return NotificationTarget.whatsappChat;
+      case NotificationType.whatsappOrderRequest:
+        return NotificationTarget.orderDetails;
       case NotificationType.system:
         return NotificationTarget.none;
     }
@@ -163,7 +171,8 @@ class NotificationItem {
       case NotificationType.welcome:
         return Icons.celebration_rounded;
       case NotificationType.newOrder:
-        return Icons.shopping_bag_outlined;
+      case NotificationType.whatsappOrderRequest:
+        return Icons.shopping_bag_rounded;
       case NotificationType.newLead:
         return Icons.person_add_alt_1_rounded;
       case NotificationType.dailySalesSummary:
@@ -183,6 +192,8 @@ class NotificationItem {
         return const Color(0xFF082559);
       case NotificationType.newOrder:
         return const Color(0xFF10B981);
+      case NotificationType.whatsappOrderRequest:
+        return const Color(0xFF0F9D58);
       case NotificationType.newLead:
         return const Color(0xFF0284C7);
       case NotificationType.dailySalesSummary:

@@ -1655,10 +1655,10 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                   // Circular Brand Logo (Toggles Sidebar)
                                   InkWell(
                                     onTap: _toggleSidebar,
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(22),
                                     child: Container(
-                                      width: 38,
-                                      height: 38,
+                                      width: 44,
+                                      height: 44,
                                       padding: const EdgeInsets.all(2.0),
                                       decoration: const BoxDecoration(
                                         color: Colors.white,
@@ -1668,7 +1668,7 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
                                         ],
                                       ),
                                       child: ClipOval(
-                                        child: _buildCompanyProfileLogo(34),
+                                        child: _buildCompanyProfileLogo(40),
                                       ),
                                     ),
                                   ),

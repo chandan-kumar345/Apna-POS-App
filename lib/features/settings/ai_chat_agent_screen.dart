@@ -4,42 +4,34 @@ import 'package:flutter/services.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 
-/// Compact Neumorphic Styling for AI Chat Agent Screen
+/// Clean Modern Theme for AI Chat Agent Screen
 class _AiTheme {
-  static const Color background = Color(0xFFEEF2F6);
-  static const Color darkShadow = Color(0xFFCBD5E1);
-  static const Color lightShadow = Colors.white;
-
+  static const Color background = Color(0xFFF8FAFC);
+  static const Color headerNavy = Color(0xFF051C48);
   static const Color textDark = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF64748B);
+  static const Color textMuted = Color(0xFF475569);
   static const Color purpleBrand = Color(0xFF7C3AED);
   static const Color greenBrand = Color(0xFF059669);
   static const Color blueBrand = Color(0xFF2563EB);
+  static const Color cardBorder = Color(0xFFE2E8F0);
 
-  static List<BoxShadow> get cardShadows => [
-        BoxShadow(
-          color: lightShadow.withValues(alpha: 0.95),
-          offset: const Offset(-4, -4),
-          blurRadius: 8,
-        ),
-        BoxShadow(
-          color: darkShadow.withValues(alpha: 0.70),
-          offset: const Offset(4, 4),
-          blurRadius: 8,
-        ),
-      ];
-
-  static BoxDecoration get neumorphicCard => BoxDecoration(
-        color: background,
+  static BoxDecoration get whiteCurvedCard => BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: cardShadows,
-        border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.0),
+        border: Border.all(color: cardBorder, width: 1.0),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A0F172A),
+            offset: Offset(0, 3),
+            blurRadius: 10,
+          ),
+        ],
       );
 
   static BoxDecoration get sunkenWell => BoxDecoration(
-        color: const Color(0xFFE2E8F0).withValues(alpha: 0.5),
+        color: const Color(0xFFF1F5F9),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFCBD5E1).withValues(alpha: 0.6), width: 1),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       );
 }
 
@@ -116,6 +108,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     });
   }
 
+  /// Load settings directly from backend MongoDB
+  /// Keeps all options (including enabled: true) persistent across app uninstalls & reinstalls
   Future<void> _loadFromBackend() async {
     setState(() => _isLoadingInitial = true);
     try {
@@ -129,15 +123,20 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
         });
       }
 
-      // 2. Fetch business AI settings
+      // 2. Fetch business AI settings directly from database
       final backendSettings = await _waService.getAiAgentSettings();
       if (backendSettings != null && mounted) {
         setState(() {
+          // Unconditional enabled state from backend database (never overwritten by connection state)
           if (backendSettings['enabled'] != null) {
-            _isEnabled = backendSettings['enabled'] == true && _isMetaConnected;
+            _isEnabled = backendSettings['enabled'] == true;
           }
-          if (backendSettings['persona'] != null) _persona = backendSettings['persona'].toString();
-          if (backendSettings['model'] != null) _model = backendSettings['model'].toString();
+          if (backendSettings['persona'] != null && backendSettings['persona'].toString().isNotEmpty) {
+            _persona = backendSettings['persona'].toString();
+          }
+          if (backendSettings['model'] != null && backendSettings['model'].toString().isNotEmpty) {
+            _model = backendSettings['model'].toString();
+          }
           if (backendSettings['autoReplyDelaySeconds'] != null) {
             _delaySeconds = (backendSettings['autoReplyDelaySeconds'] as num).toInt();
           }
@@ -148,9 +147,15 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
             _autoOrderTaking = backendSettings['autoOrderTaking'] == true;
           }
 
-          if (backendSettings['agentName'] != null) _agentNameCtrl.text = backendSettings['agentName'].toString();
-          if (backendSettings['greeting'] != null) _greetingCtrl.text = backendSettings['greeting'].toString();
-          if (backendSettings['systemPrompt'] != null) _promptCtrl.text = backendSettings['systemPrompt'].toString();
+          if (backendSettings['agentName'] != null) {
+            _agentNameCtrl.text = backendSettings['agentName'].toString();
+          }
+          if (backendSettings['greeting'] != null) {
+            _greetingCtrl.text = backendSettings['greeting'].toString();
+          }
+          if (backendSettings['systemPrompt'] != null) {
+            _promptCtrl.text = backendSettings['systemPrompt'].toString();
+          }
           if (backendSettings['customInstructions'] != null) {
             _houseRulesCtrl.text = backendSettings['customInstructions'].toString();
           }
@@ -159,8 +164,24 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
             if (_apiKeyCtrl.text.isNotEmpty) _showCustomApiKey = true;
           }
         });
+
+        // Sync fresh backend settings to local storage as well
+        await _db.saveAiChatAgentSettings(
+          enabled: _isEnabled,
+          persona: _persona,
+          greeting: _greetingCtrl.text,
+          autoMenuSuggest: _autoMenuSuggest,
+          autoOrderTaking: _autoOrderTaking,
+          systemPrompt: _promptCtrl.text,
+          apiKey: _apiKeyCtrl.text,
+          agentName: _agentNameCtrl.text,
+          model: _model,
+          customInstructions: _houseRulesCtrl.text,
+          autoReplyDelay: _delaySeconds,
+        );
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[AiChatAgentScreen] Error loading backend AI settings: $e');
     } finally {
       if (mounted) setState(() => _isLoadingInitial = false);
     }
@@ -178,12 +199,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     super.dispose();
   }
 
+  /// Unconditional database save & sync to backend
   Future<void> _handleSave() async {
-    if (_isEnabled && !_isMetaConnected) {
-      _showMetaRequiredDialog();
-      return;
-    }
-
     setState(() => _isSaving = true);
     HapticFeedback.mediumImpact();
 
@@ -226,57 +243,25 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           content: Row(
             children: [
-              Icon(success ? Icons.check_circle_rounded : Icons.info_outline_rounded,
-                  color: success ? const Color(0xFF10B981) : Colors.amber, size: 18),
+              Icon(
+                success ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                color: success ? const Color(0xFF10B981) : Colors.amber,
+                size: 18,
+              ),
               const SizedBox(width: 8),
-              Text(
-                success ? 'AI Agent settings saved and synced to database!' : 'Saved locally. Backend will sync on connection.',
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white),
+              Expanded(
+                child: Text(
+                  success
+                      ? 'AI Agent settings saved and synced to database!'
+                      : 'Saved locally. Backend will sync on connection.',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12, color: Colors.white),
+                ),
               ),
             ],
           ),
         ),
       );
     }
-  }
-
-  void _showMetaRequiredDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
-            Icon(Icons.warning_amber_rounded, color: Color(0xFFDC2626), size: 22),
-            SizedBox(width: 8),
-            Text('Meta WhatsApp API Required', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
-          ],
-        ),
-        content: const Text(
-          'To activate the AI Chat Agent and receive direct WhatsApp orders, your business must connect Meta WhatsApp Cloud API credentials first.',
-          style: TextStyle(fontSize: 12, color: Color(0xFF475569), height: 1.4),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B), fontSize: 12)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _AiTheme.purpleBrand,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            ),
-            onPressed: () {
-              Navigator.pop(ctx);
-              _showMetaConnectDialog();
-            },
-            child: const Text('Connect Meta API', style: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showMetaConnectDialog() {
@@ -295,7 +280,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
             children: const [
               Icon(Icons.hub_rounded, color: Color(0xFF25D366), size: 20),
               SizedBox(width: 8),
-              Text('Connect Meta WhatsApp API', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
+              Text('Connect Meta WhatsApp API',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Color(0xFF0F172A))),
             ],
           ),
           content: SingleChildScrollView(
@@ -312,7 +298,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 const SizedBox(height: 10),
                 _buildDialogField('WhatsApp Business Number', phoneNumCtrl, 'e.g. +91 9709593705'),
                 const SizedBox(height: 10),
-                _buildDialogField('System User Access Token *', tokenCtrl, 'Permanent Meta Access Token', isPassword: true),
+                _buildDialogField('Permanent Access Token *', tokenCtrl, 'Permanent Meta System Token', isPassword: true),
               ],
             ),
           ),
@@ -364,7 +350,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
                               backgroundColor: Color(0xFF051C48),
-                              content: Text('Meta WhatsApp API Connected Successfully! AI Agent is now ready.'),
+                              content: Text('Meta WhatsApp API Connected Successfully! AI Agent is active.'),
                             ),
                           );
                         }
@@ -439,7 +425,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
 
       final response = await _waService.simulateAiChat(trimmed, overrideSettings);
       final replyText = response?['replyText']?.toString() ??
-          "Namaste! I have noted your message: \"$trimmed\". How else can I assist you today? 😊";
+          "Namaste! I have received your request for: \"$trimmed\". How else can I assist you today? 😊";
 
       if (mounted) {
         setState(() {
@@ -481,33 +467,46 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     return Scaffold(
       backgroundColor: _AiTheme.background,
       appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(56),
+        preferredSize: const Size.fromHeight(60),
         child: Container(
           decoration: const BoxDecoration(
-            color: Color(0xFF051C48),
+            color: _AiTheme.headerNavy,
           ),
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18),
-                    tooltip: 'Back',
-                  ),
-                  const SizedBox(width: 4),
+                  // Circular Shape Back Button
                   Container(
-                    width: 32,
-                    height: 32,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
-                      color: const Color(0xFF7C3AED).withValues(alpha: 0.25),
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.15),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+                      tooltip: 'Back',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // AI Robot Icon
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF7C3AED).withValues(alpha: 0.3),
                       shape: BoxShape.circle,
                       border: Border.all(color: const Color(0xFFA78BFA), width: 1.2),
                     ),
-                    child: const Icon(Icons.smart_toy_rounded, color: Color(0xFFDDD6FE), size: 17),
+                    child: const Icon(Icons.smart_toy_rounded, color: Color(0xFFDDD6FE), size: 18),
                   ),
                   const SizedBox(width: 10),
+                  // Title & Subtitle
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -516,7 +515,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                         const Text(
                           'AI Chat Agent Settings',
                           style: TextStyle(
-                            fontSize: 14.5,
+                            fontSize: 15,
                             fontWeight: FontWeight.w800,
                             color: Colors.white,
                           ),
@@ -524,7 +523,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                         Text(
                           '$restaurantName • WhatsApp POS Assistant',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 10.5,
                             fontWeight: FontWeight.w500,
                             color: Colors.white.withValues(alpha: 0.75),
                           ),
@@ -532,14 +531,14 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                       ],
                     ),
                   ),
-                  // Compact Status Pill
+                  // Online/Standby Status Pill
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: (_isEnabled && _isMetaConnected) ? const Color(0x2E10B981) : Colors.white12,
+                      color: _isEnabled ? const Color(0x2E10B981) : Colors.white12,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: (_isEnabled && _isMetaConnected) ? const Color(0xFF10B981) : Colors.white24,
+                        color: _isEnabled ? const Color(0xFF10B981) : Colors.white24,
                         width: 0.8,
                       ),
                     ),
@@ -551,15 +550,15 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                           height: 6,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            color: (_isEnabled && _isMetaConnected) ? const Color(0xFF10B981) : Colors.grey,
+                            color: _isEnabled ? const Color(0xFF10B981) : Colors.grey,
                           ),
                         ),
                         const SizedBox(width: 5),
                         Text(
-                          (_isEnabled && _isMetaConnected) ? 'Online' : 'Standby',
+                          _isEnabled ? 'Online' : 'Disabled',
                           style: TextStyle(
-                            color: (_isEnabled && _isMetaConnected) ? const Color(0xFF34D399) : Colors.white70,
-                            fontSize: 10,
+                            color: _isEnabled ? const Color(0xFF34D399) : Colors.white70,
+                            fontSize: 10.5,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -572,68 +571,63 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           ),
         ),
       ),
+      // No Artificial Wrapping: Full screen layout with responsive padding
       body: _isLoadingInitial
           ? const Center(child: CircularProgressIndicator(color: _AiTheme.purpleBrand))
-          : Center(
-              // Constrained & Wrapped Screen Layout
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 680),
-                child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 1. Meta Integration & Master Switch Card
-                      _buildMetaStatusAndMasterCard(),
-                      const SizedBox(height: 12),
+          : SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 1. WhatsApp Auto-Reply & Meta Status Card
+                  _buildMetaStatusAndMasterCard(),
+                  const SizedBox(height: 10),
 
-                      // 2. Direct Order Taking Card
-                      _buildOrderTakingCard(),
-                      const SizedBox(height: 12),
+                  // 2. Direct Order Taking Card
+                  _buildOrderTakingCard(),
+                  const SizedBox(height: 10),
 
-                      // 3. Agent Identity & Greeting
-                      _buildSectionHeader('IDENTITY & GREETING', Icons.badge_rounded, _AiTheme.blueBrand),
-                      const SizedBox(height: 6),
-                      _buildIdentityCard(),
-                      const SizedBox(height: 12),
+                  // 3. Conversational Persona (Horizontal Slider)
+                  _buildSectionHeader('CONVERSATIONAL PERSONA', Icons.psychology_rounded, _AiTheme.purpleBrand),
+                  const SizedBox(height: 6),
+                  _buildPersonaSelector(),
+                  const SizedBox(height: 10),
 
-                      // 4. Conversational Persona
-                      _buildSectionHeader('CONVERSATIONAL PERSONA', Icons.psychology_rounded, _AiTheme.purpleBrand),
-                      const SizedBox(height: 6),
-                      _buildPersonaSelector(),
-                      const SizedBox(height: 12),
+                  // 4. Agent Identity & Greeting
+                  _buildSectionHeader('IDENTITY & GREETING', Icons.badge_rounded, _AiTheme.blueBrand),
+                  const SizedBox(height: 6),
+                  _buildIdentityCard(),
+                  const SizedBox(height: 10),
 
-                      // 5. Custom Instructions & House Rules
-                      _buildSectionHeader('SPECIAL HOUSE RULES', Icons.menu_book_rounded, const Color(0xFFD97706)),
-                      const SizedBox(height: 6),
-                      _buildHouseRulesCard(),
-                      const SizedBox(height: 12),
+                  // 5. Special House Rules
+                  _buildSectionHeader('KITCHEN & HOUSE RULES', Icons.menu_book_rounded, const Color(0xFFD97706)),
+                  const SizedBox(height: 6),
+                  _buildHouseRulesCard(),
+                  const SizedBox(height: 10),
 
-                      // 6. Gemini Intelligence Engine (No key required for merchant)
-                      _buildSectionHeader('AI ENGINE & SPEED', Icons.memory_rounded, const Color(0xFF4F46E5)),
-                      const SizedBox(height: 6),
-                      _buildEngineCard(),
-                      const SizedBox(height: 14),
+                  // 6. AI Engine & Delay
+                  _buildSectionHeader('AI ENGINE & SPEED', Icons.memory_rounded, const Color(0xFF4F46E5)),
+                  const SizedBox(height: 6),
+                  _buildEngineCard(),
+                  const SizedBox(height: 12),
 
-                      // 7. WhatsApp Simulator
-                      _buildSectionHeader('LIVE WHATSAPP SIMULATOR', Icons.chat_rounded, const Color(0xFF25D366)),
-                      const SizedBox(height: 6),
-                      _buildSimulatorCard(),
-                      const SizedBox(height: 20),
+                  // 7. Live WhatsApp Simulator
+                  _buildSectionHeader('LIVE WHATSAPP SIMULATOR', Icons.chat_rounded, const Color(0xFF25D366)),
+                  const SizedBox(height: 6),
+                  _buildSimulatorCard(),
+                  const SizedBox(height: 16),
 
-                      // 8. Save Button
-                      _buildSaveButton(),
-                      const SizedBox(height: 30),
-                    ],
-                  ),
-                ),
+                  // 8. Save Button
+                  _buildSaveButton(),
+                  const SizedBox(height: 24),
+                ],
               ),
             ),
     );
   }
 
-  // Section Header with Small Icon
+  // Section Header
   Widget _buildSectionHeader(String title, IconData icon, Color color) {
     return Padding(
       padding: const EdgeInsets.only(left: 2, bottom: 2),
@@ -644,7 +638,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           Text(
             title,
             style: const TextStyle(
-              fontSize: 10.5,
+              fontSize: 11,
               fontWeight: FontWeight.w800,
               color: Color(0xFF475569),
               letterSpacing: 0.5,
@@ -655,95 +649,14 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 1. Meta WhatsApp Connection & Master Switch Card
+  // 1. Meta WhatsApp Status & Master Switch Card
   Widget _buildMetaStatusAndMasterCard() {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Meta WhatsApp Connection Status Row
-          Row(
-            children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _isMetaConnected ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: _isMetaConnected ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5),
-                  ),
-                ),
-                child: Icon(
-                  _isMetaConnected ? Icons.check_circle_rounded : Icons.link_off_rounded,
-                  color: _isMetaConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                  size: 18,
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          _isMetaConnected ? 'Meta Cloud API Connected' : 'Meta API Not Integrated',
-                          style: TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: _isMetaConnected ? const Color(0xFF0F172A) : const Color(0xFFDC2626),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: _isMetaConnected ? const Color(0xFF22C55E).withValues(alpha: 0.15) : const Color(0xFFEF4444).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            _isMetaConnected ? 'Verified' : 'Required',
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              color: _isMetaConnected ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _isMetaConnected
-                          ? (_metaPhoneId.isNotEmpty ? 'Phone ID: $_metaPhoneId' : 'Ready for WhatsApp messaging')
-                          : 'Connect your Meta WhatsApp API credentials to enable the AI agent.',
-                      style: const TextStyle(fontSize: 10.5, color: _AiTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              if (!_isMetaConnected)
-                ElevatedButton.icon(
-                  onPressed: _showMetaConnectDialog,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF25D366),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    elevation: 0,
-                  ),
-                  icon: const Icon(Icons.add_link_rounded, size: 14, color: Colors.white),
-                  label: const Text('Connect', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white)),
-                ),
-            ],
-          ),
-
-          const SizedBox(height: 12),
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 10),
-
           // Master Switch Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -753,29 +666,88 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'Activate Autonomous AI Auto-Reply',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _AiTheme.textDark),
+                      'AI Auto-Reply Agent',
+                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: _AiTheme.textDark),
                     ),
                     SizedBox(height: 2),
                     Text(
-                      'AI responds to incoming customer chats instantly on your WhatsApp Business number.',
-                      style: TextStyle(fontSize: 10.5, color: _AiTheme.textMuted),
+                      'Responds to customer inquiries 24/7 on WhatsApp',
+                      style: TextStyle(fontSize: 11, color: _AiTheme.textMuted),
                     ),
                   ],
                 ),
               ),
               Switch(
-                value: _isEnabled && _isMetaConnected,
+                value: _isEnabled,
                 activeThumbColor: Colors.white,
-                activeTrackColor: _AiTheme.purpleBrand,
+                activeTrackColor: _AiTheme.headerNavy,
                 inactiveThumbColor: Colors.white,
                 inactiveTrackColor: const Color(0xFFCBD5E1),
-                onChanged: _isMetaConnected
-                    ? (val) {
-                        HapticFeedback.lightImpact();
-                        setState(() => _isEnabled = val);
-                      }
-                    : (_) => _showMetaRequiredDialog(),
+                onChanged: (val) {
+                  HapticFeedback.lightImpact();
+                  setState(() => _isEnabled = val);
+                },
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 10),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 10),
+
+          // Meta Connection Info Bar
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: _isMetaConnected ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isMetaConnected ? Icons.check_circle_rounded : Icons.link_off_rounded,
+                  color: _isMetaConnected ? const Color(0xFF16A34A) : const Color(0xFF64748B),
+                  size: 16,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isMetaConnected ? 'Meta Cloud API Connected' : 'Meta API Not Linked',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: _isMetaConnected ? const Color(0xFF16A34A) : _AiTheme.textDark,
+                      ),
+                    ),
+                    Text(
+                      _isMetaConnected
+                          ? (_metaPhoneNumber.isNotEmpty ? _metaPhoneNumber : 'Phone ID: $_metaPhoneId')
+                          : 'Connect to receive live customer messages on your WhatsApp number',
+                      style: const TextStyle(fontSize: 10, color: _AiTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: _showMetaConnectDialog,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  backgroundColor: _isMetaConnected ? const Color(0xFFF1F5F9) : const Color(0xFF25D366),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                child: Text(
+                  _isMetaConnected ? 'Manage' : 'Connect',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: _isMetaConnected ? _AiTheme.textDark : Colors.white,
+                  ),
+                ),
               ),
             ],
           ),
@@ -788,7 +760,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
   Widget _buildOrderTakingCard() {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -808,7 +780,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               const Expanded(
                 child: Text(
                   'DIRECT ORDER TAKING IN CHAT',
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
                 ),
               ),
               Container(
@@ -830,8 +802,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            'When customers text food/beverage orders on WhatsApp, the AI automatically detects menu dishes, calculates the bill, creates a pending POS Order, and alerts your counter in real time.',
-            style: TextStyle(fontSize: 10.5, color: _AiTheme.textMuted, height: 1.3),
+            'Converts customer food orders on WhatsApp into live POS counter tickets automatically.',
+            style: TextStyle(fontSize: 11, color: _AiTheme.textMuted),
           ),
           const SizedBox(height: 10),
           Row(
@@ -839,7 +811,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               Expanded(
                 child: _buildSmallToggleTile(
                   'Auto-Create POS Order',
-                  'Direct takeaway & delivery ordering',
+                  'Orders appear on POS screen',
                   _autoOrderTaking,
                   (val) => setState(() => _autoOrderTaking = val),
                 ),
@@ -848,7 +820,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               Expanded(
                 child: _buildSmallToggleTile(
                   'Suggest Bestsellers',
-                  'Recommends popular dishes & combos',
+                  'Recommends top dishes & combos',
                   _autoMenuSuggest,
                   (val) => setState(() => _autoMenuSuggest = val),
                 ),
@@ -894,22 +866,113 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 3. Agent Identity & Greeting Card
+  // 3. Conversational Persona Selector (Smooth Horizontal Slider)
+  Widget _buildPersonaSelector() {
+    final personas = [
+      {'id': 'friendly', 'label': 'Friendly', 'icon': Icons.sentiment_satisfied_alt_rounded, 'desc': 'Warm & Welcoming'},
+      {'id': 'hinglish', 'label': 'Hinglish', 'icon': Icons.chat_bubble_outline_rounded, 'desc': 'Desi Hindi + English'},
+      {'id': 'professional', 'label': 'Executive', 'icon': Icons.business_center_rounded, 'desc': 'Crisp & Formal'},
+      {'id': 'chef', 'label': 'Chef Host', 'icon': Icons.restaurant_menu_rounded, 'desc': 'Foodie & Specials'},
+      {'id': 'sales', 'label': 'Sales Pro', 'icon': Icons.campaign_rounded, 'desc': 'Combos & Offers'},
+      {'id': 'casual', 'label': 'Casual', 'icon': Icons.coffee_rounded, 'desc': 'Chill & Friendly'},
+      {'id': 'express', 'label': 'Express', 'icon': Icons.flash_on_rounded, 'desc': 'Fast & Direct'},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: _AiTheme.whiteCurvedCard,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: personas.map((p) {
+            final isSelected = _persona == p['id'];
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: InkWell(
+                onTap: () {
+                  HapticFeedback.lightImpact();
+                  setState(() => _persona = p['id'] as String);
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? _AiTheme.headerNavy : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected ? _AiTheme.headerNavy : const Color(0xFFCBD5E1),
+                      width: isSelected ? 1.5 : 1,
+                    ),
+                    boxShadow: isSelected
+                        ? [
+                            BoxShadow(
+                              color: _AiTheme.headerNavy.withValues(alpha: 0.25),
+                              offset: const Offset(0, 3),
+                              blurRadius: 6,
+                            )
+                          ]
+                        : null,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        p['icon'] as IconData,
+                        size: 16,
+                        color: isSelected ? Colors.white : _AiTheme.textDark,
+                      ),
+                      const SizedBox(width: 8),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            p['label'] as String,
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: isSelected ? Colors.white : _AiTheme.textDark,
+                            ),
+                          ),
+                          Text(
+                            p['desc'] as String,
+                            style: TextStyle(
+                              fontSize: 9.5,
+                              fontWeight: FontWeight.w500,
+                              color: isSelected ? Colors.white70 : _AiTheme.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  // 4. Agent Identity & Greeting Card
   Widget _buildIdentityCard() {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Assistant Display Name', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
+          const Text('Assistant Display Name', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
           const SizedBox(height: 4),
           _buildCompactTextField(_agentNameCtrl, 'e.g. Apna AI Assistant'),
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Welcome Greeting Template', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
+              const Text('Welcome Greeting Template', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
               Row(
                 children: [
                   _buildTagChip('{restaurant_name}'),
@@ -933,7 +996,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
         _greetingCtrl.text = '$text $tag';
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         decoration: BoxDecoration(
           color: _AiTheme.purpleBrand.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(4),
@@ -943,120 +1006,41 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 4. Conversational Persona Selector
-  Widget _buildPersonaSelector() {
-    final personas = [
-      {'id': 'friendly', 'label': 'Friendly', 'icon': Icons.sentiment_satisfied_alt_rounded, 'desc': 'Warm & Courteous'},
-      {'id': 'hinglish', 'label': 'Hinglish', 'icon': Icons.chat_bubble_outline_rounded, 'desc': 'Desi Hindi + English'},
-      {'id': 'professional', 'label': 'Executive', 'icon': Icons.business_center_rounded, 'desc': 'Formal & Crisp'},
-      {'id': 'chef', 'label': 'Chef Host', 'icon': Icons.restaurant_menu_rounded, 'desc': 'Passionate Foodie'},
-      {'id': 'sales', 'label': 'Sales Host', 'icon': Icons.campaign_rounded, 'desc': 'Highlights Combos'},
-    ];
-
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: _AiTheme.neumorphicCard,
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: personas.map((p) {
-          final isSelected = _persona == p['id'];
-          return InkWell(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              setState(() => _persona = p['id'] as String);
-            },
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-              decoration: BoxDecoration(
-                color: isSelected ? _AiTheme.purpleBrand : Colors.white.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: isSelected ? _AiTheme.purpleBrand : const Color(0xFFCBD5E1),
-                  width: 1,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                          color: _AiTheme.purpleBrand.withValues(alpha: 0.35),
-                          offset: const Offset(0, 2),
-                          blurRadius: 4,
-                        )
-                      ]
-                    : null,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(p['icon'] as IconData, size: 14, color: isSelected ? Colors.white : const Color(0xFF64748B)),
-                  const SizedBox(width: 6),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        p['label'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected ? Colors.white : const Color(0xFF0F172A),
-                        ),
-                      ),
-                      Text(
-                        p['desc'] as String,
-                        style: TextStyle(
-                          fontSize: 8.5,
-                          color: isSelected ? Colors.white70 : const Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
-  // 5. Special House Rules Card
+  // 5. Kitchen & Special House Rules Card
   Widget _buildHouseRulesCard() {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Custom Instructions for AI',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
           ),
-          const SizedBox(height: 2),
-          const Text(
-            'Add house policies, closing hours, or delivery radius notes (e.g. "Kitchen closes at 11 PM. Delivery above ₹200 free.")',
-            style: TextStyle(fontSize: 10, color: _AiTheme.textMuted),
+          const SizedBox(height: 4),
+          _buildCompactTextField(
+            _houseRulesCtrl,
+            'e.g. Pure veg kitchen. Kitchen closes at 11 PM. Delivery above ₹200 free within 5 km.',
+            maxLines: 2,
           ),
-          const SizedBox(height: 6),
-          _buildCompactTextField(_houseRulesCtrl, 'e.g. Pure veg kitchen. No orders taken after 11 PM.', maxLines: 2),
         ],
       ),
     );
   }
 
-  // 6. AI Engine Card (Server AI Included by Default)
+  // 6. AI Engine & Delay Card
   Widget _buildEngineCard() {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(5),
+                padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEDE9FE),
                   borderRadius: BorderRadius.circular(8),
@@ -1068,7 +1052,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text('Google Gemini 3.8 Flash Engine', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: _AiTheme.textDark)),
+                    Text('Google Gemini 3.8 Flash Engine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _AiTheme.textDark)),
                     Text('Platform-wide server AI included • No merchant key required', style: TextStyle(fontSize: 10, color: Color(0xFF059669), fontWeight: FontWeight.w600)),
                   ],
                 ),
@@ -1089,7 +1073,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Auto-Reply Delay', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
+              const Text('Auto-Reply Delay', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
               Row(
                 children: [1, 2, 3, 5].map((s) {
                   final isSel = _delaySeconds == s;
@@ -1099,9 +1083,9 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                       margin: const EdgeInsets.only(left: 4),
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: isSel ? _AiTheme.purpleBrand : Colors.white,
+                        color: isSel ? _AiTheme.headerNavy : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: isSel ? _AiTheme.purpleBrand : const Color(0xFFCBD5E1)),
+                        border: Border.all(color: isSel ? _AiTheme.headerNavy : const Color(0xFFCBD5E1)),
                       ),
                       child: Text('${s}s', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isSel ? Colors.white : const Color(0xFF334155))),
                     ),
@@ -1149,28 +1133,38 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 7. Live WhatsApp Simulator Card
+  // 7. Live WhatsApp Simulator Card with Test Chips
   Widget _buildSimulatorCard() {
+    final sampleChips = [
+      {'label': '📜 Menu', 'msg': 'Show full menu'},
+      {'label': '👨‍🍳 Specials', 'msg': 'What are today\'s chef specials?'},
+      {'label': '🥗 Pure Veg', 'msg': 'Show pure veg options'},
+      {'label': '☕ Order Food', 'msg': 'I want to order 2 Chai and 1 Samosa'},
+      {'label': '🪑 Book Table', 'msg': 'Book a table for 4 tonight at 8 PM'},
+      {'label': '⏰ Timings', 'msg': 'What are your opening hours?'},
+    ];
+
     return Container(
-      decoration: _AiTheme.neumorphicCard,
+      decoration: _AiTheme.whiteCurvedCard,
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Simulator Header
+          // WhatsApp Green Header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: const BoxDecoration(
-              color: Color(0xFF075E54),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-            ),
+            color: const Color(0xFF075E54),
             child: Row(
               children: [
-                const Icon(Icons.smart_toy_rounded, size: 14, color: Colors.white),
-                const SizedBox(width: 6),
-                const Text('Live WhatsApp Chat Simulator', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white)),
+                const Icon(Icons.smart_toy_rounded, size: 15, color: Colors.white),
+                const SizedBox(width: 8),
+                const Text(
+                  'Live WhatsApp Chat Simulator',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
                 const Spacer(),
-                TextButton(
-                  onPressed: () {
+                GestureDetector(
+                  onTap: () {
                     setState(() {
                       _simMessages.clear();
                       final rName = _db.restaurant?.name ?? 'Our Restaurant';
@@ -1180,7 +1174,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                       });
                     });
                   },
-                  child: const Text('Clear', style: TextStyle(color: Colors.white70, fontSize: 10)),
+                  child: const Text('Clear', style: TextStyle(color: Colors.white70, fontSize: 10.5, fontWeight: FontWeight.w600)),
                 ),
               ],
             ),
@@ -1188,8 +1182,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
 
           // Messages View
           Container(
-            height: 220,
-            color: const Color(0xFFE5DDD5).withValues(alpha: 0.6),
+            height: 230,
+            color: const Color(0xFFECE5DD),
             padding: const EdgeInsets.all(10),
             child: ListView.builder(
               controller: _simScrollCtrl,
@@ -1202,20 +1196,20 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 3),
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                    constraints: const BoxConstraints(maxWidth: 320),
+                    constraints: const BoxConstraints(maxWidth: 380),
                     decoration: BoxDecoration(
-                      color: isUser ? const Color(0xFFE7FFDB) : Colors.white,
+                      color: isUser ? const Color(0xFFDCF8C6) : Colors.white,
                       borderRadius: BorderRadius.only(
                         topLeft: const Radius.circular(10),
                         topRight: const Radius.circular(10),
                         bottomLeft: Radius.circular(isUser ? 10 : 0),
                         bottomRight: Radius.circular(isUser ? 0 : 10),
                       ),
-                      boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2, offset: Offset(0, 1))],
+                      boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 2, offset: Offset(0, 1))],
                     ),
                     child: Text(
                       m['text'] ?? '',
-                      style: const TextStyle(fontSize: 10.5, color: Color(0xFF0F172A), height: 1.3),
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF0F172A), height: 1.3),
                     ),
                   ),
                 );
@@ -1223,20 +1217,48 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
             ),
           ),
 
+          // Quick Template Chips
+          Container(
+            color: const Color(0xFFF8FAFC),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: sampleChips.map((c) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: ActionChip(
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      backgroundColor: Colors.white,
+                      side: const BorderSide(color: Color(0xFFCBD5E1), width: 0.8),
+                      label: Text(
+                        c['label']!,
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      ),
+                      onPressed: () => _sendSimulationMessage(c['msg']!),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+
           // Message Input Row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             color: Colors.white,
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: _simInputCtrl,
-                    style: const TextStyle(fontSize: 11),
+                    style: const TextStyle(fontSize: 11.5),
                     onSubmitted: _sendSimulationMessage,
                     decoration: const InputDecoration(
-                      hintText: 'Type "I want 2 Tea and 1 Sandwich" to test direct ordering...',
-                      hintStyle: TextStyle(fontSize: 10, color: Color(0xFF94A3B8)),
+                      hintText: 'Type a message to test WhatsApp templates...',
+                      hintStyle: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
                       border: InputBorder.none,
                       isDense: true,
                     ),
@@ -1245,7 +1267,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 IconButton(
                   icon: _isSimulating
                       ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: _AiTheme.purpleBrand))
-                      : const Icon(Icons.send_rounded, size: 16, color: Color(0xFF075E54)),
+                      : const Icon(Icons.send_rounded, size: 18, color: Color(0xFF075E54)),
                   onPressed: _isSimulating ? null : () => _sendSimulationMessage(_simInputCtrl.text),
                 ),
               ],
@@ -1260,10 +1282,10 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
   Widget _buildSaveButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: const Color(0xFF051C48),
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        backgroundColor: _AiTheme.headerNavy,
+        padding: const EdgeInsets.symmetric(vertical: 13),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        elevation: 3,
+        elevation: 2,
       ),
       onPressed: _isSaving ? null : _handleSave,
       child: _isSaving
@@ -1275,7 +1297,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 SizedBox(width: 8),
                 Text(
                   'Save & Sync AI Chat Agent',
-                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
                 ),
               ],
             ),
@@ -1291,12 +1313,12 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
         hintText: hint,
         hintStyle: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
         filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.8),
+        fillColor: const Color(0xFFF8FAFC),
         isDense: true,
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _AiTheme.purpleBrand, width: 1.2)),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _AiTheme.headerNavy, width: 1.2)),
       ),
     );
   }

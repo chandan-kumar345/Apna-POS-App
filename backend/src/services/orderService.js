@@ -498,6 +498,14 @@ class OrderService {
       tokenNo,
       invoiceNumber,
       invoiceGenerated: status === 'completed',
+      orderSource: (rawData.orderSource || rawData.source || 'pos').toString().toLowerCase().includes('whatsapp') ? 'whatsapp' : (rawData.orderSource || 'pos'),
+      whatsappDetails: (rawData.orderSource || rawData.source || '').toString().toLowerCase().includes('whatsapp') ? {
+        chatId: rawData.chatId || null,
+        customerPhone: rawData.customerPhone || '',
+        customerName: rawData.customerName || '',
+        acceptanceStatus: 'pending_review',
+        estimatedPrepTimeMinutes: Number(rawData.estimatedPrepTimeMinutes) || 20,
+      } : undefined,
     });
 
     // 8. Update Table status
@@ -914,6 +922,261 @@ class OrderService {
     }
 
     return order;
+  }
+
+  /**
+   * Accept an incoming WhatsApp customer order from the POS alert dialog
+   */
+  async acceptWhatsAppOrder(businessId, orderId, { prepTimeMinutes = 20, note = '' } = {}) {
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await Order.findOne({ _id: orderId, businessId });
+    }
+    if (!order) {
+      order = await Order.findOne({
+        businessId,
+        $or: [
+          { clientSyncId: orderId },
+          { localOrderId: orderId },
+          { orderNumber: orderId },
+          { orderNumber: (orderId || '').replace('ord_', '').replace('ORD-', '') },
+        ],
+      });
+    }
+    if (!order) {
+      throw ApiError.notFound('Order not found');
+    }
+
+    const prepMins = Math.max(5, parseInt(prepTimeMinutes, 10) || 20);
+
+    // 1. Update order status to 'preparing'
+    order.status = 'preparing';
+    if (!order.whatsappDetails) {
+      order.whatsappDetails = {};
+    }
+    order.whatsappDetails.acceptanceStatus = 'accepted';
+    order.whatsappDetails.estimatedPrepTimeMinutes = prepMins;
+    order.whatsappDetails.respondedAt = new Date();
+    if (note) {
+      order.notes = order.notes ? `${order.notes} | ${note}` : note;
+    }
+    await order.save();
+
+    // 2. Resolve Business & WhatsApp context
+    const business = await Business.findById(businessId).lean();
+    const restaurantName = business?.profile?.name || business?.name || 'Our Restaurant';
+    const targetPhone = order.customerPhone || order.whatsappDetails?.customerPhone;
+
+    // 3. Dispatch real-time WhatsApp acceptance message to customer
+    if (targetPhone) {
+      try {
+        const whatsappService = require('./whatsappService');
+        const WhatsAppChat = require('../models/WhatsAppChat');
+        const WhatsAppMessage = require('../models/WhatsAppMessage');
+
+        const activePhoneId = business?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
+        const activeToken = business?.whatsappSettings?.accessToken || whatsappService.accessToken;
+
+        const customerMsg = `✅ *ORDER ACCEPTED!* 🎉\n━━━━━━━━━━━━━━━━━━━━\nGreat news! Your order *#${order.orderNumber}* has been accepted by *${restaurantName}*.\n\n👨‍🍳 *Status*: In Kitchen / Preparing\n⏰ *Estimated Prep Time*: *${prepMins} minutes*\n💰 *Total Amount*: *₹${order.totalAmount}*\n🛵 *Type*: ${order.orderType === 'delivery' ? 'Home Delivery' : 'Takeaway / Pickup'}\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We are preparing your meal fresh and hot. Thank you for ordering with us!_ 🍽️`;
+
+        const sendResult = await whatsappService.sendChatMessage({
+          to: targetPhone,
+          text: customerMsg,
+          phoneNumberId: activePhoneId,
+          accessToken: activeToken,
+        });
+
+        // Link with WhatsAppChat and log OUTGOING message
+        const chat = await WhatsAppChat.findOne({
+          businessId,
+          customerPhone: whatsappService.normalizePhoneNumber(targetPhone),
+        });
+
+        if (chat) {
+          await WhatsAppMessage.create({
+            businessId,
+            chatId: chat._id,
+            customerPhone: chat.customerPhone,
+            direction: 'OUTGOING',
+            messageType: 'text',
+            text: customerMsg,
+            whatsappMessageId: sendResult?.messageId || `wamid.accept.${Date.now()}`,
+            status: 'SENT',
+            timestamp: new Date(),
+          });
+
+          chat.lastMessage = `✅ Order #${order.orderNumber} Accepted`;
+          chat.lastMessageAt = new Date();
+          chat.lastMessageDirection = 'OUTGOING';
+          await chat.save();
+
+          socketService.emitWhatsAppMessageReceived(businessId, {
+            chat,
+            message: { text: customerMsg, direction: 'OUTGOING', timestamp: new Date() },
+            ownerId: business?.ownerId,
+          });
+        }
+      } catch (waErr) {
+        console.warn('[acceptWhatsAppOrder] WhatsApp customer notification notice:', waErr.message);
+      }
+    }
+
+    // 4. Broadcast state updates to all terminals
+    try {
+      socketService.emitOrderUpdated(businessId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order: order.toJSON ? order.toJSON() : order,
+      });
+      socketService.emitWhatsAppOrderAccepted(businessId, {
+        order: order.toJSON ? order.toJSON() : order,
+        prepTimeMinutes: prepMins,
+      });
+    } catch (sockErr) {
+      console.warn('[acceptWhatsAppOrder] Socket warning:', sockErr.message);
+    }
+
+    return {
+      success: true,
+      order,
+      message: `Order #${order.orderNumber} accepted successfully and customer notified via WhatsApp.`,
+    };
+  }
+
+  /**
+   * Reject / Cancel an incoming WhatsApp customer order with reason
+   */
+  async rejectWhatsAppOrder(businessId, orderId, { reason = 'Kitchen is at maximum capacity' } = {}) {
+    let order = null;
+    if (mongoose.Types.ObjectId.isValid(orderId)) {
+      order = await Order.findOne({ _id: orderId, businessId });
+    }
+    if (!order) {
+      order = await Order.findOne({
+        businessId,
+        $or: [
+          { clientSyncId: orderId },
+          { localOrderId: orderId },
+          { orderNumber: orderId },
+          { orderNumber: (orderId || '').replace('ord_', '').replace('ORD-', '') },
+        ],
+      });
+    }
+    if (!order) {
+      throw ApiError.notFound('Order not found');
+    }
+
+    const cancelReason = (reason && reason.trim()) || 'Restaurant unable to accept order at this time';
+
+    // 1. Update order status to 'cancelled'
+    order.status = 'cancelled';
+    order.cancelledAt = new Date();
+    order.cancellationReason = cancelReason;
+    if (!order.whatsappDetails) {
+      order.whatsappDetails = {};
+    }
+    order.whatsappDetails.acceptanceStatus = 'rejected';
+    order.whatsappDetails.rejectionReason = cancelReason;
+    order.whatsappDetails.respondedAt = new Date();
+    await order.save();
+
+    // 2. Free table if dineIn
+    if (order.tableNumber) {
+      const cleanTable = order.tableNumber.toString().replace(/^T-/i, '').trim();
+      await Cart.deleteMany({
+        businessId,
+        orderType: 'dineIn',
+        tableNumber: { $in: [order.tableNumber, `T-${cleanTable}`, `Table ${cleanTable}`, cleanTable] },
+      }).catch(() => {});
+
+      await Table.findOneAndUpdate(
+        this._getTableQuery(businessId, order.tableNumber),
+        { $set: { status: 'free', currentOrderId: null, occupiedSince: null, activeOrderTotal: 0, activeItemCount: 0 } }
+      );
+      tableService.emitTableUpdateForTable(businessId, order.tableNumber);
+    }
+
+    // 3. Resolve Business & WhatsApp context
+    const business = await Business.findById(businessId).lean();
+    const restaurantName = business?.profile?.name || business?.name || 'Our Restaurant';
+    const targetPhone = order.customerPhone || order.whatsappDetails?.customerPhone;
+
+    // 4. Dispatch real-time WhatsApp cancellation message to customer
+    if (targetPhone) {
+      try {
+        const whatsappService = require('./whatsappService');
+        const WhatsAppChat = require('../models/WhatsAppChat');
+        const WhatsAppMessage = require('../models/WhatsAppMessage');
+
+        const activePhoneId = business?.whatsappSettings?.phoneNumberId || whatsappService.phoneNumberId;
+        const activeToken = business?.whatsappSettings?.accessToken || whatsappService.accessToken;
+
+        const customerMsg = `❌ *ORDER DECLINED* ❌\n━━━━━━━━━━━━━━━━━━━━\nWe are sorry! Your order *#${order.orderNumber}* could not be accepted by *${restaurantName}*.\n\n📝 *Reason*: ${cancelReason}\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We sincerely apologize for the inconvenience. Please feel free to order again or contact us directly._ 💐`;
+
+        const sendResult = await whatsappService.sendChatMessage({
+          to: targetPhone,
+          text: customerMsg,
+          phoneNumberId: activePhoneId,
+          accessToken: activeToken,
+        });
+
+        // Link with WhatsAppChat and log OUTGOING message
+        const chat = await WhatsAppChat.findOne({
+          businessId,
+          customerPhone: whatsappService.normalizePhoneNumber(targetPhone),
+        });
+
+        if (chat) {
+          await WhatsAppMessage.create({
+            businessId,
+            chatId: chat._id,
+            customerPhone: chat.customerPhone,
+            direction: 'OUTGOING',
+            messageType: 'text',
+            text: customerMsg,
+            whatsappMessageId: sendResult?.messageId || `wamid.reject.${Date.now()}`,
+            status: 'SENT',
+            timestamp: new Date(),
+          });
+
+          chat.lastMessage = `❌ Order #${order.orderNumber} Declined`;
+          chat.lastMessageAt = new Date();
+          chat.lastMessageDirection = 'OUTGOING';
+          await chat.save();
+
+          socketService.emitWhatsAppMessageReceived(businessId, {
+            chat,
+            message: { text: customerMsg, direction: 'OUTGOING', timestamp: new Date() },
+            ownerId: business?.ownerId,
+          });
+        }
+      } catch (waErr) {
+        console.warn('[rejectWhatsAppOrder] WhatsApp customer notification notice:', waErr.message);
+      }
+    }
+
+    // 5. Broadcast state updates to all terminals
+    try {
+      socketService.emitOrderUpdated(businessId, {
+        orderId: order._id.toString(),
+        orderNumber: order.orderNumber,
+        status: order.status,
+        order: order.toJSON ? order.toJSON() : order,
+      });
+      socketService.emitWhatsAppOrderRejected(businessId, {
+        order: order.toJSON ? order.toJSON() : order,
+        reason: cancelReason,
+      });
+    } catch (sockErr) {
+      console.warn('[rejectWhatsAppOrder] Socket warning:', sockErr.message);
+    }
+
+    return {
+      success: true,
+      order,
+      message: `Order #${order.orderNumber} declined and customer notified via WhatsApp.`,
+    };
   }
 
   async payOrder(businessId, orderId, { paymentMethod, amountPaid }) {

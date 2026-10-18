@@ -65,6 +65,37 @@ class OrderController {
     }
   }
 
+  async acceptWhatsAppOrder(req, res, next) {
+    try {
+      const result = await orderService.acceptWhatsAppOrder(
+        req.businessId,
+        req.params.id,
+        {
+          prepTimeMinutes: req.body.prepTimeMinutes,
+          note: req.body.note,
+        }
+      );
+      return ApiResponse.success(res, result, result.message || 'WhatsApp order accepted');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async rejectWhatsAppOrder(req, res, next) {
+    try {
+      const result = await orderService.rejectWhatsAppOrder(
+        req.businessId,
+        req.params.id,
+        {
+          reason: req.body.reason,
+        }
+      );
+      return ApiResponse.success(res, result, result.message || 'WhatsApp order rejected');
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async payOrder(req, res, next) {
     try {
       const result = await orderService.payOrder(req.businessId, req.params.id, req.body);

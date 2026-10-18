@@ -114,8 +114,12 @@ class FcmService {
     final body = notification?.body ?? data['message'] ?? '';
     final typeStr = data['type']?.toString() ?? 'system';
 
-    // Suppress new orders push notifications
-    if (typeStr == 'new_order' || typeStr == 'newOrder') return;
+    // Suppress regular internal POS order notifications, but NEVER suppress WhatsApp incoming orders!
+    final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
+        typeStr == 'whatsapp_new_order' ||
+        typeStr == 'whatsapp_order';
+
+    if (!isWhatsAppOrder && (typeStr == 'new_order' || typeStr == 'newOrder')) return;
 
     LocalNotificationService().showPushNotification(
       title: title,
@@ -127,6 +131,11 @@ class FcmService {
       metadata: data,
       playSound: true,
     );
+
+    // If app is currently in foreground, directly trigger the action dialog
+    if (isWhatsAppOrder) {
+      LocalNotificationService.handlePayloadDirectly(data);
+    }
   }
 
   void _handleNotificationTap(RemoteMessage message) {

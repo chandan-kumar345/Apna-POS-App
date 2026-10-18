@@ -225,11 +225,14 @@ If the customer wants to order items from the menu (e.g. "pack 2 Masala Chai and
 \`\`\`
 If the customer is NOT placing an order, DO NOT output any \`\`\`order_data\`\`\` block.` : 'Advise the customer to call or visit to place orders.'}
 6. Table Booking / Reservation: If the guest wants to reserve a table, ask for party size, date, time, and confirm that their request has been noted for the manager.
-7. Format your response cleanly for WhatsApp:
-   - Use *bold* for dish names and prices.
-   - Use bullet points for lists.
-   - Keep replies concise (usually 2 to 5 short paragraphs or bullet points). Do not write huge walls of text.
-   - Add friendly relevant food emojis naturally (e.g. 🍛, 🍕, ☕, 🙏).
+7. Format your response cleanly using an elegant, professional WhatsApp template:
+   - Begin with a branded header banner with emojis (e.g. ✨ *{RESTAURANT_NAME}* ✨ or 📋 *MENU & SPECIALTIES* 📋).
+   - Use clean horizontal divider lines: ━━━━━━━━━━━━━━━━━━━━
+   - Use *bold* for dish names, section titles, and prices (e.g. • *Paneer Butter Masala* — ₹240).
+   - Format lists with neat bullet points (• or 🔹).
+   - Keep replies concise, clean, and easily scannable. Avoid unformatted walls of text.
+   - Conclude with a clean divider: ━━━━━━━━━━━━━━━━━━━━ followed by a helpful guidance line (e.g. 💡 _Reply with dish names to order directly!_).
+   - Add friendly food & hospitality emojis naturally (🍛, 🍕, ☕, 🙏, 🍽️).
 
 ${houseRules ? `SPECIAL HOUSE RULES FROM OWNER:\n${houseRules}\n` : ''}
 ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
@@ -386,21 +389,22 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Greeting / Hello
     if (/^(hi|hello|hey|namaste|pranam|hola|good\s*(morning|afternoon|evening))/i.test(raw)) {
       if (settings.greeting && settings.greeting.trim()) {
+        const customGreeting = settings.greeting
+          .replace(/\{restaurant_name\}/gi, rName)
+          .replace(/\{customer_name\}/gi, customerName || 'guest');
         return {
-          replyText: settings.greeting
-            .replace(/\{restaurant_name\}/gi, rName)
-            .replace(/\{customer_name\}/gi, customerName || 'guest'),
+          replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n${customGreeting}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with *Menu*, *Specials*, or type your order directly!_`,
           orderPayload: null,
         };
       }
       if (persona === 'hinglish') {
         return {
-          replyText: `Namaste${cGreeting}! 🙏 *${rName}* mein aapka swagat hai!\n\nAaj aap kya order karna chahenge? Hamara menu dekhne ke liye *"Menu"* type karein, ya aaj ke bestsellers jaanein! 😊`,
+          replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n🙏 *Namaste${cGreeting}!* ${rName} mein aapka swagat hai!\n\nAaj aap kya mangwana pasand karenge? Hamara menu dekhne ke liye *Menu* type karein, ya aaj ke bestsellers jaanein! 😊\n━━━━━━━━━━━━━━━━━━━━\n💡 _Type your order directly to place it in our kitchen!_`,
           orderPayload: null,
         };
       }
       return {
-        replyText: `Namaste${cGreeting}! 🙏 Welcome to *${rName}*.\n\nHow can I assist you today? You can ask for our *Full Menu*, today's *Chef Recommendations*, or place a *Table Booking*! 🍽️`,
+        replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n🙏 *Namaste${cGreeting}!* Welcome to *${rName}*.\n\nI am your smart AI hospitality assistant. How can I delight you today?\n\n✨ *Quick Options:*\n• 📋 Send *Menu* for all dishes & drinks\n• ⭐ Send *Specials* for Chef's bestsellers\n• 🎉 Send *Offers* for today's discount coupons\n• 🍽️ Send *Book Table* to reserve dining seats\n• 🛍️ Type your order directly to place it!\n━━━━━━━━━━━━━━━━━━━━\n💬 _What would you like to have today?_`,
         orderPayload: null,
       };
     }
@@ -408,15 +412,16 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Menu inquiry
     if (/(menu|food|dishes|list|kya kya hai|kya milta hai|rate|card)/i.test(raw)) {
       return {
-        replyText: `Here is our current culinary menu at *${rName}*: 📋\n${context.menuText}\n\n*Special Offers*:\n${context.offersText}\n\nWould you like to place an order or know more about any dish? Just type the name! 😊`,
+        replyText: `📋 *${rName.toUpperCase()} — MENU & SPECIALTIES* 📋\n━━━━━━━━━━━━━━━━━━━━\n${context.menuText}\n━━━━━━━━━━━━━━━━━━━━\n🎉 *Today's Offers:*\n${context.offersText}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names & quantities to order directly (e.g. "1 Masala Chai, 2 Samosa")!_`,
         orderPayload: null,
       };
     }
 
     // Recommendations / Bestsellers / Specials
     if (/(special|best|bestseller|recommend|famous|tasty|suggest|top)/i.test(raw)) {
+      const bestList = context.menuText.split('\n').filter((l) => l.includes('Bestseller') || l.includes('Special')).slice(0, 6).join('\n') || context.menuText.split('\n').slice(0, 6).join('\n');
       return {
-        replyText: `🌟 *Chef's Top Recommendations at ${rName}*:\n\nOur guests love these signature specialties:\n${context.menuText.split('\n').filter((l) => l.includes('Bestseller') || l.includes('Special')).slice(0, 5).join('\n') || context.menuText.split('\n').slice(0, 5).join('\n')}\n\nWould you like me to note down an order for you?`,
+        replyText: `⭐ *CHEF'S TOP RECOMMENDATIONS* ⭐\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nOur guests love these signature specialties:\n\n${bestList}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Would you like to order any of these? Just text the dish name!_`,
         orderPayload: null,
       };
     }
@@ -425,7 +430,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     if (/(veg|vegetarian|shakahari)/i.test(raw) && !/non[-\s]?veg/i.test(raw)) {
       const vegItems = context.menuText.split('\n').filter((l) => l.includes('[Veg]')).slice(0, 6).join('\n');
       return {
-        replyText: `🥦 *Pure Veg Specialties at ${rName}*:\n\n${vegItems || 'All our vegetarian items are freshly prepared with pure ingredients!'}\n\nWould you like to order any of these?`,
+        replyText: `🥦 *PURE VEG SPECIALTIES* 🥦\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${vegItems || 'All our vegetarian items are freshly prepared with pure ingredients!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to order or inquire!_`,
         orderPayload: null,
       };
     }
@@ -434,7 +439,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     if (/(non[-\s]?veg|chicken|mutton|egg|meat|fish)/i.test(raw)) {
       const nonVegItems = context.menuText.split('\n').filter((l) => l.includes('[Non-Veg]')).slice(0, 6).join('\n');
       return {
-        replyText: `🍗 *Non-Veg Specialties at ${rName}*:\n\n${nonVegItems || 'We have delicious non-veg delicacies prepared fresh daily!'}\n\nTell me which items you would like to have!`,
+        replyText: `🍗 *NON-VEG DELICACIES* 🍗\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${nonVegItems || 'We have delicious non-veg delicacies prepared fresh daily!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to place your order!_`,
         orderPayload: null,
       };
     }
@@ -442,7 +447,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Table reservation / booking
     if (/(table|book|seat|reservation|reserve|bithane|jagah)/i.test(raw)) {
       return {
-        replyText: `🍽️ *Table Reservation at ${rName}*:\n\nWe would be thrilled to host you! Please tell us:\n1. *Date & Time* ⏰\n2. *Number of Guests* 👥\n3. *Your Name* 👤\n\nOur team will confirm your table right away!`,
+        replyText: `🍽️ *TABLE RESERVATION* 🍽️\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nWe would be delighted to host you! Please share:\n1️⃣ *Date & Time* ⏰\n2️⃣ *Number of Guests* 👥\n3️⃣ *Guest Name* 👤\n━━━━━━━━━━━━━━━━━━━━\n✨ _Our team will confirm your table reservation right away!_`,
         orderPayload: null,
       };
     }
@@ -450,7 +455,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Location / Address / Timings / Contact
     if (/(location|address|kahan hai|timing|time|open|close|phone|call|contact)/i.test(raw)) {
       return {
-        replyText: `📍 *${rName} Info*:\n\n• *Address*: ${context.address}\n• *Contact*: ${context.phone || 'Available on WhatsApp'}\n• *Timings*: Open daily for dining & delivery.\n\nLooking forward to serving you! 😊`,
+        replyText: `📍 *${rName.toUpperCase()} — LOCATION & TIMINGS* 📍\n━━━━━━━━━━━━━━━━━━━━\n• 📌 *Address*: ${context.address}\n• 📞 *Contact*: ${context.phone || 'Available on WhatsApp'}\n• 🕒 *Timings*: Open Daily for Dining & Delivery\n━━━━━━━━━━━━━━━━━━━━\n😊 _We look forward to serving you!_`,
         orderPayload: null,
       };
     }
@@ -458,7 +463,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Offers / Discounts
     if (/(offer|discount|coupon|deal|bachat|sale)/i.test(raw)) {
       return {
-        replyText: `🎉 *Today's Offers & Deals at ${rName}*:\n\n${context.offersText}\n\nApply these codes when ordering to enjoy instant savings! 💰`,
+        replyText: `🎉 *TODAY'S SPECIAL OFFERS & DEALS* 🎉\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${context.offersText}\n━━━━━━━━━━━━━━━━━━━━\n💰 _Apply these codes when ordering to enjoy instant savings!_`,
         orderPayload: null,
       };
     }
@@ -506,7 +511,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
         };
 
         const itemsListStr = validItems.map((i) => `• ${i.quantity}x *${i.name}* (₹${i.price * i.quantity})`).join('\n');
-        const reply = `📝 *Order Received at ${rName}*! 🎉\n\n${itemsListStr}\n\n💰 *Estimated Total*: ₹${calculatedSubtotal}\n${isDelivery ? '🛵 *Type*: Home Delivery' : '🥡 *Type*: Takeaway / Pickup'}\n\nOur kitchen has received this on the POS terminal and started preparing your order! 🙏`;
+        const reply = `🧾 *ORDER RECEIVED* 🧾\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *Order Summary*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Estimated Total*: *₹${calculatedSubtotal}*\n🛵 *Type*: ${isDelivery ? 'Home Delivery' : 'Takeaway / Pickup'}\n⏳ *Status*: 🕒 Waiting for restaurant confirmation\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant manager. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
 
         return {
           replyText: reply,
@@ -515,7 +520,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
       }
 
       return {
-        replyText: `📝 *Order Request at ${rName}*:\n\nI have noted your request: _"${messageText}"_.\n\nOur staff has received your order alert on the POS counter and will confirm the preparation time and total bill shortly! Thank you for ordering with us. 🙏`,
+        replyText: `📝 *ORDER REQUEST — ${rName.toUpperCase()}*\n━━━━━━━━━━━━━━━━━━━━\nI have noted your request: _"${messageText}"_.\n\nOur kitchen staff has received your order alert on the POS counter and will confirm the preparation time and total bill shortly!\n━━━━━━━━━━━━━━━━━━━━\n🙏 _Thank you for ordering with us!_`,
         orderPayload: null,
       };
     }
@@ -523,13 +528,13 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     // Default polite hospitality response
     if (persona === 'hinglish') {
       return {
-        replyText: `Ji bilkul! *${rName}* mein hum aapki help karne ke liye taiyaar hain.\n\nAap hamara *Menu* dekh sakte hain, *Chef Specials* jaan sakte hain, ya direct *Order* likh kar bhej sakte hain. Bataiye kya madad karun? 😊`,
+        replyText: `✨ *${rName.toUpperCase()} — AI ASSISTANT* ✨\n━━━━━━━━━━━━━━━━━━━━\nJi bilkul! *${rName}* mein hum aapki help karne ke liye taiyaar hain.\n\nAap hamara *Menu* dekh sakte hain, *Chef Specials* jaan sakte hain, ya direct *Order* likh kar bhej sakte hain.\n━━━━━━━━━━━━━━━━━━━━\n😊 _Bataiye kya seva karein?_`,
         orderPayload: null,
       };
     }
 
     return {
-      replyText: `Thank you for reaching out to *${rName}*! 🙏\n\nI am your AI assistant. You can ask me for:\n• 📋 *Menu* — View full food & beverage selection\n• ⭐ *Specialties* — Chef's top recommendations\n• 🍽️ *Table Booking* — Reserve a table for dining\n• 📍 *Address & Timings* — Visit us\n\nHow can I serve you today? 😊`,
+      replyText: `✨ *${rName.toUpperCase()} — AI ASSISTANT* ✨\n━━━━━━━━━━━━━━━━━━━━\n🙏 Thank you for reaching out to *${rName}*!\n\nHere is how I can assist you right now:\n• 📋 Send *Menu* — View full food & drink menu\n• ⭐ Send *Specials* — Chef's top recommendations\n• 🍽️ Send *Book Table* — Reserve a dining table\n• 📍 Send *Location* — View address & store timings\n• 🛍️ Type your order directly to place it!\n━━━━━━━━━━━━━━━━━━━━\n😊 _How can I delight you today?_`,
       orderPayload: null,
     };
   }

@@ -604,21 +604,16 @@ class WhatsAppChatService {
     }
 
     if (!business) {
-      // Find business that has WhatsApp actively configured
-      business = await Business.findOne({
-        $or: [
-          { 'whatsappSettings.enabled': true },
-          { 'whatsappSettings.phoneNumberId': { $ne: '' } },
-        ],
-      }).sort({ updatedAt: -1 });
+      // Strictly fallback to dedicated test profile (tester@gmail.com) for test/unmapped webhooks.
+      // Production profiles (e.g. Pizza 47) are strictly protected.
+      business = await this.getDedicatedTestBusiness();
+      if (business) {
+        console.log('[WhatsAppChatService] 🧪 Attached unmapped webhook message to dedicated tester@gmail.com profile');
+      }
     }
 
     if (!business) {
-      business = await Business.findOne().sort({ updatedAt: -1 });
-    }
-
-    if (!business) {
-      console.warn('[WhatsAppChatService] ⚠️ No business found to attach incoming webhook message.');
+      console.warn('[WhatsAppChatService] ⚠️ No business found to attach incoming webhook message. Dropping to protect production profiles.');
       return;
     }
 
@@ -781,13 +776,52 @@ class WhatsAppChatService {
                     status: 'pending',
                     paymentStatus: 'pending',
                     paymentMethod: 'unpaid',
-                    source: 'whatsapp_ai',
+                    source: 'whatsapp',
+                    orderSource: 'whatsapp',
+                    chatId: chat._id,
                   });
 
                   const createdOrder = orderResult?.order || orderResult;
                   if (createdOrder && createdOrder.orderNumber) {
-                    finalReplyText += `\n\n📌 *Order Placed!* Order #${createdOrder.orderNumber} (₹${createdOrder.totalAmount})\n⏳ *Status*: Preparing\nWe will update you as soon as your order is ready! 🍽️`;
+                    finalReplyText += `\n\n🧾 *ORDER REQUEST RECEIVED — #${createdOrder.orderNumber}*\n━━━━━━━━━━━━━━━━━━━━\n💰 *Total Amount*: *₹${createdOrder.totalAmount}*\n🛵 *Type*: ${createdOrder.orderType === 'delivery' ? 'Home Delivery' : 'Takeaway / Pickup'}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant manager. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
                     console.log(`[WhatsAppChatService] 🛒 Direct POS Order #${createdOrder.orderNumber} created via WhatsApp AI for ${normalizedPhone}`);
+
+                    // 1. High-Priority FCM Push Notification dispatch to restaurant terminals
+                    try {
+                      const pushNotificationService = require('./pushNotificationService');
+                      pushNotificationService.sendPushNotificationToBusiness({
+                        businessId: bId,
+                        title: `🔔 New WhatsApp Order: #${createdOrder.orderNumber}`,
+                        message: `${customerName || normalizedPhone} (₹${createdOrder.totalAmount}) • Tap to Accept or Reject`,
+                        data: {
+                          type: 'whatsapp_order_request',
+                          orderId: createdOrder._id.toString(),
+                          orderNumber: createdOrder.orderNumber,
+                          customerPhone: normalizedPhone,
+                          customerName: customerName || chat.customerName || 'Customer',
+                          totalAmount: String(createdOrder.totalAmount),
+                          orderType: createdOrder.orderType,
+                          deliveryAddress: createdOrder.deliveryAddress || '',
+                          items: JSON.stringify(createdOrder.items || []),
+                          createdAt: (createdOrder.createdAt || new Date()).toISOString(),
+                        },
+                      }).catch((pushErr) => console.warn('[WhatsAppChatService] Push order alert notice:', pushErr.message));
+                    } catch (pushErr) {
+                      console.warn('[WhatsAppChatService] Push order alert dispatch error:', pushErr.message);
+                    }
+
+                    // 2. Real-time WebSocket emission to all business terminals
+                    try {
+                      const socketService = require('./socketService');
+                      socketService.emitWhatsAppOrderRequest(bId, {
+                        order: createdOrder.toJSON ? createdOrder.toJSON() : createdOrder,
+                        chat,
+                        customerPhone: normalizedPhone,
+                        customerName: customerName || chat.customerName,
+                      });
+                    } catch (sockErr) {
+                      console.warn('[WhatsAppChatService] Socket order alert emission error:', sockErr.message);
+                    }
                   }
                 } catch (orderErr) {
                   console.error('[WhatsAppChatService] Direct order creation notice:', orderErr.message);
@@ -913,6 +947,25 @@ class WhatsAppChatService {
   }
 
   /**
+   * Dedicated Test Profile Resolver (Strictly targets tester@gmail.com)
+   * Production profiles (like Pizza 47) are strictly protected from tests/simulations.
+   */
+  async getDedicatedTestBusiness() {
+    try {
+      const User = require('../models/User');
+      const Business = require('../models/Business');
+      const testUser = await User.findOne({ email: 'tester@gmail.com' });
+      if (testUser) {
+        const testBiz = await Business.findOne({ ownerId: testUser._id });
+        if (testBiz) return testBiz;
+      }
+    } catch (e) {
+      console.error('[WhatsAppChatService] Error finding tester business:', e.message);
+    }
+    return null;
+  }
+
+  /**
    * Get AI Agent settings for business
    */
   async getAiAgentSettings(businessId, userId) {
@@ -924,7 +977,8 @@ class WhatsAppChatService {
       business = await Business.findOne({ ownerId: userId }).lean();
     }
     if (!business) {
-      business = await Business.findOne().sort({ updatedAt: -1 }).lean();
+      business = await this.getDedicatedTestBusiness();
+      if (business) business = business.toObject ? business.toObject() : business;
     }
     if (!business) {
       throw ApiError.notFound('Business not found');
@@ -958,29 +1012,27 @@ class WhatsAppChatService {
       business = await Business.findOne({ ownerId: userId });
     }
     if (!business) {
-      business = await Business.findOne().sort({ updatedAt: -1 });
+      business = await this.getDedicatedTestBusiness();
     }
     if (!business) {
       throw ApiError.notFound('Business not found');
-    }
-
-    // Require Meta WhatsApp API integration before enabling AI Chat Agent
-    if (settings.enabled === true) {
-      const hasMetaCredentials = Boolean(
-        (business.whatsappSettings?.phoneNumberId && business.whatsappSettings?.accessToken) ||
-        (process.env.WHATSAPP_PHONE_NUMBER_ID && process.env.WHATSAPP_ACCESS_TOKEN)
-      );
-      if (!hasMetaCredentials) {
-        throw ApiError.badRequest(
-          'Meta WhatsApp Cloud API integration is required before enabling the AI Chat Agent. Please connect your Meta Phone Number ID and Access Token.'
-        );
-      }
     }
 
     business.aiChatAgentSettings = {
       ...(business.aiChatAgentSettings?.toObject?.() || business.aiChatAgentSettings || {}),
       ...settings,
     };
+
+    // If Meta WhatsApp credentials are provided in settings, persist them as well
+    if (settings.phoneNumberId || settings.accessToken) {
+      business.whatsappSettings = {
+        ...(business.whatsappSettings?.toObject?.() || business.whatsappSettings || {}),
+        enabled: true,
+        phoneNumberId: settings.phoneNumberId || business.whatsappSettings?.phoneNumberId || '',
+        phoneNumber: settings.phoneNumber || business.whatsappSettings?.phoneNumber || '',
+        accessToken: settings.accessToken || business.whatsappSettings?.accessToken || '',
+      };
+    }
 
     await business.save();
     return business.aiChatAgentSettings;
@@ -998,7 +1050,8 @@ class WhatsAppChatService {
       business = await Business.findOne({ ownerId: userId }).lean();
     }
     if (!business) {
-      business = await Business.findOne().sort({ updatedAt: -1 }).lean();
+      business = await this.getDedicatedTestBusiness();
+      if (business) business = business.toObject ? business.toObject() : business;
     }
     if (!business) {
       throw ApiError.notFound('Business not found');

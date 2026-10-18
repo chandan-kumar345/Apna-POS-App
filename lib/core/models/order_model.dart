@@ -172,6 +172,8 @@ class OrderModel {
   final String? staffRole;
   final String? couponCode;
   final double couponDiscount;
+  final String? orderSource; // 'pos', 'whatsapp', 'online', 'qr'
+  final String? whatsappAcceptanceStatus; // 'pending_review', 'accepted', 'rejected'
 
   OrderModel({
     required this.id,
@@ -205,6 +207,8 @@ class OrderModel {
     this.staffRole,
     this.couponCode,
     this.couponDiscount = 0.0,
+    this.orderSource,
+    this.whatsappAcceptanceStatus,
   });
 
   Map<String, dynamic> toJson() => {
@@ -239,6 +243,8 @@ class OrderModel {
         'staffRole': staffRole,
         'couponCode': couponCode,
         'couponDiscount': couponDiscount,
+        'orderSource': orderSource,
+        'whatsappAcceptanceStatus': whatsappAcceptanceStatus,
       };
 
   factory OrderModel.fromJson(Map<dynamic, dynamic> json) {
@@ -366,6 +372,13 @@ class OrderModel {
         json['updatedAt']?.toString() ??
         '';
 
+    final String? resolvedOrderSource = json['orderSource']?.toString() ??
+        (json['whatsappDetails'] != null ? 'whatsapp' : null);
+    String? resolvedWhatsappStatus = json['whatsappAcceptanceStatus']?.toString();
+    if (resolvedWhatsappStatus == null && json['whatsappDetails'] is Map) {
+      resolvedWhatsappStatus = (json['whatsappDetails'] as Map)['acceptanceStatus']?.toString();
+    }
+
     return OrderModel(
       id: rawId,
       orderNumber: resolvedOrderNumber,
@@ -398,6 +411,8 @@ class OrderModel {
       staffRole: json['staffRole']?.toString() ?? json['role']?.toString(),
       couponCode: json['couponCode']?.toString(),
       couponDiscount: _toDoubleSafe(json['couponDiscount']),
+      orderSource: resolvedOrderSource,
+      whatsappAcceptanceStatus: resolvedWhatsappStatus,
     );
   }
 
@@ -458,6 +473,15 @@ class OrderModel {
     return DateTime.now();
   }
 
+  /// Whether this order originated from WhatsApp
+  bool get isWhatsAppOrder => (orderSource?.toLowerCase() == 'whatsapp') || (whatsappAcceptanceStatus != null);
+
+  /// Whether this order is a WhatsApp order awaiting merchant acceptance/rejection
+  bool get isWhatsAppPendingReview =>
+      isWhatsAppOrder &&
+      (whatsappAcceptanceStatus == 'pending_review' ||
+          (status == OrderStatus.pending && whatsappAcceptanceStatus != 'accepted' && whatsappAcceptanceStatus != 'rejected'));
+
   OrderModel copyWith({
     String? id,
     String? orderNumber,
@@ -488,6 +512,8 @@ class OrderModel {
     String? staffRole,
     String? couponCode,
     double? couponDiscount,
+    String? orderSource,
+    String? whatsappAcceptanceStatus,
   }) {
     return OrderModel(
       id: id ?? this.id,
@@ -521,6 +547,8 @@ class OrderModel {
       staffRole: staffRole ?? this.staffRole,
       couponCode: couponCode ?? this.couponCode,
       couponDiscount: couponDiscount ?? this.couponDiscount,
+      orderSource: orderSource ?? this.orderSource,
+      whatsappAcceptanceStatus: whatsappAcceptanceStatus ?? this.whatsappAcceptanceStatus,
     );
   }
 }

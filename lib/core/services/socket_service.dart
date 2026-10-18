@@ -9,6 +9,7 @@ import 'local_notification_service.dart';
 import 'sound_service.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
+import '../../features/orders/whatsapp_order_action_dialog.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -172,6 +173,7 @@ class SocketService {
       socket.on('whatsapp:message', (data) => _handleWhatsAppMessage(data));
       socket.on('whatsapp:chat_updated', (data) => _handleWhatsAppChatUpdated(data));
       socket.on('whatsapp:message:updated', (data) => _handleWhatsAppMessageUpdated(data));
+      socket.on('whatsapp:order:request', (data) => _handleWhatsAppOrderRequest(data));
 
       socket.connect();
     } catch (e) {
@@ -483,6 +485,65 @@ class SocketService {
       onWhatsAppMessageUpdated?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:message:updated: $e');
+    }
+  }
+
+  void _handleWhatsAppOrderRequest(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      debugPrint('[SocketService] 🔔 Urgent WhatsApp order request received via socket');
+
+      final orderData = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
+      final orderId = orderData['_id']?.toString() ?? orderData['id']?.toString() ?? '';
+      final orderNumber = orderData['orderNumber']?.toString() ?? '';
+      final customerPhone = rawMap['customerPhone']?.toString() ?? orderData['customerPhone']?.toString() ?? '';
+      final customerName = rawMap['customerName']?.toString() ?? orderData['customerName']?.toString() ?? 'Customer';
+      final totalAmount = double.tryParse(orderData['totalAmount']?.toString() ?? '0') ?? 0.0;
+      final orderType = orderData['orderType']?.toString() ?? 'takeaway';
+      final deliveryAddress = orderData['deliveryAddress']?.toString() ?? '';
+      final items = orderData['items'];
+
+      // 1. Play loud notification chime
+      SoundService.playNotificationSound();
+
+      // 2. Trigger high-priority floating push notification in native notification tray
+      LocalNotificationService().showPushNotification(
+        title: '🔔 New WhatsApp Order: #$orderNumber',
+        body: '$customerName ordered ₹${totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
+        payload: jsonEncode({
+          'type': 'whatsapp_order_request',
+          'orderId': orderId,
+          'orderNumber': orderNumber,
+          'customerPhone': customerPhone,
+          'customerName': customerName,
+          'totalAmount': totalAmount.toString(),
+          'orderType': orderType,
+          'deliveryAddress': deliveryAddress,
+          'items': items,
+        }),
+        type: NotificationType.whatsappOrderRequest,
+        channelId: 'apna_pos_whatsapp_orders_v1',
+        playSound: true,
+      );
+
+      // 3. If app is currently visible, directly pop up the WhatsAppOrderActionDialog!
+      final ctx = LocalNotificationService.navigatorKey.currentContext;
+      if (ctx != null) {
+        WhatsAppOrderActionDialog.show(
+          ctx,
+          orderId: orderId,
+          orderNumber: orderNumber,
+          customerPhone: customerPhone,
+          customerName: customerName,
+          totalAmount: totalAmount,
+          orderType: orderType,
+          deliveryAddress: deliveryAddress,
+          itemsPayload: items,
+        );
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:order:request: $e');
     }
   }
 
