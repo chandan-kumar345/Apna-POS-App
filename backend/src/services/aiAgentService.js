@@ -7,7 +7,29 @@ const Business = require('../models/Business');
 
 class AIAgentService {
   constructor() {
-    this.defaultModel = 'gemini-3.8-flash';
+    this.defaultModel = 'gemini-2.0-flash';
+  }
+
+  /**
+   * Format and clean customer name for polite hospitality greetings
+   */
+  formatCustomerName(name) {
+    if (!name || typeof name !== 'string') return '';
+    const trimmed = name.trim();
+    if (
+      !trimmed ||
+      /^customer\s*\d*$/i.test(trimmed) ||
+      /^\+?\d+$/.test(trimmed) ||
+      /^guest$/i.test(trimmed)
+    ) {
+      return '';
+    }
+    // Title-case words nicely (e.g. "chand" -> "Chand", "chandan kumar" -> "Chandan")
+    const words = trimmed
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+    return words.slice(0, 2).join(' ');
   }
 
   /**
@@ -83,7 +105,15 @@ class AIAgentService {
         }
       } catch (_) {}
 
-      const restaurantName = business.name || business.profile?.name || 'Our Restaurant';
+      // Authoritative restaurant brand resolution (prioritize store/company name over personal owner name)
+      const restaurantName =
+        (business.profile?.companyName && business.profile.companyName.trim()) ||
+        (business.companyName && business.companyName.trim()) ||
+        (business.restaurantName && business.restaurantName.trim()) ||
+        (business.name && business.name.trim()) ||
+        (business.profile?.name && business.profile.name.trim()) ||
+        'Our Restaurant';
+
       const address = [
         business.address?.street,
         business.address?.city,
@@ -113,19 +143,20 @@ class AIAgentService {
   /**
    * Build persona instruction text
    */
-  getPersonaPrompt(persona, restaurantName) {
+  getPersonaPrompt(persona, restaurantName, customerDisplayName = '') {
+    const greetingName = customerDisplayName ? ` ${customerDisplayName}` : ' Ji';
     switch (persona) {
       case 'professional':
-        return `You are a formal, polite, and highly efficient AI reservation and hospitality executive for *${restaurantName}*. Speak with elegance, precision, and respectful courtesy.`;
+        return `You are a formal, polite, and highly efficient AI reservation and hospitality executive for *${restaurantName}*. Greet the customer with "Namaste${greetingName}!". Speak with elegance, precision, and respectful courtesy.`;
       case 'chef':
-        return `You are Chef's personal AI concierge at *${restaurantName}*. You are deeply passionate about cuisine, rich flavors, cooking methods, and mouth-watering culinary recommendations. Explain dishes vividly!`;
+        return `You are Chef's personal AI concierge at *${restaurantName}*. Greet the customer warmly with "Namaste${greetingName}!". You are deeply passionate about cuisine, rich flavors, cooking methods, and mouth-watering culinary recommendations. Explain dishes vividly!`;
       case 'sales':
-        return `You are an energetic, welcoming host at *${restaurantName}*. Enthusiastically highlight today's combos, bestsellers, promotions, and add-on pairings. Always encourage trying customer favorites!`;
+        return `You are an energetic, welcoming host at *${restaurantName}*. Greet guests with "Namaste${greetingName}!". Enthusiastically highlight today's combos, bestsellers, promotions, and add-on pairings. Always encourage trying customer favorites!`;
       case 'hinglish':
-        return `You are a cheerful, friendly local assistant for *${restaurantName}*. Talk in natural Indian Hinglish (mixture of easy Hindi and English, e.g. "Namaste ji! Welcome to ${restaurantName}. Bataiye aaj kya mangwayenge? Hamare Paneer Tikka aur Biryani sabse famous hain!"). Keep it very respectful and heartwarming.`;
+        return `You are a cheerful, friendly local assistant for *${restaurantName}*. Talk in natural Indian Hinglish (e.g. "Namaste${greetingName}! Welcome to ${restaurantName}. Bataiye aaj kya mangwayenge? Hamare bestsellers sabse famous hain!"). Keep it very respectful and heartwarming.`;
       case 'friendly':
       default:
-        return `You are a warm, courteous, and helpful AI hospitality host for *${restaurantName}*. Greet guests with "Namaste!", be super welcoming, guide them with a smile, and make them feel at home.`;
+        return `You are a warm, courteous, and helpful AI hospitality host for *${restaurantName}*. Greet guests with "Namaste${greetingName}!", be super welcoming, guide them with a smile, and make them feel at home.`;
     }
   }
 
@@ -177,8 +208,9 @@ class AIAgentService {
     };
 
     const restaurantName = context.restaurantName;
+    const formattedCustomerName = this.formatCustomerName(customerName);
     const persona = settings.persona || 'friendly';
-    const personaPrompt = this.getPersonaPrompt(persona, restaurantName);
+    const personaPrompt = this.getPersonaPrompt(persona, restaurantName, formattedCustomerName);
     const customPrompt = settings.systemPrompt || '';
     const houseRules = settings.customInstructions || '';
     const autoMenu = settings.autoMenuSuggest !== false;
@@ -189,9 +221,15 @@ class AIAgentService {
 ${personaPrompt}
 
 RESTAURANT PROFILE:
-- Name: ${restaurantName}
+- Restaurant Name: ${restaurantName}
 - Phone: ${context.phone}
 - Address: ${context.address}
+
+CUSTOMER PROFILE:
+- Customer Name: ${formattedCustomerName || 'Guest'}
+
+GREETING INSTRUCTION:
+- In greetings and welcome messages, ALWAYS warmly say "Namaste ${formattedCustomerName || 'Ji'}!" and welcome them to *${restaurantName}*.
 
 LIVE RESTAURANT MENU (GROUND TRUTH):
 ${context.menuText}
@@ -248,12 +286,14 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
       process.env.GOOGLE_API_KEY ||
       '';
 
-    const modelName = settings.model || this.defaultModel;
+    let modelName = (settings.model || this.defaultModel || 'gemini-2.0-flash').trim();
+    if (modelName === 'gemini-3.8-flash' || modelName.includes('3.8') || modelName === 'default') {
+      modelName = 'gemini-2.0-flash';
+    }
 
     // 1. Try Gemini API invocation
     if (apiKey) {
       try {
-        console.log(`[AIAgentService] 🤖 Invoking Gemini model '${modelName}' for ${restaurantName}...`);
         const aiClient = new GoogleGenAI({ apiKey });
 
         const contents = [];
@@ -270,17 +310,33 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
           parts: [{ text: messageText }],
         });
 
-        const response = await aiClient.models.generateContent({
-          model: modelName,
-          contents,
-          config: {
-            systemInstruction: {
-              parts: [{ text: systemInstruction }],
-            },
-            temperature: 0.7,
-            maxOutputTokens: 600,
-          },
-        });
+        let response = null;
+        const candidateModels = [modelName, 'gemini-2.0-flash', 'gemini-1.5-flash'].filter(
+          (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
+        );
+
+        for (const candidateModel of candidateModels) {
+          try {
+            console.log(`[AIAgentService] 🤖 Invoking Gemini model '${candidateModel}' for ${restaurantName}...`);
+            response = await aiClient.models.generateContent({
+              model: candidateModel,
+              contents,
+              config: {
+                systemInstruction: {
+                  parts: [{ text: systemInstruction }],
+                },
+                temperature: 0.7,
+                maxOutputTokens: 600,
+              },
+            });
+            if (response && response.text) {
+              modelName = candidateModel;
+              break;
+            }
+          } catch (modelErr) {
+            console.warn(`[AIAgentService] Model '${candidateModel}' attempt notice: ${modelErr.message}`);
+          }
+        }
 
         let replyText = response.text ? response.text.trim() : '';
         let orderPayload = null;
@@ -384,14 +440,41 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
   generateSmartGroundedReply({ messageText, context, customerName, persona, settings }) {
     const raw = (messageText || '').toLowerCase().trim();
     const rName = context.restaurantName || 'Apna POS';
-    const cGreeting = customerName ? ` ${customerName}` : '';
+    const formattedCustomerName = this.formatCustomerName(customerName);
+    const cGreeting = formattedCustomerName ? ` ${formattedCustomerName}` : ' Ji';
 
     // Greeting / Hello
     if (/^(hi|hello|hey|namaste|pranam|hola|good\s*(morning|afternoon|evening))/i.test(raw)) {
       if (settings.greeting && settings.greeting.trim()) {
-        const customGreeting = settings.greeting
-          .replace(/\{restaurant_name\}/gi, rName)
-          .replace(/\{customer_name\}/gi, customerName || 'guest');
+        let customGreeting = settings.greeting.trim();
+
+        // 1. Replace {restaurant_name}
+        customGreeting = customGreeting.replace(/\{restaurant_name\}/gi, rName);
+
+        // 2. Handle {customer_name} or inject after greeting salutation
+        if (customGreeting.includes('{customer_name}')) {
+          if (formattedCustomerName) {
+            customGreeting = customGreeting.replace(/\{customer_name\}/gi, formattedCustomerName);
+          } else {
+            customGreeting = customGreeting.replace(/\{customer_name\}/gi, 'Ji');
+          }
+        } else if (formattedCustomerName) {
+          // If greeting starts with Namaste / Hello / Hi, inject customer name
+          if (/^namaste[!,\s]*/i.test(customGreeting)) {
+            customGreeting = customGreeting.replace(/^namaste[!,\s]*/i, `Namaste ${formattedCustomerName}! `);
+          } else if (/^hello[!,\s]*/i.test(customGreeting)) {
+            customGreeting = customGreeting.replace(/^hello[!,\s]*/i, `Hello ${formattedCustomerName}! `);
+          } else if (/^hi[!,\s]*/i.test(customGreeting)) {
+            customGreeting = customGreeting.replace(/^hi[!,\s]*/i, `Hi ${formattedCustomerName}! `);
+          } else {
+            customGreeting = `Namaste ${formattedCustomerName}! ` + customGreeting;
+          }
+        } else if (/^namaste[!,\s]*/i.test(customGreeting)) {
+          customGreeting = customGreeting.replace(/^namaste[!,\s]*/i, `Namaste Ji! `);
+        }
+
+        customGreeting = customGreeting.replace(/\s+/g, ' ').replace(/!\s*!+/g, '!').trim();
+
         return {
           replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n${customGreeting}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with *Menu*, *Specials*, or type your order directly!_`,
           orderPayload: null,
@@ -399,7 +482,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
       }
       if (persona === 'hinglish') {
         return {
-          replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n🙏 *Namaste${cGreeting}!* ${rName} mein aapka swagat hai!\n\nAaj aap kya mangwana pasand karenge? Hamara menu dekhne ke liye *Menu* type karein, ya aaj ke bestsellers jaanein! 😊\n━━━━━━━━━━━━━━━━━━━━\n💡 _Type your order directly to place it in our kitchen!_`,
+          replyText: `✨ *WELCOME TO ${rName.toUpperCase()}* ✨\n━━━━━━━━━━━━━━━━━━━━\n🙏 *Namaste${cGreeting}!* *${rName}* mein aapka swagat hai!\n\nAaj aap kya mangwana pasand karenge? Hamara menu dekhne ke liye *Menu* type karein, ya aaj ke bestsellers jaanein! 😊\n━━━━━━━━━━━━━━━━━━━━\n💡 _Type your order directly to place it in our kitchen!_`,
           orderPayload: null,
         };
       }

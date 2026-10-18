@@ -560,52 +560,71 @@ class WhatsAppChatService {
     let targetUser = null;
     let business = null;
 
+    // Collect query conditions for matching businesses by phone credentials
+    const bizQueryConditions = [];
     if (phoneNumberId) {
+      bizQueryConditions.push({ 'whatsappSettings.phoneNumberId': phoneNumberId });
+      bizQueryConditions.push({ 'whatsappSettings.phoneNumber': phoneNumberId });
+    }
+    if (displayPhoneNumber) {
+      const cleanDisplay = whatsappService.normalizePhoneNumber(displayPhoneNumber);
+      bizQueryConditions.push({ 'whatsappSettings.phoneNumber': cleanDisplay });
+      bizQueryConditions.push({ 'whatsappSettings.phoneNumber': displayPhoneNumber });
+      bizQueryConditions.push({ 'profile.phone': { $regex: cleanDisplay.slice(-10) } });
+    }
+
+    if (bizQueryConditions.length > 0) {
+      // Find all candidates matching the phone number credentials sorted by recent connection and updates
+      const candidateBusinesses = await Business.find({ $or: bizQueryConditions })
+        .sort({ 'whatsappSettings.connectedAt': -1, updatedAt: -1 });
+
+      if (candidateBusinesses.length > 0) {
+        // Priority 1: Check existing conversation for this customer with any candidate business
+        const candidateIds = candidateBusinesses.map((b) => b._id);
+        const existingChat = await WhatsAppChat.findOne({
+          businessId: { $in: candidateIds },
+          customerPhone: { $in: [normalizedPhone, normalizedPhone.slice(-10), `+${normalizedPhone}`, `91${normalizedPhone.slice(-10)}`] },
+        }).sort({ lastMessageAt: -1, updatedAt: -1 });
+
+        if (existingChat) {
+          const matched = candidateBusinesses.find((b) => b._id.toString() === existingChat.businessId.toString());
+          // If the matched business has AI enabled OR no candidate has AI enabled, continue with it
+          if (matched && (matched.aiChatAgentSettings?.enabled === true || !candidateBusinesses.some((b) => b.aiChatAgentSettings?.enabled === true))) {
+            business = matched;
+          }
+        }
+
+        // Priority 2: Pick the candidate business with AI Chat Agent explicitly enabled
+        if (!business) {
+          business = candidateBusinesses.find((b) => b.aiChatAgentSettings?.enabled === true);
+        }
+
+        // Priority 3: Pick the candidate business with WhatsApp explicitly enabled
+        if (!business) {
+          business = candidateBusinesses.find((b) => b.whatsappSettings?.enabled === true);
+        }
+
+        // Priority 4: Fallback to the most recently connected / updated candidate
+        if (!business) {
+          business = candidateBusinesses[0];
+        }
+      }
+    }
+
+    // Secondary check: If business not resolved by Business table, check User table for a user with businessId
+    if (!business && phoneNumberId) {
       targetUser = await User.findOne({
         'whatsappSettings.phoneNumberId': phoneNumberId,
-      }).lean();
+        businessId: { $exists: true, $ne: null },
+      }).sort({ updatedAt: -1 }).lean();
 
       if (targetUser && targetUser.businessId) {
         business = await Business.findById(targetUser.businessId);
       }
-
-      if (!business) {
-        business = await Business.findOne({
-          $or: [
-            { 'whatsappSettings.phoneNumberId': phoneNumberId },
-            { 'whatsappSettings.phoneNumber': phoneNumberId },
-          ],
-        });
-      }
     }
 
-    if (!business && displayPhoneNumber) {
-      const cleanDisplay = whatsappService.normalizePhoneNumber(displayPhoneNumber);
-      targetUser = await User.findOne({
-        $or: [
-          { 'whatsappSettings.phoneNumber': cleanDisplay },
-          { 'whatsappSettings.phoneNumber': displayPhoneNumber },
-        ],
-      }).lean();
-
-      if (targetUser && targetUser.businessId) {
-        business = await Business.findById(targetUser.businessId);
-      }
-
-      if (!business) {
-        business = await Business.findOne({
-          $or: [
-            { 'whatsappSettings.phoneNumber': cleanDisplay },
-            { 'whatsappSettings.phoneNumber': displayPhoneNumber },
-            { 'profile.phone': { $regex: cleanDisplay.slice(-10) } },
-          ],
-        });
-      }
-    }
-
+    // Tertiary check: Dedicated test profile fallback
     if (!business) {
-      // Strictly fallback to dedicated test profile (tester@gmail.com) for test/unmapped webhooks.
-      // Production profiles (e.g. Pizza 47) are strictly protected.
       business = await this.getDedicatedTestBusiness();
       if (business) {
         console.log('[WhatsAppChatService] 🧪 Attached unmapped webhook message to dedicated tester@gmail.com profile');
@@ -615,6 +634,16 @@ class WhatsAppChatService {
     if (!business) {
       console.warn('[WhatsAppChatService] ⚠️ No business found to attach incoming webhook message. Dropping to protect production profiles.');
       return;
+    }
+
+    // Resolve targetUser (business owner) for push notifications / socket broadcasts
+    if (!targetUser) {
+      if (business.ownerId) {
+        targetUser = await User.findById(business.ownerId).lean();
+      }
+      if (!targetUser) {
+        targetUser = await User.findOne({ businessId: business._id }).lean();
+      }
     }
 
     const bId = business._id;

@@ -2012,7 +2012,24 @@ class DatabaseService extends ChangeNotifier {
         }
 
         if (remoteProducts.isNotEmpty || menuItems.isEmpty) {
-          menuItems = remoteProducts;
+          // Safeguard: Preserve existing local images/media if remote item has empty image
+          final localMap = {for (final m in menuItems) m.name.trim().toLowerCase(): m};
+          final mergedRemote = remoteProducts.map((remote) {
+            final local = localMap[remote.name.trim().toLowerCase()];
+            if (local != null) {
+              final String effectiveImg = (remote.imageUrl.isNotEmpty) ? remote.imageUrl : local.imageUrl;
+              final List<String> effectiveImgs = (remote.images.isNotEmpty) ? remote.images : local.images;
+              final String effectiveVid = (remote.videoUrl.isNotEmpty) ? remote.videoUrl : local.videoUrl;
+              return remote.copyWith(
+                imageUrl: effectiveImg,
+                images: effectiveImgs,
+                videoUrl: effectiveVid,
+              );
+            }
+            return remote;
+          }).toList();
+
+          menuItems = mergedRemote;
           _deduplicateMenuItems();
           await _saveMenuToPrefs();
         }
@@ -3242,14 +3259,24 @@ class DatabaseService extends ChangeNotifier {
     }
     await _saveCategoriesToPrefs();
 
-    // 2. Add / update items in local menuItems list with clean deduplication
+    // 2. Add / update items in local menuItems list with clean deduplication & image preservation
     for (final item in items) {
       final nameKey = item.name.trim().toLowerCase();
-      menuItems.removeWhere((element) =>
+      final existingIndex = menuItems.indexWhere((element) =>
           element.name.trim().toLowerCase() == nameKey ||
           (element.productId.isNotEmpty && element.productId == item.productId) ||
           element.id == item.id);
-      menuItems.add(item);
+      if (existingIndex >= 0) {
+        final existing = menuItems[existingIndex];
+        final merged = item.copyWith(
+          imageUrl: item.imageUrl.isNotEmpty ? item.imageUrl : existing.imageUrl,
+          images: item.images.isNotEmpty ? item.images : existing.images,
+          videoUrl: item.videoUrl.isNotEmpty ? item.videoUrl : existing.videoUrl,
+        );
+        menuItems[existingIndex] = merged;
+      } else {
+        menuItems.add(item);
+      }
     }
     _deduplicateMenuItems();
     await _saveMenuToPrefs();
@@ -3259,15 +3286,24 @@ class DatabaseService extends ChangeNotifier {
     try {
       final isAuth = await _authService.isAuthenticated();
       if (isAuth) {
-        final syncedProducts = await _productService.bulkImport(items);
+        final syncedProducts = await _productService.bulkImport(menuItems);
         if (syncedProducts.isNotEmpty) {
           for (final synced in syncedProducts) {
             final nameKey = synced.name.trim().toLowerCase();
-            menuItems.removeWhere((element) =>
+            final existingIndex = menuItems.indexWhere((element) =>
                 element.name.trim().toLowerCase() == nameKey ||
                 (element.productId.isNotEmpty && element.productId == synced.productId) ||
                 element.id == synced.id);
-            menuItems.add(synced);
+            if (existingIndex >= 0) {
+              final existing = menuItems[existingIndex];
+              menuItems[existingIndex] = synced.copyWith(
+                imageUrl: synced.imageUrl.isNotEmpty ? synced.imageUrl : existing.imageUrl,
+                images: synced.images.isNotEmpty ? synced.images : existing.images,
+                videoUrl: synced.videoUrl.isNotEmpty ? synced.videoUrl : existing.videoUrl,
+              );
+            } else {
+              menuItems.add(synced);
+            }
           }
           _deduplicateMenuItems();
           await _saveMenuToPrefs();
@@ -6455,10 +6491,17 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString('apna_pos_ai_agent_persona') ??
       'friendly';
 
-  String get aiChatAgentGreeting =>
-      _prefs?.getString(_businessKey('ai_agent_greeting')) ??
-      _prefs?.getString('apna_pos_ai_agent_greeting') ??
-      'Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today\'s special offers, or table bookings!';
+  String get aiChatAgentGreeting {
+    final g = _prefs?.getString(_businessKey('ai_agent_greeting')) ??
+        _prefs?.getString('apna_pos_ai_agent_greeting');
+    if (g != null && g.isNotEmpty) {
+      if (!g.contains('{customer_name}') && g.startsWith('Namaste!')) {
+        return g.replaceFirst('Namaste!', 'Namaste {customer_name}!');
+      }
+      return g;
+    }
+    return 'Namaste {customer_name}! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today\'s special offers, or table bookings!';
+  }
 
   bool get isAiChatAgentAutoMenuSuggest =>
       _prefs?.getBool(_businessKey('ai_agent_menu_suggest')) ??
@@ -6480,10 +6523,14 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString('apna_pos_ai_agent_name') ??
       'Apna AI Assistant';
 
-  String get aiChatAgentModel =>
-      _prefs?.getString(_businessKey('ai_agent_model')) ??
-      _prefs?.getString('apna_pos_ai_agent_model') ??
-      'gemini-3.8-flash';
+  String get aiChatAgentModel {
+    final m = _prefs?.getString(_businessKey('ai_agent_model')) ??
+        _prefs?.getString('apna_pos_ai_agent_model');
+    if (m == null || m.isEmpty || m == 'gemini-3.8-flash' || m.contains('3.8')) {
+      return 'gemini-2.0-flash';
+    }
+    return m;
+  }
 
   String get aiChatAgentCustomInstructions =>
       _prefs?.getString(_businessKey('ai_agent_custom_instructions')) ??
@@ -6509,7 +6556,7 @@ class DatabaseService extends ChangeNotifier {
     required String systemPrompt,
     required String apiKey,
     String agentName = 'Apna AI Assistant',
-    String model = 'gemini-3.8-flash',
+    String model = 'gemini-2.0-flash',
     String customInstructions = '',
     int autoReplyDelay = 2,
   }) async {

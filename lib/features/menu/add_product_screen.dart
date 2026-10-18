@@ -333,11 +333,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
           fileName: (item.name != null && item.name!.isNotEmpty)
               ? item.name!
               : 'prod_${DateTime.now().millisecondsSinceEpoch}.jpg',
-        ).timeout(const Duration(seconds: 8), onTimeout: () => null);
+        ).timeout(const Duration(seconds: 25), onTimeout: () => null);
       } else if (item.path != null && item.path!.isNotEmpty) {
         final f = File(item.path!);
         if (f.existsSync()) {
-          uploadedUrl = await UploadService().uploadImage(f).timeout(const Duration(seconds: 8), onTimeout: () => null);
+          uploadedUrl = await UploadService().uploadImage(f).timeout(const Duration(seconds: 25), onTimeout: () => null);
         }
       }
       if (uploadedUrl != null && uploadedUrl.isNotEmpty) {
@@ -932,10 +932,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
           return ApiEndpoints.resolveMediaUrl(img.remoteUrl!);
         }
 
-        // B. Await in-flight background upload with a strict 3-second cap
+        // B. Await in-flight background upload with a 15-second cap
         if (img.uploadFuture != null && img.isUploading) {
           try {
-            await img.uploadFuture!.timeout(const Duration(seconds: 3));
+            await img.uploadFuture!.timeout(const Duration(seconds: 15));
           } catch (_) {}
         }
         if (img.remoteUrl != null && img.remoteUrl!.isNotEmpty) {

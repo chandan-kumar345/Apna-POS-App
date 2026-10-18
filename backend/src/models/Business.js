@@ -129,7 +129,7 @@ const businessSchema = new mongoose.Schema(
       agentName: { type: String, default: 'Apna AI Assistant', trim: true },
       greeting: {
         type: String,
-        default: "Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today's special offers, or table bookings!",
+        default: "Namaste {customer_name}! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today's special offers, or table bookings!",
       },
       autoMenuSuggest: { type: Boolean, default: true },
       autoOrderTaking: { type: Boolean, default: true },
@@ -139,7 +139,7 @@ const businessSchema = new mongoose.Schema(
       },
       customInstructions: { type: String, default: '' },
       apiKey: { type: String, default: '', trim: true },
-      model: { type: String, default: 'gemini-3.8-flash' },
+      model: { type: String, default: 'gemini-2.0-flash' },
       businessHoursOnly: { type: Boolean, default: false },
       autoReplyDelaySeconds: { type: Number, default: 2 },
     },

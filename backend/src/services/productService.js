@@ -496,6 +496,12 @@ class ProductService {
       const normalized = this._normalizeProductData(item, true);
       if (!normalized.name) continue;
 
+      // Safeguard: In bulk import (e.g. CSV), do not overwrite existing product images with empty strings
+      if (!normalized.image) {
+        delete normalized.image;
+        delete normalized.images;
+      }
+
       const escapedName = this._escapeRegex(normalized.name);
       const query = {
         businessId,

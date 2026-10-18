@@ -56,12 +56,12 @@ module.exports = {
   SMTP_PASS: process.env.SMTP_PASS || '',
   SMTP_FROM: process.env.SMTP_FROM || 'Apna POS Leads <no-reply@apnapos.com>',
 
-  // Cloudflare R2 Bucket Configuration
-  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '',
-  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '',
-  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '',
+  // Cloudflare R2 Bucket Configuration (Persistent Cloud Media Storage)
+  CLOUDFLARE_ACCOUNT_ID: process.env.CLOUDFLARE_ACCOUNT_ID || '80ce023ba73c4c6640399cf12203e4e7',
+  R2_ACCESS_KEY_ID: process.env.R2_ACCESS_KEY_ID || '6f5914f65ba3e0723b5dff31790ad1c7',
+  R2_SECRET_ACCESS_KEY: process.env.R2_SECRET_ACCESS_KEY || '08fd4db41e77200af9c389c52c03ae3d32a2bbf5c40728e46c61b666170649b5',
   R2_BUCKET_NAME: process.env.R2_BUCKET_NAME || 'apna-pos-media',
-  R2_PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || '',
+  R2_PUBLIC_DOMAIN: process.env.R2_PUBLIC_DOMAIN || 'https://pub-885e2df0fc0347e7ad9b84025e7ae9fc.r2.dev',
 
   // WhatsApp Cloud API & eBill Configuration
   WHATSAPP_PHONE_NUMBER_ID: process.env.WHATSAPP_PHONE_NUMBER_ID || '1284061438133660',

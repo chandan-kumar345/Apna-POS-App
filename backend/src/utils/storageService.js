@@ -50,7 +50,17 @@ class StorageService {
     const key = `${folder}/${cleanFileName}`;
 
     if (this.isConfigured) {
-      const resolvedMime = mimeType || (ext === '.mp4' ? 'video/mp4' : (ext === '.webm' ? 'video/webm' : (ext === '.mov' ? 'video/quicktime' : 'application/octet-stream')));
+      const extLower = ext.toLowerCase();
+      let resolvedMime = mimeType;
+      if (!resolvedMime) {
+        if (extLower === '.png') resolvedMime = 'image/png';
+        else if (extLower === '.webp') resolvedMime = 'image/webp';
+        else if (extLower === '.gif') resolvedMime = 'image/gif';
+        else if (extLower === '.mp4') resolvedMime = 'video/mp4';
+        else if (extLower === '.webm') resolvedMime = 'video/webm';
+        else if (extLower === '.mov') resolvedMime = 'video/quicktime';
+        else resolvedMime = 'image/jpeg';
+      }
       const command = new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,

@@ -62,8 +62,8 @@ class UploadService {
         data: formData,
         options: Options(
           contentType: 'multipart/form-data',
-          sendTimeout: const Duration(seconds: 8),
-          receiveTimeout: const Duration(seconds: 12),
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 30),
         ),
       );
 

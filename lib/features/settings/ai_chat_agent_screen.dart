@@ -1099,7 +1099,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           const SizedBox(height: 6),
           _buildStyledInputField(
             _greetingCtrl,
-            'Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu, place an order, or check offers.',
+            'Namaste {customer_name}! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu recommendations, today\'s special offers, or table bookings!',
             maxLines: 3,
           ),
         ],
@@ -1320,7 +1320,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text('Google Gemini 3.8 Flash Engine',
+                    Text('Google Gemini 2.0 Flash Engine',
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
                     SizedBox(height: 1),
                     Text('Platform-wide server AI included • No merchant key required',
