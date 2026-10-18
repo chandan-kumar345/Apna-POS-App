@@ -4,34 +4,33 @@ import 'package:flutter/services.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
 
-/// Clean Modern Theme for AI Chat Agent Screen
+/// Clean Modern Theme for AI Chat Agent Screen matching reference design
 class _AiTheme {
-  static const Color background = Color(0xFFF8FAFC);
-  static const Color headerNavy = Color(0xFF051C48);
-  static const Color textDark = Color(0xFF0F172A);
-  static const Color textMuted = Color(0xFF475569);
-  static const Color purpleBrand = Color(0xFF7C3AED);
-  static const Color greenBrand = Color(0xFF059669);
-  static const Color blueBrand = Color(0xFF2563EB);
+  static const Color headerNavyStart = Color(0xFF1E3A8A);
+  static const Color headerNavyEnd = Color(0xFF172554);
+  static const Color pageBackground = Color(0xFFF1F5F9);
+  static const Color cardBg = Colors.white;
   static const Color cardBorder = Color(0xFFE2E8F0);
+  static const Color textDark = Color(0xFF0F172A);
+  static const Color textMuted = Color(0xFF64748B);
+  static const Color purpleBrand = Color(0xFF7C3AED);
+  static const Color purpleLight = Color(0xFFEDE9FE);
+  static const Color greenBrand = Color(0xFF16A34A);
+  static const Color greenLight = Color(0xFFDCFCE7);
+  static const Color waGreen = Color(0xFF25D366);
+  static const Color waGreenLight = Color(0xFFE8F8EE);
 
-  static BoxDecoration get whiteCurvedCard => BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+  static BoxDecoration get whiteCard => BoxDecoration(
+        color: cardBg,
+        borderRadius: BorderRadius.circular(18),
         border: Border.all(color: cardBorder, width: 1.0),
         boxShadow: const [
           BoxShadow(
-            color: Color(0x0A0F172A),
+            color: Color(0x080F172A),
             offset: Offset(0, 3),
             blurRadius: 10,
           ),
         ],
-      );
-
-  static BoxDecoration get sunkenWell => BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
       );
 }
 
@@ -109,7 +108,6 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
   }
 
   /// Load settings directly from backend MongoDB
-  /// Keeps all options (including enabled: true) persistent across app uninstalls & reinstalls
   Future<void> _loadFromBackend() async {
     setState(() => _isLoadingInitial = true);
     try {
@@ -127,7 +125,6 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       final backendSettings = await _waService.getAiAgentSettings();
       if (backendSettings != null && mounted) {
         setState(() {
-          // Unconditional enabled state from backend database (never overwritten by connection state)
           if (backendSettings['enabled'] != null) {
             _isEnabled = backendSettings['enabled'] == true;
           }
@@ -165,7 +162,6 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           }
         });
 
-        // Sync fresh backend settings to local storage as well
         await _db.saveAiChatAgentSettings(
           enabled: _isEnabled,
           persona: _persona,
@@ -199,12 +195,11 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     super.dispose();
   }
 
-  /// Unconditional database save & sync to backend
+  /// Save settings locally and synchronize to backend
   Future<void> _handleSave() async {
     setState(() => _isSaving = true);
     HapticFeedback.mediumImpact();
 
-    // 1. Save locally in DatabaseService
     await _db.saveAiChatAgentSettings(
       enabled: _isEnabled,
       persona: _persona,
@@ -219,7 +214,6 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       autoReplyDelay: _delaySeconds,
     );
 
-    // 2. Synchronize to Backend MongoDB Business record
     final success = await _waService.updateAiAgentSettings({
       'enabled': _isEnabled,
       'persona': _persona.trim(),
@@ -238,7 +232,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       setState(() => _isSaving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          backgroundColor: const Color(0xFF051C48),
+          backgroundColor: const Color(0xFF0F172A),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           content: Row(
@@ -349,7 +343,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                           });
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              backgroundColor: Color(0xFF051C48),
+                              backgroundColor: Color(0xFF0F172A),
                               content: Text('Meta WhatsApp API Connected Successfully! AI Agent is active.'),
                             ),
                           );
@@ -462,186 +456,172 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurantName = _db.restaurant?.name ?? 'Apna POS';
+    final restaurantName = _db.restaurant?.name ?? 'Pizza 47';
 
     return Scaffold(
-      backgroundColor: _AiTheme.background,
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: Container(
-          decoration: const BoxDecoration(
-            color: _AiTheme.headerNavy,
-          ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              child: Row(
-                children: [
-                  // Circular Shape Back Button
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.white.withValues(alpha: 0.15),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
-                    ),
-                    child: IconButton(
-                      padding: EdgeInsets.zero,
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
-                      tooltip: 'Back',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  // AI Robot Icon
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF7C3AED).withValues(alpha: 0.3),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFA78BFA), width: 1.2),
-                    ),
-                    child: const Icon(Icons.smart_toy_rounded, color: Color(0xFFDDD6FE), size: 18),
-                  ),
-                  const SizedBox(width: 10),
-                  // Title & Subtitle
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Text(
-                          'AI Chat Agent Settings',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
+      backgroundColor: const Color(0xFF1E3A8A), // Seamless background behind top bar
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // 1. Top Header Bar (Navy Gradient with Circular Back Button & Status Badge)
+            _buildTopAppBar(restaurantName),
+
+            // 2. Wrapped Screen Container with Rounded Top Sheet
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                decoration: const BoxDecoration(
+                  color: _AiTheme.pageBackground,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                ),
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                  child: _isLoadingInitial
+                      ? const Center(child: CircularProgressIndicator(color: _AiTheme.purpleBrand))
+                      : SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                          child: Center(
+                            // Screen wrapping constraint for neat, responsive cards
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 580),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  // Card 1: Meta Cloud API Connected & Autonomous AI Auto-Reply
+                                  _buildMetaStatusAndMasterCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 2: DIRECT ORDER TAKING IN CHAT
+                                  _buildOrderTakingCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 3: IDENTITY & GREETING
+                                  _buildIdentityCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 4: CONVERSATIONAL PERSONA
+                                  _buildPersonaCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 5: KITCHEN & HOUSE RULES
+                                  _buildHouseRulesCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 6: AI ENGINE & SPEED
+                                  _buildEngineCard(),
+                                  const SizedBox(height: 12),
+
+                                  // Card 7: LIVE WHATSAPP SIMULATOR
+                                  _buildSimulatorCard(),
+                                  const SizedBox(height: 16),
+
+                                  // Card 8: Save & Sync Button
+                                  _buildSaveButton(),
+                                  const SizedBox(height: 28),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                        Text(
-                          '$restaurantName • WhatsApp POS Assistant',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w500,
-                            color: Colors.white.withValues(alpha: 0.75),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Online/Standby Status Pill
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _isEnabled ? const Color(0x2E10B981) : Colors.white12,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: _isEnabled ? const Color(0xFF10B981) : Colors.white24,
-                        width: 0.8,
-                      ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _isEnabled ? const Color(0xFF10B981) : Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          _isEnabled ? 'Online' : 'Disabled',
-                          style: TextStyle(
-                            color: _isEnabled ? const Color(0xFF34D399) : Colors.white70,
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ),
-      // No Artificial Wrapping: Full screen layout with responsive padding
-      body: _isLoadingInitial
-          ? const Center(child: CircularProgressIndicator(color: _AiTheme.purpleBrand))
-          : SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // 1. WhatsApp Auto-Reply & Meta Status Card
-                  _buildMetaStatusAndMasterCard(),
-                  const SizedBox(height: 10),
-
-                  // 2. Direct Order Taking Card
-                  _buildOrderTakingCard(),
-                  const SizedBox(height: 10),
-
-                  // 3. Conversational Persona (Horizontal Slider)
-                  _buildSectionHeader('CONVERSATIONAL PERSONA', Icons.psychology_rounded, _AiTheme.purpleBrand),
-                  const SizedBox(height: 6),
-                  _buildPersonaSelector(),
-                  const SizedBox(height: 10),
-
-                  // 4. Agent Identity & Greeting
-                  _buildSectionHeader('IDENTITY & GREETING', Icons.badge_rounded, _AiTheme.blueBrand),
-                  const SizedBox(height: 6),
-                  _buildIdentityCard(),
-                  const SizedBox(height: 10),
-
-                  // 5. Special House Rules
-                  _buildSectionHeader('KITCHEN & HOUSE RULES', Icons.menu_book_rounded, const Color(0xFFD97706)),
-                  const SizedBox(height: 6),
-                  _buildHouseRulesCard(),
-                  const SizedBox(height: 10),
-
-                  // 6. AI Engine & Delay
-                  _buildSectionHeader('AI ENGINE & SPEED', Icons.memory_rounded, const Color(0xFF4F46E5)),
-                  const SizedBox(height: 6),
-                  _buildEngineCard(),
-                  const SizedBox(height: 12),
-
-                  // 7. Live WhatsApp Simulator
-                  _buildSectionHeader('LIVE WHATSAPP SIMULATOR', Icons.chat_rounded, const Color(0xFF25D366)),
-                  const SizedBox(height: 6),
-                  _buildSimulatorCard(),
-                  const SizedBox(height: 16),
-
-                  // 8. Save Button
-                  _buildSaveButton(),
-                  const SizedBox(height: 24),
-                ],
-              ),
-            ),
     );
   }
 
-  // Section Header
-  Widget _buildSectionHeader(String title, IconData icon, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 2, bottom: 2),
+  // 1. Top Header Bar (Matching the uploaded image)
+  Widget _buildTopAppBar(String restaurantName) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [_AiTheme.headerNavyStart, _AiTheme.headerNavyEnd],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF475569),
-              letterSpacing: 0.5,
+          // Circular Back Button
+          InkWell(
+            onTap: () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.15),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.22), width: 1.0),
+              ),
+              child: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 16),
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Title & Subtitle
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'AI Chat Agent Settings',
+                  style: TextStyle(
+                    fontSize: 15.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$restaurantName • WhatsApp POS Assistant',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white.withValues(alpha: 0.78),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Standby / Online Status Pill Badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.28),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18), width: 0.8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _isEnabled ? const Color(0xFF22C55E) : const Color(0xFF94A3B8),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _isEnabled ? 'Online' : 'Standby',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -649,104 +629,138 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 1. Meta WhatsApp Status & Master Switch Card
+  // Card 1: Meta Cloud API Connected & Autonomous AI Auto-Reply (Matching the uploaded image)
   Widget _buildMetaStatusAndMasterCard() {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.whiteCurvedCard,
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Master Switch Row
+          // Row 1: WhatsApp Icon + Connection Status + Verified Pill
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // WhatsApp Square Icon with soft green background
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: _AiTheme.waGreenLight,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(
+                  Icons.chat_bubble_rounded,
+                  color: _AiTheme.waGreen,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _isMetaConnected ? 'Meta Cloud API Connected' : 'Meta Cloud API Not Linked',
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: _AiTheme.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      _isMetaConnected
+                          ? (_metaPhoneId.isNotEmpty ? 'Phone ID: $_metaPhoneId' : (_metaPhoneNumber.isNotEmpty ? _metaPhoneNumber : 'Connected'))
+                          : 'Tap to configure WhatsApp Business credentials',
+                      style: const TextStyle(
+                        fontSize: 11.5,
+                        color: _AiTheme.textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Verified Pill Badge (or Connect)
+              InkWell(
+                onTap: _showMetaConnectDialog,
+                borderRadius: BorderRadius.circular(20),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4.5),
+                  decoration: BoxDecoration(
+                    color: _isMetaConnected ? _AiTheme.greenLight : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _isMetaConnected ? Icons.check_circle_rounded : Icons.link_rounded,
+                        size: 13,
+                        color: _isMetaConnected ? _AiTheme.greenBrand : const Color(0xFFD97706),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isMetaConnected ? 'Verified' : 'Connect',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: _isMetaConnected ? const Color(0xFF15803D) : const Color(0xFFB45309),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+          const Divider(height: 1, color: Color(0xFFF1F5F9), thickness: 1),
+          const SizedBox(height: 14),
+
+          // Row 2: Activate Autonomous AI Auto-Reply Switch
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
                     Text(
-                      'AI Auto-Reply Agent',
-                      style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800, color: _AiTheme.textDark),
+                      'Activate Autonomous AI Auto-Reply',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _AiTheme.textDark,
+                      ),
                     ),
-                    SizedBox(height: 2),
+                    SizedBox(height: 3),
                     Text(
-                      'Responds to customer inquiries 24/7 on WhatsApp',
-                      style: TextStyle(fontSize: 11, color: _AiTheme.textMuted),
+                      'AI responds to incoming customer chats instantly on your WhatsApp Business number.',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: _AiTheme.textMuted,
+                        height: 1.3,
+                      ),
                     ),
                   ],
-                ),
-              ),
-              Switch(
-                value: _isEnabled,
-                activeThumbColor: Colors.white,
-                activeTrackColor: _AiTheme.headerNavy,
-                inactiveThumbColor: Colors.white,
-                inactiveTrackColor: const Color(0xFFCBD5E1),
-                onChanged: (val) {
-                  HapticFeedback.lightImpact();
-                  setState(() => _isEnabled = val);
-                },
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 10),
-          const Divider(height: 1, color: Color(0xFFF1F5F9)),
-          const SizedBox(height: 10),
-
-          // Meta Connection Info Bar
-          Row(
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: _isMetaConnected ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  _isMetaConnected ? Icons.check_circle_rounded : Icons.link_off_rounded,
-                  color: _isMetaConnected ? const Color(0xFF16A34A) : const Color(0xFF64748B),
-                  size: 16,
                 ),
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isMetaConnected ? 'Meta Cloud API Connected' : 'Meta API Not Linked',
-                      style: TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: _isMetaConnected ? const Color(0xFF16A34A) : _AiTheme.textDark,
-                      ),
-                    ),
-                    Text(
-                      _isMetaConnected
-                          ? (_metaPhoneNumber.isNotEmpty ? _metaPhoneNumber : 'Phone ID: $_metaPhoneId')
-                          : 'Connect to receive live customer messages on your WhatsApp number',
-                      style: const TextStyle(fontSize: 10, color: _AiTheme.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              TextButton(
-                onPressed: _showMetaConnectDialog,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  backgroundColor: _isMetaConnected ? const Color(0xFFF1F5F9) : const Color(0xFF25D366),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-                child: Text(
-                  _isMetaConnected ? 'Manage' : 'Connect',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: _isMetaConnected ? _AiTheme.textDark : Colors.white,
-                  ),
+              Transform.scale(
+                scale: 0.85,
+                child: Switch(
+                  value: _isEnabled,
+                  activeTrackColor: const Color(0xFF22C55E),
+                  activeThumbColor: Colors.white,
+                  inactiveTrackColor: const Color(0xFFCBD5E1),
+                  onChanged: (val) {
+                    HapticFeedback.lightImpact();
+                    setState(() => _isEnabled = val);
+                  },
                 ),
               ),
             ],
@@ -756,270 +770,484 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 2. Direct Order Taking Card
+  // Card 2: DIRECT ORDER TAKING IN CHAT (Matching the uploaded image)
   Widget _buildOrderTakingCard() {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.whiteCurvedCard,
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row: Store Icon + Title + POS Active Badge
           Row(
             children: [
               Container(
-                width: 28,
-                height: 28,
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFECFDF5),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: const Color(0xFFA7F3D0)),
+                  color: _AiTheme.greenLight,
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.point_of_sale_rounded, color: Color(0xFF059669), size: 16),
+                child: const Icon(Icons.storefront_rounded, color: _AiTheme.greenBrand, size: 20),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               const Expanded(
                 child: Text(
                   'DIRECT ORDER TAKING IN CHAT',
-                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: _AiTheme.textDark,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: _autoOrderTaking ? const Color(0xFF10B981).withValues(alpha: 0.15) : Colors.grey.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
+                  color: _AiTheme.greenLight,
+                  borderRadius: BorderRadius.circular(16),
                 ),
-                child: Text(
-                  _autoOrderTaking ? 'POS Active' : 'Off',
-                  style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w700,
-                    color: _autoOrderTaking ? const Color(0xFF059669) : Colors.grey,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.circle, size: 6.5, color: _AiTheme.greenBrand),
+                    SizedBox(width: 4.5),
+                    Text(
+                      'POS Active',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF15803D),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Converts customer food orders on WhatsApp into live POS counter tickets automatically.',
-            style: TextStyle(fontSize: 11, color: _AiTheme.textMuted),
           ),
           const SizedBox(height: 10),
+          const Text(
+            'When customers text food/beverage orders on WhatsApp, the AI automatically detects menu dishes, calculates the bill, creates a pending POS Order, and alerts your counter in real time.',
+            style: TextStyle(
+              fontSize: 11.5,
+              color: _AiTheme.textMuted,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Two side-by-side sub-cards (Mint Green & Lavender Purple)
           Row(
             children: [
+              // Sub-card 1: Auto-Create POS Order
               Expanded(
-                child: _buildSmallToggleTile(
-                  'Auto-Create POS Order',
-                  'Orders appear on POS screen',
-                  _autoOrderTaking,
-                  (val) => setState(() => _autoOrderTaking = val),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildSmallToggleTile(
-                  'Suggest Bestsellers',
-                  'Recommends top dishes & combos',
-                  _autoMenuSuggest,
-                  (val) => setState(() => _autoMenuSuggest = val),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSmallToggleTile(String title, String subtitle, bool value, Function(bool) onChanged) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: _AiTheme.sunkenWell,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
-                const SizedBox(height: 1),
-                Text(subtitle, style: const TextStyle(fontSize: 9.5, color: _AiTheme.textMuted), maxLines: 1, overflow: TextOverflow.ellipsis),
-              ],
-            ),
-          ),
-          Transform.scale(
-            scale: 0.8,
-            child: Switch(
-              value: value,
-              activeTrackColor: _AiTheme.greenBrand,
-              activeThumbColor: Colors.white,
-              inactiveTrackColor: const Color(0xFFCBD5E1),
-              onChanged: (v) {
-                HapticFeedback.lightImpact();
-                onChanged(v);
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // 3. Conversational Persona Selector (Smooth Horizontal Slider)
-  Widget _buildPersonaSelector() {
-    final personas = [
-      {'id': 'friendly', 'label': 'Friendly', 'icon': Icons.sentiment_satisfied_alt_rounded, 'desc': 'Warm & Welcoming'},
-      {'id': 'hinglish', 'label': 'Hinglish', 'icon': Icons.chat_bubble_outline_rounded, 'desc': 'Desi Hindi + English'},
-      {'id': 'professional', 'label': 'Executive', 'icon': Icons.business_center_rounded, 'desc': 'Crisp & Formal'},
-      {'id': 'chef', 'label': 'Chef Host', 'icon': Icons.restaurant_menu_rounded, 'desc': 'Foodie & Specials'},
-      {'id': 'sales', 'label': 'Sales Pro', 'icon': Icons.campaign_rounded, 'desc': 'Combos & Offers'},
-      {'id': 'casual', 'label': 'Casual', 'icon': Icons.coffee_rounded, 'desc': 'Chill & Friendly'},
-      {'id': 'express', 'label': 'Express', 'icon': Icons.flash_on_rounded, 'desc': 'Fast & Direct'},
-    ];
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-      decoration: _AiTheme.whiteCurvedCard,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: personas.map((p) {
-            final isSelected = _persona == p['id'];
-            return Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: InkWell(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() => _persona = p['id'] as String);
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 200),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: isSelected ? _AiTheme.headerNavy : const Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected ? _AiTheme.headerNavy : const Color(0xFFCBD5E1),
-                      width: isSelected ? 1.5 : 1,
-                    ),
-                    boxShadow: isSelected
-                        ? [
-                            BoxShadow(
-                              color: _AiTheme.headerNavy.withValues(alpha: 0.25),
-                              offset: const Offset(0, 3),
-                              blurRadius: 6,
-                            )
-                          ]
-                        : null,
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFDCFCE7), width: 1.0),
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        p['icon'] as IconData,
-                        size: 16,
-                        color: isSelected ? Colors.white : _AiTheme.textDark,
-                      ),
-                      const SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            p['label'] as String,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected ? Colors.white : _AiTheme.textDark,
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFDCFCE7),
+                              borderRadius: BorderRadius.circular(8),
                             ),
+                            child: const Icon(Icons.receipt_long_rounded, size: 16, color: _AiTheme.greenBrand),
                           ),
-                          Text(
-                            p['desc'] as String,
-                            style: TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w500,
-                              color: isSelected ? Colors.white70 : _AiTheme.textMuted,
+                          Transform.scale(
+                            scale: 0.8,
+                            child: Switch(
+                              value: _autoOrderTaking,
+                              activeTrackColor: const Color(0xFF22C55E),
+                              activeThumbColor: Colors.white,
+                              inactiveTrackColor: const Color(0xFFCBD5E1),
+                              onChanged: (val) {
+                                HapticFeedback.lightImpact();
+                                setState(() => _autoOrderTaking = val);
+                              },
                             ),
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Auto-Create\nPOS Order',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _AiTheme.textDark,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Directly take orders from WhatsApp chat.',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: _AiTheme.textMuted,
+                          height: 1.25,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  // 4. Agent Identity & Greeting Card
-  Widget _buildIdentityCard() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.whiteCurvedCard,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Assistant Display Name', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
-          const SizedBox(height: 4),
-          _buildCompactTextField(_agentNameCtrl, 'e.g. Apna AI Assistant'),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Welcome Greeting Template', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
-              Row(
-                children: [
-                  _buildTagChip('{restaurant_name}'),
-                  const SizedBox(width: 4),
-                  _buildTagChip('{customer_name}'),
-                ],
+              const SizedBox(width: 10),
+              // Sub-card 2: Suggest Bestsellers
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFAF5FF),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFF3E8FF), width: 1.0),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3E8FF),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(Icons.star_rounded, size: 16, color: _AiTheme.purpleBrand),
+                          ),
+                          Transform.scale(
+                            scale: 0.8,
+                            child: Switch(
+                              value: _autoMenuSuggest,
+                              activeTrackColor: const Color(0xFF22C55E),
+                              activeThumbColor: Colors.white,
+                              inactiveTrackColor: const Color(0xFFCBD5E1),
+                              onChanged: (val) {
+                                HapticFeedback.lightImpact();
+                                setState(() => _autoMenuSuggest = val);
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Suggest\nBestsellers',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: _AiTheme.textDark,
+                          height: 1.2,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      const Text(
+                        'Recommend popular items to customers.',
+                        style: TextStyle(
+                          fontSize: 10.5,
+                          color: _AiTheme.textMuted,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          _buildCompactTextField(_greetingCtrl, 'Greeting sent on first customer message', maxLines: 2),
         ],
       ),
     );
   }
 
-  Widget _buildTagChip(String tag) {
-    return GestureDetector(
-      onTap: () {
-        final text = _greetingCtrl.text;
-        _greetingCtrl.text = '$text $tag';
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-        decoration: BoxDecoration(
-          color: _AiTheme.purpleBrand.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(tag, style: const TextStyle(fontSize: 9.5, fontWeight: FontWeight.w700, color: _AiTheme.purpleBrand)),
+  // Card 3: IDENTITY & GREETING (Matching the uploaded image)
+  Widget _buildIdentityCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _AiTheme.purpleLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.person_rounded, color: _AiTheme.purpleBrand, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'IDENTITY & GREETING',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: _AiTheme.textDark,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Assistant Display Name
+          const Text(
+            'Assistant Display Name',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
+          ),
+          const SizedBox(height: 6),
+          _buildStyledInputField(_agentNameCtrl, 'e.g. Apna AI Assistant'),
+          const SizedBox(height: 14),
+
+          // Welcome Greeting Template & { } Variables Button
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Welcome Greeting Template',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
+              ),
+              // Variables Popup Pill Button
+              PopupMenuButton<String>(
+                tooltip: 'Insert template variable',
+                onSelected: (val) {
+                  final text = _greetingCtrl.text;
+                  _greetingCtrl.text = '$text $val';
+                },
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                itemBuilder: (ctx) => [
+                  const PopupMenuItem(
+                    value: '{restaurant_name}',
+                    child: Text('{restaurant_name} (Restaurant Name)', style: TextStyle(fontSize: 11)),
+                  ),
+                  const PopupMenuItem(
+                    value: '{customer_name}',
+                    child: Text('{customer_name} (Customer Name)', style: TextStyle(fontSize: 11)),
+                  ),
+                ],
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                  decoration: BoxDecoration(
+                    color: _AiTheme.purpleLight,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Text('{ }', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: _AiTheme.purpleBrand)),
+                      SizedBox(width: 4),
+                      Text('Variables', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: _AiTheme.purpleBrand)),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _buildStyledInputField(
+            _greetingCtrl,
+            'Namaste! Welcome to {restaurant_name}. How can I assist you today? You can ask for our menu, place an order, or check offers.',
+            maxLines: 3,
+          ),
+        ],
       ),
     );
   }
 
-  // 5. Kitchen & Special House Rules Card
-  Widget _buildHouseRulesCard() {
+  // Card 4: CONVERSATIONAL PERSONA (Matching the uploaded image)
+  Widget _buildPersonaCard() {
+    final personas = [
+      {'id': 'friendly', 'label': 'Friendly', 'icon': Icons.sentiment_satisfied_alt_rounded, 'desc': 'Warm & courteous'},
+      {'id': 'hinglish', 'label': 'Hinglish', 'icon': Icons.chat_bubble_outline_rounded, 'desc': 'Desi Hindi + English'},
+      {'id': 'professional', 'label': 'Executive', 'icon': Icons.business_center_rounded, 'desc': 'Crisp & formal'},
+      {'id': 'chef', 'label': 'Chef Host', 'icon': Icons.restaurant_menu_rounded, 'desc': 'Foodie & specials'},
+      {'id': 'sales', 'label': 'Sales Pro', 'icon': Icons.campaign_rounded, 'desc': 'Combos & offers'},
+      {'id': 'casual', 'label': 'Casual', 'icon': Icons.coffee_rounded, 'desc': 'Chill & friendly'},
+    ];
+
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.whiteCurvedCard,
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Header Row
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: _AiTheme.purpleLight,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.chat_bubble_rounded, color: _AiTheme.purpleBrand, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'CONVERSATIONAL PERSONA',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: _AiTheme.textDark,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Two-Column Grid of Persona options matching the image
+          Column(
+            children: [
+              for (int i = 0; i < personas.length; i += 2)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(child: _buildPersonaTile(personas[i])),
+                      const SizedBox(width: 10),
+                      if (i + 1 < personas.length)
+                        Expanded(child: _buildPersonaTile(personas[i + 1]))
+                      else
+                        const Spacer(),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPersonaTile(Map<String, dynamic> p) {
+    final isSelected = _persona == p['id'];
+    return InkWell(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        setState(() => _persona = p['id'] as String);
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFFF5F3FF) : const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? _AiTheme.purpleBrand : const Color(0xFFE2E8F0),
+            width: isSelected ? 1.4 : 1.0,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Persona Circle Icon
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isSelected ? _AiTheme.purpleBrand : const Color(0xFFE2E8F0),
+              ),
+              child: Icon(
+                p['icon'] as IconData,
+                size: 16,
+                color: isSelected ? Colors.white : const Color(0xFF475569),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // Title & Description
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    p['label'] as String,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: isSelected ? _AiTheme.purpleBrand : _AiTheme.textDark,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    p['desc'] as String,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: _AiTheme.textMuted,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            // Trailing Checked / Radio Icon
+            Icon(
+              isSelected ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+              size: 16,
+              color: isSelected ? _AiTheme.purpleBrand : const Color(0xFFCBD5E1),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Card 5: KITCHEN & HOUSE RULES
+  Widget _buildHouseRulesCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFEF3C7),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.menu_book_rounded, color: Color(0xFFD97706), size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'KITCHEN & HOUSE RULES',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: _AiTheme.textDark,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
           const Text(
             'Custom Instructions for AI',
-            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _AiTheme.textDark),
           ),
-          const SizedBox(height: 4),
-          _buildCompactTextField(
+          const SizedBox(height: 6),
+          _buildStyledInputField(
             _houseRulesCtrl,
             'e.g. Pure veg kitchen. Kitchen closes at 11 PM. Delivery above ₹200 free within 5 km.',
             maxLines: 2,
@@ -1029,51 +1257,70 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 6. AI Engine & Delay Card
+  // Card 6: AI ENGINE & SPEED
   Widget _buildEngineCard() {
     return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: _AiTheme.whiteCurvedCard,
+      padding: const EdgeInsets.all(16),
+      decoration: _AiTheme.whiteCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(6),
+                width: 38,
+                height: 38,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEDE9FE),
-                  borderRadius: BorderRadius.circular(8),
+                  color: const Color(0xFFEEF2FF),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.bolt_rounded, size: 16, color: _AiTheme.purpleBrand),
+                child: const Icon(Icons.memory_rounded, color: Color(0xFF4F46E5), size: 20),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
+              const Text(
+                'AI ENGINE & SPEED',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: _AiTheme.textDark,
+                  letterSpacing: 0.3,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: const [
-                    Text('Google Gemini 3.8 Flash Engine', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: _AiTheme.textDark)),
-                    Text('Platform-wide server AI included • No merchant key required', style: TextStyle(fontSize: 10, color: Color(0xFF059669), fontWeight: FontWeight.w600)),
+                    Text('Google Gemini 3.8 Flash Engine',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
+                    SizedBox(height: 1),
+                    Text('Platform-wide server AI included • No merchant key required',
+                        style: TextStyle(fontSize: 10, color: _AiTheme.greenBrand, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFDCFCE7),
+                  color: _AiTheme.greenLight,
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Text('Included ✅', style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF16A34A))),
+                child: const Text('Included ✅',
+                    style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.w800, color: Color(0xFF15803D))),
               ),
             ],
           ),
-
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           // Reply Delay
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Auto-Reply Delay', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
+              const Text('Auto-Reply Delay',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: _AiTheme.textDark)),
               Row(
                 children: [1, 2, 3, 5].map((s) {
                   final isSel = _delaySeconds == s;
@@ -1081,29 +1328,37 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                     onTap: () => setState(() => _delaySeconds = s),
                     child: Container(
                       margin: const EdgeInsets.only(left: 4),
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
                       decoration: BoxDecoration(
-                        color: isSel ? _AiTheme.headerNavy : const Color(0xFFF1F5F9),
+                        color: isSel ? const Color(0xFF1E3A8A) : const Color(0xFFF1F5F9),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: isSel ? _AiTheme.headerNavy : const Color(0xFFCBD5E1)),
+                        border: Border.all(color: isSel ? const Color(0xFF1E3A8A) : const Color(0xFFCBD5E1)),
                       ),
-                      child: Text('${s}s', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: isSel ? Colors.white : const Color(0xFF334155))),
+                      child: Text(
+                        '${s}s',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: isSel ? Colors.white : const Color(0xFF334155),
+                        ),
+                      ),
                     ),
                   );
                 }).toList(),
               ),
             ],
           ),
-
-          const SizedBox(height: 8),
-          // Optional Custom API Key accordion
+          const SizedBox(height: 10),
+          // Optional Custom API Key Accordion
           InkWell(
             onTap: () => setState(() => _showCustomApiKey = !_showCustomApiKey),
             child: Row(
               children: [
-                Icon(_showCustomApiKey ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded, size: 16, color: _AiTheme.purpleBrand),
+                Icon(_showCustomApiKey ? Icons.keyboard_arrow_down_rounded : Icons.keyboard_arrow_right_rounded,
+                    size: 16, color: _AiTheme.purpleBrand),
                 const SizedBox(width: 4),
-                const Text('Custom Gemini API Key (Optional)', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: _AiTheme.purpleBrand)),
+                const Text('Custom Gemini API Key (Optional)',
+                    style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: _AiTheme.purpleBrand)),
               ],
             ),
           ),
@@ -1118,7 +1373,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 hintStyle: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
                 isDense: true,
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: const Color(0xFFF8FAFC),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
                 suffixIcon: IconButton(
@@ -1133,7 +1388,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 7. Live WhatsApp Simulator Card with Test Chips
+  // Card 7: LIVE WHATSAPP SIMULATOR
   Widget _buildSimulatorCard() {
     final sampleChips = [
       {'label': '📜 Menu', 'msg': 'Show full menu'},
@@ -1145,18 +1400,18 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     ];
 
     return Container(
-      decoration: _AiTheme.whiteCurvedCard,
+      decoration: _AiTheme.whiteCard,
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           // WhatsApp Green Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
             color: const Color(0xFF075E54),
             child: Row(
               children: [
-                const Icon(Icons.smart_toy_rounded, size: 15, color: Colors.white),
+                const Icon(Icons.smart_toy_rounded, size: 16, color: Colors.white),
                 const SizedBox(width: 8),
                 const Text(
                   'Live WhatsApp Chat Simulator',
@@ -1179,10 +1434,9 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               ],
             ),
           ),
-
           // Messages View
           Container(
-            height: 230,
+            height: 220,
             color: const Color(0xFFECE5DD),
             padding: const EdgeInsets.all(10),
             child: ListView.builder(
@@ -1216,8 +1470,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               },
             ),
           ),
-
-          // Quick Template Chips
+          // Quick Chips
           Container(
             color: const Color(0xFFF8FAFC),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -1244,8 +1497,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
               ),
             ),
           ),
-
-          // Message Input Row
+          // Input Row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             color: Colors.white,
@@ -1278,12 +1530,12 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     );
   }
 
-  // 8. Save Button
+  // Card 8: Save & Sync Button
   Widget _buildSaveButton() {
     return ElevatedButton(
       style: ElevatedButton.styleFrom(
-        backgroundColor: _AiTheme.headerNavy,
-        padding: const EdgeInsets.symmetric(vertical: 13),
+        backgroundColor: const Color(0xFF0F172A),
+        padding: const EdgeInsets.symmetric(vertical: 12),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         elevation: 2,
       ),
@@ -1297,14 +1549,14 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 SizedBox(width: 8),
                 Text(
                   'Save & Sync AI Chat Agent',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white),
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white),
                 ),
               ],
             ),
     );
   }
 
-  Widget _buildCompactTextField(TextEditingController ctrl, String hint, {int maxLines = 1}) {
+  Widget _buildStyledInputField(TextEditingController ctrl, String hint, {int maxLines = 1}) {
     return TextField(
       controller: ctrl,
       maxLines: maxLines,
@@ -1313,12 +1565,12 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
         hintText: hint,
         hintStyle: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: Colors.white,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFCBD5E1))),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: _AiTheme.headerNavy, width: 1.2)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _AiTheme.purpleBrand, width: 1.2)),
       ),
     );
   }
