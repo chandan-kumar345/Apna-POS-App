@@ -11,14 +11,65 @@ const ApiError = require('../utils/ApiError');
 const activeWhatsappOtps = new Map();
 
 class AuthService {
+  // Pre-check if an account already exists by email or phone
+  async checkUserExists({ email, phone } = {}) {
+    let emailExists = false;
+    let phoneExists = false;
+
+    if (email && typeof email === 'string' && email.trim()) {
+      const normalizedEmail = email.trim().toLowerCase();
+      const existingUser = await User.findOne({ email: normalizedEmail });
+      if (existingUser) {
+        emailExists = true;
+      }
+    }
+
+    if (phone && phone.toString().trim()) {
+      const existingPhone = await this.findRegisteredAccountByPhone(phone.toString().trim());
+      if (existingPhone) {
+        phoneExists = true;
+      }
+    }
+
+    if (emailExists) {
+      return {
+        exists: true,
+        reason: 'EMAIL_ALREADY_EXISTS',
+        message: 'An account with this email address already exists. Please log in.',
+      };
+    }
+
+    if (phoneExists) {
+      return {
+        exists: true,
+        reason: 'PHONE_ALREADY_EXISTS',
+        message: 'An account with this phone number already exists. Please log in.',
+      };
+    }
+
+    return {
+      exists: false,
+      reason: null,
+      message: 'Account does not exist. You may proceed with registration.',
+    };
+  }
+
   // Register a new user
   async register(email, password, options = {}) {
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user already exists
+    // Check if user already exists by email
     const existingUser = await User.findOne({ email: normalizedEmail });
     if (existingUser) {
-      throw ApiError.conflict('An account with this email already exists', 'EMAIL_ALREADY_EXISTS');
+      throw ApiError.conflict('An account with this email address already exists. Please log in.', 'EMAIL_ALREADY_EXISTS');
+    }
+
+    // Check if user already exists by phone (if provided)
+    if (options.phone && options.phone.toString().trim()) {
+      const existingPhone = await this.findRegisteredAccountByPhone(options.phone.toString().trim());
+      if (existingPhone) {
+        throw ApiError.conflict('An account with this phone number already exists. Please log in.', 'PHONE_ALREADY_EXISTS');
+      }
     }
 
     // Hash password
@@ -453,35 +504,54 @@ class AuthService {
       last10,
       `+91${last10}`,
       `91${last10}`,
+      `+91 ${last10}`,
     ])).filter(Boolean);
 
+    // Build conditions including regex to handle variable whitespace and country code prefixes
+    const phoneConditions = [{ phone: { $in: phoneCandidates } }];
+    const bizPhoneConditions = [{ 'profile.phone': { $in: phoneCandidates } }];
+    const staffPhoneConditions = [{ phone: { $in: phoneCandidates } }];
+
+    if (last10 && last10.length >= 7) {
+      // Regex allowing spaces/hyphens between digits, anchored at end of string
+      const regexPattern = new RegExp(last10.split('').join('[\\s\\-]*') + '$');
+      phoneConditions.push({ phone: { $regex: regexPattern } });
+      bizPhoneConditions.push({ 'profile.phone': { $regex: regexPattern } });
+      staffPhoneConditions.push({ phone: { $regex: regexPattern } });
+    }
+
     // 1. Search in User collection
-    let user = await User.findOne({
-      phone: { $in: phoneCandidates },
-    });
+    let user = await User.findOne({ $or: phoneConditions });
     if (user) {
       return { type: 'user', account: user, user };
     }
 
     // 2. Search in Staff collection
-    let staff = await Staff.findOne({
-      phone: { $in: phoneCandidates },
-    });
+    let staff = await Staff.findOne({ $or: staffPhoneConditions });
     if (staff) {
       let linkedUser = null;
       if (staff.userId) {
         linkedUser = await User.findById(staff.userId);
+      } else if (staff.email) {
+        linkedUser = await User.findOne({ email: staff.email.toLowerCase() });
       }
       return { type: 'staff', account: staff, user: linkedUser };
     }
 
     // 3. Search in Business collection
-    let business = await Business.findOne({
-      'profile.phone': { $in: phoneCandidates },
-    });
-    if (business) {
+    let business = await Business.findOne({ $or: bizPhoneConditions });
+    if (business && business.ownerId) {
       let owner = await User.findById(business.ownerId);
-      return { type: 'business', account: business, user: owner };
+      if (owner) {
+        // Backfill user.phone if empty so future lookups match directly
+        if (!owner.phone && business.profile?.phone) {
+          try {
+            owner.phone = business.profile.phone;
+            await owner.save();
+          } catch (_) {}
+        }
+        return { type: 'business', account: business, user: owner };
+      }
     }
 
     return null;
@@ -499,23 +569,28 @@ class AuthService {
     }
 
     // Check whether the entered phone number is an existing registered user / staff / business
-    let registered = null;
-    try {
-      registered = await this.findRegisteredAccountByPhone(phone);
-    } catch (dbErr) {
-      console.warn(`[WhatsApp OTP] Transient DB lookup notice: ${dbErr.message}`);
+    const registered = await this.findRegisteredAccountByPhone(phone);
+    if (!registered || !registered.user) {
+      throw ApiError.notFound(
+        'This phone number is not registered. Please create an account or verify your number.',
+        'PHONE_NOT_REGISTERED'
+      );
     }
 
     // Generate secure 4-digit OTP matching Apna POS PIN boxes
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiry
 
-    activeWhatsappOtps.set(normalizedPhone, { otp, expiresAt, phone, isExisting: Boolean(registered) });
+    activeWhatsappOtps.set(normalizedPhone, {
+      otp,
+      expiresAt,
+      phone,
+      userId: registered.user._id,
+      registeredType: registered.type,
+    });
 
     try {
-      const otpMessage = registered
-        ? `*Apna POS Verification Code*\n\nYour login verification OTP is: *${otp}*\n\nThis OTP is valid for 5 minutes. Please do not share this OTP with anyone for security purposes.\n\nThank you for choosing Apna POS!`
-        : `*Welcome to Apna POS!*\n\nYour account verification code is: *${otp}*\n\nThis code is valid for 5 minutes. Please do not share this OTP with anyone for security purposes.\n\nThank you for choosing Apna POS!`;
+      const otpMessage = `*Apna POS Verification Code*\n\nYour login verification OTP is: *${otp}*\n\nThis OTP is valid for 5 minutes. Please do not share this OTP with anyone for security purposes.\n\nThank you for choosing Apna POS!`;
 
       await whatsappService.sendChatMessage({
         to: normalizedPhone,
@@ -529,7 +604,6 @@ class AuthService {
         success: true,
         isRegistered: true,
         whatsappSent: true,
-        isExistingAccount: Boolean(registered),
         message: 'Verification OTP sent to your WhatsApp number successfully.',
         phone: normalizedPhone,
       };
@@ -537,7 +611,7 @@ class AuthService {
       console.error(`[WhatsApp OTP Dispatch Error] ${err.message}`);
       return {
         success: false,
-        isRegistered: Boolean(registered),
+        isRegistered: true,
         whatsappSent: false,
         message: `Failed to dispatch WhatsApp OTP: ${err.message}`,
         phone: normalizedPhone,
@@ -571,36 +645,101 @@ class AuthService {
     // OTP verified successfully - clear from memory
     activeWhatsappOtps.delete(normalizedPhone);
 
-    // Fetch or create user record
-    const registered = await this.findRegisteredAccountByPhone(phone);
-    let user = registered?.user;
+    // Look up real registered user
+    let user = null;
+    let staff = null;
+    let business = null;
+
+    if (record.userId) {
+      user = await User.findById(record.userId);
+    }
 
     if (!user) {
-      const placeholderEmail = `user_${normalizedPhone}@apnapos.com`;
-      user = await User.findOne({ $or: [{ phone: normalizedPhone }, { email: placeholderEmail }] });
-      if (!user) {
-        const dummyHash = await User.hashPassword('PhoneAuth@123');
-        user = await User.create({
-          email: placeholderEmail,
-          phone: normalizedPhone,
-          passwordHash: dummyHash,
-          role: 'owner',
-          onboardingCompleted: true,
-        });
+      const registered = await this.findRegisteredAccountByPhone(phone);
+      user = registered?.user;
+      if (registered?.type === 'staff') {
+        staff = registered.account;
+      } else if (registered?.type === 'business') {
+        business = registered.account;
       }
     }
 
+    if (!user) {
+      throw ApiError.notFound('No registered account found for this phone number. Please register first.', 'USER_NOT_FOUND');
+    }
+
+    // Check user active status (Owner / SuperAdmin exempted)
+    const isSuperAdminEmail = (user?.email || '').toLowerCase() === 'chandanyaduvanshi190@gmail.com';
+    if (user && user.status && user.status !== 'active' && !user.isSuperAdmin && !isSuperAdminEmail) {
+      throw ApiError.forbidden(
+        'Your account is currently inactive or suspended. Please contact Apna POS Owner/Support.',
+        'ACCOUNT_INACTIVE'
+      );
+    }
+
+    // Resolve staff if linked
+    if (!staff) {
+      if (user.staffId) {
+        staff = await Staff.findById(user.staffId);
+      } else if (user.businessId) {
+        staff = await Staff.findOne({ userId: user._id, businessId: user.businessId });
+      }
+    }
+
+    // Resolve business
+    if (!business) {
+      if (user.businessId) {
+        business = await Business.findById(user.businessId).lean();
+      } else if (staff?.businessId) {
+        business = await Business.findById(staff.businessId).lean();
+      } else {
+        business = await Business.findOne({ ownerId: user._id }).lean();
+      }
+    }
+
+    const isStaffUser = !!(user.businessId || user.staffId || (staff && user.role !== 'owner'));
+
+    let permissions = [];
+    if (user.role && user.role.toLowerCase() === 'owner') {
+      permissions = ['*'];
+    } else if (staff?.role && staff.role.toLowerCase() === 'admin') {
+      permissions = ['*'];
+    } else if (staff?.permissions && Array.isArray(staff.permissions)) {
+      permissions = staff.permissions;
+    } else {
+      permissions = ['pos', 'tables', 'orders'];
+    }
+
+    if (staff) {
+      try {
+        await Staff.findByIdAndUpdate(staff._id || staff.id, { lastLogin: new Date() });
+      } catch (_) {}
+    }
+
     const tokens = await tokenService.generateAuthTokens(user);
+
+    const activeWaSettings = user.whatsappSettings?.phoneNumberId
+      ? user.whatsappSettings
+      : (business?.whatsappSettings?.phoneNumberId ? business.whatsappSettings : null);
 
     return {
       success: true,
       user: {
         id: user._id,
         email: user.email,
-        phone: user.phone || normalizedPhone,
-        role: user.role || 'owner',
-        onboardingCompleted: user.onboardingCompleted ?? true,
+        phone: staff?.phone || user.phone || business?.profile?.phone || normalizedPhone,
+        name: staff?.name || business?.profile?.name || '',
+        companyName: business?.profile?.companyName || '',
+        profilePhotoPath: staff?.avatarUrl || business?.profile?.profileImage || '',
+        role: staff?.role || user.role || 'owner',
+        employeeId: staff?.employeeId || '',
+        permissions,
+        onboardingCompleted: isStaffUser ? true : (user.onboardingCompleted ?? false),
+        onboardingStep: isStaffUser ? 4 : (user.onboardingStep ?? 0),
+        whatsappSettings: activeWaSettings,
+        business: business || null,
       },
+      business: business || null,
       ...tokens,
     };
   }

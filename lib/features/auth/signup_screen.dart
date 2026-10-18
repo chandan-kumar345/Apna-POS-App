@@ -129,7 +129,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
 
   // Trigger OTP Verification Popup when clicking "Continue"
   Future<void> _handleSignup() async {
-    final emailText = _emailController.text.trim();
+    final emailText = _emailController.text.trim().toLowerCase();
     final passwordText = _passwordController.text.trim();
 
     final emailErr = FormValidators.validateEmail(emailText);
@@ -148,7 +148,47 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
       _errorMessage = null;
       _isLoading = true;
     });
-    
+
+    // 1. Production Pre-check: Verify if user already exists in Backend or Local DB
+    try {
+      final checkResult = await AuthService().checkUserExists(emailText);
+      if (checkResult['exists'] == true) {
+        if (mounted) {
+          final errorMsg = checkResult['message']?.toString() ??
+              'An account with this email already exists. Please log in.';
+          setState(() {
+            _isLoading = false;
+            _errorMessage = errorMsg;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFEF4444),
+              behavior: SnackBarBehavior.floating,
+              content: Text(
+                errorMsg,
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              action: SnackBarAction(
+                label: 'Sign In',
+                textColor: Colors.white,
+                onPressed: () {
+                  if (widget.onSwitchToLogin != null) {
+                    widget.onSwitchToLogin!();
+                  } else {
+                    Navigator.maybePop(context);
+                  }
+                },
+              ),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
+    } catch (checkErr) {
+      debugPrint('[Signup] pre-check notice: $checkErr');
+    }
+
     try {
       // Dispatch OTP Email from sooftcode@gmail.com
       await EmailService().sendOtpEmail(emailText);
@@ -158,7 +198,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
 
     if (mounted) {
       setState(() => _isLoading = false);
-      
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: GlassTheme.primaryNavy,
@@ -284,6 +324,33 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                           ),
                                         ),
                                       ),
+                                      if (otpError!.toLowerCase().contains('already exists')) ...[
+                                        const SizedBox(width: 8),
+                                        TextButton(
+                                          onPressed: () {
+                                            Navigator.pop(context);
+                                            if (widget.onSwitchToLogin != null) {
+                                              widget.onSwitchToLogin!();
+                                            } else {
+                                              Navigator.maybePop(context);
+                                            }
+                                          },
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            backgroundColor: const Color(0xFFEF4444),
+                                            minimumSize: Size.zero,
+                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          ),
+                                          child: const Text(
+                                            'Sign In',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -410,7 +477,7 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                                 : emailText;
                                             final password = _passwordController.text.trim();
 
-                                            // 1. Create or sign in user in Firebase Authentication
+                                            // 1. Create user in Firebase Authentication
                                             try {
                                               final auth = FirebaseAuth.instance;
                                               UserCredential? fbCred;
@@ -421,33 +488,35 @@ class _RegisterFormWidgetState extends State<RegisterFormWidget> {
                                                 );
                                               } on FirebaseAuthException catch (fbErr) {
                                                 if (fbErr.code == 'email-already-in-use') {
-                                                  fbCred = await auth.signInWithEmailAndPassword(
-                                                    email: emailText,
-                                                    password: password,
-                                                  );
+                                                  throw Exception('An account with this email address already exists. Please log in.');
                                                 } else {
-                                                  debugPrint('[FirebaseAuth] signup warning: ${fbErr.code} - ${fbErr.message}');
+                                                  debugPrint('[FirebaseAuth] signup warning:  - ');
                                                 }
                                               }
                                               if (fbCred?.user != null) {
                                                 await fbCred!.user!.updateDisplayName(nameFromEmail);
                                               }
                                             } catch (fbEx) {
-                                              debugPrint('[FirebaseAuth] signup exception: $fbEx');
+                                              final fbStr = fbEx.toString();
+                                              if (fbStr.contains('already exists') || fbStr.contains('email-already-in-use')) {
+                                                rethrow;
+                                              }
+                                              debugPrint('[FirebaseAuth] signup exception: ');
                                             }
 
                                             // 2. Register user in Backend REST API
                                             try {
                                               await AuthService().register(emailText, password);
                                             } catch (e) {
-                                              if (e.toString().contains('already exists') ||
-                                                  e.toString().contains('EMAIL_ALREADY_EXISTS')) {
-                                                // If already registered, try logging in
-                                                await AuthService().login(emailText, password);
-                                              } else if (e.toString().contains('Unable to connect') ||
-                                                  e.toString().contains('Connection timed out') ||
-                                                  e.toString().contains('SocketException') ||
-                                                  e.toString().contains('CONNECTION_ERROR')) {
+                                              final errStr = e.toString();
+                                              if (errStr.contains('already exists') ||
+                                                  errStr.contains('EMAIL_ALREADY_EXISTS') ||
+                                                  errStr.contains('PHONE_ALREADY_EXISTS')) {
+                                                throw Exception('An account with this email address already exists. Please log in.');
+                                              } else if (errStr.contains('Unable to connect') ||
+                                                  errStr.contains('Connection timed out') ||
+                                                  errStr.contains('SocketException') ||
+                                                  errStr.contains('CONNECTION_ERROR')) {
                                                 // Fallback to local DatabaseService user registration
                                                 await DatabaseService().registerUser(
                                                   name: nameFromEmail,

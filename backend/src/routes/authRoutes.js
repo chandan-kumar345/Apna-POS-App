@@ -7,11 +7,16 @@ const {
   loginSchema,
   refreshSchema,
   resetPasswordSchema,
+  checkUserSchema,
 } = require('../validators/authValidator');
 
 const router = express.Router();
 
 // Public routes
+router.post('/check-user', validate(checkUserSchema), (req, res, next) =>
+  authController.checkUserExists(req, res, next)
+);
+
 router.post('/register', validate(registerSchema), (req, res, next) =>
   authController.register(req, res, next)
 );

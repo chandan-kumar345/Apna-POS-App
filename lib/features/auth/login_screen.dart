@@ -469,6 +469,33 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       debugPrint('[PhoneLogin] WhatsApp OTP dispatch notice: $e');
+      final errStr = e.toString().replaceAll('Exception:', '').trim();
+      if (errStr.contains('not registered') || errStr.contains('PHONE_NOT_REGISTERED')) {
+        if (mounted) {
+          setState(() => _errorMessage = 'This phone number is not registered. Please create an account.');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: const Color(0xFFEF4444),
+              content: const Text(
+                'This phone number is not registered. Please create an account.',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+              action: SnackBarAction(
+                label: 'Register',
+                textColor: Colors.white,
+                onPressed: () {
+                  setState(() {
+                    _selectedTab = 1;
+                    _errorMessage = null;
+                  });
+                },
+              ),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
     }
 
     // 2. Keep existing SMS / Firebase OTP dispatch running as parallel / fallback so login never breaks
@@ -705,7 +732,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                           reSentWa = true;
                                           setDialogState(() => sentViaWhatsapp = true);
                                         }
-                                      } catch (_) {}
+                                      } catch (e) {
+                                        final errStr = e.toString().replaceAll('Exception:', '').trim();
+                                        if (errStr.contains('not registered') || errStr.contains('PHONE_NOT_REGISTERED')) {
+                                          setDialogState(() {
+                                            otpError = 'This phone number is not registered. Please create an account.';
+                                          });
+                                          return;
+                                        }
+                                      }
                                       try {
                                         await authRepo.sendOtp(firebaseRecipient);
                                       } catch (_) {}
@@ -801,54 +836,47 @@ class _LoginScreenState extends State<LoginScreen> {
                                               }
                                             } catch (waErr) {
                                               debugPrint('[PhoneLogin] WhatsApp OTP verification fallback: $waErr');
+                                              final errStr = waErr.toString().replaceAll('Exception:', '').trim();
+                                              if (errStr.contains('USER_NOT_FOUND') || errStr.contains('not found') || errStr.contains('not registered')) {
+                                                setDialogState(() {
+                                                  isVerifying = false;
+                                                  otpError = 'This phone number is not registered. Please register first.';
+                                                });
+                                                return;
+                                              }
                                             }
 
                                             if (!isVerified) {
                                               final userEntity = await authRepo.verifyOtp(firebaseRecipient, enteredOtp);
                                               if (userEntity != null) {
                                                 isVerified = true;
+                                                await db.loginWithOtpPhone(firebaseRecipient);
                                               }
                                             }
 
                                             if (isVerified) {
-                                              // Authenticate with backend API
-                                              try {
-                                                final phoneEmail = '${rawPhone.replaceAll(RegExp(r'[^0-9]'), '')}@apnapos.com';
-                                                await AuthService().login(firebaseRecipient, 'PhoneAuth@123').catchError((_) {
-                                                  return AuthService().register(phoneEmail, 'PhoneAuth@123', phone: firebaseRecipient);
-                                                });
-                                              } catch (e) {
-                                                debugPrint('Backend phone auth note: $e');
-                                              }
-
-                                              // OTP is correct - Log in or create user account
-                                              bool success = await db.loginWithOtpPhone(firebaseRecipient);
-                                              
                                               if (!mounted || !dialogCtx.mounted) return;
 
-                                              if (success) {
-                                                Navigator.pop(dialogCtx);
-                                                await _saveOrClearCredentials(_rememberMe);
-                                                if (!mounted) return;
-                                                final rest = db.restaurant;
-                                                if (rest != null && rest.isOnboarded) {
-                                                  Navigator.pushAndRemoveUntil(
-                                                    context,
-                                                    SlideUpPageRoute(page: const MainLayout()),
-                                                    (route) => false,
-                                                  );
-                                                } else {
-                                                  Navigator.pushAndRemoveUntil(
-                                                    context,
-                                                    SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
-                                                    (route) => false,
-                                                  );
-                                                }
+                                              Navigator.pop(dialogCtx);
+                                              await _saveOrClearCredentials(_rememberMe);
+
+                                              if (!mounted) return;
+                                              final rest = db.restaurant;
+                                              final curUser = db.currentUser;
+                                              final isOnboarded = (rest != null && rest.isOnboarded) || (curUser != null && curUser.onboardingCompleted);
+
+                                              if (isOnboarded) {
+                                                Navigator.pushAndRemoveUntil(
+                                                  context,
+                                                  SlideUpPageRoute(page: const MainLayout()),
+                                                  (route) => false,
+                                                );
                                               } else {
-                                                setDialogState(() {
-                                                  isVerifying = false;
-                                                  otpError = 'Failed to create or verify user session. Please try again.';
-                                                });
+                                                Navigator.pushAndRemoveUntil(
+                                                  context,
+                                                  SlideUpPageRoute(page: const RestaurantOnboardingScreen()),
+                                                  (route) => false,
+                                                );
                                               }
                                             } else {
                                               failedOtpAttempts++;
@@ -973,11 +1001,49 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
+        final fullPhone = '${_selectedCountry.dialCode} $phone';
+        final queryPhone = '${_selectedCountry.dialCode}$phone';
+
+        // Pre-validate whether phone exists before sending OTP
+        try {
+          final checkResult = await AuthService().checkUserExists('', phone: queryPhone);
+          if (checkResult['exists'] != true) {
+            setState(() {
+              _errorMessage = 'This phone number is not registered. Please create an account.';
+              _isLoading = false;
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  backgroundColor: const Color(0xFFEF4444),
+                  content: const Text(
+                    'This phone number is not registered. Please create an account.',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                  ),
+                  action: SnackBarAction(
+                    label: 'Register',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      setState(() {
+                        _selectedTab = 1;
+                        _errorMessage = null;
+                      });
+                    },
+                  ),
+                  duration: const Duration(seconds: 5),
+                ),
+              );
+            }
+            return;
+          }
+        } catch (e) {
+          debugPrint('[PhoneLogin] checkUserExists check notice: $e');
+        }
+
         setState(() {
           _isLoading = false;
         });
 
-        final fullPhone = '${_selectedCountry.dialCode} $phone';
         _showPhoneOtpVerificationDialog(fullPhone, phone);
         return;
       } else {

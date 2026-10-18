@@ -22,10 +22,14 @@ class OnboardingController {
 
       const business = await this._getOrCreateBusiness(userId);
 
+      const cleanPhone = phone ? phone.trim() : '';
+      const cleanName = (name || '').trim();
+      const cleanCompanyName = (companyName || '').trim();
+
       business.profile = {
-        name: name.trim(),
-        phone: phone.trim(),
-        companyName: companyName.trim(),
+        name: cleanName,
+        phone: cleanPhone,
+        companyName: cleanCompanyName,
         profileImage: profileImage || '',
         website: website ? website.trim() : '',
         referralCode: referralCode ? referralCode.trim() : '',
@@ -33,17 +37,39 @@ class OnboardingController {
 
       await business.save();
 
-      // Update user onboardingStep if not already further
+      // Update user onboardingStep and sync phone
       const user = await User.findById(userId);
-      if (user.onboardingStep < 1) {
-        user.onboardingStep = 1;
+      if (user) {
+        if (cleanPhone) {
+          user.phone = cleanPhone;
+        }
+        if (user.onboardingStep < 1) {
+          user.onboardingStep = 1;
+        }
         await user.save();
+      }
+
+      // Sync subscription details if existing
+      if (cleanPhone) {
+        try {
+          const Subscription = require('../models/Subscription');
+          await Subscription.updateMany(
+            { $or: [{ userId }, { businessId: business._id }] },
+            {
+              $set: {
+                phone: cleanPhone,
+                userName: cleanName,
+                businessName: cleanCompanyName,
+              },
+            }
+          );
+        } catch (_) {}
       }
 
       return ApiResponse.success(
         res,
         {
-          onboardingStep: user.onboardingStep,
+          onboardingStep: user?.onboardingStep || 1,
           profile: business.profile,
           business,
         },
@@ -70,7 +96,11 @@ class OnboardingController {
       };
 
       if (phone && phone.trim()) {
-        business.profile.phone = phone.trim();
+        const cleanPhone = phone.trim();
+        business.profile.phone = cleanPhone;
+        try {
+          await User.findByIdAndUpdate(userId, { phone: cleanPhone });
+        } catch (_) {}
       }
 
       await business.save();
@@ -284,6 +314,9 @@ class OnboardingController {
       user.onboardingCompleted = true;
       user.onboardingStep = 4;
       user.businessId = business._id;
+      if (business.profile?.phone && !user.phone) {
+        user.phone = business.profile.phone;
+      }
       await user.save();
 
       return ApiResponse.success(

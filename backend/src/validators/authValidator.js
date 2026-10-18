@@ -75,11 +75,17 @@ const staffLoginSchema = Joi.object({
   pin: Joi.string().allow('', null).optional(),
 });
 
+const checkUserSchema = Joi.object({
+  email: Joi.string().allow('', null).optional(),
+  phone: Joi.string().allow('', null).optional(),
+});
+
 module.exports = {
   registerSchema,
   loginSchema,
   staffLoginSchema,
   refreshSchema,
   resetPasswordSchema,
+  checkUserSchema,
 };
 

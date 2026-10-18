@@ -2156,11 +2156,17 @@ class DatabaseService extends ChangeNotifier {
     String? profileImage,
     String? onboardingDetails,
   }) async {
+    final cleanEmail = email.trim().toLowerCase();
+    final alreadyExists = registeredUsers.any((u) => u.email.trim().toLowerCase() == cleanEmail);
+    if (alreadyExists) {
+      throw Exception('An account with this email already exists. Please log in.');
+    }
+
     final nowStr = DateTime.now().toIso8601String();
 
     final userEntity = UserEntity(
       fullName: name.trim(),
-      email: email.trim(),
+      email: cleanEmail,
       phoneNumber: phone?.trim() ?? '',
       password: password.trim(),
       profileImage: profileImage,
@@ -2481,7 +2487,15 @@ class DatabaseService extends ChangeNotifier {
 
   Future<bool> loginWithOtpPhone(String phone, {String? name}) async {
     final cleanPhone = phone.trim();
-    UserModel? matched = registeredUsers.where((u) => (u.phone ?? '').trim() == cleanPhone || u.email.trim().toLowerCase() == 'user_$cleanPhone@apnapos.com'.toLowerCase()).firstOrNull;
+    final cleanDigits = cleanPhone.replaceAll(RegExp(r'\D'), '');
+    final last10 = cleanDigits.length >= 10 ? cleanDigits.substring(cleanDigits.length - 10) : cleanDigits;
+
+    UserModel? matched = registeredUsers.where((u) {
+      final userDigits = (u.phone ?? '').replaceAll(RegExp(r'\D'), '');
+      if (last10.isNotEmpty && userDigits.endsWith(last10)) return true;
+      if (u.email.trim().toLowerCase() == 'user_$cleanPhone@apnapos.com'.toLowerCase()) return true;
+      return false;
+    }).firstOrNull;
 
     final isNewAccount = (matched == null);
     if (matched == null) {
@@ -2509,7 +2523,10 @@ class DatabaseService extends ChangeNotifier {
     }
 
     if (isNewAccount) {
-      await clearUserDataForNewAccount();
+      // Protect existing user database: only clear if really brand new without menu items or orders
+      if (menuItems.isEmpty && orders.isEmpty) {
+        await clearUserDataForNewAccount();
+      }
     } else {
       await loadUserDataForActiveUser(matched.id);
     }

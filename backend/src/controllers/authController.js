@@ -2,11 +2,22 @@ const authService = require('../services/authService');
 const ApiResponse = require('../utils/ApiResponse');
 
 class AuthController {
+  // Check if user already exists
+  async checkUserExists(req, res, next) {
+    try {
+      const { email, phone } = req.body;
+      const result = await authService.checkUserExists({ email, phone });
+      return ApiResponse.success(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // Register
   async register(req, res, next) {
     try {
-      const { email, password } = req.body;
-      const result = await authService.register(email, password);
+      const { email, password, phone } = req.body;
+      const result = await authService.register(email, password, { phone });
       return ApiResponse.created(res, result, 'User registered successfully');
     } catch (error) {
       next(error);
