@@ -387,6 +387,7 @@ class WhatsAppService {
     message,
     messageType = 'text',
     mediaUrl = '',
+    buttons = [],
     phoneNumberId = null,
     accessToken = null,
   }) {
@@ -418,6 +419,7 @@ class WhatsAppService {
         whatsappPhoneNumberId: activePhoneNumberId,
         recipient: normalizedPhone,
         isSimulated: true,
+        buttonsSent: buttons,
       };
     }
 
@@ -514,15 +516,46 @@ class WhatsAppService {
       }
     }
 
-    const payload = {
-      messaging_product: 'whatsapp',
-      recipient_type: 'individual',
-      to: normalizedPhone,
-      type: isImage ? 'image' : 'text',
-      ...(isImage
-        ? { image: imagePayload }
-        : { text: { preview_url: false, body: messageContent.toString() } }),
-    };
+    const isInteractive = !isImage && Array.isArray(buttons) && buttons.length > 0 && buttons.length <= 3;
+
+    let payload;
+    if (isImage) {
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizedPhone,
+        type: 'image',
+        image: imagePayload,
+      };
+    } else if (isInteractive) {
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizedPhone,
+        type: 'interactive',
+        interactive: {
+          type: 'button',
+          body: { text: messageContent.toString() },
+          action: {
+            buttons: buttons.map((b, idx) => ({
+              type: 'reply',
+              reply: {
+                id: b.id || `btn_${idx + 1}`,
+                title: String(b.title || b.text || `Option ${idx + 1}`).trim().slice(0, 20),
+              },
+            })),
+          },
+        },
+      };
+    } else {
+      payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: normalizedPhone,
+        type: 'text',
+        text: { preview_url: false, body: messageContent.toString() },
+      };
+    }
 
     let response = await fetch(url, {
       method: 'POST',
@@ -534,6 +567,17 @@ class WhatsAppService {
     });
 
     let data = await response.json().catch(() => ({}));
+
+    // If Meta failed on interactive button dispatch, gracefully fall back to formatted text
+    if (!response.ok && isInteractive) {
+      console.warn(`[WhatsAppService] Interactive buttons dispatch notice (${data?.error?.message || response.statusText}). Falling back to text options...`);
+      return this.sendChatMessage({
+        to: normalizedPhone,
+        text: messageContent.toString(),
+        phoneNumberId: activePhoneNumberId,
+        accessToken: activeAccessToken,
+      });
+    }
 
     // If Meta failed on link download, attempt fallback via direct Meta Media API upload
     if (!response.ok && isImage && imagePayload?.link && !imagePayload?.id) {

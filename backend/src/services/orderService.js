@@ -927,7 +927,7 @@ class OrderService {
   /**
    * Accept an incoming WhatsApp customer order from the POS alert dialog
    */
-  async acceptWhatsAppOrder(businessId, orderId, { prepTimeMinutes = 20, note = '' } = {}) {
+  async acceptWhatsAppOrder(businessId, orderId, { prepTimeMinutes = 20, estimatedPrepTimeMinutes = null, note = '' } = {}) {
     let order = null;
     if (mongoose.Types.ObjectId.isValid(orderId)) {
       order = await Order.findOne({ _id: orderId, businessId });
@@ -947,7 +947,11 @@ class OrderService {
       throw ApiError.notFound('Order not found');
     }
 
-    const prepMins = Math.max(5, parseInt(prepTimeMinutes, 10) || 20);
+    if (order.status === 'cancelled') {
+      throw ApiError.badRequest('Cannot accept an order that has already been cancelled');
+    }
+
+    const prepMins = Math.max(5, parseInt(estimatedPrepTimeMinutes || prepTimeMinutes, 10) || 20);
 
     // 1. Update order status to 'preparing'
     order.status = 'preparing';
@@ -1047,7 +1051,7 @@ class OrderService {
   /**
    * Reject / Cancel an incoming WhatsApp customer order with reason
    */
-  async rejectWhatsAppOrder(businessId, orderId, { reason = 'Kitchen is at maximum capacity' } = {}) {
+  async rejectWhatsAppOrder(businessId, orderId, { reason = '', rejectionReason = '' } = {}) {
     let order = null;
     if (mongoose.Types.ObjectId.isValid(orderId)) {
       order = await Order.findOne({ _id: orderId, businessId });
@@ -1067,7 +1071,11 @@ class OrderService {
       throw ApiError.notFound('Order not found');
     }
 
-    const cancelReason = (reason && reason.trim()) || 'Restaurant unable to accept order at this time';
+    if (order.status !== 'pending' && order.whatsappDetails?.acceptanceStatus === 'accepted') {
+      throw ApiError.badRequest('Cannot reject an order that has already been accepted and is being prepared');
+    }
+
+    const cancelReason = (rejectionReason || reason || '').trim() || 'Restaurant unable to accept order at this time';
 
     // 1. Update order status to 'cancelled'
     order.status = 'cancelled';
