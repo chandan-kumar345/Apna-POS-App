@@ -588,15 +588,14 @@ class WhatsAppChatService {
 
         if (existingChat) {
           const matched = candidateBusinesses.find((b) => b._id.toString() === existingChat.businessId.toString());
-          // If the matched business has AI enabled OR no candidate has AI enabled, continue with it
-          if (matched && (matched.aiChatAgentSettings?.enabled === true || !candidateBusinesses.some((b) => b.aiChatAgentSettings?.enabled === true))) {
+          if (matched) {
             business = matched;
           }
         }
 
-        // Priority 2: Pick the candidate business with AI Chat Agent explicitly enabled
+        // Priority 2: Pick the candidate business with AI Chat Agent enabled
         if (!business) {
-          business = candidateBusinesses.find((b) => b.aiChatAgentSettings?.enabled === true);
+          business = candidateBusinesses.find((b) => !b.aiChatAgentSettings || b.aiChatAgentSettings.enabled !== false);
         }
 
         // Priority 3: Pick the candidate business with WhatsApp explicitly enabled
@@ -785,146 +784,179 @@ class WhatsAppChatService {
       console.warn('[WhatsAppChatService] Push notification dispatch notice:', notifErr.message);
     }
 
-    // 3. Autonomous AI Chat Agent Auto-Reply on WhatsApp
+    // 3. Autonomous AI Chat Agent Auto-Reply on WhatsApp (Multi-customer thread-safe)
     try {
       const aiSettings = business.aiChatAgentSettings;
-      const isAiEnabled = aiSettings && aiSettings.enabled === true;
+      // Active by default unless explicitly disabled
+      const isAiEnabled = !aiSettings || aiSettings.enabled !== false;
 
       // Only trigger if AI is enabled and incoming message is valid customer text
       if (isAiEnabled && incomingMsg.body && incomingMsg.body.trim()) {
-        const delaySeconds = Math.max(1, aiSettings.autoReplyDelaySeconds || 2);
-        console.log(`[WhatsAppChatService] 🤖 Scheduling AI Chat Agent reply in ${delaySeconds}s for ${normalizedPhone}...`);
+        const whatsappOrderSessionService = require('./whatsappOrderSessionService');
+        const delaySeconds = Math.max(1, aiSettings?.autoReplyDelaySeconds || 1);
 
-        setTimeout(async () => {
-          try {
-            const aiAgentService = require('./aiAgentService');
-            const aiResult = await aiAgentService.generateReply({
-              business,
-              chatId: chat._id,
-              customerPhone: normalizedPhone,
-              customerName: customerName || chat.customerName,
-              messageText: incomingMsg.body,
-            });
+        setTimeout(() => {
+          // Enqueue per (businessId, customerPhone) so each customer runs in strict sequence
+          // while multiple different customers process concurrently without blocking each other.
+          whatsappOrderSessionService.enqueue(bId, normalizedPhone, async () => {
+            try {
+              // Step A: Check if message is an address or order type update for recent pending order
+              const sessionUpdate = await whatsappOrderSessionService.handleAddressOrTypeUpdate({
+                businessId: bId,
+                customerPhone: normalizedPhone,
+                messageText: incomingMsg.body,
+                chat,
+                targetUserId,
+              });
 
-            if (aiResult && aiResult.replyText && aiResult.replyText.trim()) {
-              let finalReplyText = aiResult.replyText.trim();
+              let finalReplyText = '';
 
-              // DIRECT ORDER TAKING: Automatically create order in POS if order intent detected
-              if (aiResult.orderPayload && Array.isArray(aiResult.orderPayload.items) && aiResult.orderPayload.items.length > 0) {
-                try {
-                  const orderService = require('./orderService');
-                  const orderResult = await orderService.generatePosOrder(bId, {
-                    ...aiResult.orderPayload,
-                    customerPhone: normalizedPhone,
-                    customerName: customerName || chat.customerName || 'WhatsApp Customer',
-                    status: 'pending',
-                    paymentStatus: 'pending',
-                    paymentMethod: 'unpaid',
-                    source: 'whatsapp',
-                    orderSource: 'whatsapp',
-                    chatId: chat._id,
-                  });
+              if (sessionUpdate && sessionUpdate.isHandled) {
+                finalReplyText = sessionUpdate.replyText;
+              } else {
+                // Step B: Generate intelligent hospitality response (Menu, specials, or direct order)
+                const aiAgentService = require('./aiAgentService');
+                const aiResult = await aiAgentService.generateReply({
+                  business,
+                  chatId: chat._id,
+                  customerPhone: normalizedPhone,
+                  customerName: customerName || chat.customerName,
+                  messageText: incomingMsg.body,
+                });
 
-                  const createdOrder = orderResult?.order || orderResult;
-                  if (createdOrder && createdOrder.orderNumber) {
-                    finalReplyText += `\n\n🧾 *ORDER REQUEST RECEIVED — #${createdOrder.orderNumber}*\n━━━━━━━━━━━━━━━━━━━━\n💰 *Total Amount*: *₹${createdOrder.totalAmount}*\n🛵 *Type*: ${createdOrder.orderType === 'delivery' ? 'Home Delivery' : 'Takeaway / Pickup'}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant manager. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
-                    console.log(`[WhatsAppChatService] 🛒 Direct POS Order #${createdOrder.orderNumber} created via WhatsApp AI for ${normalizedPhone}`);
+                if (aiResult && aiResult.replyText && aiResult.replyText.trim()) {
+                  finalReplyText = aiResult.replyText.trim();
 
-                    // 1. High-Priority FCM Push Notification dispatch to restaurant terminals
+                  // Step C: If an order was parsed, atomically create pending order in POS
+                  if (aiResult.orderPayload && Array.isArray(aiResult.orderPayload.items) && aiResult.orderPayload.items.length > 0) {
                     try {
-                      const pushNotificationService = require('./pushNotificationService');
-                      pushNotificationService.sendPushNotificationToBusiness({
-                        businessId: bId,
-                        title: `🔔 New WhatsApp Order: #${createdOrder.orderNumber}`,
-                        message: `${customerName || normalizedPhone} (₹${createdOrder.totalAmount}) • Tap to Accept or Reject`,
-                        data: {
-                          type: 'whatsapp_order_request',
-                          orderId: createdOrder._id.toString(),
-                          orderNumber: createdOrder.orderNumber,
-                          customerPhone: normalizedPhone,
-                          customerName: customerName || chat.customerName || 'Customer',
-                          totalAmount: String(createdOrder.totalAmount),
-                          orderType: createdOrder.orderType,
-                          deliveryAddress: createdOrder.deliveryAddress || '',
-                          items: JSON.stringify(createdOrder.items || []),
-                          createdAt: (createdOrder.createdAt || new Date()).toISOString(),
-                        },
-                      }).catch((pushErr) => console.warn('[WhatsAppChatService] Push order alert notice:', pushErr.message));
-                    } catch (pushErr) {
-                      console.warn('[WhatsAppChatService] Push order alert dispatch error:', pushErr.message);
-                    }
-
-                    // 2. Real-time WebSocket emission to all business terminals
-                    try {
-                      const socketService = require('./socketService');
-                      socketService.emitWhatsAppOrderRequest(bId, {
-                        order: createdOrder.toJSON ? createdOrder.toJSON() : createdOrder,
-                        chat,
+                      const orderService = require('./orderService');
+                      const orderResult = await orderService.generatePosOrder(bId, {
+                        ...aiResult.orderPayload,
                         customerPhone: normalizedPhone,
-                        customerName: customerName || chat.customerName,
-                        targetUserId,
+                        customerName: customerName || chat.customerName || 'WhatsApp Customer',
+                        status: 'pending',
+                        paymentStatus: 'pending',
+                        paymentMethod: 'unpaid',
+                        source: 'whatsapp',
+                        orderSource: 'whatsapp',
+                        chatId: chat._id,
                       });
-                    } catch (sockErr) {
-                      console.warn('[WhatsAppChatService] Socket order alert emission error:', sockErr.message);
+
+                      const createdOrder = orderResult?.order || orderResult;
+                      if (createdOrder && createdOrder.orderNumber) {
+                        // Register order in customer's active session
+                        whatsappOrderSessionService.recordOrder(bId, normalizedPhone, createdOrder);
+
+                        // If replyText doesn't already display order receipt, construct clean receipt
+                        if (!finalReplyText.includes(createdOrder.orderNumber) && !finalReplyText.includes('ORDER RECEIVED')) {
+                          const isDel = createdOrder.orderType === 'delivery';
+                          const typeDisplay = isDel
+                            ? (createdOrder.deliveryAddress ? `🛵 *Type*: *Home Delivery*\n📍 *Deliver To*: *${createdOrder.deliveryAddress}*` : `🛵 *Type*: *Home Delivery*\n📍 *Delivery Address*: _Please reply with your address!_`)
+                            : `🛍️ *Type*: *Takeaway / Pickup*\n💡 _(For Home Delivery, reply with your address!)_`;
+
+                          finalReplyText = `🧾 *ORDER RECEIVED — #${createdOrder.orderNumber}* 🧾\n*${business.profile?.companyName || business.name || 'Apna POS'}*\n━━━━━━━━━━━━━━━━━━━━\n${createdOrder.items.map((i) => `• ${i.quantity}x *${i.name}* (₹${(i.price * i.quantity).toFixed(0)})`).join('\n')}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Total Amount*: *₹${createdOrder.totalAmount}*\n${typeDisplay}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant counter. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
+                        }
+
+                        console.log(`[WhatsAppChatService] 🛒 Direct POS Order #${createdOrder.orderNumber} created via WhatsApp AI for ${normalizedPhone} (Type: ${createdOrder.orderType})`);
+
+                        // 1. High-Priority FCM Push Notification dispatch to restaurant terminals
+                        try {
+                          const pushNotificationService = require('./pushNotificationService');
+                          pushNotificationService.sendPushNotificationToBusiness({
+                            businessId: bId,
+                            title: `🔔 New WhatsApp Order: #${createdOrder.orderNumber}`,
+                            message: `${customerName || normalizedPhone} (${createdOrder.orderType.toUpperCase()} - ₹${createdOrder.totalAmount}) • Tap to Accept or Reject`,
+                            data: {
+                              type: 'whatsapp_order_request',
+                              orderId: createdOrder._id.toString(),
+                              orderNumber: createdOrder.orderNumber,
+                              customerPhone: normalizedPhone,
+                              customerName: customerName || chat.customerName || 'Customer',
+                              totalAmount: String(createdOrder.totalAmount),
+                              orderType: createdOrder.orderType,
+                              deliveryAddress: createdOrder.deliveryAddress || '',
+                              items: JSON.stringify(createdOrder.items || []),
+                              createdAt: (createdOrder.createdAt || new Date()).toISOString(),
+                            },
+                          }).catch((pushErr) => console.warn('[WhatsAppChatService] Push order alert notice:', pushErr.message));
+                        } catch (pushErr) {
+                          console.warn('[WhatsAppChatService] Push order alert dispatch error:', pushErr.message);
+                        }
+
+                        // 2. Real-time WebSocket emission to all business terminals
+                        try {
+                          const socketService = require('./socketService');
+                          socketService.emitWhatsAppOrderRequest(bId, {
+                            order: createdOrder.toJSON ? createdOrder.toJSON() : createdOrder,
+                            chat,
+                            customerPhone: normalizedPhone,
+                            customerName: customerName || chat.customerName,
+                            targetUserId,
+                          });
+                        } catch (sockErr) {
+                          console.warn('[WhatsAppChatService] Socket order alert emission error:', sockErr.message);
+                        }
+                      }
+                    } catch (orderErr) {
+                      console.error('[WhatsAppChatService] Direct order creation notice:', orderErr.message);
                     }
                   }
-                } catch (orderErr) {
-                  console.error('[WhatsAppChatService] Direct order creation notice:', orderErr.message);
                 }
               }
 
-              const activePhoneId =
-                chat.phoneNumberId ||
-                business.whatsappSettings?.phoneNumberId ||
-                whatsappService.phoneNumberId;
+              if (finalReplyText && finalReplyText.trim()) {
+                const activePhoneId =
+                  chat.phoneNumberId ||
+                  business.whatsappSettings?.phoneNumberId ||
+                  whatsappService.phoneNumberId;
 
-              const activeToken =
-                business.whatsappSettings?.accessToken ||
-                whatsappService.accessToken;
+                const activeToken =
+                  business.whatsappSettings?.accessToken ||
+                  whatsappService.accessToken;
 
-              // Send reply to customer on WhatsApp via Meta API
-              const sendResult = await whatsappService.sendChatMessage({
-                to: normalizedPhone,
-                text: finalReplyText,
-                message: finalReplyText,
-                phoneNumberId: activePhoneId,
-                accessToken: activeToken,
-              });
+                // Send reply to customer on WhatsApp via Meta API (safe chunking handles >3800 chars)
+                const sendResult = await whatsappService.sendChatMessage({
+                  to: normalizedPhone,
+                  text: finalReplyText,
+                  message: finalReplyText,
+                  phoneNumberId: activePhoneId,
+                  accessToken: activeToken,
+                });
 
-              // Create OUTGOING AI Message Record
-              const aiMsg = await WhatsAppMessage.create({
-                businessId: bId,
-                chatId: chat._id,
-                customerPhone: normalizedPhone,
-                direction: 'OUTGOING',
-                messageType: 'text',
-                text: finalReplyText,
-                whatsappMessageId: sendResult?.messageId || `wamid.ai.${Date.now()}`,
-                isAiGenerated: true,
-                status: 'SENT',
-                timestamp: new Date(),
-              });
+                // Create OUTGOING AI Message Record
+                const aiMsg = await WhatsAppMessage.create({
+                  businessId: bId,
+                  chatId: chat._id,
+                  customerPhone: normalizedPhone,
+                  direction: 'OUTGOING',
+                  messageType: 'text',
+                  text: finalReplyText,
+                  whatsappMessageId: sendResult?.messageId || `wamid.ai.${Date.now()}`,
+                  isAiGenerated: true,
+                  status: 'SENT',
+                  timestamp: new Date(),
+                });
 
-              // Update Chat
-              chat.lastMessage = `🤖 ${aiResult.replyText.trim().slice(0, 80)}`;
-              chat.lastMessageAt = new Date();
-              chat.lastMessageDirection = 'OUTGOING';
-              await chat.save();
+                // Update Chat
+                chat.lastMessage = `🤖 ${finalReplyText.trim().slice(0, 80)}`;
+                chat.lastMessageAt = new Date();
+                chat.lastMessageDirection = 'OUTGOING';
+                await chat.save();
 
-              // Broadcast via WebSocket to all connected terminals
-              const socketService = require('./socketService');
-              socketService.emitWhatsAppMessageReceived(bId, {
-                chat,
-                message: aiMsg,
-                targetUserId,
-                ownerId: business?.ownerId,
-              });
-
-              console.log(`[WhatsAppChatService] 🤖 ✅ Autonomous AI Chat Agent replied to ${normalizedPhone}: "${aiResult.replyText.slice(0, 60)}..."`);
+                // Broadcast via WebSocket to all connected terminals
+                const socketService = require('./socketService');
+                socketService.emitWhatsAppMessageReceived(bId, {
+                  chat,
+                  message: aiMsg,
+                  targetUserId,
+                  ownerId: business?.ownerId,
+                });
+              }
+            } catch (queueErr) {
+              console.error(`[WhatsAppChatService] Error processing queued task for ${normalizedPhone}:`, queueErr);
             }
-          } catch (aiDispatchErr) {
-            console.error('[WhatsAppChatService] ❌ Autonomous AI Chat Agent dispatch error:', aiDispatchErr.message);
-          }
+          });
         }, delaySeconds * 1000);
       }
     } catch (aiErr) {

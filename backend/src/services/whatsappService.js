@@ -341,6 +341,44 @@ class WhatsAppService {
   }
 
   /**
+   * Split long text into safe WhatsApp chunks (<= maxChunkSize chars)
+   * preserving paragraph breaks and lines cleanly
+   */
+  splitTextIntoSafeChunks(text, maxChunkSize = 3500) {
+    if (!text || text.length <= maxChunkSize) return [text];
+    const chunks = [];
+    let remaining = text.toString();
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxChunkSize) {
+        chunks.push(remaining);
+        break;
+      }
+
+      // 1. Try splitting at double newline (paragraph boundary)
+      let splitIdx = remaining.lastIndexOf('\n\n', maxChunkSize);
+      // 2. Try splitting at single newline
+      if (splitIdx === -1 || splitIdx < maxChunkSize * 0.35) {
+        splitIdx = remaining.lastIndexOf('\n', maxChunkSize);
+      }
+      // 3. Try splitting at sentence or space
+      if (splitIdx === -1 || splitIdx < maxChunkSize * 0.35) {
+        splitIdx = remaining.lastIndexOf(' ', maxChunkSize);
+      }
+      // 4. Hard cut if no clean separator found
+      if (splitIdx === -1) {
+        splitIdx = maxChunkSize;
+      }
+
+      const chunk = remaining.slice(0, splitIdx).trim();
+      if (chunk) chunks.push(chunk);
+      remaining = remaining.slice(splitIdx).trim();
+    }
+
+    return chunks.length > 0 ? chunks : [text];
+  }
+
+  /**
    * Send direct text reply message to customer via Meta WhatsApp Cloud API
    */
   async sendChatMessage({
@@ -383,9 +421,33 @@ class WhatsAppService {
       };
     }
 
-    const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
     const isImage = (messageType === 'image' || Boolean(mediaUrl)) && Boolean(mediaUrl);
 
+    // Automatic chunking for messages exceeding Meta WhatsApp 4096 character limit
+    if (!isImage && messageContent.toString().length > 3800) {
+      console.log(`[WhatsAppService] 📏 Long message detected (${messageContent.toString().length} chars). Chunking safely for Meta API...`);
+      const chunks = this.splitTextIntoSafeChunks(messageContent.toString(), 3500);
+      let lastResult = null;
+      for (let i = 0; i < chunks.length; i++) {
+        const chunkText = chunks.length > 1
+          ? (i === 0 ? `${chunks[i]}\n\n_(Part 1 of ${chunks.length})_` : `_(Part ${i + 1} of ${chunks.length})_\n\n${chunks[i]}`)
+          : chunks[i];
+
+        lastResult = await this.sendChatMessage({
+          to: normalizedPhone,
+          text: chunkText,
+          phoneNumberId: activePhoneNumberId,
+          accessToken: activeAccessToken,
+        });
+
+        if (i < chunks.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+      return lastResult;
+    }
+
+    const url = `https://graph.facebook.com/${this.apiVersion}/${activePhoneNumberId}/messages`;
     if (!isImage && !messageContent.toString().trim()) {
       throw ApiError.badRequest('WhatsApp text message body cannot be empty', null, 'EMPTY_MESSAGE_TEXT');
     }

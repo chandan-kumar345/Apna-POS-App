@@ -62,7 +62,6 @@ class AIAgentService {
         const catName = (p.category && catMap[p.category.toString()]) || 'Specialties';
         if (!menuByCategory[catName]) menuByCategory[catName] = [];
 
-        let desc = p.description ? ` - ${p.description}` : '';
         let tag = p.isVeg === false ? ' [Non-Veg]' : ' [Veg]';
         let best = p.isBestseller ? ' ⭐ Bestseller' : '';
         let priceStr = '';
@@ -84,7 +83,7 @@ class AIAgentService {
           priceStr = `₹${p.price || 0}`;
         }
 
-        menuByCategory[catName].push(`• *${p.name}*: ${priceStr}${tag}${best}${desc}`);
+        menuByCategory[catName].push(`• *${p.name}*: ${priceStr}${tag}${best}`);
       });
 
       let menuText = '';
@@ -570,67 +569,16 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
     }
 
     // Menu inquiry
-    if (/(menu|food|dishes|list|kya kya hai|kya milta hai|rate|card)/i.test(raw)) {
+    if (/(menu|food|dishes|items|item list|catalogue|catalog|price list|kya kya hai|kya milta hai|rate|card)/i.test(raw)) {
       return {
         replyText: `📋 *${rName.toUpperCase()} — MENU & SPECIALTIES* 📋\n━━━━━━━━━━━━━━━━━━━━\n${context.menuText}\n━━━━━━━━━━━━━━━━━━━━\n🎉 *Today's Offers:*\n${context.offersText}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names & quantities to order directly (e.g. "1 Masala Chai, 2 Samosa")!_`,
         orderPayload: null,
       };
     }
 
-    // Recommendations / Bestsellers / Specials
-    if (/(special|best|bestseller|recommend|famous|tasty|suggest|top)/i.test(raw)) {
-      const bestList = context.menuText.split('\n').filter((l) => l.includes('Bestseller') || l.includes('Special')).slice(0, 6).join('\n') || context.menuText.split('\n').slice(0, 6).join('\n');
-      return {
-        replyText: `⭐ *CHEF'S TOP RECOMMENDATIONS* ⭐\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nOur guests love these signature specialties:\n\n${bestList}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Would you like to order any of these? Just text the dish name!_`,
-        orderPayload: null,
-      };
-    }
-
-    // Pure Veg / Vegetarian
-    if (/(veg|vegetarian|shakahari)/i.test(raw) && !/non[-\s]?veg/i.test(raw)) {
-      const vegItems = context.menuText.split('\n').filter((l) => l.includes('[Veg]')).slice(0, 6).join('\n');
-      return {
-        replyText: `🥦 *PURE VEG SPECIALTIES* 🥦\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${vegItems || 'All our vegetarian items are freshly prepared with pure ingredients!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to order or inquire!_`,
-        orderPayload: null,
-      };
-    }
-
-    // Non-Veg
-    if (/(non[-\s]?veg|chicken|mutton|egg|meat|fish)/i.test(raw)) {
-      const nonVegItems = context.menuText.split('\n').filter((l) => l.includes('[Non-Veg]')).slice(0, 6).join('\n');
-      return {
-        replyText: `🍗 *NON-VEG DELICACIES* 🍗\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${nonVegItems || 'We have delicious non-veg delicacies prepared fresh daily!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to place your order!_`,
-        orderPayload: null,
-      };
-    }
-
-    // Table reservation / booking
-    if (/(table|book|seat|reservation|reserve|bithane|jagah)/i.test(raw)) {
-      return {
-        replyText: `🍽️ *TABLE RESERVATION* 🍽️\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nWe would be delighted to host you! Please share:\n1️⃣ *Date & Time* ⏰\n2️⃣ *Number of Guests* 👥\n3️⃣ *Guest Name* 👤\n━━━━━━━━━━━━━━━━━━━━\n✨ _Our team will confirm your table reservation right away!_`,
-        orderPayload: null,
-      };
-    }
-
-    // Location / Address / Timings / Contact
-    if (/(location|address|kahan hai|timing|time|open|close|phone|call|contact)/i.test(raw)) {
-      return {
-        replyText: `📍 *${rName.toUpperCase()} — LOCATION & TIMINGS* 📍\n━━━━━━━━━━━━━━━━━━━━\n• 📌 *Address*: ${context.address}\n• 📞 *Contact*: ${context.phone || 'Available on WhatsApp'}\n• 🕒 *Timings*: Open Daily for Dining & Delivery\n━━━━━━━━━━━━━━━━━━━━\n😊 _We look forward to serving you!_`,
-        orderPayload: null,
-      };
-    }
-
-    // Offers / Discounts
-    if (/(offer|discount|coupon|deal|bachat|sale)/i.test(raw)) {
-      return {
-        replyText: `🎉 *TODAY'S SPECIAL OFFERS & DEALS* 🎉\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${context.offersText}\n━━━━━━━━━━━━━━━━━━━━\n💰 _Apply these codes when ordering to enjoy instant savings!_`,
-        orderPayload: null,
-      };
-    }
-
     // Order taking intent & direct POS order processing
     const productsList = context.products || [];
-    const orderKeywordsRegex = /(order|chahiye|pack|deliver|parcel|bhejo|mangwa|send|lao|de do|please|want|need|give|send me|bring|plate|plates|half|full|glass|\d+\s*(?:x|plate|plates|pcs|half|full)?)/i;
+    const orderKeywordsRegex = /(order|chahiye|pack|deliver|parcel|bhejo|mangwa|send|lao|de do|please|want|need|give|bring|plate|plates|half|full|glass|\d+\s*(?:x|plate|plates|pcs|half|full)?)/i;
     const hasOrderKeyword = orderKeywordsRegex.test(raw);
     const mentionsAnyProduct = productsList.some((prod) => {
       if (!prod || !prod.name) return false;
@@ -688,30 +636,109 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
         }
       }
 
-      const isDelivery = /(deliver|delivery|address|ghar|flat|room|colony|sector|road|nagar)/i.test(raw);
-
       if (validItems.length > 0) {
+        const isDelivery = /\b(deliver|delivery|home\s*delivery|bhejo|ghar\s*pe|ghar\s*par|send\s*to)\b/i.test(raw);
+        const isTakeaway = /\b(takeaway|take\s*away|parcel|pack|pickup|pick\s*up|le\s*jaana|pack\s*karo|parcel\s*karo)\b/i.test(raw);
+
+        // Extract address if provided
+        let extractedAddress = '';
+        const addressMatch = messageText.match(/(?:at|to|address[:\s]|near|deliver\s+to|send\s+to)\s+([A-Za-z0-9\s,\-\/\.]{5,100})/i);
+        if (addressMatch) {
+          extractedAddress = addressMatch[1].trim();
+        } else {
+          const directAddr = messageText.match(/(?:flat|room|house|h\.no|block|plot|sector|colony|apartment|society|nagar|road|street|gali|lane|floor|building|tower)\s*([A-Za-z0-9\s,\-\/\.]{4,80})/i);
+          if (directAddr) {
+            extractedAddress = directAddr[0].trim();
+          }
+        }
+
+        let finalOrderType = 'takeaway';
+        if (isDelivery || extractedAddress) {
+          finalOrderType = 'delivery';
+        } else if (isTakeaway) {
+          finalOrderType = 'takeaway';
+        }
+
         const orderPayload = {
-          orderType: isDelivery ? 'delivery' : 'takeaway',
-          deliveryAddress: '',
+          orderType: finalOrderType,
+          deliveryAddress: extractedAddress || '',
           items: validItems,
           subtotal: calculatedSubtotal,
           totalAmount: calculatedSubtotal,
-          notes: 'Ordered via WhatsApp AI Agent',
+          notes: `Ordered via WhatsApp AI Agent (${finalOrderType})`,
           source: 'whatsapp_ai',
         };
 
-        const itemsListStr = validItems.map((i) => `• ${i.quantity}x *${i.name}* (₹${i.price * i.quantity})`).join('\n');
-        const reply = `🧾 *ORDER RECEIVED* 🧾\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *Order Summary*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Estimated Total*: *₹${calculatedSubtotal}*\n🛵 *Type*: ${isDelivery ? 'Home Delivery' : 'Takeaway / Pickup'}\n⏳ *Status*: 🕒 Waiting for restaurant confirmation\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant manager. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
+        const itemsListStr = validItems.map((i) => `• ${i.quantity}x *${i.name}* (₹${(i.price * i.quantity).toFixed(0)})`).join('\n');
+
+        let typeStr = finalOrderType === 'delivery'
+          ? (extractedAddress ? `🛵 *Type*: *Home Delivery*\n📍 *Deliver To*: *${extractedAddress}*` : `🛵 *Type*: *Home Delivery*\n📍 *Delivery Address*: _Please reply with your delivery address!_`)
+          : `🛍️ *Type*: *Takeaway / Pickup*\n💡 _(For Home Delivery, reply with your address!)_`;
+
+        const reply = `🧾 *ORDER RECEIVED* 🧾\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *Order Summary*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Estimated Total*: *₹${calculatedSubtotal}*\n${typeStr}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant counter. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
 
         return {
           replyText: reply,
           orderPayload,
         };
       }
+    }
 
+    // Recommendations / Bestsellers / Specials
+    if (/(special|best|bestseller|recommend|famous|tasty|suggest|top)/i.test(raw)) {
+      const bestList = context.menuText.split('\n').filter((l) => l.includes('Bestseller') || l.includes('Special')).slice(0, 6).join('\n') || context.menuText.split('\n').slice(0, 6).join('\n');
       return {
-        replyText: `📝 *ORDER REQUEST — ${rName.toUpperCase()}*\n━━━━━━━━━━━━━━━━━━━━\nI have noted your request: _"${messageText}"_.\n\nOur kitchen staff has received your order alert on the POS counter and will confirm the preparation time and total bill shortly!\n━━━━━━━━━━━━━━━━━━━━\n🙏 _Thank you for ordering with us!_`,
+        replyText: `⭐ *CHEF'S TOP RECOMMENDATIONS* ⭐\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nOur guests love these signature specialties:\n\n${bestList}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Would you like to order any of these? Just text the dish name!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Pure Veg / Vegetarian inquiry
+    if (/\b(only\s*veg|pure\s*veg|veg\s*only|veg\s*menu|veg\s*options|veg\s*items|shakahari)\b/i.test(raw) && !/non[-\s]?veg/i.test(raw)) {
+      const vegItems = context.menuText.split('\n').filter((l) => l.includes('[Veg]')).slice(0, 6).join('\n');
+      return {
+        replyText: `🥦 *PURE VEG SPECIALTIES* 🥦\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${vegItems || 'All our vegetarian items are freshly prepared with pure ingredients!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to order or inquire!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Non-Veg inquiry
+    if (/\b(only\s*non[-\s]?veg|non[-\s]?veg\s*menu|non[-\s]?veg\s*options|non[-\s]?veg\s*items)\b/i.test(raw)) {
+      const nonVegItems = context.menuText.split('\n').filter((l) => l.includes('[Non-Veg]')).slice(0, 6).join('\n');
+      return {
+        replyText: `🍗 *NON-VEG DELICACIES* 🍗\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${nonVegItems || 'We have delicious non-veg delicacies prepared fresh daily!'}\n━━━━━━━━━━━━━━━━━━━━\n💡 _Reply with dish names to place your order!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Table reservation / booking
+    if (/(table|book|seat|reservation|reserve|bithane|jagah)/i.test(raw)) {
+      return {
+        replyText: `🍽️ *TABLE RESERVATION* 🍽️\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\nWe would be delighted to host you! Please share:\n1️⃣ *Date & Time* ⏰\n2️⃣ *Number of Guests* 👥\n3️⃣ *Guest Name* 👤\n━━━━━━━━━━━━━━━━━━━━\n✨ _Our team will confirm your table reservation right away!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Location / Address / Timings / Contact
+    if (/(location|address|kahan hai|timing|time|open|close|phone|call|contact)/i.test(raw)) {
+      return {
+        replyText: `📍 *${rName.toUpperCase()} — LOCATION & TIMINGS* 📍\n━━━━━━━━━━━━━━━━━━━━\n• 📌 *Address*: ${context.address}\n• 📞 *Contact*: ${context.phone || 'Available on WhatsApp'}\n• 🕒 *Timings*: Open Daily for Dining & Delivery\n━━━━━━━━━━━━━━━━━━━━\n😊 _We look forward to serving you!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Offers / Discounts
+    if (/(offer|discount|coupon|deal|bachat|sale)/i.test(raw)) {
+      return {
+        replyText: `🎉 *TODAY'S SPECIAL OFFERS & DEALS* 🎉\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n${context.offersText}\n━━━━━━━━━━━━━━━━━━━━\n💰 _Apply these codes when ordering to enjoy instant savings!_`,
+        orderPayload: null,
+      };
+    }
+
+    // Unmatched order intent with no valid items recognized
+    if (hasOrderKeyword) {
+      return {
+        replyText: `📝 *ORDER FROM ${rName.toUpperCase()}*\n━━━━━━━━━━━━━━━━━━━━\nI would be delighted to place your order! 🍽️\n\nPlease reply with the dish name & quantity from our menu (e.g. *"2 Crispy Veg Burger"* or *"1 Margherita Pizza"*).\n\n💡 _Send *Menu* to see the full list of available items!_`,
         orderPayload: null,
       };
     }
