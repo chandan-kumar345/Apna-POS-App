@@ -3393,6 +3393,21 @@ class DatabaseService extends ChangeNotifier {
     }());
   }
 
+  /// Find a menu item / product by its ID, productId, or name
+  MenuItemModel? getProductById(String id) {
+    if (id.trim().isEmpty) return null;
+    final cleanId = id.trim();
+    final cleanLower = cleanId.toLowerCase();
+    for (final item in menuItems) {
+      if (item.id == cleanId ||
+          (item.productId.isNotEmpty && item.productId == cleanId) ||
+          item.name.trim().toLowerCase() == cleanLower) {
+        return item;
+      }
+    }
+    return null;
+  }
+
   Future<void> toggleMenuItemAvailability(String id) async {
     final index = menuItems.indexWhere((item) => item.id == id || item.productId == id);
     if (index >= 0) {

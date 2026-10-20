@@ -173,6 +173,15 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
           price = prod.price;
         }
       }
+      if (price <= 0.0) {
+        final name = (actualItem['name'] ?? item['name'] ?? '').toString();
+        if (name.isNotEmpty) {
+          final prod = _db.getProductById(name);
+          if (prod != null && prod.price > 0) {
+            price = prod.price;
+          }
+        }
+      }
     }
 
     if (price <= 0.0 && widget.items.length == 1 && widget.totalAmount > 0 && qty > 0) {
