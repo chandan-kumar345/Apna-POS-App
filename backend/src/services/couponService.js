@@ -78,23 +78,29 @@ class CouponService {
    */
   async getCoupons(businessId, query = {}) {
     const { page = 1, limit = 50, search, status } = query;
-    const filter = { businessId };
+    const andConditions = [{ businessId }];
 
     if (search && search.trim()) {
       const regex = new RegExp(search.trim(), 'i');
-      filter.$or = [{ code: regex }, { title: regex }, { description: regex }];
+      andConditions.push({
+        $or: [{ code: regex }, { title: regex }, { description: regex }],
+      });
     }
 
     const now = new Date();
     if (status === 'active') {
-      filter.isActive = true;
-      filter.startDate = { $lte: now };
-      filter.$or = [{ endDate: null }, { endDate: { $gte: now } }];
+      andConditions.push({
+        isActive: true,
+        startDate: { $lte: now },
+        $or: [{ endDate: null }, { endDate: { $gte: now } }],
+      });
     } else if (status === 'inactive') {
-      filter.isActive = false;
+      andConditions.push({ isActive: false });
     } else if (status === 'expired') {
-      filter.endDate = { $lt: now };
+      andConditions.push({ endDate: { $lt: now } });
     }
+
+    const filter = andConditions.length === 1 ? andConditions[0] : { $and: andConditions };
 
     const parsedLimit = Math.max(1, parseInt(limit, 10));
     const parsedPage = Math.max(1, parseInt(page, 10));

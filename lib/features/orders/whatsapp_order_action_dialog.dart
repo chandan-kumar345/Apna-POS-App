@@ -73,7 +73,7 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
     _currentShowingOrderId = orderId;
 
     try {
-      SoundService.playNotificationSound();
+      SoundService.playOrderRingtone();
     } catch (_) {}
 
     try {
@@ -94,6 +94,7 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
         ),
       );
     } finally {
+      SoundService.stopOrderRingtone();
       _isShowing = false;
       _currentShowingOrderId = null;
     }
@@ -120,6 +121,18 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     'Other reason...',
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    SoundService.playOrderRingtone();
+  }
+
+  @override
+  void dispose() {
+    SoundService.stopOrderRingtone();
+    super.dispose();
+  }
+
   String _formatPhone(String raw) {
     var clean = raw.trim().replaceAll('+', '').replaceAll(' ', '');
     if (clean.startsWith('91') && clean.length == 12) {
@@ -128,8 +141,51 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     return raw;
   }
 
+  double _resolveItemPrice(Map<String, dynamic> item, Map<String, dynamic> actualItem, num qty) {
+    double price = 0.0;
+    if (actualItem['effectivePrice'] is num && (actualItem['effectivePrice'] as num) > 0) {
+      price = (actualItem['effectivePrice'] as num).toDouble();
+    } else if (actualItem['price'] is num && (actualItem['price'] as num) > 0) {
+      price = (actualItem['price'] as num).toDouble();
+    } else if (item['price'] is num && (item['price'] as num) > 0) {
+      price = (item['price'] as num).toDouble();
+    } else if (actualItem['rate'] is num && (actualItem['rate'] as num) > 0) {
+      price = (actualItem['rate'] as num).toDouble();
+    } else if (item['rate'] is num && (item['rate'] as num) > 0) {
+      price = (item['rate'] as num).toDouble();
+    } else if (actualItem['unitPrice'] is num && (actualItem['unitPrice'] as num) > 0) {
+      price = (actualItem['unitPrice'] as num).toDouble();
+    } else if (item['unitPrice'] is num && (item['unitPrice'] as num) > 0) {
+      price = (item['unitPrice'] as num).toDouble();
+    } else if (actualItem['totalPrice'] is num && (actualItem['totalPrice'] as num) > 0 && qty > 0) {
+      price = (actualItem['totalPrice'] as num).toDouble() / qty;
+    } else if (item['totalPrice'] is num && (item['totalPrice'] as num) > 0 && qty > 0) {
+      price = (item['totalPrice'] as num).toDouble() / qty;
+    } else {
+      price = double.tryParse(actualItem['price']?.toString() ?? item['price']?.toString() ?? '0') ?? 0.0;
+    }
+
+    if (price <= 0.0) {
+      final prodId = (actualItem['productId'] ?? actualItem['id'] ?? item['productId'] ?? item['id'] ?? '').toString();
+      if (prodId.isNotEmpty) {
+        final prod = _db.getProductById(prodId);
+        if (prod != null && prod.price > 0) {
+          price = prod.price;
+        }
+      }
+    }
+
+    if (price <= 0.0 && widget.items.length == 1 && widget.totalAmount > 0 && qty > 0) {
+      price = widget.totalAmount / qty;
+    }
+
+    return price;
+  }
+
   Future<void> _handleAccept() async {
     if (_isProcessing) return;
+    SoundService.stopOrderRingtone();
+    SoundService.playButtonClick();
     setState(() => _isProcessing = true);
 
     try {
@@ -179,6 +235,8 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
 
   Future<void> _handleReject() async {
     if (_isProcessing) return;
+    SoundService.stopOrderRingtone();
+    SoundService.playButtonClick();
 
     String selectedReason = _rejectionReasons.first;
     final customReasonController = TextEditingController();
@@ -335,6 +393,7 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
   }
 
   void _openWhatsAppChat() {
+    SoundService.playButtonClick();
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => MetaWhatsAppChatScreen(
@@ -354,388 +413,559 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     );
 
     final isDelivery = widget.orderType.toLowerCase() == 'delivery';
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      backgroundColor: Colors.white,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 24),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480, maxHeight: 680),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // --- HEADER BANNER ---
-            Container(
-              padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-              decoration: const BoxDecoration(
-                color: Color(0xFF075E54),
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
+        constraints: BoxConstraints(
+          maxWidth: screenWidth >= 600 ? 500 : screenWidth * 0.94,
+          maxHeight: screenHeight * 0.88,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF2F6),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: Colors.white, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.95),
+                offset: const Offset(-6, -6),
+                blurRadius: 16,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF25D366),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 20),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'NEW WHATSAPP ORDER',
-                          style: TextStyle(
-                            color: Color(0xFF25D366),
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1.2,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          widget.orderNumber.startsWith('#') ? widget.orderNumber : '#${widget.orderNumber}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          isDelivery ? Icons.delivery_dining_rounded : Icons.takeout_dining_rounded,
-                          color: Colors.white,
-                          size: 14,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          isDelivery ? 'Delivery' : 'Takeaway',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+              BoxShadow(
+                color: const Color(0xFF0F172A).withValues(alpha: 0.16),
+                offset: const Offset(6, 6),
+                blurRadius: 20,
               ),
-            ),
-
-            // --- CONTENT BODY ---
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Customer Info Card
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF0FDF4),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFBBF7D0)),
-                      ),
-                      child: Row(
-                        children: [
-                          CircleAvatar(
-                            radius: 18,
-                            backgroundColor: const Color(0xFF25D366),
-                            child: const Icon(Icons.person, color: Colors.white, size: 20),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  widget.customerName.isNotEmpty ? widget.customerName : 'WhatsApp Customer',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                    color: Color(0xFF0F172A),
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  _formatPhone(widget.customerPhone),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade700,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                                if (isDelivery && widget.deliveryAddress.isNotEmpty) ...[
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '📍 ${widget.deliveryAddress}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Colors.grey.shade800,
-                                      fontStyle: FontStyle.italic,
-                                    ),
-                                  ),
-                                ],
-                              ],
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // --- 1. NEUMORPHIC HEADER BANNER ---
+                Container(
+                  padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF0F5132), Color(0xFF073B22)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF25D366),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(
+                              color: const Color(0xFF25D366).withValues(alpha: 0.4),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chat_outlined, color: Color(0xFF075E54)),
-                            tooltip: 'Chat on WhatsApp',
-                            onPressed: _openWhatsAppChat,
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 16),
-
-                    // Order Items Card
-                    Text(
-                      'ORDER ITEMS (${widget.items.length})',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade600,
-                        letterSpacing: 0.8,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.grey.shade200),
-                      ),
-                      child: widget.items.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text('Order items will be displayed upon sync.', textAlign: TextAlign.center),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              padding: const EdgeInsets.symmetric(vertical: 8),
-                              itemCount: widget.items.length,
-                              separatorBuilder: (ctx, idx) => Divider(height: 1, color: Colors.grey.shade200),
-                              itemBuilder: (context, idx) {
-                                final item = widget.items[idx];
-                                final name = item['name']?.toString() ?? 'Item';
-                                final qty = item['quantity'] ?? 1;
-                                final price = (item['price'] is num)
-                                    ? (item['price'] as num).toDouble()
-                                    : (double.tryParse(item['price']?.toString() ?? '0') ?? 0.0);
-                                final isVeg = item['foodType']?.toString().toLowerCase() != 'non_veg';
-
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 14,
-                                        height: 14,
-                                        decoration: BoxDecoration(
-                                          border: Border.all(
-                                            color: isVeg ? const Color(0xFF0F9D58) : const Color(0xFFD93025),
-                                            width: 1.5,
-                                          ),
-                                          borderRadius: BorderRadius.circular(3),
-                                        ),
-                                        child: Center(
-                                          child: Container(
-                                            width: 6,
-                                            height: 6,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: isVeg ? const Color(0xFF0F9D58) : const Color(0xFFD93025),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Expanded(
-                                        child: Text(
-                                          name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            fontSize: 13,
-                                            color: Color(0xFF1E293B),
-                                          ),
-                                        ),
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade200,
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Text(
-                                          '${qty}x',
-                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Text(
-                                        currencyFormatter.format(price * (qty as num)),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13,
-                                          color: Color(0xFF0F172A),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            ),
-                    ),
-
-                    const SizedBox(height: 14),
-
-                    // Total Amount Highlight
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Grand Total Amount:',
-                          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.grey),
+                          ],
                         ),
-                        Text(
-                          currencyFormatter.format(widget.totalAmount),
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                            fontSize: 22,
-                            color: Color(0xFF0F9D58),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 18),
-
-                    // Preparation Time Selector
-                    Text(
-                      'ESTIMATED KITCHEN PREP TIME',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey.shade600,
-                        letterSpacing: 0.8,
+                        child: const Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 20),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      children: _prepTimeOptions.map((mins) {
-                        final isSelected = _selectedPrepTime == mins;
-                        return ChoiceChip(
-                          label: Text('$mins mins'),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            if (selected) setState(() => _selectedPrepTime = mins);
-                          },
-                          selectedColor: const Color(0xFF075E54),
-                          backgroundColor: Colors.grey.shade100,
-                          labelStyle: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black87,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            // --- BOTTOM ACTIONS ---
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-              ),
-              child: _isProcessing
-                  ? const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 8),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                            SizedBox(width: 12),
-                            Text('Updating order & notifying customer on WhatsApp...', style: TextStyle(fontSize: 13)),
+                            const Text(
+                              'NEW WHATSAPP ORDER',
+                              style: TextStyle(
+                                color: Color(0xFF4ADE80),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.orderNumber.startsWith('#') ? widget.orderNumber : '#${widget.orderNumber}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.2,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    )
-                  : Row(
-                      children: [
-                        // Reject Order Button
-                        Expanded(
-                          flex: 2,
-                          child: OutlinedButton.icon(
-                            onPressed: _handleReject,
-                            icon: const Icon(Icons.close_rounded, size: 18),
-                            label: const Text('Reject', style: TextStyle(fontWeight: FontWeight.bold)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFFD93025),
-                              side: const BorderSide(color: Color(0xFFD93025), width: 1.5),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              isDelivery ? Icons.delivery_dining_rounded : Icons.takeout_dining_rounded,
+                              color: Colors.white,
+                              size: 15,
                             ),
+                            const SizedBox(width: 5),
+                            Text(
+                              isDelivery ? 'Delivery' : 'Takeaway',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // --- 2. WRAPPED SCROLLABLE CONTENT BODY ---
+                Flexible(
+                  child: SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Customer Info Neumorphic Card
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.white,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                              BoxShadow(
+                                color: Color(0xFFDCE4EC),
+                                offset: Offset(2, 2),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 38,
+                                height: 38,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFFE6F4EA),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Center(
+                                  child: Icon(Icons.person_rounded, color: Color(0xFF137333), size: 22),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.customerName.isNotEmpty ? widget.customerName : 'WhatsApp Customer',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 14,
+                                        color: Color(0xFF0F172A),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      _formatPhone(widget.customerPhone),
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Color(0xFF475569),
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    if (isDelivery && widget.deliveryAddress.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          const Icon(Icons.location_on_rounded, size: 13, color: Color(0xFFDC2626)),
+                                          const SizedBox(width: 4),
+                                          Expanded(
+                                            child: Text(
+                                              widget.deliveryAddress,
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: Color(0xFF334155),
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              InkWell(
+                                onTap: _openWhatsAppChat,
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFE6F4EA),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFCEEAD6)),
+                                  ),
+                                  child: const Icon(Icons.chat_outlined, color: Color(0xFF137333), size: 18),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        // Accept Order Button
-                        Expanded(
-                          flex: 3,
-                          child: ElevatedButton.icon(
-                            onPressed: _handleAccept,
-                            icon: const Icon(Icons.check_circle_rounded, size: 20),
-                            label: const Text('Accept Order', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF0F9D58),
-                              foregroundColor: Colors.white,
-                              elevation: 2,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+
+                        const SizedBox(height: 14),
+
+                        // Section Label: Order Items
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'ORDER ITEMS (${widget.items.length})',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF64748B),
+                                letterSpacing: 0.8,
+                              ),
                             ),
+                            Text(
+                              DateFormat('hh:mm a').format(widget.createdAt),
+                              style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8), fontWeight: FontWeight.w600),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Order Items Neumorphic Card
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFE2E8F0)),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.white,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                              BoxShadow(
+                                color: Color(0xFFDCE4EC),
+                                offset: Offset(2, 2),
+                                blurRadius: 6,
+                              ),
+                            ],
                           ),
+                          child: widget.items.isEmpty
+                              ? const Padding(
+                                  padding: EdgeInsets.all(16),
+                                  child: Center(
+                                    child: Text(
+                                      'Order items will appear upon sync.',
+                                      style: TextStyle(color: Color(0xFF64748B), fontSize: 12),
+                                    ),
+                                  ),
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(vertical: 6),
+                                  itemCount: widget.items.length,
+                                  separatorBuilder: (ctx, idx) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                                  itemBuilder: (context, idx) {
+                                    final item = widget.items[idx];
+                                    final actualItem = (item['item'] is Map)
+                                        ? Map<String, dynamic>.from(item['item'])
+                                        : item;
+                                    final name = (actualItem['name'] ?? item['name'] ?? 'Item').toString();
+                                    final qty = (item['quantity'] ?? actualItem['quantity'] ?? 1) as num;
+                                    final price = _resolveItemPrice(item, actualItem, qty);
+                                    final isVeg = actualItem['foodType']?.toString().toLowerCase() != 'non_veg';
+
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            width: 14,
+                                            height: 14,
+                                            decoration: BoxDecoration(
+                                              border: Border.all(
+                                                color: isVeg ? const Color(0xFF0F9D58) : const Color(0xFFD93025),
+                                                width: 1.5,
+                                              ),
+                                              borderRadius: BorderRadius.circular(3),
+                                            ),
+                                            child: Center(
+                                              child: Container(
+                                                width: 6,
+                                                height: 6,
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  color: isVeg ? const Color(0xFF0F9D58) : const Color(0xFFD93025),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
+                                          Expanded(
+                                            child: Text(
+                                              name,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 13,
+                                                color: Color(0xFF0F172A),
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFF1F5F9),
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: const Color(0xFFE2E8F0)),
+                                            ),
+                                            child: Text(
+                                              '${qty}x',
+                                              style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 11.5, color: Color(0xFF0F2B48)),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            currencyFormatter.format(price * qty),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 13,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+
+                        const SizedBox(height: 14),
+
+                        // Grand Total Amount Highlight Neumorphic Card
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: const Color(0xFFBBF7D0), width: 1.2),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.white,
+                                offset: Offset(-2, -2),
+                                blurRadius: 4,
+                              ),
+                              BoxShadow(
+                                color: Color(0xFFDCE4EC),
+                                offset: Offset(2, 2),
+                                blurRadius: 6,
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Grand Total',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                      color: Color(0xFF0F172A),
+                                    ),
+                                  ),
+                                  Text(
+                                    'All items + taxes & charges included',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      color: Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                currencyFormatter.format(widget.totalAmount),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  fontSize: 22,
+                                  color: Color(0xFF0F9D58),
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 16),
+
+                        // Preparation Time Selector
+                        const Text(
+                          'ESTIMATED KITCHEN PREP TIME',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF64748B),
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: _prepTimeOptions.map((mins) {
+                            final isSelected = _selectedPrepTime == mins;
+                            return InkWell(
+                              onTap: () {
+                                SoundService.playButtonClick();
+                                setState(() => _selectedPrepTime = mins);
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? const Color(0xFF0F5132) : Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: isSelected ? const Color(0xFF0F5132) : const Color(0xFFCBD5E1),
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                                            offset: const Offset(0, 2),
+                                            blurRadius: 4,
+                                          ),
+                                        ]
+                                      : const [
+                                          BoxShadow(
+                                            color: Color(0x06000000),
+                                            offset: Offset(0, 1),
+                                            blurRadius: 2,
+                                          ),
+                                        ],
+                                ),
+                                child: Text(
+                                  '$mins mins',
+                                  style: TextStyle(
+                                    color: isSelected ? Colors.white : const Color(0xFF334155),
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
                       ],
                     ),
+                  ),
+                ),
+
+                // --- 3. BOTTOM ACTIONS ---
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(24),
+                      bottomRight: Radius.circular(24),
+                    ),
+                  ),
+                  child: _isProcessing
+                      ? const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                                SizedBox(width: 12),
+                                Text(
+                                  'Updating order & notifying customer on WhatsApp...',
+                                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F2B48)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : Row(
+                          children: [
+                            // Reject Order Button
+                            Expanded(
+                              flex: 2,
+                              child: OutlinedButton.icon(
+                                onPressed: _handleReject,
+                                icon: const Icon(Icons.close_rounded, size: 18),
+                                label: const Text('Reject', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5)),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: const Color(0xFFDC2626),
+                                  side: const BorderSide(color: Color(0xFFDC2626), width: 1.5),
+                                  padding: const EdgeInsets.symmetric(vertical: 13),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Accept Order Button
+                            Expanded(
+                              flex: 3,
+                              child: ElevatedButton.icon(
+                                onPressed: _handleAccept,
+                                icon: const Icon(Icons.check_circle_rounded, size: 20),
+                                label: const Text('Accept Order', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14.5)),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF0F9D58),
+                                  foregroundColor: Colors.white,
+                                  elevation: 3,
+                                  shadowColor: const Color(0xFF0F9D58).withValues(alpha: 0.4),
+                                  padding: const EdgeInsets.symmetric(vertical: 13),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

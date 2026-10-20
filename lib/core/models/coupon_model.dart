@@ -120,7 +120,9 @@ class CouponModel {
       usageLimitPerCustomer: (json['usageLimitPerCustomer'] as num?)?.toInt() ?? 1,
       totalUsageLimit: (json['totalUsageLimit'] as num?)?.toInt() ?? 0,
       totalTimesUsed: (json['totalTimesUsed'] as num?)?.toInt() ?? 0,
-      validDays: (json['validDays'] as List<dynamic>?)?.map((e) => (e as num).toInt()).toList() ??
+      validDays: (json['validDays'] as List<dynamic>?)
+              ?.map((e) => num.tryParse(e.toString())?.toInt() ?? 0)
+              .toList() ??
           const [0, 1, 2, 3, 4, 5, 6],
       timeSlots: (json['timeSlots'] as List<dynamic>?)
               ?.map((e) => CouponTimeSlot.fromJson(e as Map<String, dynamic>))

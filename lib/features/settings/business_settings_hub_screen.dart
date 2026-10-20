@@ -1041,6 +1041,308 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   }
 
   // ==========================================
+  // MODAL 2b: DELIVERY SETTINGS
+  // ==========================================
+  void _showDeliverySettingsModal() {
+    final rest = db.restaurant;
+    final baseChargeCtrl = TextEditingController(
+      text: (rest?.deliveryBaseCharge != null && rest!.deliveryBaseCharge > 0)
+          ? rest.deliveryBaseCharge.toStringAsFixed(0)
+          : '',
+    );
+    final perKmChargeCtrl = TextEditingController(
+      text: (rest?.deliveryChargePerKm != null && rest!.deliveryChargePerKm > 0)
+          ? rest.deliveryChargePerKm.toStringAsFixed(0)
+          : '',
+    );
+    final minOrderCtrl = TextEditingController(
+      text: (rest?.freeDeliveryMinOrder != null && rest!.freeDeliveryMinOrder > 0)
+          ? rest.freeDeliveryMinOrder.toStringAsFixed(0)
+          : '',
+    );
+    final maxDistCtrl = TextEditingController(
+      text: (rest?.maxDeliveryDistanceKm != null && rest!.maxDeliveryDistanceKm > 0)
+          ? rest.maxDeliveryDistanceKm.toStringAsFixed(0)
+          : '10',
+    );
+
+    bool freeDelivery = rest?.freeDeliveryEnabled ?? false;
+    bool isSaving = false;
+    String? modalError;
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            final screenWidth = MediaQuery.of(context).size.width;
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: screenWidth >= 650 ? 560 : screenWidth * 0.94,
+                  maxHeight: MediaQuery.of(context).size.height * 0.90,
+                ),
+                child: _buildNeumorphicDialogContainer(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFE6F4EA),
+                              borderRadius: BorderRadius.circular(14),
+                              boxShadow: _NeumorphicTheme.softRaisedShadows,
+                              border: Border.all(color: const Color(0xFFCEEAD6), width: 1.5),
+                            ),
+                            child: const Center(
+                              child: Icon(Icons.delivery_dining_rounded, color: Color(0xFF137333), size: 22),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Delivery Settings',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w900,
+                                    color: _NeumorphicTheme.textDark,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  'Configure base rates, per km fee & free delivery',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: _NeumorphicTheme.textMuted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.pop(dialogCtx),
+                            icon: const Icon(Icons.close_rounded, color: _NeumorphicTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(color: Color(0xFFD3DFEE), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Form Fields
+                      Flexible(
+                        child: SingleChildScrollView(
+                          physics: const BouncingScrollPhysics(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (modalError != null) ...[
+                                _buildNeumorphicErrorAlert(modalError!),
+                                const SizedBox(height: 14),
+                              ],
+
+                              // 1. Base Delivery Charge & Charge per KM in a responsive row
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: _buildNeumorphicInputField(
+                                      controller: baseChargeCtrl,
+                                      label: 'Base Delivery Fee (₹)',
+                                      hint: 'e.g. 30',
+                                      prefixIcon: Icons.currency_rupee_rounded,
+                                      isNumeric: true,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: _buildNeumorphicInputField(
+                                      controller: perKmChargeCtrl,
+                                      label: 'Charge Per KM (₹/km)',
+                                      hint: 'e.g. 10',
+                                      prefixIcon: Icons.route_rounded,
+                                      isNumeric: true,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+
+                              // 2. Maximum Delivery Radius (KM)
+                              _buildNeumorphicInputField(
+                                controller: maxDistCtrl,
+                                label: 'Max Serviceable Radius (KM)',
+                                hint: 'e.g. 10',
+                                prefixIcon: Icons.share_location_rounded,
+                                isNumeric: true,
+                              ),
+                              const SizedBox(height: 18),
+
+                              // 3. Free Delivery Card Toggle
+                              Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: BoxDecoration(
+                                  color: freeDelivery ? const Color(0xFFE6F4EA) : _NeumorphicTheme.surface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: freeDelivery ? const Color(0xFF34A853) : const Color(0xFFCBD5E1),
+                                    width: freeDelivery ? 1.5 : 1.0,
+                                  ),
+                                  boxShadow: _NeumorphicTheme.softRaisedShadows,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.card_giftcard_rounded,
+                                              color: freeDelivery ? const Color(0xFF137333) : const Color(0xFF64748B),
+                                              size: 20,
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Free Delivery',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 14,
+                                                    color: freeDelivery ? const Color(0xFF137333) : _NeumorphicTheme.textDark,
+                                                  ),
+                                                ),
+                                                Text(
+                                                  'Waive delivery charge on orders above min amount',
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    color: freeDelivery ? const Color(0xFF137333).withValues(alpha: 0.8) : _NeumorphicTheme.textMuted,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        Switch(
+                                          value: freeDelivery,
+                                          activeColor: const Color(0xFF137333),
+                                          onChanged: (val) {
+                                            setModalState(() => freeDelivery = val);
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                    if (freeDelivery) ...[
+                                      const SizedBox(height: 12),
+                                      const Divider(color: Color(0xFFCEEAD6), height: 1),
+                                      const SizedBox(height: 12),
+                                      _buildNeumorphicInputField(
+                                        controller: minOrderCtrl,
+                                        label: 'Minimum Order for Free Delivery (₹)',
+                                        hint: 'e.g. 500',
+                                        prefixIcon: Icons.shopping_cart_checkout_rounded,
+                                        isNumeric: true,
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 20),
+                      const Divider(color: Color(0xFFD3DFEE), height: 1),
+                      const SizedBox(height: 16),
+
+                      // Actions
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildNeumorphicButton(
+                              label: 'Cancel',
+                              isSecondary: true,
+                              onPressed: () => Navigator.pop(dialogCtx),
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            flex: 2,
+                            child: _buildNeumorphicButton(
+                              label: isSaving ? 'Saving...' : 'Save Settings',
+                              icon: Icons.check_rounded,
+                              isLoading: isSaving,
+                              onPressed: isSaving
+                                  ? null
+                                  : () async {
+                                      setModalState(() => isSaving = true);
+                                      try {
+                                        final bCharge = double.tryParse(baseChargeCtrl.text.trim()) ?? 0.0;
+                                        final kmCharge = double.tryParse(perKmChargeCtrl.text.trim()) ?? 0.0;
+                                        final minOrd = double.tryParse(minOrderCtrl.text.trim()) ?? 0.0;
+                                        final maxDist = double.tryParse(maxDistCtrl.text.trim()) ?? 10.0;
+
+                                        final updated = (db.restaurant ??
+                                                RestaurantModel(
+                                                  id: 'rest_001',
+                                                  name: '',
+                                                  tagline: '',
+                                                  phone: '',
+                                                  address: '',
+                                                  cuisineType: 'Indian',
+                                                ))
+                                            .copyWith(
+                                          deliveryBaseCharge: bCharge,
+                                          deliveryChargePerKm: kmCharge,
+                                          freeDeliveryEnabled: freeDelivery,
+                                          freeDeliveryMinOrder: minOrd,
+                                          maxDeliveryDistanceKm: maxDist,
+                                        );
+
+                                        await db.updateRestaurantProfile(updated);
+                                        if (!dialogCtx.mounted) return;
+                                        Navigator.pop(dialogCtx);
+                                        _refreshState();
+                                        _showSuccessSnackBar('Delivery settings updated successfully!');
+                                      } catch (e) {
+                                        setModalState(() {
+                                          isSaving = false;
+                                          modalError = 'Failed to save delivery settings: $e';
+                                        });
+                                      }
+                                    },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ==========================================
   // MODAL 3: PAYMENT SETTING (UPI VPA)
   // ==========================================
   void _showPaymentSettingsModal() {
@@ -3854,7 +4156,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                       _buildNeumorphicSectionHeader(
                         title: 'Store & Order Configuration',
                         icon: Icons.storefront_rounded,
-                        countText: '6 Items',
+                        countText: '7 Items',
                         accentColor: const Color(0xFF0052FF),
                       ),
                       const SizedBox(height: 14),
@@ -3876,6 +4178,19 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                                 MaterialPageRoute(builder: (_) => const BusinessSettingsScreen(isFromOnboarding: false)),
                               );
                             },
+                          ),
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Delivery Settings',
+                            subtitle: (restaurant?.freeDeliveryEnabled == true)
+                                ? 'Free Delivery (> ₹${restaurant?.freeDeliveryMinOrder.toStringAsFixed(0) ?? "0"})'
+                                : (restaurant?.deliveryChargePerKm != null && restaurant!.deliveryChargePerKm > 0)
+                                    ? 'Base: ₹${restaurant?.deliveryBaseCharge.toStringAsFixed(0) ?? "0"} + ₹${restaurant?.deliveryChargePerKm.toStringAsFixed(0) ?? "0"}/km'
+                                    : 'Delivery Rates & Distance',
+                            icon: Icons.delivery_dining_rounded,
+                            accentColor: const Color(0xFF10B981),
+                            badgeText: 'Delivery',
+                            onTap: _showDeliverySettingsModal,
                           ),
                           _buildSettingCard(
                             width: cardWidth,

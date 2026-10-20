@@ -45,9 +45,28 @@ class CouponService {
 
       final res = await _client.get('/coupons', queryParameters: query);
       if (res != null && res['success'] == true) {
-        final list = (res['data'] as List<dynamic>?) ?? [];
+        List<dynamic> list = [];
+        Map<String, dynamic> pagination = {};
+
+        if (res['data'] is List) {
+          list = res['data'] as List<dynamic>;
+        } else if (res['data'] is Map<String, dynamic>) {
+          final dataMap = res['data'] as Map<String, dynamic>;
+          if (dataMap['coupons'] is List) {
+            list = dataMap['coupons'] as List<dynamic>;
+          }
+          if (dataMap['pagination'] is Map<String, dynamic>) {
+            pagination = dataMap['pagination'] as Map<String, dynamic>;
+          }
+        } else if (res['coupons'] is List) {
+          list = res['coupons'] as List<dynamic>;
+        }
+
+        if (pagination.isEmpty && res['pagination'] is Map<String, dynamic>) {
+          pagination = res['pagination'] as Map<String, dynamic>;
+        }
+
         final coupons = list.map((e) => CouponModel.fromJson(e as Map<String, dynamic>)).toList();
-        final pagination = res['pagination'] as Map<String, dynamic>? ?? {};
         return CouponPaginatedResult(
           coupons: coupons,
           total: (pagination['total'] as num?)?.toInt() ?? coupons.length,
@@ -155,7 +174,17 @@ class CouponService {
         queryParameters: {'page': page, 'limit': limit},
       );
       if (res != null && res['success'] == true) {
-        final list = (res['data'] as List<dynamic>?) ?? [];
+        List<dynamic> list = [];
+        if (res['data'] is List) {
+          list = res['data'] as List<dynamic>;
+        } else if (res['data'] is Map<String, dynamic>) {
+          final map = res['data'] as Map<String, dynamic>;
+          if (map['redemptions'] is List) {
+            list = map['redemptions'] as List<dynamic>;
+          }
+        } else if (res['redemptions'] is List) {
+          list = res['redemptions'] as List<dynamic>;
+        }
         return list.map((e) => CouponRedemptionModel.fromJson(e as Map<String, dynamic>)).toList();
       }
       return [];

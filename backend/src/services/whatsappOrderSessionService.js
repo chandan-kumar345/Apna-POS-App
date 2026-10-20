@@ -350,13 +350,23 @@ class WhatsAppOrderSessionService {
       if (!isNaN(inputNum)) {
         matchedVariant = variants.find((v) => v.num === inputNum);
       }
+      // Support letter choices A, B, C, D (e.g. 'a' -> first variant, 'b' -> second variant)
+      if (!matchedVariant && raw.trim().length === 1) {
+        const charCode = rawLower.charCodeAt(0);
+        if (charCode >= 97 && charCode <= 122) {
+          const letterIdx = charCode - 97;
+          if (letterIdx >= 0 && letterIdx < variants.length) {
+            matchedVariant = variants[letterIdx];
+          }
+        }
+      }
       if (!matchedVariant) {
         matchedVariant = variants.find((v) => rawLower.includes(v.name.toLowerCase()));
       }
 
       if (!matchedVariant) {
         return {
-          replyText: `Sorry, please enter a valid size number (1 to ${variants.length}).`,
+          replyText: `Sorry, please enter a valid option number (1 to ${variants.length}) or letter (A, B...).\n\n${variants.map((v) => `${v.num}. ${v.name} (Option ${String.fromCharCode(64 + v.num)}) — ₹${v.price}`).join('\n')}`,
           buttons: variants.slice(0, 3).map((v) => ({ id: `var_${v.num}`, title: `${v.name} (₹${v.price})`.slice(0, 20) })),
           orderPayload: null,
           handled: true,
@@ -662,10 +672,12 @@ class WhatsAppOrderSessionService {
 
       session.state = 'WAITING_FOR_VARIANT_SELECTION';
 
-      const variantListStr = session.variantMapping.map((v) => `${v.num}. ${v.name} — ₹${v.price}`).join('\n');
+      const variantListStr = session.variantMapping
+        .map((v) => `${v.num}. ${v.name} (Option ${String.fromCharCode(64 + v.num)}) — ₹${v.price}`)
+        .join('\n');
 
       return {
-        replyText: `You selected *${product.name}*.\n\nPlease choose your size:\n\n${variantListStr}\n\n_Enter the size number (e.g. 1, 2...)_`,
+        replyText: `You selected *${product.name}*.\n\nPlease choose your variant / size:\n\n${variantListStr}\n\n_Reply with number or letter (e.g. 1 or A)_`,
         buttons: session.variantMapping.slice(0, 3).map((v) => ({
           id: `var_${v.num}`,
           title: `${v.name} (₹${v.price})`.slice(0, 20),
@@ -710,17 +722,26 @@ class WhatsAppOrderSessionService {
 
       const num = currentNum++;
       let priceStr = '';
+      let variantSubLine = '';
       if (p.variants && p.variants.length > 0) {
         const validVariantPrices = p.variants
           .map((v) => (typeof v.price === 'number' && v.price > 0 ? v.price : parseFloat(v.salePrice) || 0))
           .filter((pr) => pr > 0);
         const minPrice = validVariantPrices.length > 0 ? Math.min(...validVariantPrices) : p.price || 0;
         priceStr = `From ₹${minPrice > 0 ? minPrice : p.price}`;
+
+        const vDetails = p.variants.map((v) => {
+          const vPrice = typeof v.price === 'number' && v.price > 0 ? v.price : parseFloat(v.salePrice) || p.price || 0;
+          return `${v.name || 'Regular'}: ₹${vPrice}`;
+        }).join(' | ');
+        if (vDetails) {
+          variantSubLine = `\n   ↳ _Variants: ${vDetails}_`;
+        }
       } else {
         priceStr = `₹${p.price || 0}`;
       }
 
-      grouped[catName].push(`${num}. ${p.name} — ${priceStr}`);
+      grouped[catName].push(`${num}. ${p.name} — ${priceStr}${variantSubLine}`);
 
       mapping.push({
         num,

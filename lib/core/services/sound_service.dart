@@ -23,11 +23,13 @@ class SoundService {
   AudioPlayer? _buttonPlayer;
   AudioPlayer? _keyPlayer;
   AudioPlayer? _notificationPlayer;
+  AudioPlayer? _ringtonePlayer;
 
   bool _isInitialized = false;
   int _lastButtonClickTime = 0;
   int _lastKeyPressTime = 0;
   int _lastNotificationSoundTime = 0;
+  int _lastOrderRingtoneTime = 0;
 
   /// Initialize sound service and preload audio sources lazily
   Future<void> init() async {
@@ -44,25 +46,30 @@ class SoundService {
       _buttonPlayer = AudioPlayer();
       _keyPlayer = AudioPlayer();
       _notificationPlayer = AudioPlayer();
+      _ringtonePlayer = AudioPlayer();
 
       if (!kIsWeb && (defaultTargetPlatform == TargetPlatform.android || defaultTargetPlatform == TargetPlatform.iOS)) {
         await _buttonPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _keyPlayer?.setPlayerMode(PlayerMode.lowLatency);
         await _notificationPlayer?.setPlayerMode(PlayerMode.lowLatency);
+        await _ringtonePlayer?.setPlayerMode(PlayerMode.lowLatency);
       }
 
       await _buttonPlayer?.setReleaseMode(ReleaseMode.stop);
       await _keyPlayer?.setReleaseMode(ReleaseMode.stop);
       await _notificationPlayer?.setReleaseMode(ReleaseMode.stop);
+      await _ringtonePlayer?.setReleaseMode(ReleaseMode.stop);
 
       await _buttonPlayer?.setSource(AssetSource('sounds/ios_click.wav'));
       await _keyPlayer?.setSource(AssetSource('sounds/ios_keypress.wav'));
       await _notificationPlayer?.setSource(AssetSource('sounds/Notification_sound.mp3'));
+      await _ringtonePlayer?.setSource(AssetSource('sounds/order_recieve_ringtone.mp3'));
 
       // Clean, crisp acoustic volumes
-      await _buttonPlayer?.setVolume(0.75);
+      await _buttonPlayer?.setVolume(0.85);
       await _keyPlayer?.setVolume(0.40);
       await _notificationPlayer?.setVolume(0.95);
+      await _ringtonePlayer?.setVolume(1.0);
 
       _isInitialized = true;
     } catch (_) {
@@ -78,6 +85,50 @@ class SoundService {
       await prefs.setBool(_prefKeySoundEnabled, enabled);
     } catch (_) {}
   }
+
+  /// Play incoming order receive ringtone when an order arrives
+  static void playOrderRingtone() {
+    if (!soundEnabled) return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _instance._lastOrderRingtoneTime < 3000) {
+      return;
+    }
+    _instance._lastOrderRingtoneTime = now;
+
+    try {
+      HapticFeedback.heavyImpact();
+    } catch (_) {}
+
+    if (!kIsWeb && Platform.environment.containsKey('FLUTTER_TEST')) {
+      return;
+    }
+
+    if (_instance._isInitialized) {
+      _instance._playOrderRingtoneAsset();
+    } else {
+      _instance.init().then((_) => _instance._playOrderRingtoneAsset()).catchError((_) {});
+    }
+  }
+
+  void _playOrderRingtoneAsset() async {
+    try {
+      await _ringtonePlayer?.stop();
+      await _ringtonePlayer?.play(AssetSource('sounds/order_recieve_ringtone.mp3'));
+    } catch (_) {
+      _playNotificationAsset();
+    }
+  }
+
+  /// Stop incoming order ringtone
+  static void stopOrderRingtone() async {
+    try {
+      await _instance._ringtonePlayer?.stop();
+    } catch (_) {}
+  }
+
+  /// Play real-time iPhone-style click sound when sound setting is on
+  static void playIphoneClickSound() => playButtonClick();
 
   /// Play notification mp3 sound whenever a push or notification arrives
   static void playNotificationSound() {

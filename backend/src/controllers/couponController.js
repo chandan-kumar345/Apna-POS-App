@@ -23,6 +23,8 @@ class CouponController {
         success: true,
         message: 'Coupons fetched successfully',
         data: result,
+        coupons: result.coupons,
+        pagination: result.pagination,
       });
     } catch (err) {
       next(err);

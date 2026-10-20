@@ -113,6 +113,13 @@ const businessSchema = new mongoose.Schema(
         type: Boolean,
         default: true,
       },
+      deliverySettings: {
+        baseCharge: { type: Number, default: 0 },
+        chargePerKm: { type: Number, default: 0 },
+        freeDeliveryEnabled: { type: Boolean, default: false },
+        freeDeliveryMinOrder: { type: Number, default: 0 },
+        maxDistanceKm: { type: Number, default: 10 },
+      },
     },
     whatsappSettings: {
       enabled: { type: Boolean, default: false },

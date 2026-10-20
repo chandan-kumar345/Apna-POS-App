@@ -346,8 +346,8 @@ class SocketService {
               rawMap['type'] == 'whatsapp_order_request' ||
               rawMap['type'] == 'whatsapp_new_order';
 
-          // 1. Play loud notification sound
-          SoundService.playNotificationSound();
+          // 1. Play incoming order ringtone
+          SoundService.playOrderRingtone();
 
           // 2. High priority notification in native notification bar
           LocalNotificationService().showPushNotification(

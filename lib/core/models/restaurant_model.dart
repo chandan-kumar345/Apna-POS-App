@@ -24,6 +24,13 @@ class RestaurantModel {
   final String managerPin; // Security / Manager PIN to clear running KOT carts & void orders (default: '1234')
   final bool enableChotuVoice; // Whether Chotu AI Voice assistant icon is enabled in POS
 
+  // Delivery Settings fields
+  final double deliveryBaseCharge; // Base charge for delivery (₹)
+  final double deliveryChargePerKm; // Additional charge per kilometer (₹/km)
+  final bool freeDeliveryEnabled; // Whether free delivery is enabled
+  final double freeDeliveryMinOrder; // Minimum order value required for free delivery (₹)
+  final double maxDeliveryDistanceKm; // Maximum serviceable delivery radius (km)
+
   final String? logoUrl;
   final bool isSubscribed;
   final String companyName;
@@ -55,6 +62,11 @@ class RestaurantModel {
     this.posViewMode = 'with_image',
     this.managerPin = '1234',
     this.enableChotuVoice = true,
+    this.deliveryBaseCharge = 0.0,
+    this.deliveryChargePerKm = 0.0,
+    this.freeDeliveryEnabled = false,
+    this.freeDeliveryMinOrder = 0.0,
+    this.maxDeliveryDistanceKm = 10.0,
     this.logoUrl,
   });
 
@@ -82,12 +94,30 @@ class RestaurantModel {
         'posViewMode': posViewMode,
         'managerPin': managerPin,
         'enableChotuVoice': enableChotuVoice,
+        'deliveryBaseCharge': deliveryBaseCharge,
+        'deliveryChargePerKm': deliveryChargePerKm,
+        'freeDeliveryEnabled': freeDeliveryEnabled,
+        'freeDeliveryMinOrder': freeDeliveryMinOrder,
+        'maxDeliveryDistanceKm': maxDeliveryDistanceKm,
+        'deliverySettings': {
+          'baseCharge': deliveryBaseCharge,
+          'chargePerKm': deliveryChargePerKm,
+          'freeDeliveryEnabled': freeDeliveryEnabled,
+          'freeDeliveryMinOrder': freeDeliveryMinOrder,
+          'maxDistanceKm': maxDeliveryDistanceKm,
+        },
         'logoUrl': logoUrl,
         'isSubscribed': isSubscribed,
         'isSubscriptionActive': isSubscribed,
       };
 
-  factory RestaurantModel.fromJson(Map<String, dynamic> json) => RestaurantModel(
+  factory RestaurantModel.fromJson(Map<String, dynamic> json) {
+    final ds = (json['deliverySettings'] is Map ? json['deliverySettings'] : null) ??
+        (json['orderSettings'] is Map && json['orderSettings']['deliverySettings'] is Map
+            ? json['orderSettings']['deliverySettings']
+            : null);
+
+    return RestaurantModel(
         id: json['id']?.toString() ?? json['_id']?.toString() ?? json['businessId']?.toString() ?? '',
         name: json['name'] ?? (json['profile'] is Map ? json['profile']['name'] : null) ?? 'Apna Restaurant',
         companyName: json['companyName']?.toString() ??
@@ -131,6 +161,19 @@ class RestaurantModel {
                 ? json['securityPin'].toString().trim()
                 : '1234'),
         enableChotuVoice: json['enableChotuVoice'] ?? (json['orderSettings'] is Map ? json['orderSettings']['enableChotuVoice'] : null) ?? true,
+        deliveryBaseCharge: (json['deliveryBaseCharge'] as num?)?.toDouble() ??
+            (ds != null && ds['baseCharge'] != null ? (ds['baseCharge'] as num?)?.toDouble() : null) ??
+            0.0,
+        deliveryChargePerKm: (json['deliveryChargePerKm'] as num?)?.toDouble() ??
+            (ds != null && ds['chargePerKm'] != null ? (ds['chargePerKm'] as num?)?.toDouble() : null) ??
+            0.0,
+        freeDeliveryEnabled: json['freeDeliveryEnabled'] == true || (ds != null && ds['freeDeliveryEnabled'] == true),
+        freeDeliveryMinOrder: (json['freeDeliveryMinOrder'] as num?)?.toDouble() ??
+            (ds != null && ds['freeDeliveryMinOrder'] != null ? (ds['freeDeliveryMinOrder'] as num?)?.toDouble() : null) ??
+            0.0,
+        maxDeliveryDistanceKm: (json['maxDeliveryDistanceKm'] as num?)?.toDouble() ??
+            (ds != null && ds['maxDistanceKm'] != null ? (ds['maxDistanceKm'] as num?)?.toDouble() : null) ??
+            10.0,
         logoUrl: json['logoUrl']?.toString() ??
             json['logo']?.toString() ??
             json['profileImage']?.toString() ??
@@ -138,6 +181,7 @@ class RestaurantModel {
             json['profilePhotoPath']?.toString() ??
             (json['profile'] is Map ? (json['profile']['profileImage'] ?? json['profile']['logoUrl'] ?? json['profile']['logo'])?.toString() : null),
       );
+  }
 
   String? get businessId => id.isNotEmpty ? id : null;
 
@@ -166,6 +210,11 @@ class RestaurantModel {
     String? posViewMode,
     String? managerPin,
     bool? enableChotuVoice,
+    double? deliveryBaseCharge,
+    double? deliveryChargePerKm,
+    bool? freeDeliveryEnabled,
+    double? freeDeliveryMinOrder,
+    double? maxDeliveryDistanceKm,
     String? logoUrl,
   }) {
     return RestaurantModel(
@@ -193,6 +242,11 @@ class RestaurantModel {
       posViewMode: posViewMode ?? this.posViewMode,
       managerPin: managerPin ?? this.managerPin,
       enableChotuVoice: enableChotuVoice ?? this.enableChotuVoice,
+      deliveryBaseCharge: deliveryBaseCharge ?? this.deliveryBaseCharge,
+      deliveryChargePerKm: deliveryChargePerKm ?? this.deliveryChargePerKm,
+      freeDeliveryEnabled: freeDeliveryEnabled ?? this.freeDeliveryEnabled,
+      freeDeliveryMinOrder: freeDeliveryMinOrder ?? this.freeDeliveryMinOrder,
+      maxDeliveryDistanceKm: maxDeliveryDistanceKm ?? this.maxDeliveryDistanceKm,
       logoUrl: logoUrl ?? this.logoUrl,
     );
   }

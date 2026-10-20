@@ -66,6 +66,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
   final List<CartItemModel> _cartItems = [];
   double _discountAmount = 0.0;
   double _tipAmount = 0.0;
+  double _additionalCharge = 0.0;
+  String _additionalChargeLabel = 'Additional Charge';
   String _appliedCoupon = '';
   final TextEditingController _promoCodeController = TextEditingController();
 
@@ -80,6 +82,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     _redeemedLoyaltyStageId = null;
     _redeemedLoyaltyPoints = 0;
     _tipAmount = 0.0;
+    _additionalCharge = 0.0;
+    _additionalChargeLabel = 'Additional Charge';
   }
 
   void _saveCurrentDraft() {
@@ -1873,7 +1877,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     selectedDiscountProductType: _selectedDiscountProductType,
     manualDiscountOverride: _discountAmount,
     tipAmount: _tipAmount,
-    deliveryCharge: 0.0,
+    deliveryCharge: _additionalCharge,
   );
 
   Future<void> _applyPromoCode(String code, StateSetter setStateCart) async {
@@ -5966,11 +5970,14 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     final couponCtrl = TextEditingController(text: _appliedCoupon);
     final discCtrl = TextEditingController(text: _discountInputValue > 0 ? _discountInputValue.toStringAsFixed(0) : '');
     final tipCtrl = TextEditingController(text: _tipAmount > 0 ? _tipAmount.toStringAsFixed(0) : '');
+    final extraChargeCtrl = TextEditingController(text: _additionalCharge > 0 ? _additionalCharge.toStringAsFixed(0) : '');
 
     String tempDiscountMode = _discountMode;
     String tempCoupon = _appliedCoupon;
     double tempDiscountVal = _discountInputValue;
     double tempTipVal = _tipAmount;
+    double tempExtraChargeVal = _additionalCharge;
+    String tempExtraChargeLabel = _additionalChargeLabel;
     bool isValidatingCoupon = false;
 
     showDialog(
@@ -6472,6 +6479,267 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                             ),
                           ),
 
+                          // 4b. Additional Charges Card
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1.1),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x04000000),
+                                  offset: Offset(0, 2),
+                                  blurRadius: 4,
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Header Row with Icon, Title, and Value Badge
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEEF2FF),
+                                        borderRadius: BorderRadius.circular(8),
+                                        border: Border.all(color: const Color(0xFFC7D2FE), width: 1.0),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(Icons.delivery_dining_rounded, color: Color(0xFF4F46E5), size: 16),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Expanded(
+                                      child: Text(
+                                        'Additional Charges',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                      ),
+                                    ),
+                                    if (tempExtraChargeVal > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFEEF2FF),
+                                          borderRadius: BorderRadius.circular(10),
+                                        ),
+                                        child: Text(
+                                          '+ ₹${tempExtraChargeVal.toStringAsFixed(0)}',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                            color: Color(0xFF4F46E5),
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Quick presets chips: Delivery (₹40), Packaging (₹20), Service (₹30)
+                                SingleChildScrollView(
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            tempExtraChargeVal = 40.0;
+                                            tempExtraChargeLabel = 'Delivery Charge';
+                                            extraChargeCtrl.text = '40';
+                                          });
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: tempExtraChargeVal == 40.0 ? const Color(0xFF4F46E5) : const Color(0xFFEEF2FF),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: tempExtraChargeVal == 40.0 ? const Color(0xFF4F46E5) : const Color(0xFFC7D2FE),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Delivery ₹40',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: tempExtraChargeVal == 40.0 ? Colors.white : const Color(0xFF4F46E5),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            tempExtraChargeVal = 20.0;
+                                            tempExtraChargeLabel = 'Packaging Charge';
+                                            extraChargeCtrl.text = '20';
+                                          });
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: tempExtraChargeVal == 20.0 ? const Color(0xFF4F46E5) : const Color(0xFFEEF2FF),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: tempExtraChargeVal == 20.0 ? const Color(0xFF4F46E5) : const Color(0xFFC7D2FE),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Packaging ₹20',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: tempExtraChargeVal == 20.0 ? Colors.white : const Color(0xFF4F46E5),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      InkWell(
+                                        onTap: () {
+                                          setDialogState(() {
+                                            tempExtraChargeVal = 30.0;
+                                            tempExtraChargeLabel = 'Service Charge';
+                                            extraChargeCtrl.text = '30';
+                                          });
+                                        },
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: tempExtraChargeVal == 30.0 ? const Color(0xFF4F46E5) : const Color(0xFFEEF2FF),
+                                            borderRadius: BorderRadius.circular(8),
+                                            border: Border.all(
+                                              color: tempExtraChargeVal == 30.0 ? const Color(0xFF4F46E5) : const Color(0xFFC7D2FE),
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Service ₹30',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.bold,
+                                              color: tempExtraChargeVal == 30.0 ? Colors.white : const Color(0xFF4F46E5),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      if (tempExtraChargeVal > 0) ...[
+                                        const SizedBox(width: 6),
+                                        InkWell(
+                                          onTap: () {
+                                            setDialogState(() {
+                                              tempExtraChargeVal = 0.0;
+                                              tempExtraChargeLabel = 'Additional Charge';
+                                              extraChargeCtrl.clear();
+                                            });
+                                          },
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFFFEE2E2),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Text('Clear', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFFDC2626))),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+
+                                // Compact Input Field with Badge & Apply Button
+                                Container(
+                                  height: 38,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF8FAFC),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: const Color(0xFFCBD5E1), width: 1.0),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 36,
+                                        alignment: Alignment.center,
+                                        decoration: const BoxDecoration(
+                                          color: Color(0xFFF1F5F9),
+                                          borderRadius: BorderRadius.horizontal(left: Radius.circular(9)),
+                                        ),
+                                        child: const Text(
+                                          '₹',
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w900,
+                                            color: Color(0xFF0F2B48),
+                                          ),
+                                        ),
+                                      ),
+                                      Container(width: 1, color: const Color(0xFFCBD5E1)),
+                                      Expanded(
+                                        child: TextField(
+                                          controller: extraChargeCtrl,
+                                          scrollPadding: const EdgeInsets.only(bottom: 90),
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          cursorColor: const Color(0xFF0F2B48),
+                                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+                                          decoration: const InputDecoration(
+                                            hintText: '40',
+                                            hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 12, fontWeight: FontWeight.normal),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                                            border: InputBorder.none,
+                                            isDense: true,
+                                          ),
+                                        ),
+                                      ),
+                                      Container(
+                                        margin: const EdgeInsets.all(3),
+                                        child: ElevatedButton(
+                                          onPressed: () {
+                                            final val = double.tryParse(extraChargeCtrl.text.trim()) ?? 0.0;
+                                            setDialogState(() {
+                                              tempExtraChargeVal = val;
+                                            });
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text(val > 0 ? 'Additional charge of ₹${val.toStringAsFixed(0)} set!' : 'Charge cleared.'),
+                                                duration: const Duration(seconds: 1),
+                                                backgroundColor: const Color(0xFF0F2B48),
+                                                behavior: SnackBarBehavior.floating,
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                              ),
+                                            );
+                                          },
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: const Color(0xFF0F2B48),
+                                            elevation: 0,
+                                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                            minimumSize: Size.zero,
+                                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                          ),
+                                          child: const Text('Apply', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11.5)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+
                           // 5. Coupon Card
                           const SizedBox(height: 8),
                           Container(
@@ -6749,6 +7017,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                               onPressed: () {
                                 final discountVal = double.tryParse(discCtrl.text.trim()) ?? tempDiscountVal;
                                 final tipVal = double.tryParse(tipCtrl.text.trim()) ?? tempTipVal;
+                                final extraChargeVal = double.tryParse(extraChargeCtrl.text.trim()) ?? tempExtraChargeVal;
 
                                 setState(() {
                                   _appliedCoupon = tempCoupon;
@@ -6756,6 +7025,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                                   _discountMode = (tempDiscountMode == '%' || tempDiscountMode == 'percent') ? 'percent' : 'flat';
                                   _discountInputValue = discountVal;
                                   _tipAmount = tipVal;
+                                  _additionalCharge = extraChargeVal;
+                                  _additionalChargeLabel = tempExtraChargeLabel;
                                   _discountAmount = 0.0; // reset manual override so getter calculates
                                 });
                                 _saveCurrentDraft();
@@ -7653,8 +7924,8 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                           const SizedBox(width: 6),
                           Flexible(
                             child: Text(
-                              (computedDiscountAmount > 0 || _tipAmount > 0)
-                                  ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount).toStringAsFixed(0)})'
+                              (computedDiscountAmount > 0 || _tipAmount > 0 || _additionalCharge > 0)
+                                  ? 'Extra\'s (₹${(computedDiscountAmount + _tipAmount + _additionalCharge).toStringAsFixed(0)})'
                                   : 'Extra\'s',
                               style: const TextStyle(
                                 color: Color(0xFF0F2B48),
@@ -7742,6 +8013,22 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                       Text(
                         '+ $currency${_tipAmount.toStringAsFixed(2)}',
                         style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF00A896)),
+                      ),
+                    ],
+                  ),
+                ],
+                if (currentOrderCalculation.deliveryCharge > 0) ...[
+                  const SizedBox(height: 2.5),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _additionalChargeLabel.isNotEmpty ? '$_additionalChargeLabel:' : 'Additional Charge:',
+                        style: const TextStyle(fontSize: 12.0, color: Color(0xFF4F46E5), fontWeight: FontWeight.w700),
+                      ),
+                      Text(
+                        '+ $currency${currentOrderCalculation.deliveryCharge.toStringAsFixed(2)}',
+                        style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Color(0xFF4F46E5)),
                       ),
                     ],
                   ),
