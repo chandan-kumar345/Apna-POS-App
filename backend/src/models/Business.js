@@ -145,6 +145,21 @@ const businessSchema = new mongoose.Schema(
         default: 'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.',
       },
       customInstructions: { type: String, default: '' },
+      customAutoReplyEnabled: { type: Boolean, default: false },
+      customAutoReplyMessage: {
+        type: String,
+        default: 'Hello {customer_name}! Thank you for messaging {restaurant_name}. How can we assist you today? To view our menu or place an order, simply reply with "Menu" or "Hi". For inquiries or table bookings, call us at {phone}.',
+      },
+      customAutoReplySteps: [
+        {
+          id: { type: String },
+          stepName: { type: String, default: '' },
+          triggerKeyword: { type: String, default: '' },
+          responseMessage: { type: String, default: '' },
+          actionType: { type: String, default: 'reply' },
+          order: { type: Number, default: 0 },
+        },
+      ],
       apiKey: { type: String, default: '', trim: true },
       model: { type: String, default: 'gemini-2.0-flash' },
       businessHoursOnly: { type: Boolean, default: false },

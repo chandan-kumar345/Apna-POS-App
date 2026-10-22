@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/database/database_service.dart';
 import '../../core/services/whatsapp_chat_service.dart';
+import 'customer_auto_reply_screen.dart';
 
 /// Clean Modern Theme for AI Chat Agent Screen matching reference design
 class _AiTheme {
@@ -52,12 +53,14 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
   late int _delaySeconds;
   late bool _autoMenuSuggest;
   late bool _autoOrderTaking;
+  late bool _customAutoReplyEnabled;
 
   late TextEditingController _agentNameCtrl;
   late TextEditingController _greetingCtrl;
   late TextEditingController _promptCtrl;
   late TextEditingController _houseRulesCtrl;
   late TextEditingController _apiKeyCtrl;
+  late TextEditingController _customAutoReplyCtrl;
 
   bool _obscureApiKey = true;
   bool _showCustomApiKey = false;
@@ -89,12 +92,19 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     _delaySeconds = _db.aiChatAgentAutoReplyDelay;
     _autoMenuSuggest = _db.isAiChatAgentAutoMenuSuggest;
     _autoOrderTaking = _db.isAiChatAgentAutoOrderTaking;
+    _customAutoReplyEnabled = _db.isAiChatAgentCustomAutoReplyEnabled;
 
     _agentNameCtrl = TextEditingController(text: _db.aiChatAgentName);
     _greetingCtrl = TextEditingController(text: _db.aiChatAgentGreeting);
     _promptCtrl = TextEditingController(text: _db.aiChatAgentSystemPrompt);
     _houseRulesCtrl = TextEditingController(text: _db.aiChatAgentCustomInstructions);
     _apiKeyCtrl = TextEditingController(text: _db.aiChatAgentApiKey);
+    final savedCustomMsg = _db.aiChatAgentCustomAutoReplyMessage;
+    _customAutoReplyCtrl = TextEditingController(
+      text: savedCustomMsg.isNotEmpty
+          ? savedCustomMsg
+          : 'Hello {customer_name}! Thank you for messaging {restaurant_name}. How can we assist you today? To view our menu or place an order, simply reply with "Menu" or "Hi". For inquiries or table bookings, call us at {phone}.',
+    );
     _showCustomApiKey = _apiKeyCtrl.text.trim().isNotEmpty;
 
     _isMetaConnected = _db.isWhatsAppIntegrationEnabled && _db.whatsAppPhoneId.isNotEmpty;
@@ -157,6 +167,12 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           if (backendSettings['customInstructions'] != null) {
             _houseRulesCtrl.text = backendSettings['customInstructions'].toString();
           }
+          if (backendSettings['customAutoReplyEnabled'] != null) {
+            _customAutoReplyEnabled = backendSettings['customAutoReplyEnabled'] == true;
+          }
+          if (backendSettings['customAutoReplyMessage'] != null && backendSettings['customAutoReplyMessage'].toString().isNotEmpty) {
+            _customAutoReplyCtrl.text = backendSettings['customAutoReplyMessage'].toString();
+          }
           if (backendSettings['apiKey'] != null) {
             _apiKeyCtrl.text = backendSettings['apiKey'].toString();
             if (_apiKeyCtrl.text.isNotEmpty) _showCustomApiKey = true;
@@ -174,6 +190,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
           agentName: _agentNameCtrl.text,
           model: _model,
           customInstructions: _houseRulesCtrl.text,
+          customAutoReplyEnabled: _customAutoReplyEnabled,
+          customAutoReplyMessage: _customAutoReplyCtrl.text.trim(),
           autoReplyDelay: _delaySeconds,
         );
       }
@@ -191,6 +209,7 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
     _promptCtrl.dispose();
     _houseRulesCtrl.dispose();
     _apiKeyCtrl.dispose();
+    _customAutoReplyCtrl.dispose();
     _simInputCtrl.dispose();
     _simScrollCtrl.dispose();
     super.dispose();
@@ -212,6 +231,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       agentName: _agentNameCtrl.text,
       model: _model,
       customInstructions: _houseRulesCtrl.text,
+      customAutoReplyEnabled: _customAutoReplyEnabled,
+      customAutoReplyMessage: _customAutoReplyCtrl.text.trim(),
       autoReplyDelay: _delaySeconds,
     );
 
@@ -224,6 +245,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
       'autoOrderTaking': _autoOrderTaking,
       'systemPrompt': _promptCtrl.text.trim(),
       'customInstructions': _houseRulesCtrl.text.trim(),
+      'customAutoReplyEnabled': _customAutoReplyEnabled,
+      'customAutoReplyMessage': _customAutoReplyCtrl.text.trim(),
       'model': _model.trim(),
       'autoReplyDelaySeconds': _delaySeconds,
       'apiKey': _apiKeyCtrl.text.trim(),
@@ -414,6 +437,8 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
         'autoOrderTaking': _autoOrderTaking,
         'systemPrompt': _promptCtrl.text,
         'customInstructions': _houseRulesCtrl.text,
+        'customAutoReplyEnabled': _customAutoReplyEnabled,
+        'customAutoReplyMessage': _customAutoReplyCtrl.text.trim(),
         'apiKey': _apiKeyCtrl.text,
         'model': _model,
       };
@@ -528,6 +553,10 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
 
                                         // Card 2: DIRECT ORDER TAKING IN CHAT
                                         _buildOrderTakingCard(),
+                                        const SizedBox(height: 12),
+
+                                        // Card 2B: CUSTOMER TEXT AUTO-REPLY MESSAGE
+                                        _buildCustomerAutoReplyCard(),
                                         const SizedBox(height: 12),
 
                                         // Card 3: IDENTITY & GREETING
@@ -1003,6 +1032,149 @@ class _AiChatAgentScreenState extends State<AiChatAgentScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Card 2B: CUSTOMER TEXT AUTO-REPLY MESSAGE (Opens dedicated multi-step screen)
+  Widget _buildCustomerAutoReplyCard() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: _AiTheme.whiteCard,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Row: Icon + Title + Status Badge
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(7),
+                ),
+                child: const Icon(Icons.quickreply_rounded, color: Color(0xFF2563EB), size: 16),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'CUSTOMER AUTO-REPLY',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: _AiTheme.textDark,
+                    letterSpacing: 0.0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                decoration: BoxDecoration(
+                  color: _customAutoReplyEnabled ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.circle,
+                      size: 5.5,
+                      color: _customAutoReplyEnabled ? const Color(0xFF16A34A) : const Color(0xFF94A3B8),
+                    ),
+                    const SizedBox(width: 3.5),
+                    Text(
+                      _customAutoReplyEnabled ? 'Active' : 'Disabled',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        color: _customAutoReplyEnabled ? const Color(0xFF15803D) : const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Set up automated multi-step responses for customer inquiries, timing, address, and table reservations outside food orders.',
+            style: TextStyle(
+              fontSize: 10,
+              color: _AiTheme.textMuted,
+              height: 1.25,
+            ),
+          ),
+          const SizedBox(height: 8),
+
+          // Tappable action sub-card
+          InkWell(
+            onTap: () async {
+              HapticFeedback.lightImpact();
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const CustomerAutoReplyScreen()),
+              );
+              if (mounted) {
+                setState(() {
+                  _customAutoReplyEnabled = _db.isAiChatAgentCustomAutoReplyEnabled;
+                  _customAutoReplyCtrl.text = _db.aiChatAgentCustomAutoReplyMessage;
+                });
+              }
+            },
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0), width: 1.0),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded, size: 14, color: Color(0xFF2563EB)),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'Configure Multi-Step Replies',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF1E3A8A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Transform.scale(
+                    scale: 0.70,
+                    alignment: Alignment.centerRight,
+                    child: Switch(
+                      value: _customAutoReplyEnabled,
+                      activeTrackColor: const Color(0xFF22C55E),
+                      activeThumbColor: Colors.white,
+                      inactiveTrackColor: const Color(0xFFCBD5E1),
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      onChanged: (val) async {
+                        HapticFeedback.lightImpact();
+                        setState(() => _customAutoReplyEnabled = val);
+                        await _db.saveCustomerAutoReplySettings(
+                          enabled: val,
+                          message: _customAutoReplyCtrl.text.trim(),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.arrow_forward_ios_rounded, size: 11, color: Color(0xFF94A3B8)),
+                ],
+              ),
+            ),
           ),
         ],
       ),

@@ -825,19 +825,70 @@ class WhatsAppChatService {
                 finalButtons = sessionResult.buttons;
                 orderToCreate = sessionResult.orderPayload;
               } else {
-                // Step 2: Fall back to general hospitality AI agent
-                const aiAgentService = require('./aiAgentService');
-                const aiResult = await aiAgentService.generateReply({
-                  business,
-                  chatId: chat._id,
-                  customerPhone: normalizedPhone,
-                  customerName: customerName || chat.customerName,
-                  messageText: incomingMsg.body,
-                });
+                // Step 2: Customer message is outside the active ordering flow
+                const aiSettings = business.aiChatAgentSettings || {};
+                const isCustomAutoReplyActive =
+                  aiSettings.customAutoReplyEnabled &&
+                  Boolean(aiSettings.customAutoReplyMessage && aiSettings.customAutoReplyMessage.trim());
 
-                if (aiResult && aiResult.replyText && aiResult.replyText.trim()) {
-                  finalReplyText = aiResult.replyText.trim();
-                  orderToCreate = aiResult.orderPayload;
+                if (isCustomAutoReplyActive) {
+                  const rName =
+                    (business.profile?.companyName && business.profile.companyName.trim()) ||
+                    (business.companyName && business.companyName.trim()) ||
+                    (business.restaurantName && business.restaurantName.trim()) ||
+                    (business.name && business.name.trim()) ||
+                    (business.profile?.name && business.profile.name.trim()) ||
+                    'Our Restaurant';
+                  const custName = customerName || chat.customerName || 'Guest';
+                  const bPhone = business.profile?.phone || business.phone || business.mobile || '';
+                  const bAddr =
+                    typeof business.address === 'string'
+                      ? business.address
+                      : [business.address?.street, business.address?.city, business.address?.pincode]
+                          .filter(Boolean)
+                          .join(', ') || '';
+
+                  // Check if customer reply matches any configured step trigger keywords
+                  const steps = Array.isArray(aiSettings.customAutoReplySteps) ? aiSettings.customAutoReplySteps : [];
+                  const cleanBody = (incomingMsg.body || '').trim().toLowerCase();
+                  let matchedStep = null;
+
+                  for (const step of steps) {
+                    if (!step || !step.triggerKeyword || !step.responseMessage) continue;
+                    const keywords = step.triggerKeyword
+                      .split(',')
+                      .map((k) => k.trim().toLowerCase())
+                      .filter(Boolean);
+                    if (keywords.some((k) => cleanBody === k || cleanBody.includes(k))) {
+                      matchedStep = step;
+                      break;
+                    }
+                  }
+
+                  const rawReply = matchedStep ? matchedStep.responseMessage : aiSettings.customAutoReplyMessage;
+
+                  finalReplyText = rawReply
+                    .replace(/{restaurant_name}/gi, rName)
+                    .replace(/{customer_name}/gi, custName)
+                    .replace(/{phone}/gi, bPhone)
+                    .replace(/{address}/gi, bAddr)
+                    .trim();
+                  finalButtons = null;
+                } else {
+                  // Fall back to general hospitality AI agent
+                  const aiAgentService = require('./aiAgentService');
+                  const aiResult = await aiAgentService.generateReply({
+                    business,
+                    chatId: chat._id,
+                    customerPhone: normalizedPhone,
+                    customerName: customerName || chat.customerName,
+                    messageText: incomingMsg.body,
+                  });
+
+                  if (aiResult && aiResult.replyText && aiResult.replyText.trim()) {
+                    finalReplyText = aiResult.replyText.trim();
+                    orderToCreate = aiResult.orderPayload;
+                  }
                 }
               }
 
@@ -866,7 +917,15 @@ class WhatsAppChatService {
                       ? `🛵 *Type*: *Home Delivery*${createdOrder.deliveryAddress ? `\n📍 *Deliver To*: *${createdOrder.deliveryAddress}*` : ''}`
                       : `🛍️ *Type*: *Takeaway / Pickup*`;
 
-                    finalReplyText = `✅ *Your order has been placed successfully!* 🎉\n\n📋 *Order ID*: *#${createdOrder.orderNumber}*\n💰 *Total Amount*: *₹${createdOrder.totalAmount}*\n${typeDisplay}\n\n⏳ *Status*: 🕒 *Awaiting confirmation from the restaurant.*\nWe'll notify you once the restaurant accepts or rejects your order! 🚀`;
+                    let breakdownText = '';
+                    if (createdOrder.taxAmount > 0) {
+                      breakdownText = `💵 *Subtotal*: ₹${createdOrder.subtotal}\n🧾 *Taxes (GST)*: ₹${Number(createdOrder.taxAmount).toFixed(2)}\n`;
+                      if (createdOrder.deliveryFee > 0) {
+                        breakdownText += `🛵 *Delivery Fee*: ₹${createdOrder.deliveryFee}\n`;
+                      }
+                    }
+
+                    finalReplyText = `✅ *Your order has been placed successfully!* 🎉\n\n📋 *Order ID*: *#${createdOrder.orderNumber}*\n${breakdownText}💰 *Total Amount*: *₹${createdOrder.totalAmount}*\n${typeDisplay}\n\n⏳ *Status*: 🕒 *Awaiting confirmation from the restaurant.*\nWe'll notify you once the restaurant accepts or rejects your order! 🚀`;
                     finalButtons = null;
 
                     console.log(`[WhatsAppChatService] 🛒 Direct POS Order #${createdOrder.orderNumber} created via WhatsApp AI for ${normalizedPhone} (Type: ${createdOrder.orderType})`);
@@ -884,6 +943,11 @@ class WhatsAppChatService {
                           orderNumber: createdOrder.orderNumber,
                           customerPhone: normalizedPhone,
                           customerName: customerName || chat.customerName || 'Customer',
+                          subtotal: String(createdOrder.subtotal || 0),
+                          taxAmount: String(createdOrder.taxAmount || 0),
+                          cgst: String(createdOrder.cgst || 0),
+                          sgst: String(createdOrder.sgst || 0),
+                          deliveryFee: String(createdOrder.deliveryFee || 0),
                           totalAmount: String(createdOrder.totalAmount),
                           orderType: createdOrder.orderType,
                           deliveryAddress: createdOrder.deliveryAddress || '',
@@ -1080,6 +1144,8 @@ class WhatsAppChatService {
       autoOrderTaking: true,
       systemPrompt: 'You are an intelligent, courteous AI hospitality assistant for {restaurant_name}. Help customers explore the menu, check prices, recommend chef specialties, take orders accurately, and answer common questions promptly.',
       customInstructions: '',
+      customAutoReplyEnabled: false,
+      customAutoReplyMessage: '',
       apiKey: '',
       model: 'gemini-3.8-flash',
       businessHoursOnly: false,

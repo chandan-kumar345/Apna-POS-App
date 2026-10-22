@@ -1255,6 +1255,9 @@ class DatabaseService extends ChangeNotifier {
     // Start real-time background auto-sync across devices
     startAutoSync();
 
+    // Start continuous Live Order Radar (fail-safe pending order monitor)
+    startOrderRadar();
+
     // Background sync with live backend if logged in
     syncWithBackend();
   }
@@ -4614,6 +4617,57 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  Timer? _orderRadarTimer;
+
+  /// Start persistent Order Radar polling (every 20s) as a fail-safe monitor
+  void startOrderRadar() {
+    _orderRadarTimer?.cancel();
+    _orderRadarTimer = Timer.periodic(const Duration(seconds: 20), (_) {
+      checkAndPromptPendingWhatsAppOrders();
+    });
+  }
+
+  /// Actively checks for any unaccepted pending orders placed within the last 45 minutes
+  /// and pops up the Order Accept dialog if not already shown.
+  Future<void> checkAndPromptPendingWhatsAppOrders() async {
+    try {
+      final isAuth = await _authService.isAuthenticated();
+      if (!isAuth) return;
+
+      // 1. Ensure socket connection stays alive
+      if (!SocketService().isConnected) {
+        SocketService().connect();
+      }
+
+      // 2. Fetch pending orders directly from backend
+      final pendingOrders = await _orderService.fetchOrders(status: 'pending', limit: 10);
+      if (pendingOrders.isEmpty) return;
+
+      for (final r in pendingOrders) {
+        if (r.status == OrderStatus.pending) {
+          final diffSec = DateTime.now().difference(r.createdDateTime).inSeconds.abs();
+          if (diffSec < 2700) {
+            LocalNotificationService.handlePayloadDirectly({
+              'type': 'whatsapp_order_request',
+              'orderId': r.id,
+              'orderNumber': r.orderNumber,
+              'customerPhone': r.customerPhone,
+              'customerName': r.customerName,
+              'totalAmount': r.totalAmount.toString(),
+              'orderType': r.orderType.name,
+              'deliveryAddress': r.deliveryAddress,
+              'items': r.items.map((i) => i.toJson()).toList(),
+              'createdAt': r.createdDateTime.toIso8601String(),
+            });
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[DatabaseService] Error in checkAndPromptPendingWhatsAppOrders: $e');
+    }
+  }
+
   /// Save and Print: saves/updates running order to API, generates immutable PrintLog snapshot and returns OrderModel
   Future<OrderModel> saveAndPrintOrder({
     String? existingOrderId,
@@ -6768,6 +6822,30 @@ class DatabaseService extends ChangeNotifier {
       _prefs?.getString('apna_pos_ai_agent_custom_instructions') ??
       '';
 
+  bool get isAiChatAgentCustomAutoReplyEnabled =>
+      _prefs?.getBool(_businessKey('ai_agent_custom_auto_reply_enabled')) ??
+      _prefs?.getBool('apna_pos_ai_agent_custom_auto_reply_enabled') ??
+      false;
+
+  String get aiChatAgentCustomAutoReplyMessage =>
+      _prefs?.getString(_businessKey('ai_agent_custom_auto_reply_message')) ??
+      _prefs?.getString('apna_pos_ai_agent_custom_auto_reply_message') ??
+      '';
+
+  List<Map<String, dynamic>> get aiChatAgentCustomAutoReplySteps {
+    final str = _prefs?.getString(_businessKey('ai_agent_custom_auto_reply_steps')) ??
+        _prefs?.getString('apna_pos_ai_agent_custom_auto_reply_steps');
+    if (str != null && str.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(str);
+        if (decoded is List) {
+          return decoded.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        }
+      } catch (_) {}
+    }
+    return [];
+  }
+
   int get aiChatAgentAutoReplyDelay =>
       _prefs?.getInt(_businessKey('ai_agent_reply_delay')) ??
       _prefs?.getInt('apna_pos_ai_agent_reply_delay') ??
@@ -6789,6 +6867,8 @@ class DatabaseService extends ChangeNotifier {
     String agentName = 'Apna AI Assistant',
     String model = 'gemini-2.0-flash',
     String customInstructions = '',
+    bool? customAutoReplyEnabled,
+    String? customAutoReplyMessage,
     int autoReplyDelay = 2,
   }) async {
     await _prefs?.setBool(_businessKey('ai_agent_enabled'), enabled);
@@ -6824,6 +6904,16 @@ class DatabaseService extends ChangeNotifier {
     await _prefs?.setString(_businessKey('ai_agent_api_key'), apiKey.trim());
     await _prefs?.setString('apna_pos_ai_agent_api_key', apiKey.trim());
 
+    if (customAutoReplyEnabled != null) {
+      await _prefs?.setBool(_businessKey('ai_agent_custom_auto_reply_enabled'), customAutoReplyEnabled);
+      await _prefs?.setBool('apna_pos_ai_agent_custom_auto_reply_enabled', customAutoReplyEnabled);
+    }
+
+    if (customAutoReplyMessage != null) {
+      await _prefs?.setString(_businessKey('ai_agent_custom_auto_reply_message'), customAutoReplyMessage.trim());
+      await _prefs?.setString('apna_pos_ai_agent_custom_auto_reply_message', customAutoReplyMessage.trim());
+    }
+
     notifyListeners();
 
     // Asynchronously synchronize settings to the backend WhatsApp server
@@ -6837,11 +6927,45 @@ class DatabaseService extends ChangeNotifier {
         'autoOrderTaking': autoOrderTaking,
         'systemPrompt': systemPrompt.trim(),
         'customInstructions': customInstructions.trim(),
+        'customAutoReplyEnabled': customAutoReplyEnabled ?? isAiChatAgentCustomAutoReplyEnabled,
+        'customAutoReplyMessage': customAutoReplyMessage ?? aiChatAgentCustomAutoReplyMessage,
         'model': model.trim(),
         'autoReplyDelaySeconds': autoReplyDelay,
         'apiKey': apiKey.trim(),
       }).catchError((e) {
         debugPrint('[DatabaseService] sync AI agent settings notice: $e');
+        return false;
+      }),
+    );
+  }
+
+  /// Save dedicated Customer Text Auto-Reply settings with multi-step rules
+  Future<void> saveCustomerAutoReplySettings({
+    required bool enabled,
+    required String message,
+    List<Map<String, dynamic>>? steps,
+  }) async {
+    await _prefs?.setBool(_businessKey('ai_agent_custom_auto_reply_enabled'), enabled);
+    await _prefs?.setBool('apna_pos_ai_agent_custom_auto_reply_enabled', enabled);
+
+    await _prefs?.setString(_businessKey('ai_agent_custom_auto_reply_message'), message.trim());
+    await _prefs?.setString('apna_pos_ai_agent_custom_auto_reply_message', message.trim());
+
+    if (steps != null) {
+      final jsonStr = jsonEncode(steps);
+      await _prefs?.setString(_businessKey('ai_agent_custom_auto_reply_steps'), jsonStr);
+      await _prefs?.setString('apna_pos_ai_agent_custom_auto_reply_steps', jsonStr);
+    }
+
+    notifyListeners();
+
+    unawaited(
+      WhatsAppChatService().updateAiAgentSettings({
+        'customAutoReplyEnabled': enabled,
+        'customAutoReplyMessage': message.trim(),
+        if (steps != null) 'customAutoReplySteps': steps,
+      }).catchError((e) {
+        debugPrint('[DatabaseService] sync customer auto-reply settings notice: $e');
         return false;
       }),
     );

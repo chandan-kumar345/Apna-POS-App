@@ -21,6 +21,12 @@ class MainActivity : FlutterActivity() {
         wakeAndShowOverLockScreen()
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        wakeAndShowOverLockScreen()
+    }
+
     private fun wakeAndShowOverLockScreen() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)

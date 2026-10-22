@@ -11,6 +11,7 @@ import 'sales_notification_banner_generator.dart';
 import 'sound_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../features/orders/whatsapp_order_action_dialog.dart';
+import '../database/database_service.dart';
 
 class LocalNotificationService with WidgetsBindingObserver {
   static final LocalNotificationService _instance = LocalNotificationService._internal();
@@ -41,11 +42,17 @@ class LocalNotificationService with WidgetsBindingObserver {
         final entityType = decoded['entityType']?.toString();
         final metadata = decoded['metadata'] as Map<String, dynamic>? ?? {};
 
-        // WhatsApp Urgent Order Request handling
-        if (type == 'whatsapp_order_request' ||
+        // Incoming WhatsApp & Urgent Order Alert handling
+        final isOrder = type == 'whatsapp_order_request' ||
             type == 'whatsapp_new_order' ||
             type == 'whatsapp_order' ||
-            entityType == 'whatsapp_order') {
+            type == 'new_order' ||
+            type == 'newOrder' ||
+            type == 'order_created' ||
+            entityType == 'whatsapp_order' ||
+            entityType == 'order';
+
+        if (isOrder) {
           final orderId = metadata['orderId']?.toString() ??
               decoded['orderId']?.toString() ??
               decoded['entityId']?.toString() ??
@@ -70,6 +77,8 @@ class LocalNotificationService with WidgetsBindingObserver {
               decoded['deliveryAddress']?.toString() ??
               '';
           final itemsPayload = metadata['items'] ?? decoded['items'];
+          final createdAtStr = metadata['createdAt']?.toString() ?? decoded['createdAt']?.toString();
+          final createdAt = createdAtStr != null ? DateTime.tryParse(createdAtStr) : null;
 
           int attempts = 0;
           void tryShowOrderDialog() {
@@ -86,6 +95,7 @@ class LocalNotificationService with WidgetsBindingObserver {
                 orderType: orderType,
                 deliveryAddress: deliveryAddress,
                 itemsPayload: itemsPayload,
+                createdAt: createdAt,
               );
             } else if (attempts < 30) {
               Future.delayed(const Duration(milliseconds: 250), tryShowOrderDialog);
@@ -274,7 +284,12 @@ class LocalNotificationService with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      // 1. Check local queue from FCM background isolate
       checkAndShowPendingIncomingOrder();
+      // 2. Proactively query backend for any unaccepted orders received while asleep
+      try {
+        DatabaseService().checkAndPromptPendingWhatsAppOrders();
+      } catch (_) {}
     }
   }
 
@@ -303,8 +318,14 @@ class LocalNotificationService with WidgetsBindingObserver {
       final body = notification?.body ?? data['message']?.toString() ?? '';
       final typeStr = data['type']?.toString() ?? 'system';
 
-      // Suppress new orders push notifications if handled elsewhere
-      if (typeStr == 'new_order' || typeStr == 'newOrder') return;
+      final isWhatsAppOrder = typeStr == 'whatsapp_order_request' ||
+          typeStr == 'whatsapp_new_order' ||
+          typeStr == 'whatsapp_order' ||
+          typeStr == 'new_order' ||
+          typeStr == 'newOrder' ||
+          typeStr == 'order_created' ||
+          data['entityType'] == 'whatsapp_order' ||
+          data['orderSource'] == 'whatsapp';
 
       final instance = LocalNotificationService();
       await instance.init();
@@ -313,7 +334,12 @@ class LocalNotificationService with WidgetsBindingObserver {
         title: title,
         body: body,
         payload: jsonEncode(data),
-        type: instance.resolveNotificationType(typeStr),
+        type: isWhatsAppOrder
+            ? NotificationType.whatsappOrderRequest
+            : instance.resolveNotificationType(typeStr),
+        channelId: isWhatsAppOrder
+            ? 'apna_pos_whatsapp_orders_v1'
+            : (typeStr.contains('whatsapp') ? 'apna_pos_whatsapp_messages_v1' : 'apna_pos_general_v2'),
         entityType: data['entityType']?.toString(),
         entityId: data['entityId']?.toString(),
         metadata: data,

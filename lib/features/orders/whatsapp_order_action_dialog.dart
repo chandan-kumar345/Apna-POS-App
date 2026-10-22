@@ -464,7 +464,7 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
                   padding: const EdgeInsets.fromLTRB(18, 16, 16, 16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [Color(0xFF0F5132), Color(0xFF073B22)],
+                      colors: [Color(0xFF0F2B48), Color(0xFF1E3A8A)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -494,7 +494,7 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
                             const Text(
                               'NEW WHATSAPP ORDER',
                               style: TextStyle(
-                                color: Color(0xFF4ADE80),
+                                color: Color(0xFF38BDF8),
                                 fontSize: 11,
                                 fontWeight: FontWeight.w900,
                                 letterSpacing: 1.1,
@@ -784,60 +784,111 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
 
                         const SizedBox(height: 14),
 
-                        // Grand Total Amount Highlight Neumorphic Card
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0xFFBBF7D0), width: 1.2),
-                            boxShadow: const [
-                              BoxShadow(
+                        Builder(
+                          builder: (context) {
+                            final double computedSubtotal = widget.items.fold<double>(0.0, (sum, rawItem) {
+                              final actualItem = (rawItem['item'] is Map)
+                                  ? Map<String, dynamic>.from(rawItem['item'])
+                                  : rawItem;
+                              final qty = (rawItem['quantity'] ?? actualItem['quantity'] ?? 1) as num;
+                              final price = _resolveItemPrice(rawItem, actualItem, qty);
+                              return sum + (price * qty);
+                            });
+                            final double taxesAndCharges = (widget.totalAmount - computedSubtotal).clamp(0.0, double.infinity);
+
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
                                 color: Colors.white,
-                                offset: Offset(-2, -2),
-                                blurRadius: 4,
-                              ),
-                              BoxShadow(
-                                color: Color(0xFFDCE4EC),
-                                offset: Offset(2, 2),
-                                blurRadius: 6,
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Grand Total',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 14,
-                                      color: Color(0xFF0F172A),
-                                    ),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: const Color(0xFFBBF7D0), width: 1.2),
+                                boxShadow: const [
+                                  BoxShadow(
+                                    color: Colors.white,
+                                    offset: Offset(-2, -2),
+                                    blurRadius: 4,
                                   ),
-                                  Text(
-                                    'All items + taxes & charges included',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: Color(0xFF64748B),
-                                    ),
+                                  BoxShadow(
+                                    color: Color(0xFFDCE4EC),
+                                    offset: Offset(2, 2),
+                                    blurRadius: 6,
                                   ),
                                 ],
                               ),
-                              Text(
-                                currencyFormatter.format(widget.totalAmount),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w900,
-                                  fontSize: 22,
-                                  color: Color(0xFF0F9D58),
-                                  letterSpacing: -0.5,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (taxesAndCharges > 0.01) ...[
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Items Subtotal',
+                                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                        ),
+                                        Text(
+                                          currencyFormatter.format(computedSubtotal),
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF0F172A), fontWeight: FontWeight.w700),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Taxes & Charges (GST)',
+                                          style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                                        ),
+                                        Text(
+                                          '+${currencyFormatter.format(taxesAndCharges)}',
+                                          style: const TextStyle(fontSize: 12, color: Color(0xFF0F9D58), fontWeight: FontWeight.w700),
+                                        ),
+                                      ],
+                                    ),
+                                    const Padding(
+                                      padding: EdgeInsets.symmetric(vertical: 8),
+                                      child: Divider(height: 1, color: Color(0xFFE2E8F0)),
+                                    ),
+                                  ],
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'Grand Total',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              fontSize: 14,
+                                              color: Color(0xFF0F172A),
+                                            ),
+                                          ),
+                                          Text(
+                                            'All items + taxes & charges included',
+                                            style: TextStyle(
+                                              fontSize: 10.5,
+                                              color: Color(0xFF64748B),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Text(
+                                        currencyFormatter.format(widget.totalAmount),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: 22,
+                                          color: Color(0xFF0F9D58),
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
+                            );
+                          },
                         ),
 
                         const SizedBox(height: 16),
@@ -868,15 +919,15 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: isSelected ? const Color(0xFF0F5132) : Colors.white,
+                                  color: isSelected ? const Color(0xFF0F2B48) : Colors.white,
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: isSelected ? const Color(0xFF0F5132) : const Color(0xFFCBD5E1),
+                                    color: isSelected ? const Color(0xFF0F2B48) : const Color(0xFFCBD5E1),
                                   ),
                                   boxShadow: isSelected
                                       ? [
                                           BoxShadow(
-                                            color: const Color(0xFF0F5132).withValues(alpha: 0.35),
+                                            color: const Color(0xFF0F2B48).withValues(alpha: 0.35),
                                             offset: const Offset(0, 2),
                                             blurRadius: 4,
                                           ),

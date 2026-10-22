@@ -220,6 +220,45 @@ class AIAgentService {
 
     const restaurantName = context.restaurantName;
     const formattedCustomerName = this.formatCustomerName(customerName);
+
+    // If Custom Text Auto-Reply is enabled and incoming message is not a direct order intent
+    if (settings.customAutoReplyEnabled && settings.customAutoReplyMessage && settings.customAutoReplyMessage.trim()) {
+      const isOrderIntent = /order|pack|parcel|deliver|karo|bhejo|chaiye|chahiye/i.test(messageText);
+      if (!isOrderIntent) {
+        // Check if customer reply matches any configured step trigger keywords
+        const steps = Array.isArray(settings.customAutoReplySteps) ? settings.customAutoReplySteps : [];
+        const cleanMsg = messageText.trim().toLowerCase();
+        let matchedStep = null;
+
+        for (const step of steps) {
+          if (!step || !step.triggerKeyword || !step.responseMessage) continue;
+          const keywords = step.triggerKeyword
+            .split(',')
+            .map((k) => k.trim().toLowerCase())
+            .filter(Boolean);
+          if (keywords.some((k) => cleanMsg === k || cleanMsg.includes(k))) {
+            matchedStep = step;
+            break;
+          }
+        }
+
+        const rawReply = matchedStep ? matchedStep.responseMessage : settings.customAutoReplyMessage;
+
+        const customReply = rawReply
+          .replace(/{restaurant_name}/gi, restaurantName)
+          .replace(/{customer_name}/gi, formattedCustomerName || 'Guest')
+          .replace(/{phone}/gi, context.phone || '')
+          .replace(/{address}/gi, context.address || '')
+          .trim();
+        return {
+          replyText: customReply,
+          isAiGenerated: true,
+          source: 'custom_auto_reply',
+          orderPayload: null,
+        };
+      }
+    }
+
     const persona = settings.persona || 'friendly';
     const personaPrompt = this.getPersonaPrompt(persona, restaurantName, formattedCustomerName);
     const customPrompt = settings.systemPrompt || '';
@@ -457,12 +496,26 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
                 }
 
                 if (validItems.length > 0) {
+                  const isGstActive = business?.orderSettings?.tax?.type !== 'no_gst';
+                  const taxRate = isGstActive
+                    ? (typeof business?.orderSettings?.tax?.percentage === 'number' && business.orderSettings.tax.percentage >= 0
+                        ? business.orderSettings.tax.percentage
+                        : 5)
+                    : 0;
+                  const taxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
+                  const cgst = Number((taxAmount / 2).toFixed(2));
+                  const sgst = Number((taxAmount / 2).toFixed(2));
+                  const totalAmount = Number((subtotal + taxAmount).toFixed(2));
+
                   orderPayload = {
                     orderType: parsed.orderType === 'delivery' ? 'delivery' : 'takeaway',
                     deliveryAddress: (parsed.deliveryAddress || '').trim(),
                     items: validItems,
                     subtotal,
-                    totalAmount: subtotal,
+                    taxAmount,
+                    cgst,
+                    sgst,
+                    totalAmount,
                     notes: 'Ordered via WhatsApp AI Agent',
                     source: 'whatsapp_ai',
                   };
@@ -659,12 +712,26 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
           finalOrderType = 'takeaway';
         }
 
+        const isGstActive = business?.orderSettings?.tax?.type !== 'no_gst';
+        const taxRate = isGstActive
+          ? (typeof business?.orderSettings?.tax?.percentage === 'number' && business.orderSettings.tax.percentage >= 0
+              ? business.orderSettings.tax.percentage
+              : 5)
+          : 0;
+        const taxAmount = Number(((calculatedSubtotal * taxRate) / 100).toFixed(2));
+        const cgst = Number((taxAmount / 2).toFixed(2));
+        const sgst = Number((taxAmount / 2).toFixed(2));
+        const totalAmount = Number((calculatedSubtotal + taxAmount).toFixed(2));
+
         const orderPayload = {
           orderType: finalOrderType,
           deliveryAddress: extractedAddress || '',
           items: validItems,
           subtotal: calculatedSubtotal,
-          totalAmount: calculatedSubtotal,
+          taxAmount,
+          cgst,
+          sgst,
+          totalAmount,
           notes: `Ordered via WhatsApp AI Agent (${finalOrderType})`,
           source: 'whatsapp_ai',
         };
@@ -675,7 +742,12 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
           ? (extractedAddress ? `🛵 *Type*: *Home Delivery*\n📍 *Deliver To*: *${extractedAddress}*` : `🛵 *Type*: *Home Delivery*\n📍 *Delivery Address*: _Please reply with your delivery address!_`)
           : `🛍️ *Type*: *Takeaway / Pickup*\n💡 _(For Home Delivery, reply with your address!)_`;
 
-        const reply = `🧾 *ORDER RECEIVED* 🧾\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *Order Summary*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Estimated Total*: *₹${calculatedSubtotal}*\n${typeStr}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant counter. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
+        let summaryTaxes = '';
+        if (taxAmount > 0) {
+          summaryTaxes = `\n🧾 *Taxes (GST ${taxRate}%)*: ₹${taxAmount.toFixed(2)}`;
+        }
+
+        const reply = `🧾 *ORDER RECEIVED* 🧾\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n📦 *Order Summary*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💵 *Subtotal*: ₹${calculatedSubtotal}${summaryTaxes}\n💰 *Estimated Total*: *₹${totalAmount}*\n${typeStr}\n⏳ *Status*: 🕒 *Awaiting Restaurant Confirmation*\n━━━━━━━━━━━━━━━━━━━━\n🙏 _We have sent your order to the restaurant counter. You will receive an instant WhatsApp update when your order is accepted!_ 🚀`;
 
         return {
           replyText: reply,

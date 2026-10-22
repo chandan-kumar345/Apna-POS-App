@@ -417,6 +417,7 @@ class WhatsAppOrderSessionService {
           variant: v ? v.name : undefined,
           price: unitPrice,
           quantity: qty,
+          taxPercentage: typeof prod.taxPercentage === 'number' ? prod.taxPercentage : undefined,
           foodType: prod.foodType || 'veg',
         });
       }
@@ -425,12 +426,21 @@ class WhatsAppOrderSessionService {
       session.selectedProduct = null;
       session.selectedVariant = null;
 
-      const subtotal = session.cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
       const cartSummaryStr = session.cart
         .map((i, idx) => `${idx + 1}. *${i.name}* × ${i.quantity} — ₹${(i.price * i.quantity).toFixed(0)}`)
         .join('\n');
 
-      const cartReply = `✅ *Added to your cart!*\n\n${cartSummaryStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Cart Subtotal*: *₹${subtotal}*\n\nWould you like to add more items or proceed to checkout?\n\n1. ➕ *Add More Items*\n2. 🛒 *Checkout*\n3. ❌ *Cancel Order*`;
+      const financials = this._calculateFinancials(business, session.cart, session.orderType);
+
+      let totalsText = `💵 *Cart Subtotal*: ₹${financials.subtotal}`;
+      if (financials.taxAmount > 0) {
+        totalsText += `\n🧾 *Taxes (GST ${financials.gstRateLabel})*: ₹${financials.taxAmount.toFixed(2)}`;
+        totalsText += `\n💰 *Cart Total*: *₹${financials.cartTotalWithTax.toFixed(2).replace(/\.00$/, '')}*`;
+      } else {
+        totalsText = `💰 *Cart Subtotal*: *₹${financials.subtotal}*`;
+      }
+
+      const cartReply = `✅ *Added to your cart!*\n\n${cartSummaryStr}\n━━━━━━━━━━━━━━━━━━━━\n${totalsText}\n\nWould you like to add more items or proceed to checkout?\n\n1. ➕ *Add More Items*\n2. 🛒 *Checkout*\n3. ❌ *Cancel Order*`;
 
       return {
         replyText: cartReply,
@@ -599,12 +609,21 @@ class WhatsAppOrderSessionService {
 
       if (isEditCart) {
         session.state = 'CART_ACTIVE';
-        const subtotal = session.cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
         const cartSummaryStr = session.cart
           .map((i, idx) => `${idx + 1}. *${i.name}* × ${i.quantity} — ₹${(i.price * i.quantity).toFixed(0)}`)
           .join('\n');
+        const financials = this._calculateFinancials(business, session.cart, session.orderType);
+
+        let totalsText = `💵 *Subtotal*: ₹${financials.subtotal}`;
+        if (financials.taxAmount > 0) {
+          totalsText += `\n🧾 *Taxes (GST ${financials.gstRateLabel})*: ₹${financials.taxAmount.toFixed(2)}`;
+          totalsText += `\n💰 *Cart Total*: *₹${financials.cartTotalWithTax.toFixed(2).replace(/\.00$/, '')}*`;
+        } else {
+          totalsText += `\n💰 *Cart Subtotal*: *₹${financials.subtotal}*`;
+        }
+
         return {
-          replyText: `📦 *Current Cart*:\n${cartSummaryStr}\n━━━━━━━━━━━━━━━━━━━━\n💰 *Subtotal*: *₹${subtotal}*\n\n1. ➕ *Add More Items*\n2. 🛒 *Checkout*\n3. ❌ *Cancel Order*`,
+          replyText: `📦 *Current Cart*:\n${cartSummaryStr}\n━━━━━━━━━━━━━━━━━━━━\n${totalsText}\n\n1. ➕ *Add More Items*\n2. 🛒 *Checkout*\n3. ❌ *Cancel Order*`,
           buttons: [
             { id: 'btn_add_more', title: '➕ Add More Items' },
             { id: 'btn_checkout', title: '🛒 Checkout' },
@@ -616,9 +635,7 @@ class WhatsAppOrderSessionService {
       }
 
       if (isConfirm) {
-        const subtotal = session.cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
-        const deliveryFee = session.orderType === 'delivery' ? 40 : 0;
-        const totalAmount = subtotal + deliveryFee;
+        const financials = this._calculateFinancials(business, session.cart, session.orderType);
 
         const orderPayload = {
           orderType: session.orderType || 'takeaway',
@@ -629,12 +646,16 @@ class WhatsAppOrderSessionService {
             variant: i.variant,
             price: i.price,
             quantity: i.quantity,
+            taxPercentage: i.taxPercentage,
             foodType: i.foodType || 'veg',
             note: '',
           })),
-          subtotal,
-          deliveryFee,
-          totalAmount,
+          subtotal: financials.subtotal,
+          taxAmount: financials.taxAmount,
+          cgst: financials.cgst,
+          sgst: financials.sgst,
+          deliveryFee: financials.deliveryFee,
+          totalAmount: financials.totalAmount,
           notes: `Ordered via WhatsApp AI Agent (${session.orderType})`,
           source: 'whatsapp_ai',
         };
@@ -748,6 +769,7 @@ class WhatsAppOrderSessionService {
         id: p._id.toString(),
         name: p.name,
         price: p.price,
+        taxPercentage: typeof p.taxPercentage === 'number' ? p.taxPercentage : undefined,
         variants: p.variants || [],
         foodType: p.foodType || (p.isVeg === false ? 'non_veg' : 'veg'),
       });
@@ -762,6 +784,87 @@ class WhatsAppOrderSessionService {
   }
 
   /**
+   * Helper to calculate item totals, GST taxes, delivery fee, and net total
+   */
+  _calculateFinancials(business, cart = [], orderType = 'takeaway') {
+    const isGstActive = business?.orderSettings?.tax?.type !== 'no_gst';
+    const defaultTaxRate = isGstActive
+      ? (typeof business?.orderSettings?.tax?.percentage === 'number' && business.orderSettings.tax.percentage >= 0
+          ? business.orderSettings.tax.percentage
+          : 5)
+      : 0;
+
+    let subtotal = 0;
+    let taxAmount = 0;
+    const rateSet = new Set();
+
+    for (const item of cart) {
+      const qty = Number(item.quantity) || 1;
+      const price = Number(item.price) || 0;
+      const itemTotal = price * qty;
+      subtotal += itemTotal;
+
+      if (isGstActive) {
+        const itemRate =
+          typeof item.taxPercentage === 'number' && item.taxPercentage >= 0
+            ? item.taxPercentage
+            : defaultTaxRate;
+        if (itemRate > 0) {
+          rateSet.add(itemRate);
+          taxAmount += itemTotal * (itemRate / 100);
+        }
+      }
+    }
+
+    subtotal = Number(subtotal.toFixed(2));
+    taxAmount = Number(taxAmount.toFixed(2));
+    const cgst = Number((taxAmount / 2).toFixed(2));
+    const sgst = Number((taxAmount / 2).toFixed(2));
+
+    let deliveryFee = 0;
+    if (orderType === 'delivery') {
+      const dSettings = business?.orderSettings?.deliverySettings;
+      if (dSettings) {
+        if (dSettings.freeDeliveryEnabled && dSettings.freeDeliveryMinOrder > 0 && subtotal >= dSettings.freeDeliveryMinOrder) {
+          deliveryFee = 0;
+        } else if (typeof dSettings.baseCharge === 'number' && dSettings.baseCharge > 0) {
+          deliveryFee = dSettings.baseCharge;
+        } else {
+          deliveryFee = 40;
+        }
+      } else {
+        deliveryFee = 40;
+      }
+    }
+
+    const totalAmount = Number((subtotal + taxAmount + deliveryFee).toFixed(2));
+    const cartTotalWithTax = Number((subtotal + taxAmount).toFixed(2));
+
+    let gstRateLabel = '';
+    if (rateSet.size === 1) {
+      gstRateLabel = `${Array.from(rateSet)[0]}%`;
+    } else if (rateSet.size > 1) {
+      gstRateLabel = 'GST';
+    } else if (defaultTaxRate > 0) {
+      gstRateLabel = `${defaultTaxRate}%`;
+    } else {
+      gstRateLabel = 'GST';
+    }
+
+    return {
+      subtotal,
+      taxAmount,
+      cgst,
+      sgst,
+      deliveryFee,
+      totalAmount,
+      cartTotalWithTax,
+      isGstActive,
+      gstRateLabel,
+    };
+  }
+
+  /**
    * Helper to build complete Order Review before customer submission
    */
   _buildOrderReviewResponse(business, session) {
@@ -773,9 +876,7 @@ class WhatsAppOrderSessionService {
       (business.profile?.name && business.profile.name.trim()) ||
       'Our Restaurant';
 
-    const subtotal = session.cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
-    const deliveryFee = session.orderType === 'delivery' ? 40 : 0;
-    const total = subtotal + deliveryFee;
+    const financials = this._calculateFinancials(business, session.cart, session.orderType);
 
     const itemsListStr = session.cart
       .map((i, idx) => `${idx + 1}. *${i.name}* × ${i.quantity} — ₹${(i.price * i.quantity).toFixed(0)}`)
@@ -783,12 +884,15 @@ class WhatsAppOrderSessionService {
 
     const typeStr = session.orderType === 'delivery' ? 'Home Delivery' : 'Takeaway / Pickup';
 
-    let summary = `🧾 *ORDER SUMMARY*\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n🛵 *Order Type*: *${typeStr}*\n\n📦 *Items*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💵 *Subtotal*: ₹${subtotal}\n`;
+    let summary = `🧾 *ORDER SUMMARY*\n*${rName}*\n━━━━━━━━━━━━━━━━━━━━\n🛵 *Order Type*: *${typeStr}*\n\n📦 *Items*:\n${itemsListStr}\n━━━━━━━━━━━━━━━━━━━━\n💵 *Subtotal*: ₹${financials.subtotal}\n`;
 
-    if (deliveryFee > 0) {
-      summary += `🛵 *Delivery Fee*: ₹${deliveryFee}\n`;
+    if (financials.taxAmount > 0) {
+      summary += `🧾 *Taxes (GST ${financials.gstRateLabel})*: ₹${financials.taxAmount.toFixed(2)}\n`;
     }
-    summary += `💰 *Total Amount*: *₹${total}*\n`;
+    if (financials.deliveryFee > 0) {
+      summary += `🛵 *Delivery Fee*: ₹${financials.deliveryFee}\n`;
+    }
+    summary += `💰 *Total Amount*: *₹${financials.totalAmount.toFixed(2).replace(/\.00$/, '')}*\n`;
 
     if (session.orderType === 'delivery' && session.deliveryAddress) {
       summary += `📍 *Delivery Address*:\n${session.deliveryAddress}\n`;
