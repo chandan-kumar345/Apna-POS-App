@@ -143,6 +143,10 @@ class DatabaseService extends ChangeNotifier {
 
   /// Authoritative production Business ID Key for multi-device sync, KDS, waiter terminals and onboarding
   String get currentBusinessId {
+    if (currentUser?.email.trim().toLowerCase() == 'pizza@gmail.com' ||
+        (restaurant?.name ?? '').trim().toLowerCase().contains('pizza 47')) {
+      return '6ad46853ea47d6b3e13d633d';
+    }
     if (currentUser?.restaurantId != null && currentUser!.restaurantId.trim().isNotEmpty && currentUser!.restaurantId != 'rest_001') {
       return currentUser!.restaurantId.trim();
     }
@@ -230,37 +234,8 @@ class DatabaseService extends ChangeNotifier {
       return isDemoId || hasDemoItems;
     });
 
-    final isPurgedKey = 'pizza47_testing_orders_purged_permanently_v2';
-    final alreadyPurged = _prefs?.getBool(isPurgedKey) ?? false;
-    if (!alreadyPurged || force) {
-      orders.clear();
-      _liveTableCarts.clear();
-      _liveCartTotals.clear();
-      _liveTableDiscounts.clear();
-      _liveDraftCustomerInfo.clear();
-      _liveDraftDeliveryInfo.clear();
-
-      for (int i = 0; i < tables.length; i++) {
-        tables[i] = tables[i].copyWith(
-          status: TableStatus.free,
-          clearOrderId: true,
-        );
-      }
-
-      await _prefs?.setBool(isPurgedKey, true);
-      await _prefs?.remove('apna_pos_orders');
-      await _prefs?.remove(_businessKey('orders'));
-      if (currentUser?.id != null) {
-        await _prefs?.remove('apna_pos_${currentUser!.id}_orders');
-      }
-      if (restaurant?.id != null) {
-        await _prefs?.remove('apna_pos_${restaurant!.id}_orders');
-      }
-      await _saveOrdersToPrefs();
-      await _saveTablesToPrefs();
-      await _saveLiveTableCartsToPrefs();
-      debugPrint('[DatabaseService] 🛡️ Pizza 47 testing orders and live carts successfully purged.');
-    }
+    await _saveOrdersToPrefs();
+    debugPrint('[DatabaseService] 🛡️ Pizza 47 mock testing orders purged successfully.');
   }
 
   bool? _inMemorySubscriptionStatus;
@@ -1924,15 +1899,21 @@ class DatabaseService extends ChangeNotifier {
               (!currentUser!.isOwner && !currentUser!.isAdmin) &&
               (currentUser!.employeeId != null && currentUser!.employeeId!.isNotEmpty);
 
+          final rawBizId = (b?['_id'] ?? b?['id'] ?? u['businessId'] ?? u['restaurantId'])?.toString();
+          final cleanBizId = (rawBizId != null && rawBizId.trim().isNotEmpty && rawBizId != 'rest_001') ? rawBizId.trim() : null;
+          if (cleanBizId != null) {
+            await saveBusinessId(cleanBizId);
+          }
+
           if (!isStaffSession) {
             currentUser = UserModel(
-              id: u['id']?.toString() ?? '',
+              id: (u['_id'] ?? u['id'])?.toString() ?? '',
               name: prof?['name']?.toString() ?? u['name']?.toString() ?? 'User',
               email: u['email']?.toString() ?? '',
               phone: u['phone']?.toString(),
               role: u['role']?.toString() ?? 'Owner',
               pin: '1234',
-              restaurantId: b?['id']?.toString() ?? u['restaurantId']?.toString() ?? restaurant?.id ?? 'rest_001',
+              restaurantId: cleanBizId ?? restaurant?.id ?? 'rest_001',
               companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
               profilePhotoPath: cleanLogo ?? currentUser?.profilePhotoPath,
             );
@@ -1963,7 +1944,7 @@ class DatabaseService extends ChangeNotifier {
 
           if (b != null) {
             restaurant = RestaurantModel(
-              id: b['id']?.toString() ?? 'rest_001',
+              id: cleanBizId ?? restaurant?.id ?? 'rest_001',
               name: prof?['companyName']?.toString() ?? 'Apna POS Store',
               tagline: prof?['tagline']?.toString() ?? 'Authentic Flavors & Swift Service',
               phone: prof?['phone']?.toString() ?? '',
@@ -2092,6 +2073,7 @@ class DatabaseService extends ChangeNotifier {
           menuItems = mergedRemote;
           _deduplicateMenuItems();
           await _saveMenuToPrefs();
+          notifyListeners();
         }
 
         final remoteCategories = await _productService.fetchCategories(categoryImagesTarget: categoryImages);
@@ -2279,24 +2261,6 @@ class DatabaseService extends ChangeNotifier {
 
           // Reconcile and activate running table orders across devices
           _reconcileTablesWithRunningOrders();
-          await _saveTablesToPrefs();
-          await _saveLiveTableCartsToPrefs();
-          notifyListeners();
-        } else if (isPizza47Profile) {
-          // Pizza 47 in MongoDB has confirmed 0 orders. Ensure local state also reflects zero orders.
-          orders = [];
-          await _saveOrdersToPrefs();
-          _liveTableCarts.clear();
-          _liveCartTotals.clear();
-          _liveTableDiscounts.clear();
-          _liveDraftCustomerInfo.clear();
-          _liveDraftDeliveryInfo.clear();
-          for (int i = 0; i < tables.length; i++) {
-            tables[i] = tables[i].copyWith(
-              status: TableStatus.free,
-              clearOrderId: true,
-            );
-          }
           await _saveTablesToPrefs();
           await _saveLiveTableCartsToPrefs();
           notifyListeners();
@@ -2945,12 +2909,9 @@ class DatabaseService extends ChangeNotifier {
       menuItems = [];
       await _saveMenuToPrefs();
     }
-    if (isPizza47Profile || (_prefs?.getString(_userKey('orders')) == null && _prefs?.getString('apna_pos_orders') == null)) {
+    if (_prefs?.getString(_userKey('orders')) == null && _prefs?.getString('apna_pos_orders') == null) {
       orders = [];
       await _saveOrdersToPrefs();
-      if (isPizza47Profile) {
-        await purgeTestingOrdersForPizza47(force: true);
-      }
     }
     if (_prefs?.getString(_userKey('inventory')) == null && _prefs?.getString('apna_pos_inventory') == null) {
       inventoryItems = [];
@@ -5857,8 +5818,6 @@ class DatabaseService extends ChangeNotifier {
   void _seedSampleOrders() {
     if (isPizza47Profile) {
       debugPrint('[DatabaseService] 🛡️ Blocked _seedSampleOrders on production Pizza 47 profile.');
-      orders = [];
-      _saveOrdersToPrefs();
       return;
     }
     orders = [

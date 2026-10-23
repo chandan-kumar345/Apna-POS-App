@@ -180,9 +180,10 @@ class AuthService {
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
         );
-        final bId = (businessJson['_id'] ?? businessJson['id'])?.toString();
+        final bId = (businessJson['_id'] ?? businessJson['id'] ?? userJson['businessId'] ?? userJson['restaurantId'])?.toString();
         if (bId != null && bId.isNotEmpty) {
           await _db.saveBusinessId(bId);
+          await _storage.saveBusinessId(bId);
         }
         await _db.saveRestaurantOnboarding(updated);
       } catch (e) {
@@ -299,6 +300,11 @@ class AuthService {
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
         );
+        final bId = (businessJson['_id'] ?? businessJson['id'] ?? userJson['businessId'] ?? userJson['restaurantId'])?.toString();
+        if (bId != null && bId.isNotEmpty) {
+          await _db.saveBusinessId(bId);
+          await _storage.saveBusinessId(bId);
+        }
         await _db.saveRestaurantOnboarding(updated);
       } catch (e) {
         debugPrint('Error caching business from staffLogin: $e');
@@ -370,6 +376,11 @@ class AuthService {
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
         );
+        final bId = (businessJson['_id'] ?? businessJson['id'] ?? userJson['businessId'] ?? userJson['restaurantId'])?.toString();
+        if (bId != null && bId.isNotEmpty) {
+          await _db.saveBusinessId(bId);
+          await _storage.saveBusinessId(bId);
+        }
         await _db.saveRestaurantOnboarding(updated);
       } catch (e) {
         debugPrint('Error caching business from getMe: $e');

@@ -484,6 +484,9 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
 
     // Ensure socket connection & rooms are active for real-time order alerts & notifications
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      db.syncWithBackend().catchError((e) {
+        debugPrint('[MainLayout] Background sync notice: $e');
+      });
       final bizId = db.currentBusinessId.isNotEmpty
           ? db.currentBusinessId
           : (db.currentUser?.businessId ?? db.restaurant?.id);

@@ -84,14 +84,28 @@ class ApiEndpoints {
 
     // 3. Web platform dynamic auto-discovery
     if (kIsWeb) {
+      final isLocalWeb = Uri.base.host.isEmpty ||
+          Uri.base.host == 'localhost' ||
+          Uri.base.host == '127.0.0.1' ||
+          Uri.base.host.startsWith('192.168.') ||
+          Uri.base.host.startsWith('172.');
+      final isHttps = Uri.base.scheme == 'https';
+
+      // Live production web host (Vercel, custom domain) over HTTPS:
+      // In modern browsers, probing http:// URLs from an https:// host triggers Mixed Content blocks.
+      // Prioritize and pin the production Render cloud backend directly.
+      if (isHttps || !isLocalWeb) {
+        _resolvedBaseUrl = productionApiUrl;
+        debugPrint('[ApiEndpoints] Web HTTPS production host detected: $productionApiUrl');
+        return;
+      }
+
       final webCandidates = <String>[
         'http://127.0.0.1:$defaultPort/api/v1',
         'http://localhost:$defaultPort/api/v1',
         'http://$defaultLanIp:$defaultPort/api/v1',
         'http://172.16.2.2:$defaultPort/api/v1',
         'http://172.16.2.3:$defaultPort/api/v1',
-        if (Uri.base.host.isNotEmpty && Uri.base.host != 'localhost' && Uri.base.host != '127.0.0.1')
-          'http://${Uri.base.host}:$defaultPort/api/v1',
         productionApiUrl,
         cloudflareTunnelUrl,
         publicTunnelUrl,
@@ -259,15 +273,16 @@ class ApiEndpoints {
       return _resolvedBaseUrl!;
     }
     if (kIsWeb) {
-      if (Uri.base.host.isNotEmpty &&
-          (Uri.base.host == 'localhost' || Uri.base.host == '127.0.0.1')) {
-        return 'http://127.0.0.1:$defaultPort/api/v1';
+      final isLocalWeb = Uri.base.host.isEmpty ||
+          Uri.base.host == 'localhost' ||
+          Uri.base.host == '127.0.0.1' ||
+          Uri.base.host.startsWith('192.168.') ||
+          Uri.base.host.startsWith('172.');
+      final isHttps = Uri.base.scheme == 'https';
+      if (isHttps || !isLocalWeb) {
+        return productionApiUrl;
       }
-      if (Uri.base.host.isNotEmpty &&
-          (Uri.base.host.startsWith('192.168.') || Uri.base.host.startsWith('172.'))) {
-        return 'http://${Uri.base.host}:$defaultPort/api/v1';
-      }
-      return productionApiUrl;
+      return 'http://127.0.0.1:$defaultPort/api/v1';
     }
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return 'http://$defaultLanIp:$defaultPort/api/v1';
@@ -313,6 +328,10 @@ class ApiEndpoints {
 
     // 4. Remote HTTP/HTTPS URL
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      // Prevent Mixed Content on Web HTTPS for remote image URLs
+      if (kIsWeb && Uri.base.scheme == 'https' && trimmed.startsWith('http://')) {
+        trimmed = trimmed.replaceFirst('http://', 'https://');
+      }
       // Dynamic host rewrite: if URL points to localhost:5000 or 127.0.0.1:5000 but running on Android device or other LAN IP,
       // rewrite to active baseUrl server host so image can actually be fetched
       final serverBase = baseUrl.replaceAll('/api/v1', '').replaceAll(RegExp(r'/+$'), '');

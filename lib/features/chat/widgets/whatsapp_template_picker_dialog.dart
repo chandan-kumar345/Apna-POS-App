@@ -141,7 +141,19 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
       final key = p.key.isNotEmpty ? p.key : (i + 1).toString();
       String defaultValue = '';
 
-      if (tmpl.name == 'ebill_receipt') {
+      if (tmpl.name == 'apna_pos_auth_otp') {
+        defaultValue = p.example.isNotEmpty ? p.example : '123456';
+      } else if (tmpl.name == 'special_discount_offer') {
+        if (i == 0) {
+          defaultValue = effectiveCustName;
+        } else if (i == 1) {
+          defaultValue = '20';
+        } else if (i == 2) {
+          defaultValue = widget.businessName.isNotEmpty ? widget.businessName : 'Our Store';
+        } else if (i == 3) {
+          defaultValue = 'SAVE20';
+        }
+      } else if (tmpl.name == 'ebill_receipt') {
         if (i == 0) {
           defaultValue = effectiveCustName;
         } else if (i == 1) {
@@ -151,7 +163,7 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
         } else if (i == 3) {
           defaultValue = defaultDate;
         } else if (i == 4) {
-          defaultValue = '0.00';
+          defaultValue = '250.00';
         } else if (i == 5) {
           defaultValue = 'Paid';
         } else if (i == 6) {
@@ -238,34 +250,112 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
     }
   }
 
+  /// Badge showing whether the template type is UTILITY, MARKETING, or AUTHENTICATION
+  Widget _buildCategoryBadge(String category, {bool isSelected = false}) {
+    final cat = category.toUpperCase().trim();
+    Color bg;
+    Color border;
+    Color text;
+    IconData icon;
+    String label;
+
+    switch (cat) {
+      case 'MARKETING':
+        bg = const Color(0xFFFEF3C7); // Warm amber
+        border = const Color(0xFFFDE68A);
+        text = const Color(0xFFB45309);
+        icon = Icons.campaign_rounded;
+        label = 'MARKETING';
+        break;
+      case 'AUTHENTICATION':
+      case 'AUTH':
+      case 'OTP':
+        bg = const Color(0xFFF3E8FF); // Soft purple
+        border = const Color(0xFFE9D5FF);
+        text = const Color(0xFF7E22CE);
+        icon = Icons.lock_outline_rounded;
+        label = 'AUTH';
+        break;
+      case 'UTILITY':
+      default:
+        bg = const Color(0xFFE0F2FE); // Soft sky blue
+        border = const Color(0xFFBAE6FD);
+        text = const Color(0xFF0369A1);
+        icon = Icons.tune_rounded;
+        label = 'UTILITY';
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5.5, vertical: 2),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: border, width: 0.8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 9, color: text),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 8.5,
+              fontWeight: FontWeight.w800,
+              color: text,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
-    final isCompact = media.size.width < 500;
 
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
       insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      backgroundColor: Colors.transparent,
+      elevation: 0,
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
         constraints: BoxConstraints(
-          maxWidth: 620,
-          maxHeight: media.size.height * 0.88,
+          maxWidth: 395,
+          maxHeight: media.size.height * 0.90,
         ),
         child: Container(
-          color: Colors.white,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(28),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x24000000),
+                blurRadius: 36,
+                offset: Offset(0, 12),
+              ),
+              BoxShadow(
+                color: Color(0x0A000000),
+                blurRadius: 10,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top Header
+              // Top Header matching design
               _buildHeader(),
 
               // Error banner if any
               if (_errorMessage != null)
                 Container(
-                  margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                   decoration: BoxDecoration(
                     color: const Color(0xFFFEE2E2),
                     borderRadius: BorderRadius.circular(10),
@@ -273,110 +363,111 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 18),
+                      const Icon(Icons.error_outline_rounded, color: Color(0xFFDC2626), size: 16),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
                           _errorMessage!,
-                          style: const TextStyle(fontSize: 12, color: Color(0xFF991B1B)),
+                          style: const TextStyle(fontSize: 11, color: Color(0xFF991B1B), fontWeight: FontWeight.w600),
                         ),
                       ),
                     ],
                   ),
                 ),
 
-              // Scrollable Content
-              Expanded(
+              // Scrollable Wrapped Content
+              Flexible(
                 child: _isLoading
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(40),
+                    ? const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 40),
+                        child: Center(
                           child: CircularProgressIndicator(
-                            color: Color(0xFF059669),
+                            color: Color(0xFF00A884),
                             strokeWidth: 2.5,
                           ),
                         ),
                       )
                     : SingleChildScrollView(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                        physics: const BouncingScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // 24-hr Policy Info Pill
+                            // 1. 24-hr Policy Info Pill Notice
                             _build24HrPolicyNotice(),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 14),
 
-                            // Template Selector
+                            // 2. Select Approved Template Section
                             const Text(
                               'SELECT APPROVED TEMPLATE',
                               style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF475569),
-                                letterSpacing: 0.5,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF64748B),
+                                letterSpacing: 0.8,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            _buildTemplateChips(),
-                            const SizedBox(height: 18),
+                            _buildTemplateList(),
+                            const SizedBox(height: 14),
 
-                            // Message Live Preview Box
+                            // 3. Parameters Variable Input Section (compact inline)
+                            if (_selectedTemplate != null && _selectedTemplate!.parameters.isNotEmpty) ...[
+                              Row(
+                                children: [
+                                  const Text(
+                                    'FILL TEMPLATE VARIABLES',
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF64748B),
+                                      letterSpacing: 0.8,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFE0F2FE),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      '${_selectedTemplate!.parameters.length}',
+                                      style: const TextStyle(
+                                        fontSize: 9,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF0369A1),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              _buildParameterFields(_selectedTemplate!),
+                              const SizedBox(height: 14),
+                            ],
+
+                            // 4. Message Preview Box (As Customer Sees It)
                             if (_selectedTemplate != null) ...[
                               const Text(
                                 'MESSAGE PREVIEW (AS CUSTOMER SEES IT)',
                                 style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF475569),
-                                  letterSpacing: 0.5,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF64748B),
+                                  letterSpacing: 0.8,
                                 ),
                               ),
                               const SizedBox(height: 8),
                               _buildLivePreviewCard(_selectedTemplate!),
-                              const SizedBox(height: 18),
-
-                              // Parameter Inputs (if applicable)
-                              if (_selectedTemplate!.parameters.isNotEmpty) ...[
-                                Row(
-                                  children: [
-                                    const Text(
-                                      'FILL TEMPLATE VARIABLES',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w700,
-                                        color: Color(0xFF475569),
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFE0F2FE),
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                      child: Text(
-                                        '${_selectedTemplate!.parameters.length} params',
-                                        style: const TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: Color(0xFF0369A1),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 8),
-                                _buildParameterFields(_selectedTemplate!),
-                              ],
                             ],
                           ],
                         ),
                       ),
               ),
 
-              // Bottom Actions Bar
-              _buildBottomActions(isCompact),
+              // Bottom Actions Row (Cancel + Use Approved Template)
+              _buildBottomActions(),
             ],
           ),
         ),
@@ -384,104 +475,136 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
     );
   }
 
+  /// Refined Header with Squircle Emerald App Icon, Crisp Typography & Circular Close Button
   Widget _buildHeader() {
     final recipientTitle = widget.chat?.customerName.isNotEmpty == true
         ? widget.chat!.customerName
         : (widget.customerName?.isNotEmpty == true
             ? widget.customerName!
-            : (widget.chat?.customerPhone ?? widget.customerPhone ?? 'New Customer'));
+            : (widget.chat?.customerPhone ?? widget.customerPhone ?? 'Send to New Customer'));
+
+    final displaySubtitle = recipientTitle.startsWith('Send to')
+        ? recipientTitle
+        : 'Send to $recipientTitle';
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 16, 16),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
       child: Row(
         children: [
+          // Squircle Emerald Icon Container with gentle glow
           Container(
-            width: 38,
-            height: 38,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               gradient: const LinearGradient(
-                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                colors: [Color(0xFF00A884), Color(0xFF059669)],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x3800A884),
+                  blurRadius: 10,
+                  offset: Offset(0, 4),
+                ),
+              ],
             ),
-            child: const Icon(Icons.dashboard_customize_rounded, color: Colors.white, size: 20),
+            child: const Center(
+              child: Icon(
+                Icons.widgets_rounded,
+                color: Colors.white,
+                size: 22,
+              ),
+            ),
           ),
           const SizedBox(width: 12),
+          // Title & Subtitle
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    const Text(
-                      'Meta Approved Template',
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF0F172A),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1FAE5),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        '24-hr Bypass',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF065F46),
-                        ),
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'Meta Approved Template',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.2,
+                  ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Send to $recipientTitle',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF475569), fontWeight: FontWeight.w500),
+                  displaySubtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.close_rounded, color: Color(0xFF64748B), size: 20),
-            onPressed: () => Navigator.of(context).pop(),
+          // Circular Close Button (soft gray circle)
+          InkWell(
+            onTap: () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              width: 32,
+              height: 32,
+              decoration: const BoxDecoration(
+                color: Color(0xFFF1F5F9),
+                shape: BoxShape.circle,
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.close_rounded,
+                  size: 16,
+                  color: Color(0xFF475569),
+                ),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
+  /// 24-Hour Policy Notice Banner matching reference screenshot
   Widget _build24HrPolicyNotice() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FDF4),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFBBF7D0)),
+        color: const Color(0xFFE8FDF2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFA7F3D0).withValues(alpha: 0.6), width: 1),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: const [
-          Icon(Icons.verified_rounded, size: 18, color: Color(0xFF16A34A)),
-          SizedBox(width: 10),
-          Expanded(
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            margin: const EdgeInsets.only(top: 1),
+            decoration: const BoxDecoration(
+              color: Color(0xFF00A884),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Icon(Icons.info_outline_rounded, color: Colors.white, size: 14),
+            ),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
             child: Text(
-              'Meta WhatsApp allows sending approved templates at any time, even outside the 24-hour service window. Once the customer replies, regular chatting re-opens.',
+              'Meta WhatsApp allows sending approved templates at any time, even outside the 24-hour service window. Once the customer replies, the 24-hour service window will re-open.',
               style: TextStyle(
-                fontSize: 11.5,
-                color: Color(0xFF15803D),
+                fontSize: 10.5,
                 fontWeight: FontWeight.w500,
+                color: Color(0xFF065F46),
                 height: 1.35,
               ),
             ),
@@ -491,77 +614,100 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
     );
   }
 
-  Widget _buildTemplateChips() {
+  /// Vertical List of Embossed Soft Cards showing Category Type (UTILITY / MARKETING / AUTH)
+  Widget _buildTemplateList() {
     if (_templates.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(10),
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
         ),
         child: const Text(
           'No approved templates found on your Meta Business Account.',
-          style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
         ),
       );
     }
 
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    return Column(
       children: _templates.map((tmpl) {
         final isSelected = _selectedTemplate?.id == tmpl.id;
-        return InkWell(
-          onTap: () => _selectTemplate(tmpl),
-          borderRadius: BorderRadius.circular(10),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: isSelected ? const Color(0xFFECFDF5) : const Color(0xFFF8FAFC),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isSelected ? const Color(0xFF059669) : const Color(0xFFCBD5E1),
-                width: isSelected ? 1.5 : 1,
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 7),
+          child: InkWell(
+            onTap: () => _selectTemplate(tmpl),
+            borderRadius: BorderRadius.circular(16),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: isSelected ? const Color(0xFFE8FDF2) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(
+                  color: isSelected ? const Color(0xFF00A884) : const Color(0xFFE2E8F0),
+                  width: isSelected ? 1.5 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isSelected ? const Color(0x1400A884) : const Color(0x06000000),
+                    blurRadius: isSelected ? 6 : 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
               ),
-              boxShadow: isSelected
-                  ? const [BoxShadow(color: Color(0x1A059669), blurRadius: 4, offset: Offset(0, 2))]
-                  : null,
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isSelected ? Icons.radio_button_checked_rounded : Icons.radio_button_off_rounded,
-                  size: 15,
-                  color: isSelected ? const Color(0xFF059669) : const Color(0xFF64748B),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  tmpl.name,
-                  style: TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                    color: isSelected ? const Color(0xFF065F46) : const Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFF10B981) : const Color(0xFFE2E8F0),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    tmpl.language.toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.bold,
-                      color: isSelected ? Colors.white : const Color(0xFF334155),
+              child: Row(
+                children: [
+                  // Radio button
+                  Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: isSelected ? const Color(0xFF00A884) : const Color(0xFF94A3B8),
+                        width: isSelected ? 5.5 : 1.5,
+                      ),
+                      color: Colors.white,
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 10),
+                  // Template name
+                  Expanded(
+                    child: Text(
+                      tmpl.name,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Template Type Badge (UTILITY / MARKETING / AUTH)
+                  _buildCategoryBadge(tmpl.category, isSelected: isSelected),
+                  const SizedBox(width: 5),
+                  // Language Pill
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                    decoration: BoxDecoration(
+                      color: isSelected ? const Color(0xFFBFF2DE) : const Color(0xFFE2E8F0),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      tmpl.language.toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: isSelected ? const Color(0xFF065F46) : const Color(0xFF475569),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -569,189 +715,274 @@ class _WhatsAppTemplatePickerDialogState extends State<WhatsAppTemplatePickerDia
     );
   }
 
+  /// Message Preview Card with Category Type Indicator
   Widget _buildLivePreviewCard(WhatsAppTemplateModel tmpl) {
+    final previewText = _renderPreviewBody(tmpl);
+    final footerText = tmpl.footer.isNotEmpty
+        ? tmpl.footer
+        : (widget.businessName.isNotEmpty ? 'Knowwu / ${widget.businessName}' : 'Knowwu / APNA POS');
+
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFFEFEAE2), // WhatsApp wallpaper tone
+        color: const Color(0xFFE8FDF2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFA7F3D0).withValues(alpha: 0.7), width: 1),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A00A884),
+            blurRadius: 6,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // WhatsApp Bubble Icon
+          Container(
+            width: 30,
+            height: 30,
+            decoration: const BoxDecoration(
+              color: Color(0xFF25D366),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Icon(Icons.chat_bubble_rounded, color: Colors.white, size: 16),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Category Type & Template Name Bar
+                Row(
+                  children: [
+                    _buildCategoryBadge(tmpl.category, isSelected: true),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        tmpl.name,
+                        style: const TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0F172A),
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Rendered text with bold first parameter emphasis if OTP
+                _buildFormattedPreview(tmpl, previewText),
+                const SizedBox(height: 6),
+                // Footer
+                Text(
+                  footerText,
+                  style: const TextStyle(
+                    fontSize: 9,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Builds styled text for the preview highlighting OTP or code variables
+  Widget _buildFormattedPreview(WhatsAppTemplateModel tmpl, String text) {
+    if (tmpl.name.contains('otp')) {
+      final match = RegExp(r'[“"״]?(\d{4,8})[”"״]?').firstMatch(text);
+      if (match != null) {
+        final code = match.group(1)!;
+        final parts = text.split(match.group(0)!);
+        return RichText(
+          text: TextSpan(
+            style: const TextStyle(fontSize: 11.5, color: Color(0xFF0F172A), height: 1.35, fontWeight: FontWeight.w500),
+            children: [
+              if (parts.isNotEmpty) TextSpan(text: parts[0]),
+              TextSpan(
+                text: '“$code”',
+                style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFF047857), fontSize: 12),
+              ),
+              if (parts.length > 1) TextSpan(text: parts[1]),
+            ],
+          ),
+        );
+      }
+    }
+
+    return Text(
+      text,
+      style: const TextStyle(
+        fontSize: 11.5,
+        fontWeight: FontWeight.w500,
+        color: Color(0xFF0F172A),
+        height: 1.35,
+      ),
+    );
+  }
+
+  /// Compact parameters input form
+  Widget _buildParameterFields(WhatsAppTemplateModel tmpl) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.centerLeft,
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 420),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFD9FDD3), // WhatsApp outbound light green bubble
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(12),
-              topRight: Radius.circular(12),
-              bottomLeft: Radius.circular(12),
-              bottomRight: Radius.circular(3),
+      child: Column(
+        children: tmpl.parameters.map((p) {
+          final key = p.key.isNotEmpty ? p.key : (tmpl.parameters.indexOf(p) + 1).toString();
+          final controller = _paramControllers[key];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: 95,
+                  child: Text(
+                    p.label,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SizedBox(
+                    height: 34,
+                    child: TextField(
+                      controller: controller,
+                      style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
+                      decoration: InputDecoration(
+                        hintText: p.example.isNotEmpty ? p.example : 'Enter value',
+                        hintStyle: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: Color(0xFF00A884), width: 1.5),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            boxShadow: const [
-              BoxShadow(color: Color(0x12000000), blurRadius: 4, offset: Offset(0, 1)),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              if (tmpl.header.isNotEmpty) ...[
-                Text(
-                  tmpl.header,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-                const SizedBox(height: 6),
-              ],
-
-              // Body
-              Text(
-                _renderPreviewBody(tmpl),
-                style: const TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w500,
-                  color: Color(0xFF0F172A),
-                  height: 1.35,
-                ),
-              ),
-
-              // Footer
-              if (tmpl.footer.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(
-                  tmpl.footer,
-                  style: const TextStyle(
-                    fontSize: 10.5,
-                    color: Color(0xFF475569),
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
-
-              // Timestamp & Double-Check
-              const SizedBox(height: 4),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: const [
-                  Text(
-                    'Just now',
-                    style: TextStyle(fontSize: 10, color: Color(0xFF475569), fontWeight: FontWeight.w500),
-                  ),
-                  SizedBox(width: 4),
-                  Icon(Icons.done_all_rounded, size: 14, color: Color(0xFF0284C7)),
-                ],
-              ),
-            ],
-          ),
-        ),
+          );
+        }).toList(),
       ),
     );
   }
 
-  Widget _buildParameterFields(WhatsAppTemplateModel tmpl) {
-    return Column(
-      children: tmpl.parameters.map((p) {
-        final key = p.key.isNotEmpty ? p.key : (tmpl.parameters.indexOf(p) + 1).toString();
-        final controller = _paramControllers[key];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              SizedBox(
-                width: 120,
-                child: Text(
-                  p.label,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
-                  decoration: InputDecoration(
-                    hintText: p.example.isNotEmpty ? p.example : 'Enter value',
-                    hintStyle: const TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                    isDense: true,
-                    filled: true,
-                    fillColor: const Color(0xFFF8FAFC),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFF059669), width: 1.5),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildBottomActions(bool isCompact) {
+  /// Bottom Actions Bar matching reference image
+  Widget _buildBottomActions() {
     final isPickMode = widget.onTemplateSelected != null;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-      decoration: const BoxDecoration(
-        color: Color(0xFFF8FAFC),
-        border: Border(top: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(
-            onPressed: _isSending ? null : () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.w600)),
+          // Cancel Button (soft rounded card)
+          InkWell(
+            onTap: _isSending ? null : () => Navigator.of(context).pop(),
+            borderRadius: BorderRadius.circular(16),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x06000000),
+                    blurRadius: 4,
+                    offset: Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF334155),
+                ),
+              ),
+            ),
           ),
           const SizedBox(width: 10),
-          ElevatedButton.icon(
-            onPressed: (_isSending || _selectedTemplate == null) ? null : _sendOrSelectTemplate,
-            icon: _isSending
-                ? const SizedBox(
-                    width: 15,
-                    height: 15,
-                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                  )
-                : Icon(
-                    isPickMode ? Icons.check_circle_rounded : Icons.send_rounded,
-                    size: 16,
-                    color: Colors.white,
+          // Use / Send Approved Template Button
+          Expanded(
+            child: InkWell(
+              onTap: (_isSending || _selectedTemplate == null) ? null : _sendOrSelectTemplate,
+              borderRadius: BorderRadius.circular(16),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF00A884), Color(0xFF059669)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
-            label: Text(
-              _isSending
-                  ? 'Sending Template...'
-                  : (isPickMode ? 'Use Approved Template' : 'Send to Customer'),
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF059669),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 1,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x3300A884),
+                      blurRadius: 10,
+                      offset: Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: _isSending
+                    ? const Center(
+                        child: SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        ),
+                      )
+                    : Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.near_me_rounded, size: 16, color: Colors.white),
+                          const SizedBox(width: 6),
+                          Text(
+                            isPickMode ? 'Use Approved Template' : 'Send Approved Template',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
           ),
         ],

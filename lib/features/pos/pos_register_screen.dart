@@ -255,6 +255,30 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
     } else if (widget.initialOrderType != null && widget.initialOrderType != OrderType.dineIn) {
       _switchOrderType(widget.initialOrderType!);
     }
+
+    // Proactively pull latest menu catalog if local list is empty (e.g. web browser first visit)
+    if (db.menuItems.isEmpty) {
+      _autoLoadMenuFromCloud();
+    }
+  }
+
+  bool _isLoadingMenuCatalog = false;
+
+  Future<void> _autoLoadMenuFromCloud() async {
+    if (_isLoadingMenuCatalog) return;
+    setState(() => _isLoadingMenuCatalog = true);
+    try {
+      await db.syncWithBackend();
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      debugPrint('[POSRegister] _autoLoadMenuFromCloud error: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingMenuCatalog = false);
+      }
+    }
   }
 
   @override
@@ -10738,39 +10762,84 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFF003882).withValues(alpha: 0.35),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+              if (_isLoadingMenuCatalog) ...[
+                const SizedBox(height: 12),
+                const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF003882)),
+                    ),
+                    SizedBox(width: 10),
+                    Text(
+                      'Syncing products from cloud...',
+                      style: TextStyle(color: Color(0xFF003882), fontSize: 13, fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
-                child: ElevatedButton.icon(
-                  onPressed: _showAddItemDialog,
-                  icon: const Icon(Icons.add_rounded, size: 19, color: Colors.white),
-                  label: const Text(
-                    'Add Your First Item',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13.5,
-                      letterSpacing: 0.1,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF00337A),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                    shape: RoundedRectangleBorder(
+                const SizedBox(height: 12),
+              ],
+              Wrap(
+                spacing: 12,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  Container(
+                    decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF003882).withValues(alpha: 0.35),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                    elevation: 0,
+                    child: ElevatedButton.icon(
+                      onPressed: _showAddItemDialog,
+                      icon: const Icon(Icons.add_rounded, size: 19, color: Colors.white),
+                      label: const Text(
+                        'Add Your First Item',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          letterSpacing: 0.1,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF00337A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                        elevation: 0,
+                      ),
+                    ),
                   ),
-                ),
+                  OutlinedButton.icon(
+                    onPressed: _isLoadingMenuCatalog ? null : _autoLoadMenuFromCloud,
+                    icon: const Icon(Icons.cloud_sync_rounded, size: 19, color: Color(0xFF003882)),
+                    label: const Text(
+                      'Sync from Cloud',
+                      style: TextStyle(
+                        color: Color(0xFF003882),
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Color(0xFF003882), width: 1.5),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(24),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               if (isSearching) ...[
                 const SizedBox(height: 10),

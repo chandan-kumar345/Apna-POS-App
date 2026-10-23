@@ -307,15 +307,30 @@ class WhatsAppChatService {
 
     const defaultApprovedTemplates = [
       {
-        id: 'tmpl_hello_world',
-        name: 'hello_world',
+        id: 'tmpl_apna_pos_auth_otp_en',
+        name: 'apna_pos_auth_otp',
         status: 'APPROVED',
-        category: 'UTILITY',
+        category: 'AUTHENTICATION',
+        language: 'en',
+        header: '',
+        body: '“{{1}}” is your verification code. For your security, do not share this code with anyone.',
+        footer: 'Knowwu / APNA POS',
+        parameters: [
+          { key: '1', label: 'OTP Code', example: '123456' },
+        ],
+      },
+      {
+        id: 'tmpl_apna_pos_auth_otp_en_us',
+        name: 'apna_pos_auth_otp',
+        status: 'APPROVED',
+        category: 'AUTHENTICATION',
         language: 'en_US',
-        header: 'Hello World',
-        body: 'Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.',
-        footer: 'WhatsApp Business Platform sample message',
-        parameters: [],
+        header: '',
+        body: '“{{1}}” is your verification code. For your security, do not share this code with anyone.',
+        footer: 'Knowwu / APNA POS',
+        parameters: [
+          { key: '1', label: 'OTP Code', example: '123456' },
+        ],
       },
       {
         id: 'tmpl_ebill_receipt',
@@ -335,6 +350,33 @@ class WhatsAppChatService {
           { key: '6', label: 'Payment Status', example: 'Paid' },
           { key: '7', label: 'Payment Mode', example: 'UPI' },
         ],
+      },
+      {
+        id: 'tmpl_special_discount_offer',
+        name: 'special_discount_offer',
+        status: 'APPROVED',
+        category: 'MARKETING',
+        language: 'en',
+        header: 'Special Offer Just For You!',
+        body: 'Hello {{1}}! Enjoy a special {{2}}% discount on your next visit at {{3}}. Use coupon code {{4}} at checkout!',
+        footer: 'Valid for a limited time. Terms apply.',
+        parameters: [
+          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
+          { key: '2', label: 'Discount %', example: '20' },
+          { key: '3', label: 'Store Name', example: business?.name || 'Our Store' },
+          { key: '4', label: 'Coupon Code', example: 'SAVE20' },
+        ],
+      },
+      {
+        id: 'tmpl_hello_world',
+        name: 'hello_world',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en_US',
+        header: 'Hello World',
+        body: 'Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.',
+        footer: 'WhatsApp Business Platform sample message',
+        parameters: [],
       },
     ];
 
