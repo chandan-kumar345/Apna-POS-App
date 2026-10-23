@@ -1024,7 +1024,7 @@ class WhatsAppChatService {
         ApiEndpoints.whatsappAiAgentSimulate,
         data: {
           'message': message,
-          if (settingsOverride != null) 'settings': settingsOverride,
+          'settings': ?settingsOverride,
         },
       );
       if (res != null && res is Map<String, dynamic>) {

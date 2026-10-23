@@ -506,12 +506,36 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     );
   }
 
-  /// Redesigned New WhatsApp Chat Bottom Sheet Modal matching reference image
+  /// Redesigned New WhatsApp Chat Bottom Sheet Modal matching reference image with Meta Template Support & High-Contrast Typography
   void _showNewChatDialog() {
     final phoneCtrl = TextEditingController();
     final nameCtrl = TextEditingController();
     final msgCtrl = TextEditingController(text: 'Hello! How can we help you today?');
     bool isSubmitting = false;
+    WhatsAppTemplateModel? selectedTemplate;
+    List<String> selectedTemplateParams = [];
+    String? selectedTemplateLang;
+
+    void openTemplatePickerModal(StateSetter setSheetState) {
+      final bName = _db.restaurant?.name ?? _db.currentUser?.companyName ?? 'Our Store';
+      final phone = phoneCtrl.text.trim();
+      final name = nameCtrl.text.trim();
+
+      WhatsAppTemplatePickerDialog.pick(
+        context: context,
+        customerPhone: phone.isNotEmpty ? phone : null,
+        customerName: name.isNotEmpty ? name : null,
+        businessName: bName,
+        onSelected: (renderedText, template, parameters) {
+          setSheetState(() {
+            selectedTemplate = template;
+            selectedTemplateParams = parameters;
+            selectedTemplateLang = template.language;
+            msgCtrl.text = renderedText;
+          });
+        },
+      );
+    }
 
     showModalBottomSheet(
       context: context,
@@ -564,7 +588,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                             ),
                           ),
 
-                          // 2. Header Row: Squircle App Icon + Title + Subtitle (NO CROSS BUTTON per user request)
+                          // 2. Header Row: Squircle App Icon + Title + Subtitle
                           Row(
                             children: [
                               Container(
@@ -600,9 +624,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                     Text(
                                       'Start a 2-way conversation via Meta API',
                                       style: TextStyle(
-                                        fontSize: 10.5,
-                                        color: Color(0xFF64748B),
-                                        fontWeight: FontWeight.w500,
+                                        fontSize: 11,
+                                        color: Color(0xFF475569),
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ],
@@ -613,7 +637,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
                           const SizedBox(height: 14),
 
-                          // Quick Customer Picker from Store Customers
+                          // Quick Customer Picker from Store Customers (High-Contrast Text)
                           if (_db.customers.isNotEmpty) ...[
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -623,12 +647,12 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                   style: TextStyle(
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFF1E293B),
+                                    color: Color(0xFF0F172A),
                                   ),
                                 ),
                                 Text(
                                   '${_db.customers.length} saved',
-                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B), fontWeight: FontWeight.w500),
+                                  style: const TextStyle(fontSize: 11, color: Color(0xFF475569), fontWeight: FontWeight.w600),
                                 ),
                               ],
                             ),
@@ -648,13 +672,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                       radius: 10,
                                       child: Icon(Icons.person, size: 12, color: Colors.white),
                                     ),
-                                    label: Text(displayName, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                                    label: Text(
+                                      displayName,
+                                      style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF0F172A), // High contrast deep navy text
+                                      ),
+                                    ),
                                     backgroundColor: const Color(0xFFF1F5F9),
                                     side: const BorderSide(color: Color(0xFFCBD5E1), width: 0.8),
                                     padding: const EdgeInsets.symmetric(horizontal: 4),
                                     onPressed: () {
                                       phoneCtrl.text = cust.phone;
                                       nameCtrl.text = cust.name;
+                                      setSheetState(() {});
                                     },
                                   );
                                 },
@@ -671,7 +703,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                 style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1E293B),
+                                  color: Color(0xFF0F172A),
                                 ),
                               ),
                               SizedBox(width: 3),
@@ -706,7 +738,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                       '+91',
                                       style: TextStyle(
                                         fontSize: 12.5,
-                                        fontWeight: FontWeight.w700,
+                                        fontWeight: FontWeight.w800,
                                         color: Color(0xFF0F172A),
                                       ),
                                     ),
@@ -724,7 +756,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                     keyboardType: TextInputType.phone,
                                     style: const TextStyle(
                                       fontSize: 12.5,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.w700,
                                       color: Color(0xFF0F172A),
                                     ),
                                     decoration: const InputDecoration(
@@ -748,7 +780,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                             style: TextStyle(
                               fontSize: 11.5,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF1E293B),
+                              color: Color(0xFF0F172A),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -766,7 +798,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                 Expanded(
                                   child: TextField(
                                     controller: nameCtrl,
-                                    style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A)),
+                                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Color(0xFF0F172A)),
                                     decoration: const InputDecoration(
                                       hintText: 'e.g. Rahul Sharma',
                                       hintStyle: TextStyle(fontSize: 12.5, color: Color(0xFF94A3B8)),
@@ -782,19 +814,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
                           const SizedBox(height: 14),
 
-                          // 5. Initial WhatsApp Message Field with Character Counter
+                          // 5. Initial WhatsApp Message Field with Character Counter & Approved Template Picker
                           Row(
-                            children: const [
-                              Text(
+                            children: [
+                              const Text(
                                 'Initial WhatsApp Message',
                                 style: TextStyle(
                                   fontSize: 11.5,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF1E293B),
+                                  color: Color(0xFF0F172A),
                                 ),
                               ),
-                              SizedBox(width: 3),
-                              Text(
+                              const SizedBox(width: 3),
+                              const Text(
                                 '*',
                                 style: TextStyle(
                                   fontSize: 12,
@@ -802,47 +834,179 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                   color: Color(0xFFEF4444),
                                 ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFFAFDFA),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(color: const Color(0xFFA7F3D0), width: 1.2),
-                            ),
-                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                TextField(
-                                  controller: msgCtrl,
-                                  minLines: 3,
-                                  maxLines: 4,
-                                  onChanged: (_) => setSheetState(() {}),
-                                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), height: 1.3),
-                                  decoration: const InputDecoration(
-                                    hintText: 'Type initial message...',
-                                    hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
-                                    border: InputBorder.none,
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
+                              const Spacer(),
+                              // Header Action Pill to Pick Approved Template
+                              InkWell(
+                                onTap: () => openTemplatePickerModal(setSheetState),
+                                borderRadius: BorderRadius.circular(12),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: selectedTemplate != null ? const Color(0xFFDCFCE7) : const Color(0xFFE8FDF2),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: selectedTemplate != null ? const Color(0xFF059669) : const Color(0xFFA7F3D0),
+                                      width: selectedTemplate != null ? 1.2 : 0.9,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.dashboard_customize_rounded,
+                                        size: 13,
+                                        color: selectedTemplate != null ? const Color(0xFF059669) : const Color(0xFF00A884),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        selectedTemplate != null ? 'Template: ${selectedTemplate!.name}' : 'Use Approved Template',
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF065F46),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 4),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: Text(
-                                    '${msgCtrl.text.length}/1024',
-                                    style: const TextStyle(
-                                      fontSize: 9.5,
-                                      color: Color(0xFF94A3B8),
-                                      fontWeight: FontWeight.w500,
+                              ),
+                            ],
+                          ),
+
+                          // Selected Template Confirmation Banner
+                          if (selectedTemplate != null) ...[
+                            Container(
+                              margin: const EdgeInsets.only(top: 6, bottom: 4),
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFD1FAE5),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: const Color(0xFF10B981)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF065F46)),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      'Meta Template: ${selectedTemplate!.name} (${selectedTemplate!.category})',
+                                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: 'Remove template and use custom text',
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        setSheetState(() {
+                                          selectedTemplate = null;
+                                          selectedTemplateParams = [];
+                                          selectedTemplateLang = null;
+                                          msgCtrl.text = 'Hello! How can we help you today?';
+                                        });
+                                      },
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(2.0),
+                                        child: Icon(Icons.close_rounded, size: 16, color: Color(0xFF065F46)),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+
+                          const SizedBox(height: 6),
+                          Stack(
+                            children: [
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: selectedTemplate != null ? const Color(0xFFF0FDF4) : const Color(0xFFFAFDFA),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: selectedTemplate != null ? const Color(0xFF10B981) : const Color(0xFFA7F3D0),
+                                    width: 1.2,
+                                  ),
+                                ),
+                                padding: const EdgeInsets.fromLTRB(14, 12, 44, 8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: [
+                                    TextField(
+                                      controller: msgCtrl,
+                                      minLines: 3,
+                                      maxLines: 4,
+                                      onChanged: (_) => setSheetState(() {}),
+                                      style: const TextStyle(fontSize: 12.5, color: Color(0xFF0F172A), height: 1.3),
+                                      decoration: const InputDecoration(
+                                        hintText: 'Type initial message...',
+                                        hintStyle: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                                        border: InputBorder.none,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.zero,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        if (selectedTemplate != null)
+                                          const Text(
+                                            'Meta Template (24h Window Bypass)',
+                                            style: TextStyle(
+                                              fontSize: 9.5,
+                                              color: Color(0xFF059669),
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          )
+                                        else
+                                          const SizedBox.shrink(),
+                                        Text(
+                                          '${msgCtrl.text.length}/1024',
+                                          style: const TextStyle(
+                                            fontSize: 9.5,
+                                            color: Color(0xFF64748B),
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Dedicated Circular (+) Button matching user's red circle!
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: Tooltip(
+                                  message: 'Send Approved Meta Template',
+                                  child: InkWell(
+                                    onTap: () => openTemplatePickerModal(setSheetState),
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      width: 30,
+                                      height: 30,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFE8FDF2),
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: const Color(0xFF00A884), width: 1.2),
+                                        boxShadow: const [
+                                          BoxShadow(
+                                            color: Color(0x1A00A884),
+                                            blurRadius: 4,
+                                            offset: Offset(0, 2),
+                                          ),
+                                        ],
+                                      ),
+                                      child: const Center(
+                                        child: Icon(Icons.add, size: 18, color: Color(0xFF00A884)),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
 
                           const SizedBox(height: 18),
@@ -859,7 +1023,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(22),
-                                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                                      border: Border.all(color: const Color(0xFFCBD5E1)),
                                     ),
                                     alignment: Alignment.center,
                                     child: const Text(
@@ -867,7 +1031,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                       style: TextStyle(
                                         fontSize: 12.5,
                                         fontWeight: FontWeight.w700,
-                                        color: Color(0xFF334155),
+                                        color: Color(0xFF1E293B),
                                       ),
                                     ),
                                   ),
@@ -898,6 +1062,9 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                               customerPhone: phone,
                                               customerName: nameCtrl.text.trim(),
                                               initialMessage: msgCtrl.text.trim(),
+                                              templateName: selectedTemplate?.name,
+                                              languageCode: selectedTemplateLang ?? selectedTemplate?.language,
+                                              parameters: selectedTemplate != null ? selectedTemplateParams : null,
                                             );
                                             if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                                             if (chat != null && mounted) {
@@ -913,7 +1080,6 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                                                   'Meta Sandbox: In Development Mode, messages can only be sent to verified test numbers. In Meta Console, add this number to "To" phone numbers, or switch App to Live Mode.',
                                                 );
                                               } else if (_isMetaPhoneIdError(errStr)) {
-                                                // Close the sheet and show fix prompt
                                                 if (sheetCtx.mounted) Navigator.pop(sheetCtx);
                                                 _showErrorSnackBar(errStr);
                                               } else {
