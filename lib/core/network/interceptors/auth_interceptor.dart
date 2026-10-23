@@ -29,12 +29,15 @@ class AuthInterceptor extends Interceptor {
     }
 
     final deviceId = await _storageService.getDeviceId();
-    if (deviceId != null) {
-      options.headers['X-Device-ID'] = deviceId;
+    if (deviceId != null && deviceId.trim().isNotEmpty) {
+      options.headers['X-Device-ID'] = deviceId.trim();
     }
 
     final businessId = await _storageService.getBusinessId();
-    if (businessId != null && businessId.trim().isNotEmpty) {
+    if (businessId != null &&
+        businessId.trim().isNotEmpty &&
+        businessId.trim() != 'rest_001' &&
+        !businessId.trim().startsWith('rest_')) {
       options.headers['X-Business-ID'] = businessId.trim();
     }
 

@@ -19,15 +19,39 @@ app.use(
   })
 );
 
-// 2. CORS Configuration
-app.use(
-  cors({
-    origin: env.CLIENT_URL === '*' ? '*' : env.CLIENT_URL.split(','),
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-ID', 'X-Request-Timestamp', 'Bypass-Tunnel-Reminder'],
-    credentials: true,
-  })
-);
+// 2. CORS Configuration (Full support for browser web clients e.g. Vercel, localhost, Android & Windows)
+const allowedCorsHeaders = [
+  'Content-Type',
+  'Authorization',
+  'X-Device-ID',
+  'x-device-id',
+  'X-Business-ID',
+  'x-business-id',
+  'X-Request-Timestamp',
+  'x-request-timestamp',
+  'Bypass-Tunnel-Reminder',
+  'bypass-tunnel-reminder',
+  'Accept',
+  'Origin',
+  'X-Requested-With',
+  'Access-Control-Request-Method',
+  'Access-Control-Request-Headers',
+];
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Reflect caller origin so credentials (cookies/Bearer tokens) succeed across browsers without wildcard rejection
+    callback(null, true);
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: allowedCorsHeaders,
+  exposedHeaders: ['Content-Range', 'X-Content-Range'],
+  credentials: true,
+  maxAge: 86400, // Cache preflight for 24h
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
 // 3. Rate Limiting for production security
 const limiter = rateLimit({
@@ -44,6 +68,7 @@ const limiter = rateLimit({
     },
   },
   skip: (req) => {
+    if (req.method === 'OPTIONS') return true;
     if (env.NODE_ENV === 'test' || env.NODE_ENV === 'development') return true;
     const ip = req.ip || req.connection?.remoteAddress || '';
     return (
@@ -102,7 +127,6 @@ app.get(['/admin', '/admin/*', '/dashboard', '/dashboard/*'], (req, res) => {
 // 7. Mount Versioned APIs under /api/v1 and /api
 app.use('/api/v1', routes);
 app.use('/api', routes);
-
 
 // 7. Root ping
 app.get('/', (req, res) => {

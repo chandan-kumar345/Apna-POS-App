@@ -264,16 +264,36 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
 
   bool _isLoadingMenuCatalog = false;
 
-  Future<void> _autoLoadMenuFromCloud() async {
+  Future<void> _autoLoadMenuFromCloud({bool showFeedback = false}) async {
     if (_isLoadingMenuCatalog) return;
     setState(() => _isLoadingMenuCatalog = true);
     try {
       await db.syncWithBackend();
       if (mounted) {
         setState(() {});
+        if (showFeedback) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Synced ${db.menuItems.length} products and ${db.orders.length} orders from cloud!'),
+              backgroundColor: const Color(0xFF10B981),
+              behavior: SnackBarBehavior.floating,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
       }
     } catch (e) {
       debugPrint('[POSRegister] _autoLoadMenuFromCloud error: $e');
+      if (mounted && showFeedback) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sync failed: $e'),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoadingMenuCatalog = false);
@@ -10821,7 +10841,7 @@ class _PosRegisterScreenState extends State<PosRegisterScreen> {
                     ),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _isLoadingMenuCatalog ? null : _autoLoadMenuFromCloud,
+                    onPressed: _isLoadingMenuCatalog ? null : () => _autoLoadMenuFromCloud(showFeedback: true),
                     icon: const Icon(Icons.cloud_sync_rounded, size: 19, color: Color(0xFF003882)),
                     label: const Text(
                       'Sync from Cloud',

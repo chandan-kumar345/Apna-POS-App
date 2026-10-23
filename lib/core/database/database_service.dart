@@ -2284,6 +2284,13 @@ class DatabaseService extends ChangeNotifier {
       } catch (e) {
         debugPrint('[DatabaseService] sync staff error: $e');
       }
+
+      // 7. Fetch Live Customers / CRM from Backend
+      try {
+        await syncCustomersFromBackend();
+      } catch (e) {
+        debugPrint('[DatabaseService] sync customers error: $e');
+      }
     } finally {
       _isSyncing = false;
       notifyListeners();
