@@ -640,4 +640,15 @@ class LocalNotificationService with WidgetsBindingObserver {
       debugPrint('[LocalNotificationService] Error delivering login welcome push notification: $e');
     }
   }
+  /// Cancel any pending local push notification for an order that has been handled
+  Future<void> cancelNotificationForOrder(String orderId) async {
+    if (orderId.trim().isEmpty || !_isSupportedPlatform) return;
+    try {
+      final id = orderId.trim().hashCode.abs().remainder(100000);
+      await _notificationsPlugin.cancel(id);
+      debugPrint('[LocalNotificationService] Cancelled push notification for order: $orderId (ID: $id)');
+    } catch (e) {
+      debugPrint('[LocalNotificationService] Error cancelling notification: $e');
+    }
+  }
 }

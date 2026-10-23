@@ -10,6 +10,7 @@ import 'local_notification_service.dart';
 import 'sound_service.dart';
 import '../../features/chat/meta_whatsapp_chat_screen.dart';
 import '../../features/notifications/models/notification_model.dart';
+import '../../features/orders/whatsapp_order_action_dialog.dart';
 
 typedef TableUpdateCallback = void Function(TableModel table);
 typedef TablesBatchUpdateCallback = void Function(List<TableModel> tables);
@@ -176,7 +177,10 @@ class SocketService {
       socket.on('whatsapp:message', (data) => _handleWhatsAppMessage(data));
       socket.on('whatsapp:chat_updated', (data) => _handleWhatsAppChatUpdated(data));
       socket.on('whatsapp:message:updated', (data) => _handleWhatsAppMessageUpdated(data));
-      socket.on('whatsapp:order:request', (data) => _handleWhatsAppOrderRequest(data));
+            socket.on('whatsapp:order:request', (data) => _handleWhatsAppOrderRequest(data));
+      socket.on('whatsapp:order:dismiss', (data) => _handleWhatsAppOrderDismiss(data));
+      socket.on('whatsapp:order:accepted', (data) => _handleWhatsAppOrderAccepted(data));
+      socket.on('whatsapp:order:rejected', (data) => _handleWhatsAppOrderRejected(data));
 
       socket.connect();
     } catch (e) {
@@ -307,11 +311,29 @@ class SocketService {
     }
   }
 
-  void _handleOrderUpdated(dynamic data) {
+    void _handleOrderUpdated(dynamic data) {
     try {
       if (data == null) return;
       final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
-      debugPrint('[SocketService] Received order:updated event for: ${rawMap['orderNumber'] ?? rawMap['orderId']} (Status: ${rawMap['status']})');
+      final orderId = (rawMap['orderId'] ?? rawMap['_id'] ?? rawMap['id'] ?? '').toString();
+      final orderNumber = rawMap['orderNumber']?.toString();
+      final status = rawMap['status']?.toString().toLowerCase();
+
+      debugPrint('[SocketService] Received order:updated event for: ${orderNumber ?? orderId} (Status: $status)');
+
+      // If order transitioned out of pending, dismiss modal and stop ringtone on all devices
+      if (status != null && status != 'pending') {
+        SoundService.stopOrderRingtone();
+        WhatsAppOrderActionDialog.dismissIfShowing(
+          orderId: orderId,
+          orderNumber: orderNumber,
+          action: status,
+        );
+        if (orderId.isNotEmpty) {
+          LocalNotificationService().cancelNotificationForOrder(orderId);
+        }
+      }
+
       onOrderUpdated?.call(rawMap);
     } catch (e) {
       debugPrint('[SocketService] Error processing order:updated event: $e');
@@ -351,6 +373,7 @@ class SocketService {
 
           // 2. High priority notification in native notification bar
           LocalNotificationService().showPushNotification(
+            id: orderModel.id.isNotEmpty ? orderModel.id.hashCode.abs().remainder(100000) : 0,
             title: isWhatsApp
                 ? '🔔 New WhatsApp Order: #${orderModel.orderNumber}'
                 : '🔔 New Order Received: #${orderModel.orderNumber}',
@@ -573,6 +596,7 @@ class SocketService {
 
       // 2. Trigger high-priority floating push notification in native notification tray
       LocalNotificationService().showPushNotification(
+        id: orderId.isNotEmpty ? orderId.hashCode.abs().remainder(100000) : 0,
         title: '🔔 New WhatsApp Order: #$orderNumber',
         body: '$customerName ordered ₹${totalAmount.toStringAsFixed(0)} • Tap to Accept/Reject',
         payload: jsonEncode({
@@ -605,6 +629,107 @@ class SocketService {
       });
     } catch (e) {
       debugPrint('[SocketService] Error processing whatsapp:order:request: $e');
+    }
+  }
+
+  void _handleWhatsAppOrderDismiss(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      final orderId = (rawMap['orderId'] ?? rawMap['id'] ?? rawMap['_id'] ?? '').toString();
+      final orderNumber = rawMap['orderNumber']?.toString();
+      final action = rawMap['action']?.toString() ?? 'handled';
+      final reason = rawMap['reason']?.toString();
+
+      debugPrint('[SocketService] 🔔 Received whatsapp:order:dismiss for order: $orderId (#$orderNumber, Action: $action)');
+
+      // 1. Immediately halt incoming order ringtone on this device
+      SoundService.stopOrderRingtone();
+
+      // 2. Programmatically close the dialog if currently visible on this device
+      WhatsAppOrderActionDialog.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: action,
+        reason: reason,
+      );
+
+      // 3. Clear any lingering system push notification for this order
+      if (orderId.isNotEmpty) {
+        LocalNotificationService().cancelNotificationForOrder(orderId);
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:order:dismiss: $e');
+    }
+  }
+
+  void _handleWhatsAppOrderAccepted(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      final orderMap = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
+      final orderId = (orderMap['_id'] ?? orderMap['id'] ?? rawMap['orderId'] ?? '').toString();
+      final orderNumber = (orderMap['orderNumber'] ?? rawMap['orderNumber'])?.toString();
+
+      debugPrint('[SocketService] 🔔 Received whatsapp:order:accepted for order: $orderId (#$orderNumber)');
+      SoundService.stopOrderRingtone();
+      WhatsAppOrderActionDialog.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: 'accepted',
+      );
+      if (orderId.isNotEmpty) {
+        LocalNotificationService().cancelNotificationForOrder(orderId);
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:order:accepted: $e');
+    }
+  }
+
+  void _handleWhatsAppOrderRejected(dynamic data) {
+    try {
+      if (data == null) return;
+      final Map<String, dynamic> rawMap = data is Map ? Map<String, dynamic>.from(data) : {};
+      final orderMap = rawMap['order'] is Map ? Map<String, dynamic>.from(rawMap['order'] as Map) : rawMap;
+      final orderId = (orderMap['_id'] ?? orderMap['id'] ?? rawMap['orderId'] ?? '').toString();
+      final orderNumber = (orderMap['orderNumber'] ?? rawMap['orderNumber'])?.toString();
+      final reason = rawMap['reason']?.toString();
+
+      debugPrint('[SocketService] 🔔 Received whatsapp:order:rejected for order: $orderId (#$orderNumber)');
+      SoundService.stopOrderRingtone();
+      WhatsAppOrderActionDialog.dismissIfShowing(
+        orderId: orderId,
+        orderNumber: orderNumber,
+        action: 'rejected',
+        reason: reason,
+      );
+      if (orderId.isNotEmpty) {
+        LocalNotificationService().cancelNotificationForOrder(orderId);
+      }
+    } catch (e) {
+      debugPrint('[SocketService] Error processing whatsapp:order:rejected: $e');
+    }
+  }
+
+  /// Broadcast interactive order modal action (accept/reject) to all other devices in real-time (<15ms)
+  void emitOrderModalAction({
+    required String orderId,
+    String? orderNumber,
+    required String action,
+    int? prepTimeMinutes,
+    String? reason,
+  }) {
+    if (_socket != null && _socket!.connected) {
+      _socket!.emit('order:modal_action', {
+        'orderId': orderId,
+        'orderNumber': orderNumber,
+        'action': action,
+        'prepTimeMinutes': prepTimeMinutes,
+        'reason': reason,
+        'businessId': _currentBusinessId,
+        'timestamp': DateTime.now().toIso8601String(),
+      });
+      debugPrint('[SocketService] ⚡ Emitted order:modal_action for order: $orderId ($action)');
     }
   }
 

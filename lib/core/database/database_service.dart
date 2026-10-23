@@ -1917,6 +1917,7 @@ class DatabaseService extends ChangeNotifier {
               companyName: prof?['companyName']?.toString() ?? u['companyName']?.toString(),
               profilePhotoPath: cleanLogo ?? currentUser?.profilePhotoPath,
             );
+            await _prefs?.setString('apna_pos_user', jsonEncode(currentUser!.toJson()));
           }
 
           final rawBizSub = b?['subscription'];
@@ -1970,6 +1971,10 @@ class DatabaseService extends ChangeNotifier {
 
           if (cleanLogo != null && cleanLogo.isNotEmpty) {
             await _prefs?.setString('apna_pos_company_logo', cleanLogo);
+            if (restaurant != null) {
+              restaurant = restaurant!.copyWith(logoUrl: cleanLogo);
+              await _saveRestaurantToPrefs();
+            }
           }
 
           // Sync Category Images from Business Profile / Settings

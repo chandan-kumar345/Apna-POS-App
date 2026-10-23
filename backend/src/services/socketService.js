@@ -100,6 +100,40 @@ class SocketService {
       });
 
       // Ping-pong synchronization test
+      
+      // Real-time peer-to-peer order modal action sync across multiple logged-in devices (<15ms)
+      socket.on('order:modal_action', (data) => {
+        try {
+          const { orderId, orderNumber, action, prepTimeMinutes, reason, businessId } = data || {};
+          const bId = businessId || socket.businessId;
+          if (!bId || !orderId) return;
+
+          const cleanId = bId.toString();
+          const dismissPayload = {
+            orderId: orderId.toString(),
+            orderNumber: orderNumber ? orderNumber.toString() : '',
+            action: action || 'accepted',
+            prepTimeMinutes: prepTimeMinutes || 20,
+            reason: reason || '',
+            bySocketId: socket.id,
+            timestamp: new Date().toISOString(),
+          };
+
+          // Broadcast dismiss event to all other connected devices for this business/user (excluding sender)
+          socket.to(`business_${cleanId}`).emit('whatsapp:order:dismiss', dismissPayload);
+          socket.to(`business:${cleanId}`).emit('whatsapp:order:dismiss', dismissPayload);
+          socket.to(`user_${cleanId}`).emit('whatsapp:order:dismiss', dismissPayload);
+          if (socket.user?.id || socket.user?._id) {
+            const uId = (socket.user.id || socket.user._id).toString();
+            socket.to(`user_${uId}`).emit('whatsapp:order:dismiss', dismissPayload);
+          }
+          socket.to('business_rest_001').emit('whatsapp:order:dismiss', dismissPayload);
+          socket.to('business_default').emit('whatsapp:order:dismiss', dismissPayload);
+        } catch (err) {
+          console.warn('[SocketService] Error processing order:modal_action:', err.message);
+        }
+      });
+
       socket.on('ping_sync', (data, ack) => {
         const response = {
           status: 'ok',
@@ -227,13 +261,28 @@ class SocketService {
    * @param {string|mongoose.Types.ObjectId} businessId
    * @param {object} orderData
    */
-  emitOrderUpdated(businessId, orderData) {
+    emitOrderUpdated(businessId, orderData) {
     if (!businessId || !orderData) return;
     const payload = {
       ...orderData,
       timestamp: new Date().toISOString(),
     };
     this.broadcastToBusiness(businessId, 'order:updated', payload);
+
+    // If order transitioned out of pending (e.g. accepted, preparing, completed, cancelled)
+    const status = (orderData.status || orderData.order?.status || '').toString().toLowerCase();
+    if (status && status !== 'pending') {
+      const ordId = (orderData.orderId || orderData._id || orderData.id || orderData.order?._id || orderData.order?.id || '').toString();
+      const ordNum = (orderData.orderNumber || orderData.order?.orderNumber || '').toString();
+      if (ordId || ordNum) {
+        this.broadcastToBusiness(businessId, 'whatsapp:order:dismiss', {
+          orderId: ordId,
+          orderNumber: ordNum,
+          action: status,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    }
   }
 
   /**
@@ -487,8 +536,10 @@ class SocketService {
   /**
    * Emit WhatsApp order accepted event across terminals
    */
-  emitWhatsAppOrderAccepted(businessId, { order, prepTimeMinutes }) {
+    emitWhatsAppOrderAccepted(businessId, { order, prepTimeMinutes }) {
     if (!this.io) return;
+    const ordId = (order?._id ? order._id.toString() : (order?.id || '')).toString();
+    const ordNum = (order?.orderNumber || '').toString();
     const payload = {
       type: 'whatsapp_order_accepted',
       order,
@@ -496,26 +547,22 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
 
-    if (businessId) {
-      const cleanId = businessId.toString();
-      this.io.to(`business_${cleanId}`).emit('whatsapp:order:accepted', payload);
-      this.io.to(`business:${cleanId}`).emit('whatsapp:order:accepted', payload);
-      this.io.to(`business_${cleanId}`).emit('order:updated', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order,
-      });
-      this.io.to(`business:${cleanId}`).emit('order:updated', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order,
-      });
-    }
+    const dismissPayload = {
+      orderId: ordId,
+      orderNumber: ordNum,
+      action: 'accepted',
+      prepTimeMinutes,
+      timestamp: new Date().toISOString(),
+    };
 
-    this.io.to('business_rest_001').emit('whatsapp:order:accepted', payload);
-    this.io.to('business_default').emit('whatsapp:order:accepted', payload);
+    this.broadcastToBusiness(businessId, 'whatsapp:order:accepted', payload);
+    this.broadcastToBusiness(businessId, 'whatsapp:order:dismiss', dismissPayload);
+    this.broadcastToBusiness(businessId, 'order:updated', {
+      orderId: ordId,
+      orderNumber: ordNum,
+      status: order?.status || 'preparing',
+      order,
+    });
   }
 
   /**
@@ -523,6 +570,8 @@ class SocketService {
    */
   emitWhatsAppOrderRejected(businessId, { order, reason }) {
     if (!this.io) return;
+    const ordId = (order?._id ? order._id.toString() : (order?.id || '')).toString();
+    const ordNum = (order?.orderNumber || '').toString();
     const payload = {
       type: 'whatsapp_order_rejected',
       order,
@@ -530,26 +579,22 @@ class SocketService {
       timestamp: new Date().toISOString(),
     };
 
-    if (businessId) {
-      const cleanId = businessId.toString();
-      this.io.to(`business_${cleanId}`).emit('whatsapp:order:rejected', payload);
-      this.io.to(`business:${cleanId}`).emit('whatsapp:order:rejected', payload);
-      this.io.to(`business_${cleanId}`).emit('order:updated', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order,
-      });
-      this.io.to(`business:${cleanId}`).emit('order:updated', {
-        orderId: order._id ? order._id.toString() : order.id,
-        orderNumber: order.orderNumber,
-        status: order.status,
-        order,
-      });
-    }
+    const dismissPayload = {
+      orderId: ordId,
+      orderNumber: ordNum,
+      action: 'rejected',
+      reason,
+      timestamp: new Date().toISOString(),
+    };
 
-    this.io.to('business_rest_001').emit('whatsapp:order:rejected', payload);
-    this.io.to('business_default').emit('whatsapp:order:rejected', payload);
+    this.broadcastToBusiness(businessId, 'whatsapp:order:rejected', payload);
+    this.broadcastToBusiness(businessId, 'whatsapp:order:dismiss', dismissPayload);
+    this.broadcastToBusiness(businessId, 'order:updated', {
+      orderId: ordId,
+      orderNumber: ordNum,
+      status: order?.status || 'cancelled',
+      order,
+    });
   }
 
   getIO() {

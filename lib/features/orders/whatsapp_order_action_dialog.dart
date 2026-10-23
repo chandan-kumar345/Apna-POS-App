@@ -7,6 +7,8 @@ import '../../core/database/database_service.dart';
 import '../../core/models/order_model.dart';
 import '../../core/services/order_service.dart';
 import '../../core/services/sound_service.dart';
+import '../../core/services/socket_service.dart';
+import '../../core/services/local_notification_service.dart';
 import '../chat/meta_whatsapp_chat_screen.dart';
 
 class WhatsAppOrderActionDialog extends StatefulWidget {
@@ -35,6 +37,12 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
 
   static bool _isShowing = false;
   static String? _currentShowingOrderId;
+  static String? _currentShowingOrderNumber;
+  static BuildContext? _currentDialogContext;
+
+  static bool get isShowing => _isShowing;
+  static String? get currentShowingOrderId => _currentShowingOrderId;
+  static String? get currentShowingOrderNumber => _currentShowingOrderNumber;
 
   /// Show the interactive WhatsApp Order Accept / Reject dialog
   static Future<void> show(
@@ -49,7 +57,7 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
     dynamic itemsPayload,
     DateTime? createdAt,
   }) async {
-    if (_isShowing && _currentShowingOrderId == orderId) return;
+    if (_isShowing && (_currentShowingOrderId == orderId || _currentShowingOrderNumber == orderNumber)) return;
 
     List<Map<String, dynamic>> parsedItems = [];
     if (itemsPayload is List) {
@@ -73,6 +81,7 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
 
     _isShowing = true;
     _currentShowingOrderId = orderId;
+    _currentShowingOrderNumber = orderNumber;
 
     try {
       SoundService.playOrderRingtone();
@@ -83,7 +92,9 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
         context: context,
         barrierDismissible: false,
         useRootNavigator: true,
-        builder: (_) => WhatsAppOrderActionDialog(
+        builder: (dialogContext) {
+          _currentDialogContext = dialogContext;
+          return WhatsAppOrderActionDialog(
           orderId: orderId,
           orderNumber: orderNumber,
           customerPhone: customerPhone,
@@ -93,13 +104,125 @@ class WhatsAppOrderActionDialog extends StatefulWidget {
           deliveryAddress: deliveryAddress ?? '',
           items: parsedItems,
           createdAt: createdAt ?? DateTime.now(),
-        ),
+        );
+        },
       );
     } finally {
       SoundService.stopOrderRingtone();
       _isShowing = false;
       _currentShowingOrderId = null;
+      _currentShowingOrderNumber = null;
+      _currentDialogContext = null;
     }
+  }
+
+
+  /// Dismiss the popup if showing on this device when order is handled on another device
+  static void dismissIfShowing({
+    String? orderId,
+    String? orderNumber,
+    String? action,
+    String? reason,
+  }) {
+    if (!_isShowing) return;
+
+    if (!_matchesShowingOrder(orderId, orderNumber)) {
+      debugPrint('[WhatsAppOrderActionDialog] dismissIfShowing skipped: target ($orderId / $orderNumber) does not match showing ($_currentShowingOrderId / $_currentShowingOrderNumber)');
+      return;
+    }
+
+    final poppedOrderNum = _currentShowingOrderNumber ?? orderNumber;
+    debugPrint('[WhatsAppOrderActionDialog] 🚪 Auto-dismissing popup for order: $_currentShowingOrderId (#$poppedOrderNum) due to multi-device action ($action)');
+
+    try {
+      SoundService.stopOrderRingtone();
+    } catch (_) {}
+
+    final ctx = _currentDialogContext;
+    if (ctx != null && ctx.mounted) {
+      try {
+        if (Navigator.of(ctx, rootNavigator: true).canPop()) {
+          Navigator.of(ctx, rootNavigator: true).pop();
+        }
+      } catch (e) {
+        debugPrint('[WhatsAppOrderActionDialog] Error popping via _currentDialogContext: $e');
+      }
+    } else {
+      final navCtx = LocalNotificationService.navigatorKey.currentContext;
+      if (navCtx != null && navCtx.mounted) {
+        try {
+          if (Navigator.of(navCtx, rootNavigator: true).canPop()) {
+            Navigator.of(navCtx, rootNavigator: true).pop();
+          }
+        } catch (e) {
+          debugPrint('[WhatsAppOrderActionDialog] Error popping via navigatorKey: $e');
+        }
+      }
+    }
+
+    _isShowing = false;
+    _currentShowingOrderId = null;
+    _currentShowingOrderNumber = null;
+    _currentDialogContext = null;
+
+    // Show a concise, reassuring message on this device
+    final navContext = LocalNotificationService.navigatorKey.currentContext;
+    if (navContext != null && navContext.mounted) {
+      try {
+        final displayNum = (poppedOrderNum != null && poppedOrderNum.isNotEmpty)
+            ? '#$poppedOrderNum'
+            : (orderNumber != null && orderNumber.isNotEmpty ? '#$orderNumber' : 'Order');
+        final isAccepted = action == 'accepted' || action == 'preparing' || action == 'confirmed';
+        ScaffoldMessenger.of(navContext).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  isAccepted ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    isAccepted
+                        ? '$displayNum was accepted on another device'
+                        : '$displayNum was handled on another device',
+                    style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: isAccepted ? const Color(0xFF0F9D58) : const Color(0xFF374151),
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      } catch (_) {}
+    }
+  }
+
+  static bool _matchesShowingOrder(String? targetId, String? targetNum) {
+    if (!_isShowing) return false;
+    final cId = _currentShowingOrderId?.trim().toLowerCase();
+    final cNum = _currentShowingOrderNumber?.trim().toLowerCase();
+    final tId = targetId?.trim().toLowerCase();
+    final tNum = targetNum?.trim().toLowerCase();
+
+    // If neither identifier is provided, assume it's meant for the active order dialog
+    if ((tId == null || tId.isEmpty) && (tNum == null || tNum.isEmpty)) {
+      return true;
+    }
+
+    if (tId != null && tId.isNotEmpty) {
+      if (tId == cId || tId == cNum) return true;
+    }
+
+    if (tNum != null && tNum.isNotEmpty) {
+      if (tNum == cId || tNum == cNum) return true;
+    }
+
+    return false;
   }
 
   @override
@@ -124,11 +247,15 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
   @override
   void initState() {
     super.initState();
+    WhatsAppOrderActionDialog._currentDialogContext = context;
     SoundService.playOrderRingtone();
   }
 
   @override
   void dispose() {
+    if (WhatsAppOrderActionDialog._currentDialogContext == context) {
+      WhatsAppOrderActionDialog._currentDialogContext = null;
+    }
     SoundService.stopOrderRingtone();
     super.dispose();
   }
@@ -196,6 +323,18 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
     SoundService.stopOrderRingtone();
     SoundService.playButtonClick();
     setState(() => _isProcessing = true);
+
+    // 0. Instantly notify other logged-in devices via WebSocket to dismiss their popup (<15ms)
+    try {
+      SocketService().emitOrderModalAction(
+        orderId: widget.orderId,
+        orderNumber: widget.orderNumber,
+        action: 'accepted',
+        prepTimeMinutes: _selectedPrepTime,
+      );
+    } catch (e) {
+      debugPrint('[WhatsAppOrderActionDialog] Error emitting socket modal action: $e');
+    }
 
     try {
       // 1. Optimistic instant local status change to preparing (0ms!)
@@ -355,6 +494,18 @@ class _WhatsAppOrderActionDialogState extends State<WhatsAppOrderActionDialog> {
         : selectedReason;
 
     setState(() => _isProcessing = true);
+
+    // 0. Instantly notify other logged-in devices via WebSocket to dismiss their popup (<15ms)
+    try {
+      SocketService().emitOrderModalAction(
+        orderId: widget.orderId,
+        orderNumber: widget.orderNumber,
+        action: 'rejected',
+        reason: finalReason,
+      );
+    } catch (e) {
+      debugPrint('[WhatsAppOrderActionDialog] Error emitting socket modal action: $e');
+    }
 
     try {
       // 1. Optimistic instant local status change to cancelled (0ms!)

@@ -116,4 +116,61 @@ void main() {
     expect(find.text('Accept Order'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('WhatsAppOrderActionDialog.dismissIfShowing automatically closes popup on multi-device event', (tester) async {
+    tester.view.physicalSize = const Size(390 * 2.0, 844 * 2.0);
+    tester.view.devicePixelRatio = 2.0;
+    addTearDown(() => tester.view.resetPhysicalSize());
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (ctx) => Center(
+              child: ElevatedButton(
+                onPressed: () {
+                  WhatsAppOrderActionDialog.show(
+                    ctx,
+                    orderId: 'ord_sync_999',
+                    orderNumber: 'ORD-SYNC-999',
+                    customerPhone: '+91 98765 43210',
+                    customerName: 'MultiDevice Customer',
+                    totalAmount: 499.0,
+                    orderType: 'delivery',
+                  );
+                },
+                child: const Text('Show Order Dialog'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    // Tap button to open dialog
+    await tester.tap(find.text('Show Order Dialog'));
+    await tester.pumpAndSettle();
+
+    // Dialog should now be showing
+    expect(find.text('NEW WHATSAPP ORDER'), findsOneWidget);
+    expect(find.text('#ORD-SYNC-999'), findsOneWidget);
+    expect(WhatsAppOrderActionDialog.isShowing, isTrue);
+    expect(WhatsAppOrderActionDialog.currentShowingOrderId, 'ord_sync_999');
+
+    // Trying to dismiss with a non-matching order ID should NOT close the dialog
+    WhatsAppOrderActionDialog.dismissIfShowing(orderId: 'wrong_order_id', action: 'accepted');
+    await tester.pumpAndSettle();
+    expect(find.text('NEW WHATSAPP ORDER'), findsOneWidget);
+    expect(WhatsAppOrderActionDialog.isShowing, isTrue);
+
+    // Calling dismiss with the matching order ID should close the dialog automatically!
+    WhatsAppOrderActionDialog.dismissIfShowing(orderId: 'ord_sync_999', action: 'accepted');
+    await tester.pumpAndSettle();
+
+    // Dialog must be closed now
+    expect(find.text('NEW WHATSAPP ORDER'), findsNothing);
+    expect(WhatsAppOrderActionDialog.isShowing, isFalse);
+    expect(WhatsAppOrderActionDialog.currentShowingOrderId, isNull);
+  });
 }

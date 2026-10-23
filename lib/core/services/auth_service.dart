@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/foundation.dart';
 import '../network/api_client.dart';
 import '../network/api_endpoints.dart';
@@ -161,6 +162,16 @@ class AuthService {
       try {
         final business = BusinessModel.fromJson(businessJson);
         final rest = _db.restaurant;
+        final rawBizLogo = business.profile.profileImage.isNotEmpty
+            ? business.profile.profileImage
+            : (businessJson['profile'] is Map ? businessJson['profile']['profileImage']?.toString() : null) ??
+                businessJson['logoUrl']?.toString() ??
+                businessJson['logo']?.toString();
+        if (rawBizLogo != null && rawBizLogo.trim().isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('apna_pos_company_logo', rawBizLogo.trim());
+        }
+
         final updated = (rest ?? RestaurantModel(
           id: user.id,
           name: business.profile.companyName.isNotEmpty ? business.profile.companyName : 'My Restaurant',
@@ -171,6 +182,7 @@ class AuthService {
           currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
+          logoUrl: rawBizLogo,
         )).copyWith(
           name: business.profile.companyName.isNotEmpty ? business.profile.companyName : rest?.name,
           phone: business.profile.phone.isNotEmpty ? business.profile.phone : rest?.phone,
@@ -179,6 +191,7 @@ class AuthService {
           currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
+          logoUrl: (rawBizLogo != null && rawBizLogo.trim().isNotEmpty) ? rawBizLogo.trim() : rest?.logoUrl,
         );
         final bId = (businessJson['_id'] ?? businessJson['id'] ?? userJson['businessId'] ?? userJson['restaurantId'])?.toString();
         if (bId != null && bId.isNotEmpty) {
@@ -281,6 +294,16 @@ class AuthService {
       try {
         final business = BusinessModel.fromJson(businessJson);
         final rest = _db.restaurant;
+        final rawBizLogo = business.profile.profileImage.isNotEmpty
+            ? business.profile.profileImage
+            : (businessJson['profile'] is Map ? businessJson['profile']['profileImage']?.toString() : null) ??
+                businessJson['logoUrl']?.toString() ??
+                businessJson['logo']?.toString();
+        if (rawBizLogo != null && rawBizLogo.trim().isNotEmpty) {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('apna_pos_company_logo', rawBizLogo.trim());
+        }
+
         final updated = (rest ?? RestaurantModel(
           id: user.id,
           name: business.profile.companyName.isNotEmpty ? business.profile.companyName : 'My Restaurant',
@@ -291,6 +314,7 @@ class AuthService {
           currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
+          logoUrl: rawBizLogo,
         )).copyWith(
           name: business.profile.companyName.isNotEmpty ? business.profile.companyName : rest?.name,
           phone: business.profile.phone.isNotEmpty ? business.profile.phone : rest?.phone,
@@ -299,6 +323,7 @@ class AuthService {
           currencySymbol: business.business.currency == 'INR' ? '₹' : business.business.currency,
           tableCount: business.orderSettings.tableCount,
           isOnboarded: user.onboardingCompleted,
+          logoUrl: (rawBizLogo != null && rawBizLogo.trim().isNotEmpty) ? rawBizLogo.trim() : rest?.logoUrl,
         );
         final bId = (businessJson['_id'] ?? businessJson['id'] ?? userJson['businessId'] ?? userJson['restaurantId'])?.toString();
         if (bId != null && bId.isNotEmpty) {

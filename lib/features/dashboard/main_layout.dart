@@ -1400,14 +1400,25 @@ class _MainLayoutState extends State<MainLayout> with SingleTickerProviderStateM
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(fallbackInitials, roleBgColor, roleTextColor, size: size),
         );
-      } else if (!photo.contains('_selected') && File(photo).existsSync()) {
-        content = Image.file(
-          File(photo),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(fallbackInitials, roleBgColor, roleTextColor, size: size),
-        );
+      } else if (!kIsWeb && !photo.contains('_selected')) {
+        try {
+          final f = File(photo);
+          if (f.existsSync()) {
+            content = Image.file(
+              f,
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => _buildAvatarFallback(fallbackInitials, roleBgColor, roleTextColor, size: size),
+            );
+          } else if (isOwner) {
+            content = _buildCompanyProfileLogo(size);
+          } else {
+            content = _buildAvatarFallback(fallbackInitials, roleBgColor, roleTextColor, size: size);
+          }
+        } catch (_) {
+          content = isOwner ? _buildCompanyProfileLogo(size) : _buildAvatarFallback(fallbackInitials, roleBgColor, roleTextColor, size: size);
+        }
       } else if (isOwner) {
         content = _buildCompanyProfileLogo(size);
       } else {
@@ -2752,7 +2763,29 @@ class SmoothBrandLogoWidget extends StatelessWidget {
   Widget _buildImageContent() {
     final path = logoPath?.trim();
     if (path != null && path.isNotEmpty) {
-      if (path.startsWith('http://') || path.startsWith('https://')) {
+      // 1. Data URI / Base64 image handled FIRST before file operations
+      if (path.startsWith('data:image') ||
+          path.startsWith('data:') ||
+          (path.length > 60 && !path.startsWith('http') && !path.startsWith('assets/'))) {
+        try {
+          Uint8List? bytes = _base64Cache[path];
+          if (bytes == null) {
+            final clean = path.contains(',') ? path.split(',').last : path;
+            bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+            _base64Cache[path] = bytes;
+          }
+          return Image.memory(
+            bytes,
+            key: ValueKey('mem_${path.hashCode}'),
+            width: size,
+            height: size,
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (_, __, ___) => _buildFallback(),
+          );
+        } catch (_) {}
+      } else if (path.startsWith('http://') || path.startsWith('https://')) {
         return Image.network(
           path,
           key: ValueKey('net_$path'),
@@ -2774,35 +2807,21 @@ class SmoothBrandLogoWidget extends StatelessWidget {
           filterQuality: FilterQuality.medium,
           errorBuilder: (_, __, ___) => _buildFallback(),
         );
-      } else if (!path.contains('_selected') && File(path).existsSync()) {
-        return Image.file(
-          File(path),
-          key: ValueKey('file_$path'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => _buildFallback(),
-        );
-      } else if (path.startsWith('data:image') || (path.length > 50 && !path.startsWith('/'))) {
+      } else if (!kIsWeb && !path.contains('_selected')) {
         try {
-          Uint8List? bytes = _base64Cache[path];
-          if (bytes == null) {
-            final clean = path.contains(',') ? path.split(',').last : path;
-            bytes = base64Decode(clean.trim());
-            _base64Cache[path] = bytes;
+          final f = File(path);
+          if (f.existsSync()) {
+            return Image.file(
+              f,
+              key: ValueKey('file_$path'),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (_, __, ___) => _buildFallback(),
+            );
           }
-          return Image.memory(
-            bytes,
-            key: ValueKey('mem_${path.hashCode}'),
-            width: size,
-            height: size,
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            filterQuality: FilterQuality.medium,
-            errorBuilder: (_, __, ___) => _buildFallback(),
-          );
         } catch (_) {}
       }
     }
@@ -2889,52 +2908,27 @@ class SmoothProfileAvatarWidget extends StatelessWidget {
   }
 
   Widget _buildAvatarContent() {
-    final path = photoPath?.trim();
-    if (path != null && path.isNotEmpty) {
-      if (path.startsWith('http://') || path.startsWith('https://')) {
-        return Image.network(
-          path,
-          key: ValueKey('user_net_$path'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => _buildInitial(),
-        );
-      } else if (path.startsWith('assets/')) {
-        return Image.asset(
-          path,
-          key: ValueKey('user_asset_$path'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => _buildInitial(),
-        );
-      } else if (!path.contains('_selected') && File(path).existsSync()) {
-        return Image.file(
-          File(path),
-          key: ValueKey('user_file_$path'),
-          width: size,
-          height: size,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
-          filterQuality: FilterQuality.medium,
-          errorBuilder: (_, __, ___) => _buildInitial(),
-        );
-      } else if (path.startsWith('data:image') || (path.length > 50 && !path.startsWith('/'))) {
+    final effectivePath = (photoPath != null && photoPath!.trim().isNotEmpty)
+        ? photoPath!.trim()
+        : (isOwner && companyLogoPath != null && companyLogoPath!.trim().isNotEmpty
+            ? companyLogoPath!.trim()
+            : null);
+
+    if (effectivePath != null && effectivePath.isNotEmpty) {
+      // 1. Data URI / Base64 image handled FIRST before file operations
+      if (effectivePath.startsWith('data:image') ||
+          effectivePath.startsWith('data:') ||
+          (effectivePath.length > 60 && !effectivePath.startsWith('http') && !effectivePath.startsWith('assets/'))) {
         try {
-          Uint8List? bytes = _base64Cache[path];
+          Uint8List? bytes = _base64Cache[effectivePath];
           if (bytes == null) {
-            final clean = path.contains(',') ? path.split(',').last : path;
-            bytes = base64Decode(clean.trim());
-            _base64Cache[path] = bytes;
+            final clean = effectivePath.contains(',') ? effectivePath.split(',').last : effectivePath;
+            bytes = base64Decode(clean.replaceAll('\n', '').replaceAll('\r', '').trim());
+            _base64Cache[effectivePath] = bytes;
           }
           return Image.memory(
             bytes,
-            key: ValueKey('user_mem_${path.hashCode}'),
+            key: ValueKey('user_mem_${effectivePath.hashCode}'),
             width: size,
             height: size,
             fit: BoxFit.cover,
@@ -2942,6 +2936,44 @@ class SmoothProfileAvatarWidget extends StatelessWidget {
             filterQuality: FilterQuality.medium,
             errorBuilder: (_, __, ___) => _buildInitial(),
           );
+        } catch (_) {}
+      } else if (effectivePath.startsWith('http://') || effectivePath.startsWith('https://')) {
+        return Image.network(
+          effectivePath,
+          key: ValueKey('user_net_$effectivePath'),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, __, ___) => _buildInitial(),
+        );
+      } else if (effectivePath.startsWith('assets/')) {
+        return Image.asset(
+          effectivePath,
+          key: ValueKey('user_asset_$effectivePath'),
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+          filterQuality: FilterQuality.medium,
+          errorBuilder: (_, __, ___) => _buildInitial(),
+        );
+      } else if (!kIsWeb && !effectivePath.contains('_selected')) {
+        try {
+          final f = File(effectivePath);
+          if (f.existsSync()) {
+            return Image.file(
+              f,
+              key: ValueKey('user_file_$effectivePath'),
+              width: size,
+              height: size,
+              fit: BoxFit.cover,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.medium,
+              errorBuilder: (_, __, ___) => _buildInitial(),
+            );
+          }
         } catch (_) {}
       }
     }
