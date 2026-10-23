@@ -9,6 +9,10 @@ const storageService = require('../utils/storageService');
 const ApiError = require('../utils/ApiError');
 
 class WhatsAppChatService {
+  constructor() {
+    this._templatesCache = new Map();
+  }
+
   /**
    * Get all active customer chat conversations for a business quickly and reliably
    */
@@ -270,9 +274,317 @@ class WhatsAppChatService {
   }
 
   /**
-   * Start or locate a new chat with any valid phone number
+   * Retrieve approved Meta message templates for the connected WhatsApp Business Account (WABA)
+   * Templates bypass the 24-hour customer service window restriction.
    */
-  async startNewChat(businessId, { customerPhone, customerName = '', initialMessage = '', userId = null }) {
+  async getApprovedTemplates(businessId, userId = null) {
+    const bId = mongoose.Types.ObjectId.isValid(businessId)
+      ? new mongoose.Types.ObjectId(businessId)
+      : businessId;
+
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+    const business = await Business.findById(bId);
+
+    const wabaId = (user?.whatsappSettings?.wabaId ||
+      business?.whatsappSettings?.wabaId ||
+      '2525727467906581').trim();
+    const accessToken = user?.whatsappSettings?.accessToken ||
+      business?.whatsappSettings?.accessToken ||
+      whatsappService.accessToken;
+
+    const cacheKey = `templates_${wabaId}`;
+    const cached = this._templatesCache?.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 5 * 60 * 1000) {
+      return {
+        wabaId,
+        templates: cached.templates,
+        cached: true,
+      };
+    }
+
+    const defaultApprovedTemplates = [
+      {
+        id: 'tmpl_hello_world',
+        name: 'hello_world',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en_US',
+        header: 'Hello World',
+        body: 'Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.',
+        footer: 'WhatsApp Business Platform sample message',
+        parameters: [],
+      },
+      {
+        id: 'tmpl_ebill_receipt',
+        name: 'ebill_receipt',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en',
+        header: 'Your Digital Bill',
+        body: 'Hello {{1}},\n\nYour bill from {{2}} has been generated successfully.\n\nBill Number: {{3}}\nBill Date: {{4}}\nTotal Amount: ₹{{5}}\nPayment Status: {{6}}\nPayment Mode: {{7}}\n\nThank you for your purchase. Please keep this message for your records.',
+        footer: 'Thank you for shopping with us.',
+        parameters: [
+          { key: '1', label: 'Customer Name', example: 'Valued Customer' },
+          { key: '2', label: 'Store Name', example: business?.name || 'Our Store' },
+          { key: '3', label: 'Bill Number', example: 'INV-1001' },
+          { key: '4', label: 'Bill Date', example: new Date().toLocaleDateString('en-IN') },
+          { key: '5', label: 'Total Amount', example: '250.00' },
+          { key: '6', label: 'Payment Status', example: 'Paid' },
+          { key: '7', label: 'Payment Mode', example: 'UPI' },
+        ],
+      },
+    ];
+
+    try {
+      const url = `https://graph.facebook.com/${whatsappService.apiVersion}/${wabaId}/message_templates?status=APPROVED&limit=100`;
+      const response = await fetch(url, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await response.json();
+
+      if (response.ok && Array.isArray(data?.data)) {
+        const approvedList = data.data.map(t => {
+          let headerText = '';
+          let bodyText = '';
+          let footerText = '';
+          const params = [];
+
+          if (Array.isArray(t.components)) {
+            for (const c of t.components) {
+              if (c.type === 'HEADER' && c.text) {
+                headerText = c.text;
+              } else if (c.type === 'BODY' && c.text) {
+                bodyText = c.text;
+                // Parse {{1}}, {{2}}...
+                const matches = bodyText.match(/\{\{(\d+)\}\}/g) || [];
+                const distinctIndices = [...new Set(matches.map(m => m.replace(/\D/g, '')))];
+                distinctIndices.sort((a, b) => Number(a) - Number(b));
+
+                distinctIndices.forEach(idx => {
+                  let label = `Parameter {{${idx}}}`;
+                  let example = '';
+                  if (t.name === 'ebill_receipt') {
+                    const ebillLabels = ['Customer Name', 'Store Name', 'Bill Number', 'Bill Date', 'Total Amount', 'Payment Status', 'Payment Mode'];
+                    label = ebillLabels[Number(idx) - 1] || `Param ${idx}`;
+                  } else if (c.example?.body_text?.[0]?.[Number(idx) - 1]) {
+                    example = c.example.body_text[0][Number(idx) - 1];
+                    label = `Value (${example})`;
+                  }
+                  params.push({ key: idx, label, example });
+                });
+              } else if (c.type === 'FOOTER' && c.text) {
+                footerText = c.text;
+              }
+            }
+          }
+
+          return {
+            id: t.id || t.name,
+            name: t.name,
+            status: t.status,
+            category: t.category,
+            language: t.language,
+            header: headerText,
+            body: bodyText,
+            footer: footerText,
+            parameters: params,
+          };
+        });
+
+        const finalTemplates = approvedList.length > 0 ? approvedList : defaultApprovedTemplates;
+        this._templatesCache = this._templatesCache || new Map();
+        this._templatesCache.set(cacheKey, {
+          timestamp: Date.now(),
+          templates: finalTemplates,
+        });
+
+        return {
+          wabaId,
+          templates: finalTemplates,
+          cached: false,
+        };
+      }
+    } catch (err) {
+      console.warn('[whatsappChatService] Error fetching Meta templates:', err.message);
+    }
+
+    return {
+      wabaId,
+      templates: defaultApprovedTemplates,
+      fallback: true,
+    };
+  }
+
+  /**
+   * Send an approved Meta WhatsApp template to customer (bypasses 24-hr service window)
+   */
+  async sendTemplateMessage(businessId, chatId, { templateName, languageCode = 'en_US', parameters = [], components = [], userId = null }) {
+    if (!templateName || !templateName.trim()) {
+      throw ApiError.badRequest('Template name is required', null, 'TEMPLATE_NAME_REQUIRED');
+    }
+
+    const bId = mongoose.Types.ObjectId.isValid(businessId)
+      ? new mongoose.Types.ObjectId(businessId)
+      : businessId;
+    const cId = mongoose.Types.ObjectId.isValid(chatId)
+      ? new mongoose.Types.ObjectId(chatId)
+      : chatId;
+
+    const chat = await WhatsAppChat.findOne({ _id: cId, businessId: bId });
+    if (!chat) {
+      throw ApiError.notFound('WhatsApp conversation not found', 'CHAT_NOT_FOUND');
+    }
+
+    let user = null;
+    if (userId) {
+      user = await User.findById(userId).lean();
+    }
+
+    const business = await Business.findById(bId);
+    const phoneNumberId = user?.whatsappSettings?.phoneNumberId ||
+      chat.phoneNumberId ||
+      business?.whatsappSettings?.phoneNumberId ||
+      whatsappService.phoneNumberId;
+    const accessToken = user?.whatsappSettings?.accessToken ||
+      business?.whatsappSettings?.accessToken ||
+      whatsappService.accessToken;
+
+    const normalizedPhone = whatsappService.normalizePhoneNumber(chat.customerPhone);
+    if (!whatsappService.isValidPhoneNumber(normalizedPhone)) {
+      throw ApiError.badRequest(`Invalid customer phone number: ${chat.customerPhone}`, null, 'INVALID_PHONE_NUMBER');
+    }
+
+    // Build components if parameters were passed as an array of string values
+    let metaComponents = Array.isArray(components) && components.length > 0 ? components : [];
+    if (metaComponents.length === 0 && Array.isArray(parameters) && parameters.length > 0) {
+      metaComponents = [
+        {
+          type: 'body',
+          parameters: parameters.map(p => ({
+            type: 'text',
+            text: String(p ?? ''),
+          })),
+        },
+      ];
+    }
+
+    const url = `https://graph.facebook.com/${whatsappService.apiVersion}/${phoneNumberId}/messages`;
+    let activeLanguage = languageCode || 'en_US';
+
+    const buildPayload = (lang) => ({
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: normalizedPhone,
+      type: 'template',
+      template: {
+        name: templateName.trim(),
+        language: { code: lang },
+        ...(metaComponents.length > 0 ? { components: metaComponents } : {}),
+      },
+    });
+
+    let payload = buildPayload(activeLanguage);
+    let response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    let data = await response.json().catch(() => ({}));
+
+    // If template was rejected because of translation / language mismatch (code 132000 or 132001), try fallback language
+    if (!response.ok && (data?.error?.code === 132000 || data?.error?.code === 132001)) {
+      const fallbackLang = activeLanguage === 'en_US' ? 'en' : 'en_US';
+      console.warn(`[whatsappChatService] Template '${templateName}' not found in ${activeLanguage}. Retrying with ${fallbackLang}...`);
+      payload = buildPayload(fallbackLang);
+      response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+      data = await response.json().catch(() => ({}));
+      if (response.ok) {
+        activeLanguage = fallbackLang;
+      }
+    }
+
+    if (!response.ok) {
+      const errMsg = data?.error?.message || `Meta template dispatch failed: ${response.statusText}`;
+      const errCode = data?.error?.code || 'META_TEMPLATE_SEND_FAILED';
+      console.error('[whatsappChatService] Send template error:', data?.error || data);
+      throw ApiError.badRequest(errMsg, null, errCode);
+    }
+
+    const metaMessageId = data?.messages?.[0]?.id || `wamid.template.${Date.now()}`;
+
+    // Render human-readable message text for storage and chat UI preview
+    let renderedText = `📋 Template: ${templateName}`;
+    if (templateName === 'hello_world') {
+      renderedText = '👋 Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.';
+    } else if (templateName === 'ebill_receipt' && Array.isArray(parameters) && parameters.length >= 4) {
+      renderedText = `🧾 *Digital Bill Receipt*\nHello ${parameters[0] || 'Valued Customer'},\n\nYour bill from ${parameters[1] || 'Our Store'} has been generated successfully.\n\nBill Number: ${parameters[2] || ''}\nBill Date: ${parameters[3] || ''}\nTotal Amount: ₹${parameters[4] || '0.00'}\nPayment Status: ${parameters[5] || 'Paid'}\nPayment Mode: ${parameters[6] || 'UPI'}\n\nThank you for your purchase. Please keep this message for your records.`;
+    } else if (Array.isArray(parameters) && parameters.length > 0) {
+      renderedText = `📋 Template: ${templateName}\n${parameters.map((p, idx) => `{{${idx + 1}}}: ${p}`).join(', ')}`;
+    }
+
+    // Create Outgoing Message log
+    const message = await WhatsAppMessage.create({
+      businessId: bId,
+      chatId: chat._id,
+      customerPhone: chat.customerPhone,
+      direction: 'OUTGOING',
+      messageType: 'template',
+      text: renderedText,
+      whatsappMessageId: metaMessageId,
+      status: 'SENT',
+      timestamp: new Date(),
+    });
+
+    // Update conversation summary
+    chat.lastMessage = renderedText;
+    chat.lastMessageAt = message.timestamp;
+    chat.lastMessageDirection = 'OUTGOING';
+    if (!chat.userId && user) {
+      chat.userId = user._id;
+    }
+    await chat.save();
+
+    // Broadcast instantaneously over WebSocket
+    try {
+      const socketService = require('./socketService');
+      socketService.emitWhatsAppMessageReceived(bId, { chat, message });
+    } catch (_) {}
+
+    return {
+      chat,
+      message,
+      metaMessageId,
+      success: true,
+    };
+  }
+
+  /**
+   * Start or locate a new chat with any valid phone number
+   * Supports initiating conversations directly with Meta-approved templates (bypassing 24-hr window)
+   */
+  async startNewChat(businessId, {
+    customerPhone,
+    customerName = '',
+    initialMessage = '',
+    templateName = null,
+    languageCode = 'en_US',
+    parameters = [],
+    userId = null,
+  }) {
     const bId = mongoose.Types.ObjectId.isValid(businessId)
       ? new mongoose.Types.ObjectId(businessId)
       : businessId;
@@ -341,7 +653,35 @@ class WhatsAppChatService {
     }
 
     let sentMessage = null;
-    if (initialMessage && initialMessage.trim()) {
+    if (templateName && templateName.trim()) {
+      try {
+        const tmplRes = await this.sendTemplateMessage(bId, chat._id, {
+          templateName: templateName.trim(),
+          languageCode: languageCode || 'en_US',
+          parameters: Array.isArray(parameters) ? parameters : [],
+          userId,
+        });
+        sentMessage = tmplRes.message;
+        chat = tmplRes.chat;
+      } catch (tmplErr) {
+        console.warn(`[WhatsAppChatService] Initial template dispatch notice: ${tmplErr.message}`);
+        sentMessage = await WhatsAppMessage.create({
+          businessId: bId,
+          chatId: chat._id,
+          customerPhone: chat.customerPhone,
+          direction: 'OUTGOING',
+          messageType: 'template',
+          text: initialMessage || `Template: ${templateName}`,
+          status: 'FAILED',
+          error: tmplErr.message,
+          timestamp: new Date(),
+        });
+        chat.lastMessage = initialMessage || `Template: ${templateName}`;
+        chat.lastMessageAt = sentMessage.timestamp;
+        chat.lastMessageDirection = 'OUTGOING';
+        await chat.save();
+      }
+    } else if (initialMessage && initialMessage.trim()) {
       try {
         const sendRes = await this.sendMessage(bId, chat._id, { text: initialMessage, userId });
         sentMessage = sendRes.message;

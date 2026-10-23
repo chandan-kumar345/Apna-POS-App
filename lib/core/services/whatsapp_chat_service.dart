@@ -260,6 +260,67 @@ class WhatsAppConnectionInfo {
   }
 }
 
+class WhatsAppTemplateParam {
+  final String key;
+  final String label;
+  final String example;
+
+  const WhatsAppTemplateParam({
+    required this.key,
+    required this.label,
+    this.example = '',
+  });
+
+  factory WhatsAppTemplateParam.fromJson(Map<String, dynamic> json) {
+    return WhatsAppTemplateParam(
+      key: json['key']?.toString() ?? '',
+      label: json['label']?.toString() ?? '',
+      example: json['example']?.toString() ?? '',
+    );
+  }
+}
+
+class WhatsAppTemplateModel {
+  final String id;
+  final String name;
+  final String status;
+  final String category;
+  final String language;
+  final String header;
+  final String body;
+  final String footer;
+  final List<WhatsAppTemplateParam> parameters;
+
+  const WhatsAppTemplateModel({
+    required this.id,
+    required this.name,
+    this.status = 'APPROVED',
+    this.category = 'UTILITY',
+    this.language = 'en_US',
+    this.header = '',
+    this.body = '',
+    this.footer = '',
+    this.parameters = const [],
+  });
+
+  factory WhatsAppTemplateModel.fromJson(Map<String, dynamic> json) {
+    final paramsList = json['parameters'] as List<dynamic>? ?? [];
+    return WhatsAppTemplateModel(
+      id: json['id']?.toString() ?? json['name']?.toString() ?? '',
+      name: json['name']?.toString() ?? '',
+      status: json['status']?.toString() ?? 'APPROVED',
+      category: json['category']?.toString() ?? 'UTILITY',
+      language: json['language']?.toString() ?? 'en_US',
+      header: json['header']?.toString() ?? '',
+      body: json['body']?.toString() ?? '',
+      footer: json['footer']?.toString() ?? '',
+      parameters: paramsList
+          .map((p) => WhatsAppTemplateParam.fromJson(p as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
 class WhatsAppChatService {
   static final WhatsAppChatService _instance = WhatsAppChatService._internal();
   factory WhatsAppChatService() => _instance;
@@ -608,6 +669,117 @@ class WhatsAppChatService {
     }
   }
 
+  /// Retrieve Meta-approved message templates for business WABA account
+  Future<List<WhatsAppTemplateModel>> getApprovedTemplates() async {
+    try {
+      final response = await _apiClient.get(ApiEndpoints.whatsappTemplates);
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final list = data['templates'] as List<dynamic>? ?? [];
+        if (list.isNotEmpty) {
+          return list
+              .map((t) => WhatsAppTemplateModel.fromJson(t as Map<String, dynamic>))
+              .toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] getApprovedTemplates error: $e');
+    }
+    // Reliable default templates fallback
+    return [
+      const WhatsAppTemplateModel(
+        id: 'tmpl_hello_world',
+        name: 'hello_world',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en_US',
+        header: 'Hello World',
+        body: 'Welcome and congratulations!! This message demonstrates your ability to send a WhatsApp message notification from the Cloud API, hosted by Meta. Thank you for taking the time to test with us.',
+        footer: 'WhatsApp Business Platform sample message',
+        parameters: [],
+      ),
+      const WhatsAppTemplateModel(
+        id: 'tmpl_ebill_receipt',
+        name: 'ebill_receipt',
+        status: 'APPROVED',
+        category: 'UTILITY',
+        language: 'en',
+        header: 'Your Digital Bill',
+        body: 'Hello {{1}},\n\nYour bill from {{2}} has been generated successfully.\n\nBill Number: {{3}}\nBill Date: {{4}}\nTotal Amount: ₹{{5}}\nPayment Status: {{6}}\nPayment Mode: {{7}}\n\nThank you for your purchase. Please keep this message for your records.',
+        footer: 'Thank you for shopping with us.',
+        parameters: [
+          WhatsAppTemplateParam(key: '1', label: 'Customer Name', example: 'Valued Customer'),
+          WhatsAppTemplateParam(key: '2', label: 'Store Name', example: 'Our Store'),
+          WhatsAppTemplateParam(key: '3', label: 'Bill Number', example: 'INV-1001'),
+          WhatsAppTemplateParam(key: '4', label: 'Bill Date', example: 'Today'),
+          WhatsAppTemplateParam(key: '5', label: 'Total Amount', example: '250.00'),
+          WhatsAppTemplateParam(key: '6', label: 'Payment Status', example: 'Paid'),
+          WhatsAppTemplateParam(key: '7', label: 'Payment Mode', example: 'UPI'),
+        ],
+      ),
+    ];
+  }
+
+  /// Send an approved Meta message template to customer (bypasses 24-hr window)
+  Future<WhatsAppMessageModel?> sendTemplateMessage({
+    required String chatId,
+    required String templateName,
+    String languageCode = 'en_US',
+    List<String> parameters = const [],
+    List<Map<String, dynamic>> components = const [],
+  }) async {
+    try {
+      final payload = <String, dynamic>{
+        'templateName': templateName,
+        'languageCode': languageCode,
+        'parameters': parameters,
+        if (components.isNotEmpty) 'components': components,
+      };
+
+      final response = await _apiClient.post(
+        ApiEndpoints.whatsappSendTemplate(chatId),
+        data: payload,
+      );
+
+      if (response != null && response is Map<String, dynamic>) {
+        final data = response['data'] as Map<String, dynamic>? ?? response;
+        final msgData = data['message'] as Map<String, dynamic>?;
+        if (msgData != null) {
+          final sentMsg = WhatsAppMessageModel.fromJson(msgData);
+
+          // Update messages cache
+          final existing = _messagesCache[chatId] ?? [];
+          final alreadyExists = existing.any((m) => m.id == sentMsg.id);
+          if (!alreadyExists) {
+            existing.add(sentMsg);
+            _messagesCache[chatId] = existing;
+            _saveMessagesToPrefs(chatId, existing);
+          }
+
+          // Update chats cache
+          _chatsCache ??= [];
+          final idx = _chatsCache!.indexWhere((c) => c.id == chatId);
+          if (idx != -1) {
+            final old = _chatsCache![idx];
+            _chatsCache![idx] = old.copyWith(
+              lastMessage: sentMsg.text,
+              lastMessageAt: sentMsg.timestamp,
+              lastMessageDirection: 'OUTGOING',
+            );
+            _saveChatsToPrefs(_chatsCache!);
+            _chatsStreamController.add(List.from(_chatsCache!));
+          }
+
+          return sentMsg;
+        }
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[WhatsAppChatService] sendTemplateMessage error: $e');
+      rethrow;
+    }
+  }
+
   /// Upload a chat image file (via file path or raw bytes) to server storage
   Future<String?> uploadChatImage({
     String? filePath,
@@ -661,12 +833,18 @@ class WhatsAppChatService {
     required String customerPhone,
     String? customerName,
     String? initialMessage,
+    String? templateName,
+    String? languageCode,
+    List<String>? parameters,
   }) async {
     try {
       final payload = {
         'customerPhone': customerPhone.trim(),
         if (customerName != null && customerName.isNotEmpty) 'customerName': customerName.trim(),
         if (initialMessage != null && initialMessage.isNotEmpty) 'initialMessage': initialMessage.trim(),
+        if (templateName != null && templateName.isNotEmpty) 'templateName': templateName.trim(),
+        if (languageCode != null && languageCode.isNotEmpty) 'languageCode': languageCode.trim(),
+        if (parameters != null && parameters.isNotEmpty) 'parameters': parameters,
       };
 
       final response = await _apiClient.post(

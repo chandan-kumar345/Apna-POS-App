@@ -57,16 +57,62 @@ class WhatsAppChatController {
   }
 
   /**
+   * GET /api/v1/whatsapp/chats/templates
+   * Retrieve approved Meta message templates (bypasses 24-hr window)
+   */
+  async getApprovedTemplates(req, res, next) {
+    try {
+      const userId = req.user?._id || req.user?.id;
+      const result = await whatsappChatService.getApprovedTemplates(req.businessId, userId);
+      return ApiResponse.success(res, result, 'Approved Meta WhatsApp templates retrieved');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * POST /api/v1/whatsapp/chats/:chatId/template
+   * Send an approved Meta message template to customer
+   */
+  async sendTemplateMessage(req, res, next) {
+    try {
+      const { chatId } = req.params;
+      const { templateName, languageCode, parameters, components } = req.body;
+      const userId = req.user?._id || req.user?.id;
+      const result = await whatsappChatService.sendTemplateMessage(req.businessId, chatId, {
+        templateName,
+        languageCode,
+        parameters,
+        components,
+        userId,
+      });
+      return ApiResponse.success(res, result, 'Approved Meta template sent successfully');
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
    * POST /api/v1/whatsapp/chats/new
    */
   async startNewChat(req, res, next) {
     try {
-      const { customerPhone, customerName, initialMessage } = req.body;
+      const {
+        customerPhone,
+        customerName,
+        initialMessage,
+        templateName,
+        languageCode,
+        parameters,
+      } = req.body;
       const userId = req.user?._id || req.user?.id;
       const result = await whatsappChatService.startNewChat(req.businessId, {
         customerPhone,
         customerName,
         initialMessage,
+        templateName,
+        languageCode,
+        parameters,
         userId,
       });
       return ApiResponse.success(res, result, 'WhatsApp chat initialized');

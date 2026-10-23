@@ -12,6 +12,7 @@ import '../../core/services/whatsapp_chat_service.dart';
 import '../../core/services/sound_service.dart';
 import '../../core/widgets/glass_company_name_badge.dart';
 import '../../core/widgets/connection_status_badge.dart';
+import 'widgets/whatsapp_template_picker_dialog.dart';
 
 class MetaWhatsAppChatScreen extends StatefulWidget {
   final String? initialPhone;
@@ -59,6 +60,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final FocusNode _messageFocusNode = FocusNode();
+  double _previousBottomInset = 0.0;
+  int? _unreadMarkerIndex;
 
   Timer? _pollingTimer;
   Timer? _searchDebounce;
@@ -114,7 +117,7 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
     // Fast fallback polling every 2 seconds for WhatsApp-grade real-time responsiveness
     if (widget.enablePolling) {
-      _pollingTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      _pollingTimer = Timer.periodic(const Duration(seconds: 25), (_) {
         if (mounted) {
           _refreshSilently();
         }
@@ -211,23 +214,48 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Future<void> _refreshSilently() async {
     try {
-      final chats = await _chatService.getChats(search: _searchQuery);
-      if (mounted) {
-        setState(() => _chats = chats);
-        if (_selectedChat != null) {
-          final updatedChat = chats.where((c) => c.id == _selectedChat!.id).firstOrNull;
-          if (updatedChat != null) {
-            _selectedChat = updatedChat;
+      // Avoid background UI rebuilds while merchant is actively typing!
+      if (_messageFocusNode.hasFocus || _messageController.text.isNotEmpty) return;
+
+      final freshChats = await _chatService.getChats(search: _searchQuery);
+      if (!mounted) return;
+
+      // Smart diff check: only trigger setState if chat list actually changed
+      bool chatsChanged = freshChats.length != _chats.length;
+      if (!chatsChanged) {
+        for (int i = 0; i < freshChats.length; i++) {
+          if (freshChats[i].id != _chats[i].id ||
+              freshChats[i].unreadCount != _chats[i].unreadCount ||
+              freshChats[i].lastMessageAt != _chats[i].lastMessageAt) {
+            chatsChanged = true;
+            break;
           }
-          final msgs = await _chatService.getChatMessages(_selectedChat!.id);
-          if (mounted) {
-            final bool hasChanged = msgs.length != _messages.length ||
-                (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.id != _messages.last.id) ||
-                (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.status != _messages.last.status);
-            if (hasChanged) {
-              setState(() => _messages = msgs);
-              _scrollToBottom();
-            }
+        }
+      }
+
+      if (chatsChanged) {
+        setState(() => _chats = freshChats);
+      }
+
+      if (_selectedChat != null) {
+        final updatedChat = freshChats.where((c) => c.id == _selectedChat!.id).firstOrNull;
+        if (updatedChat != null && updatedChat.lastMessageAt != _selectedChat!.lastMessageAt) {
+          _selectedChat = updatedChat;
+        }
+
+        final msgs = await _chatService.getChatMessages(_selectedChat!.id);
+        if (!mounted) return;
+
+        final bool hasChanged = msgs.length != _messages.length ||
+            (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.id != _messages.last.id) ||
+            (msgs.isNotEmpty && _messages.isNotEmpty && msgs.last.status != _messages.last.status);
+
+        if (hasChanged) {
+          setState(() => _messages = msgs);
+          // Only scroll down if merchant is already viewing recent messages
+          if (_scrollController.hasClients &&
+              _scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+            _scrollToBottom();
           }
         }
       }
@@ -236,6 +264,8 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
 
   Future<void> _selectChat(WhatsAppChatModel chat) async {
     MetaWhatsAppChatScreen.activeChatId = chat.id;
+    final int unreadCountAtOpen = chat.unreadCount;
+
     setState(() {
       _selectedChat = chat;
       _isLoadingMessages = true;
@@ -265,22 +295,27 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           _messages = msgs;
           _isLoadingMessages = false;
         });
-        _scrollToBottom();
-        // Clear unread badge in list
+
+        // Smart scroll algorithm:
+        // If there were unread messages, scroll smoothly to the first unread message so the merchant sees what was sent!
+        // If all messages were already read, scroll smoothly to the bottom to show the latest message.
+        int? unreadMarker;
+        if (unreadCountAtOpen > 0 && msgs.isNotEmpty) {
+          unreadMarker = (msgs.length - unreadCountAtOpen).clamp(0, msgs.length - 1);
+          _scrollToIndex(unreadMarker);
+        } else {
+          _scrollToBottom();
+        }
+        _unreadMarkerIndex = unreadMarker;
+
+        // Notify backend that conversation has been read
+        _chatService.markRead(chat.id);
+
+        // Clear unread badge in list locally
         final index = _chats.indexWhere((c) => c.id == chat.id);
         if (index != -1 && _chats[index].unreadCount > 0) {
           setState(() {
-            _chats[index] = WhatsAppChatModel(
-              id: _chats[index].id,
-              customerPhone: _chats[index].customerPhone,
-              customerName: _chats[index].customerName,
-              lastMessage: _chats[index].lastMessage,
-              lastMessageAt: _chats[index].lastMessageAt,
-              lastMessageDirection: _chats[index].lastMessageDirection,
-              unreadCount: 0,
-              status: _chats[index].status,
-              phoneNumberId: _chats[index].phoneNumberId,
-            );
+            _chats[index] = _chats[index].copyWith(unreadCount: 0);
           });
         }
       }
@@ -289,6 +324,73 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
         setState(() => _isLoadingMessages = false);
       }
     }
+  }
+
+  void _scrollToIndex(int index) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients || _messages.isEmpty) return;
+      final maxExtent = _scrollController.position.maxScrollExtent;
+      if (maxExtent <= 0) return;
+      final ratio = (index / _messages.length).clamp(0.0, 1.0);
+      final target = (ratio * maxExtent).clamp(0.0, maxExtent);
+      _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 320),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  bool get _is24HourWindowActive {
+    if (_selectedChat == null) return true;
+    if (_messages.isEmpty) return true;
+    final incoming = _messages.reversed.where((m) => m.direction == 'INCOMING').firstOrNull;
+    if (incoming == null) return false;
+    return DateTime.now().difference(incoming.timestamp) < const Duration(hours: 24);
+  }
+
+  bool get _is24HourWindowClosed => !_is24HourWindowActive;
+
+  void _openTemplatePicker() {
+    if (_selectedChat == null) return;
+    final bName = _db.restaurant?.name ?? _db.currentUser?.companyName ?? 'Our Store';
+    WhatsAppTemplatePickerDialog.show(
+      context: context,
+      chat: _selectedChat!,
+      businessName: bName,
+      onTemplateSent: (sentMsg) {
+        if (mounted) {
+          setState(() {
+            _messages.add(sentMsg);
+          });
+          _scrollToBottom();
+          _showSuccessSnackBar('Approved Meta template dispatched successfully!');
+        }
+      },
+    );
+  }
+
+  void _showSuccessSnackBar(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+        backgroundColor: const Color(0xFF059669),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   Future<void> _loadMessages(String chatId) async {
@@ -3198,13 +3300,19 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
     if (_selectedChat == null) return const SizedBox();
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    if (bottomInset > 0) {
+    if (bottomInset > 0 && _previousBottomInset == 0) {
+      // Keyboard just opened! Animate smoothly to bottom once without disrupting manual scrolling
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scrollController.hasClients) {
-          _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent + 20,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
         }
       });
     }
+    _previousBottomInset = bottomInset;
 
     return Column(
       children: [
@@ -3246,27 +3354,42 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                       )
                     : ListView.builder(
                         controller: _scrollController,
+                                                addAutomaticKeepAlives: false,
+                        addRepaintBoundaries: true,
                         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final msg = _messages[index];
                           final bool isFirst = index == 0;
                           final bool isNewDay = isFirst || !_isSameDay(_messages[index - 1].timestamp, msg.timestamp);
+                          final bool isUnreadMarker = _unreadMarkerIndex != null && index == _unreadMarkerIndex;
+
+                          final messageContent = Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isUnreadMarker) _buildUnreadDivider(),
+                              _buildMessageBubble(msg),
+                            ],
+                          );
 
                           if (isNewDay) {
                             return Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 _buildDateDivider(_getDateDividerText(msg.timestamp)),
-                                _buildMessageBubble(msg),
+                                messageContent,
                               ],
                             );
                           }
-                          return _buildMessageBubble(msg);
+                          return messageContent;
                         },
                       ),
           ),
         ),
+
+        // 2.5 Meta 24-Hour Service Window Notice (shown when window is closed)
+        if (_is24HourWindowClosed)
+          _build24HourWindowBanner(),
 
         // 3. Bottom Input Bar: Only plus, text box, and send button lift up on keyboard open, and smoothly drop down on keyboard close
         AnimatedPadding(
@@ -3280,6 +3403,96 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildUnreadDivider() {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEFF6FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFBFDBFE)),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.mark_chat_unread_rounded, size: 14, color: Color(0xFF0284C7)),
+          SizedBox(width: 6),
+          Text(
+            'Unread Messages',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF0369A1)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _build24HourWindowBanner() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBEB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFDE68A)),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0A000000), blurRadius: 4, offset: Offset(0, 1)),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFEF3C7),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.history_toggle_off_rounded, size: 18, color: Color(0xFFD97706)),
+          ),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Meta 24-Hour Window Closed',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF92400E),
+                  ),
+                ),
+                SizedBox(height: 1),
+                Text(
+                  'Under Meta policy, send an approved template to interact with this customer.',
+                  style: TextStyle(fontSize: 10.5, color: Color(0xFFB45309)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          ElevatedButton.icon(
+            onPressed: _openTemplatePicker,
+            icon: const Icon(Icons.send_rounded, size: 12, color: Colors.white),
+            label: const Text(
+              'Send Template',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF059669),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              visualDensity: VisualDensity.compact,
+              elevation: 0,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3660,6 +3873,25 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   onTap: _showAttachmentSheet,
                   child: const Icon(Icons.attach_file_rounded, size: 20, color: Color(0xFF64748B)),
                 ),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: 'Send Approved Template',
+                  child: GestureDetector(
+                    onTap: _openTemplatePicker,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: _is24HourWindowClosed ? const Color(0xFFFEF3C7) : const Color(0xFFF1F5F9),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(
+                        Icons.dashboard_customize_rounded,
+                        size: 19,
+                        color: _is24HourWindowClosed ? const Color(0xFFD97706) : const Color(0xFF059669),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -3759,11 +3991,21 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                 _buildAttachmentOption(
                   icon: Icons.link_rounded,
                   label: 'Image URL',
+                  color: const Color(0xFF0284C7),
+                  bgColor: const Color(0xFFE0F2FE),
+                  onTap: () {
+                    Navigator.pop(sheetCtx);
+                    _showImageUrlDialog();
+                  },
+                ),
+                _buildAttachmentOption(
+                  icon: Icons.dashboard_customize_rounded,
+                  label: 'Template',
                   color: const Color(0xFF059669),
                   bgColor: const Color(0xFFD1FAE5),
                   onTap: () {
                     Navigator.pop(sheetCtx);
-                    _showImageUrlDialog();
+                    _openTemplatePicker();
                   },
                 ),
               ],
@@ -4409,6 +4651,30 @@ class _MetaWhatsAppChatScreenState extends State<MetaWhatsAppChatScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (msg.messageType == 'template') ...[
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 5),
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1FAE5),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.dashboard_customize_rounded, size: 11, color: Color(0xFF065F46)),
+                              SizedBox(width: 4),
+                              Text(
+                                'Meta Approved Template',
+                                style: TextStyle(fontSize: 9.5, fontWeight: FontWeight.bold, color: Color(0xFF065F46)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                     if (hasMedia) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),

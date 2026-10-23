@@ -31,6 +31,12 @@ router.post('/chats/connect', (req, res, next) => whatsappChatController.saveCon
 // Start a new WhatsApp chat with a customer
 router.post('/chats/new', (req, res, next) => whatsappChatController.startNewChat(req, res, next));
 
+// Get Meta-approved message templates (can be sent even if 24-hr window is closed)
+router.get('/chats/templates', (req, res, next) => whatsappChatController.getApprovedTemplates(req, res, next));
+
+// Send an approved Meta message template to customer (bypasses 24-hr customer service window)
+router.post('/chats/:chatId/template', (req, res, next) => whatsappChatController.sendTemplateMessage(req, res, next));
+
 // Get messages for a specific conversation
 router.get('/chats/:chatId/messages', (req, res, next) => whatsappChatController.getMessages(req, res, next));
 
