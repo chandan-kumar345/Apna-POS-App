@@ -144,6 +144,7 @@ class AIAgentService {
         offersText,
         products: products || [],
         settings: business.aiChatAgentSettings || {},
+        business,
       };
     } catch (err) {
       console.error('[AIAgentService] Context extraction notice:', err.message);
@@ -496,10 +497,11 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
                 }
 
                 if (validItems.length > 0) {
-                  const isGstActive = business?.orderSettings?.tax?.type !== 'no_gst';
+                  const bObj = business || context?.business;
+        const isGstActive = bObj?.orderSettings?.tax?.type !== 'no_gst';
                   const taxRate = isGstActive
-                    ? (typeof business?.orderSettings?.tax?.percentage === 'number' && business.orderSettings.tax.percentage >= 0
-                        ? business.orderSettings.tax.percentage
+                    ? (typeof bObj?.orderSettings?.tax?.percentage === 'number' && bObj.orderSettings.tax.percentage >= 0
+                        ? bObj.orderSettings.tax.percentage
                         : 5)
                     : 0;
                   const taxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
@@ -549,6 +551,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
       customerName,
       persona,
       settings,
+      business: business || context?.business,
     });
 
     const replyText = typeof fallbackResult === 'object' && fallbackResult.replyText ? fallbackResult.replyText : (typeof fallbackResult === 'string' ? fallbackResult : '');
@@ -566,7 +569,7 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
   /**
    * Smart rule-based conversational engine grounded in the live menu
    */
-  generateSmartGroundedReply({ messageText, context, customerName, persona, settings }) {
+  generateSmartGroundedReply({ messageText, context, customerName, persona, settings, business = null }) {
     const raw = (messageText || '').toLowerCase().trim();
     const rName = context.restaurantName || 'Apna POS';
     const formattedCustomerName = this.formatCustomerName(customerName);
@@ -712,10 +715,11 @@ ${customPrompt ? `OWNER CUSTOM INSTRUCTIONS:\n${customPrompt}\n` : ''}
           finalOrderType = 'takeaway';
         }
 
-        const isGstActive = business?.orderSettings?.tax?.type !== 'no_gst';
+        const bObj = business || context?.business;
+        const isGstActive = bObj?.orderSettings?.tax?.type !== 'no_gst';
         const taxRate = isGstActive
-          ? (typeof business?.orderSettings?.tax?.percentage === 'number' && business.orderSettings.tax.percentage >= 0
-              ? business.orderSettings.tax.percentage
+          ? (typeof bObj?.orderSettings?.tax?.percentage === 'number' && bObj.orderSettings.tax.percentage >= 0
+              ? bObj.orderSettings.tax.percentage
               : 5)
           : 0;
         const taxAmount = Number(((calculatedSubtotal * taxRate) / 100).toFixed(2));

@@ -252,6 +252,9 @@ class SubscriptionService {
     if (!subDoc && user?.email) {
       subDoc = await Subscription.findOne({ userEmail: user.email.toLowerCase().trim() }).sort({ createdAt: -1 });
     }
+    if (!subDoc && !targetBizId && !targetUserId && !targetStaffId) {
+      subDoc = await Subscription.findOne().sort({ updatedAt: -1, createdAt: -1 });
+    }
     let isSubscribed = false;
     let plan = 'starter';
     let amount = 0;

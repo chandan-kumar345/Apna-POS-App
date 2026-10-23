@@ -136,7 +136,8 @@ describe('WhatsApp Concurrent Ordering, Takeaway, Delivery & Menu Delivery Flow'
     expect(reply.orderPayload.items.length).toBe(1);
     expect(reply.orderPayload.items[0].name).toBe('Crispy Veg Burger');
     expect(reply.orderPayload.items[0].quantity).toBe(2);
-    expect(reply.orderPayload.totalAmount).toBe(240);
+    expect(reply.orderPayload.subtotal).toBe(240);
+    expect(reply.orderPayload.totalAmount).toBe(252);
     expect(reply.replyText).toContain('Takeaway / Pickup');
   });
 
