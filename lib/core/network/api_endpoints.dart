@@ -459,6 +459,10 @@ class ApiEndpoints {
   static const String posSettings = '/profile/pos-settings';
   static const String profileSettings = '/profile/settings';
 
+  // Public Storefront endpoints
+  static String storefront(String slug) => '/storefront/$slug';
+  static String storefrontOrder(String slug) => '/storefront/$slug/order';
+
   // Cart endpoints
   static const String cart = '/cart';
   static const String cartAdd = '/cart/add';

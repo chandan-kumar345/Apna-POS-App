@@ -34,6 +34,23 @@ class RestaurantModel {
   final String? logoUrl;
   final bool isSubscribed;
   final String companyName;
+  final String slug;
+
+  static String slugify(String text) {
+    final clean = text.trim().toLowerCase();
+    if (clean.isEmpty) return 'store';
+    final replaced = clean.replaceAll(RegExp(r'[^a-z0-9]+'), '-').replaceAll(RegExp(r'^-+|-+$'), '');
+    return replaced.isNotEmpty ? replaced : 'store';
+  }
+
+  String get storefrontSlug {
+    if (slug.trim().isNotEmpty) return slug.trim();
+    if (companyName.trim().isNotEmpty) return slugify(companyName);
+    if (name.trim().isNotEmpty) return slugify(name);
+    return id.isNotEmpty ? 'store-$id' : 'apna-store';
+  }
+
+  String get storefrontUrl => 'https://apnaposs.vercel.app/$storefrontSlug';
 
   bool get showItemImages => posViewMode != 'without_image';
 
@@ -41,6 +58,7 @@ class RestaurantModel {
     required this.id,
     required this.name,
     this.companyName = '',
+    this.slug = '',
     required this.tagline,
     required this.phone,
     required this.address,
@@ -74,6 +92,7 @@ class RestaurantModel {
         'id': id,
         'name': name,
         'companyName': companyName,
+        'slug': storefrontSlug,
         'tagline': tagline,
         'phone': phone,
         'address': address,
@@ -180,6 +199,9 @@ class RestaurantModel {
             json['profileLogo']?.toString() ??
             json['profilePhotoPath']?.toString() ??
             (json['profile'] is Map ? (json['profile']['profileImage'] ?? json['profile']['logoUrl'] ?? json['profile']['logo'])?.toString() : null),
+        slug: json['slug']?.toString() ??
+            (json['profile'] is Map ? json['profile']['slug']?.toString() : null) ??
+            '',
       );
   }
 
@@ -189,6 +211,7 @@ class RestaurantModel {
     String? id,
     String? name,
     String? companyName,
+    String? slug,
     String? tagline,
     String? phone,
     String? address,
@@ -221,6 +244,7 @@ class RestaurantModel {
       id: id ?? this.id,
       name: name ?? this.name,
       companyName: companyName ?? this.companyName,
+      slug: slug ?? this.slug,
       tagline: tagline ?? this.tagline,
       phone: phone ?? this.phone,
       address: address ?? this.address,

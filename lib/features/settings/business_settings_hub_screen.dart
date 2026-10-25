@@ -17,6 +17,10 @@ import '../../core/services/whatsapp_chat_service.dart';
 import '../coupon/screens/coupon_management_screen.dart';
 import '../wallet/wallet_screen.dart';
 import 'ai_chat_agent_screen.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
+import '../storefront/screens/customer_storefront_screen.dart';
 
 /// Neumorphic Color Constants & Styling
 class _NeumorphicTheme {
@@ -4150,13 +4154,21 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         onEdit: _showEditBusinessProfileModal,
                       ),
 
+                      const SizedBox(height: 20),
+
+                      // 1.5. CUSTOMER WEB STOREFRONT PREVIEW BOX (apnaposs.vercel.app/company-name)
+                      _buildCustomerStorefrontPreviewCard(
+                        restaurant,
+                        isMobile: isMobile,
+                      ),
+
                       const SizedBox(height: 24),
 
                       // 2. CATEGORY 1: STORE & ORDER CONFIGURATION
                       _buildNeumorphicSectionHeader(
                         title: 'Store & Order Configuration',
                         icon: Icons.storefront_rounded,
-                        countText: '7 Items',
+                        countText: '8 Items',
                         accentColor: const Color(0xFF0052FF),
                       ),
                       const SizedBox(height: 14),
@@ -4165,6 +4177,25 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         spacing: spacing,
                         runSpacing: spacing,
                         children: [
+                          _buildSettingCard(
+                            width: cardWidth,
+                            title: 'Customer Web Menu',
+                            subtitle: 'apnaposs.vercel.app/${restaurant?.storefrontSlug ?? "company-name"}',
+                            icon: Icons.storefront_rounded,
+                            accentColor: const Color(0xFFE65100),
+                            badgeText: 'Online',
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => CustomerStorefrontScreen(
+                                    slug: restaurant?.storefrontSlug ?? '',
+                                    isPreviewMode: true,
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
                           _buildSettingCard(
                             width: cardWidth,
                             title: 'Order Setting',
@@ -4477,6 +4508,447 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
               ),
             );
           },
+        ),
+      ),
+    );
+  }
+
+  // ==========================================
+  // CUSTOMER STOREFRONT PREVIEW ATOMS & MODALS
+  // ==========================================
+
+  Widget _buildCustomerStorefrontPreviewCard(RestaurantModel? restaurant, {required bool isMobile}) {
+    final slug = restaurant?.storefrontSlug ?? 'company-name';
+    final storeUrl = 'https://apnaposs.vercel.app/$slug';
+    final displayUrl = 'apnaposs.vercel.app/$slug';
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(isMobile ? 14 : 18),
+      decoration: BoxDecoration(
+        color: _NeumorphicTheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: _NeumorphicTheme.raisedShadows,
+        border: Border.all(color: Colors.white, width: 1.8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Top Row: Title, Icon Badge and Status Pill
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE65100), Color(0xFFFF6D00)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFE65100).withValues(alpha: 0.35),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
+                ),
+                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Customer Web Storefront',
+                            style: TextStyle(
+                              fontSize: isMobile ? 15 : 16.5,
+                              fontWeight: FontWeight.w800,
+                              color: _NeumorphicTheme.textDark,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDCFCE7),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFF86EFAC)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                  color: Color(0xFF16A34A),
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              const Text(
+                                'LIVE',
+                                style: TextStyle(
+                                  color: Color(0xFF15803D),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Customer preview link to order takeaway and delivery',
+                      style: TextStyle(
+                        fontSize: isMobile ? 11.5 : 12.5,
+                        color: _NeumorphicTheme.textMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // URL Display Box (Sunken Neumorphic container)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: _NeumorphicTheme.sunkenSurface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.link_rounded, size: 20, color: Color(0xFFE65100)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      displayUrl,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFFE65100),
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFFE65100),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Copy Store Link',
+                  icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF64748B)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: storeUrl));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Copied "$storeUrl" to clipboard!'),
+                        backgroundColor: const Color(0xFF0F172A),
+                        behavior: SnackBarBehavior.floating,
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(width: 10),
+                IconButton(
+                  tooltip: 'Edit Store Slug',
+                  icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF64748B)),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  onPressed: () => _showEditStorefrontSlugModal(slug),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Action Buttons Row
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              // 1. Primary "Customer Preview" Button
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.remove_red_eye_rounded, size: 17),
+                label: const Text('Customer Preview', style: TextStyle(fontWeight: FontWeight.w800)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFE65100),
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+              ),
+
+              // 2. Open in Website
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final uri = Uri.parse(storeUrl);
+                  try {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                  } catch (_) {
+                    if (context.mounted) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => CustomerStorefrontScreen(slug: slug, isPreviewMode: true),
+                        ),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                label: const Text('Open Website'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _NeumorphicTheme.textDark,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+
+              // 3. Share
+              OutlinedButton.icon(
+                onPressed: () {
+                  final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!\n\n👉 $storeUrl';
+                  SharePlus.instance.share(ShareParams(text: shareMsg));
+                },
+                icon: const Icon(Icons.share_rounded, size: 16),
+                label: const Text('Share'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _NeumorphicTheme.textDark,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+
+              // 4. QR Code
+              OutlinedButton.icon(
+                onPressed: () => _showStorefrontQrCodeDialog(storeUrl, restaurant?.name ?? 'Store'),
+                icon: const Icon(Icons.qr_code_2_rounded, size: 16),
+                label: const Text('QR Code'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _NeumorphicTheme.textDark,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditStorefrontSlugModal(String currentSlug) {
+    final controller = TextEditingController(text: currentSlug);
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
+        child: Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Customize Storefront Link',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Customers will use this clean link to open your live takeaway and delivery ordering page.',
+                style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+              ),
+              const SizedBox(height: 18),
+              Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                child: Row(
+                  children: [
+                    const Text(
+                      'apnaposs.vercel.app/',
+                      style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF64748B)),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: controller,
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Color(0xFFE65100)),
+                        decoration: const InputDecoration(
+                          hintText: 'company-name',
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    final cleanSlug = RestaurantModel.slugify(controller.text.trim());
+                    if (cleanSlug.isNotEmpty) {
+                      await db.updateStorefrontSlug(cleanSlug);
+                      setState(() {});
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Store link updated to: apnaposs.vercel.app/$cleanSlug'),
+                          backgroundColor: const Color(0xFF16A34A),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFE65100),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('Save Store Link', style: TextStyle(fontWeight: FontWeight.w800)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showStorefrontQrCodeDialog(String storeUrl, String restaurantName) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+        contentPadding: const EdgeInsets.all(24),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              restaurantName,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: Color(0xFF0F172A)),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Scan to Order Takeaway & Delivery',
+              style: TextStyle(fontSize: 12.5, color: Color(0xFF64748B)),
+            ),
+            const SizedBox(height: 20),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4)),
+                ],
+              ),
+              child: QrImageView(
+                data: storeUrl,
+                version: QrVersions.auto,
+                size: 200,
+                backgroundColor: Colors.white,
+                eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Color(0xFFE65100)),
+                dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Color(0xFF0F172A)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              storeUrl,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Color(0xFFE65100)),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: storeUrl));
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Link copied to clipboard!'), behavior: SnackBarBehavior.floating),
+                      );
+                    },
+                    style: OutlinedButton.styleFrom(
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Copy Link'),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFFE65100),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    child: const Text('Done'),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

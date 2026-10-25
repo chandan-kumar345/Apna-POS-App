@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import '../models/user_model.dart';
 import '../models/restaurant_model.dart';
+import '../models/menu_item_model.dart';
+import '../models/order_model.dart';
 
 class FirestoreService {
   static final FirestoreService _instance = FirestoreService._internal();
@@ -151,6 +153,117 @@ class FirestoreService {
       }
       debugPrint('[FirestoreService] Error getting restaurant from Firestore (non-fatal): $e');
       return null;
+    }
+  }
+
+  /// Get restaurant by public storefront slug from Firestore
+  Future<RestaurantModel?> getRestaurantBySlug(String slug) async {
+    if (_hasPermissionError || slug.trim().isEmpty) return null;
+    try {
+      final db = _db;
+      if (db == null) return null;
+
+      final cleanSlug = slug.trim().toLowerCase();
+
+      // 1. Try finding by 'slug' field
+      try {
+        final query = await db
+            .collection(restaurantsCollection)
+            .where('slug', isEqualTo: cleanSlug)
+            .limit(1)
+            .get();
+
+        if (query.docs.isNotEmpty) {
+          final data = query.docs.first.data();
+          data['id'] = query.docs.first.id;
+          return RestaurantModel.fromJson(data);
+        }
+      } catch (_) {}
+
+      // 2. Try direct doc ID match
+      try {
+        final doc = await db.collection(restaurantsCollection).doc(cleanSlug).get();
+        if (doc.exists && doc.data() != null) {
+          final data = doc.data()!;
+          data['id'] = doc.id;
+          return RestaurantModel.fromJson(data);
+        }
+      } catch (_) {}
+
+      return null;
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting restaurant by slug (non-fatal): $e');
+      return null;
+    }
+  }
+
+  /// Save public menu items and storefront catalog to Firestore
+  Future<void> saveStorefrontMenu({
+    required String restaurantId,
+    required List<MenuItemModel> items,
+    required List<String> categories,
+  }) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return;
+    try {
+      final db = _db;
+      if (db == null) return;
+
+      final storeDoc = db.collection('storefronts').doc(restaurantId);
+
+      await storeDoc.set(
+        {
+          'restaurantId': restaurantId,
+          'categories': categories,
+          'itemCount': items.length,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'items': items.map((e) => e.toJson()).toList(),
+        },
+        SetOptions(merge: true),
+      );
+
+      debugPrint('[FirestoreService] Storefront menu synced for $restaurantId (${items.length} items)');
+    } catch (e) {
+      debugPrint('[FirestoreService] Storefront menu sync notice: $e');
+    }
+  }
+
+  /// Fetch public storefront menu items and categories
+  Future<Map<String, dynamic>?> getStorefrontMenu(String restaurantId) async {
+    if (_hasPermissionError || restaurantId.trim().isEmpty) return null;
+    try {
+      final db = _db;
+      if (db == null) return null;
+
+      final doc = await db.collection('storefronts').doc(restaurantId).get();
+      if (doc.exists && doc.data() != null) {
+        return doc.data();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('[FirestoreService] Error getting storefront menu (non-fatal): $e');
+      return null;
+    }
+  }
+
+  /// Submit customer online order to Firestore
+  Future<bool> submitStorefrontOrder(OrderModel order, {required String restaurantId}) async {
+    if (_hasPermissionError) return false;
+    try {
+      final db = _db;
+      if (db == null) return false;
+
+      final orderData = order.toJson();
+      orderData['restaurantId'] = restaurantId;
+      orderData['isOnlineOrder'] = true;
+      orderData['source'] = 'online_storefront';
+      orderData['submittedAt'] = FieldValue.serverTimestamp();
+
+      await db.collection('orders').doc(order.id).set(orderData);
+      debugPrint('[FirestoreService] Storefront order ${order.orderNumber} successfully posted');
+      return true;
+    } catch (e) {
+      debugPrint('[FirestoreService] Error submitting storefront order: $e');
+      return false;
     }
   }
 

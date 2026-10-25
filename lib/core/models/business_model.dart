@@ -49,6 +49,7 @@ class BusinessProfile {
   final String companyName;
   final String website;
   final String referralCode;
+  final String slug;
 
   BusinessProfile({
     this.profileImage = '',
@@ -57,6 +58,7 @@ class BusinessProfile {
     this.companyName = '',
     this.website = '',
     this.referralCode = '',
+    this.slug = '',
   });
 
   factory BusinessProfile.fromJson(Map<String, dynamic> json) {
@@ -74,6 +76,7 @@ class BusinessProfile {
       companyName: json['companyName']?.toString() ?? '',
       website: json['website']?.toString() ?? '',
       referralCode: json['referralCode']?.toString() ?? '',
+      slug: json['slug']?.toString() ?? '',
     );
   }
 
@@ -84,6 +87,7 @@ class BusinessProfile {
         'companyName': companyName,
         'website': website,
         'referralCode': referralCode,
+        'slug': slug,
       };
 }
 

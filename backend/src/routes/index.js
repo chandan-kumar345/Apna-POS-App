@@ -26,6 +26,7 @@ const ebillRoutes = require('./ebillRoutes');
 const walletRoutes = require('./walletRoutes');
 const whatsappRoutes = require('./whatsappRoutes');
 const couponRoutes = require('./couponRoutes');
+const storefrontRoutes = require('./storefrontRoutes');
 
 const router = express.Router();
 
@@ -69,6 +70,7 @@ router.use('/ebill', ebillRoutes);
 router.use('/wallet', walletRoutes);
 router.use('/whatsapp', whatsappRoutes);
 router.use('/coupons', couponRoutes);
+router.use('/storefront', storefrontRoutes);
 
 module.exports = router;
 

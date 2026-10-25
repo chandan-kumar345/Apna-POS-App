@@ -2909,7 +2909,10 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> saveRestaurantOnboarding(RestaurantModel updated) async {
-    restaurant = updated.copyWith(isOnboarded: true);
+    final resolvedSlug = updated.slug.isNotEmpty
+        ? updated.slug
+        : RestaurantModel.slugify(updated.companyName.isNotEmpty ? updated.companyName : updated.name);
+    restaurant = updated.copyWith(isOnboarded: true, slug: resolvedSlug);
     await saveOnboardingProgress(route: 'completed', step: 8);
     await _saveRestaurantToPrefs();
 
@@ -2935,7 +2938,10 @@ class DatabaseService extends ChangeNotifier {
   }
 
   Future<void> updateRestaurantProfile(RestaurantModel updated) async {
-    restaurant = updated;
+    final resolvedSlug = updated.slug.isNotEmpty
+        ? updated.slug
+        : RestaurantModel.slugify(updated.companyName.isNotEmpty ? updated.companyName : updated.name);
+    restaurant = updated.copyWith(slug: resolvedSlug);
     await _saveRestaurantToPrefs();
     await _firestoreService.saveRestaurant(restaurant!);
     notifyListeners();
@@ -2958,6 +2964,58 @@ class DatabaseService extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[DatabaseService.updateRestaurantProfile] API error: $e');
+    }
+  }
+
+  /// Customize or update the public storefront URL slug (e.g. apnaposs.vercel.app/my-brand)
+  Future<void> updateStorefrontSlug(String newSlug) async {
+    final clean = RestaurantModel.slugify(newSlug);
+    if (clean.isEmpty) return;
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(slug: clean);
+      await _saveRestaurantToPrefs();
+      await _firestoreService.saveRestaurant(restaurant!);
+      await syncStorefrontCatalog();
+      notifyListeners();
+    }
+  }
+
+  /// Synchronize the catalog (menu items, categories) to the public storefront database
+  Future<void> syncStorefrontCatalog() async {
+    if (restaurant == null) return;
+    try {
+      await _firestoreService.saveStorefrontMenu(
+        restaurantId: restaurant!.id,
+        items: menuItems,
+        categories: categories,
+      );
+    } catch (e) {
+      debugPrint('[DatabaseService] syncStorefrontCatalog notice: $e');
+    }
+  }
+
+  /// Place and register an incoming online storefront order (Takeaway or Delivery)
+  Future<bool> placeOnlineStorefrontOrder(OrderModel order) async {
+    try {
+      // 1. Add order to memory and local storage
+      orders.insert(0, order);
+      await _saveOrdersToPrefs();
+
+      // 2. Play audible order chime if POS is running
+      try {
+        SoundService.playOrderRingtone();
+      } catch (_) {}
+
+      // 3. Sync to Firestore
+      if (restaurant != null) {
+        await _firestoreService.submitStorefrontOrder(order, restaurantId: restaurant!.id);
+      }
+
+      notifyListeners();
+      return true;
+    } catch (e) {
+      debugPrint('[DatabaseService.placeOnlineStorefrontOrder] error: $e');
+      return false;
     }
   }
 
@@ -2997,7 +3055,10 @@ class DatabaseService extends ChangeNotifier {
       logoUrl: cleanLogo,
     );
 
-    restaurant = updated;
+    final resolvedSlug = updated.slug.isNotEmpty
+        ? updated.slug
+        : RestaurantModel.slugify(updated.companyName.isNotEmpty ? updated.companyName : updated.name);
+    restaurant = updated.copyWith(slug: resolvedSlug);
     await _saveRestaurantToPrefs();
 
     if (cleanLogo != null && cleanLogo.isNotEmpty) {
