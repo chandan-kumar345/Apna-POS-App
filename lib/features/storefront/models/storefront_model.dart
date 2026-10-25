@@ -193,6 +193,8 @@ class StorefrontData {
   final List<MenuItemModel> menuItems;
   final List<ExtraModel> addOns;
   final List<StorefrontBanner> banners;
+  final bool isOnline;
+  final int themeColorHex;
 
   const StorefrontData({
     required this.restaurant,
@@ -200,5 +202,7 @@ class StorefrontData {
     required this.menuItems,
     required this.addOns,
     required this.banners,
+    this.isOnline = true,
+    this.themeColorHex = 0xFFE65100,
   });
 }

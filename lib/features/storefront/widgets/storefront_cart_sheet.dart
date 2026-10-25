@@ -12,6 +12,8 @@ class StorefrontCartSheet extends StatefulWidget {
   final String deliveryAddress;
   final Function(StorefrontCartItem item, int newQty) onUpdateQuantity;
   final VoidCallback onClearCart;
+  final Color themeColor;
+  final bool isOnline;
 
   const StorefrontCartSheet({
     super.key,
@@ -21,6 +23,8 @@ class StorefrontCartSheet extends StatefulWidget {
     required this.deliveryAddress,
     required this.onUpdateQuantity,
     required this.onClearCart,
+    this.themeColor = const Color(0xFFE65100),
+    this.isOnline = true,
   });
 
   @override
@@ -729,10 +733,12 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
-                  onPressed: _isSubmitting ? null : _handlePlaceOrder,
+                  onPressed: (_isSubmitting || !widget.isOnline) ? null : _handlePlaceOrder,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFE65100),
+                    backgroundColor: widget.isOnline ? widget.themeColor : const Color(0xFF94A3B8),
                     foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFFCBD5E1),
+                    disabledForegroundColor: const Color(0xFF64748B),
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
                     elevation: 0,
@@ -748,14 +754,16 @@ class _StorefrontCartSheetState extends State<StorefrontCartSheet> {
                           children: [
                             Flexible(
                               child: Text(
-                                'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}',
+                                widget.isOnline
+                                    ? 'Place ${_orderType == OrderType.delivery ? "Delivery" : "Takeaway"} Order • ₹${_grandTotal.toStringAsFixed(0)}'
+                                    : 'Store is Offline • Ordering Paused',
                                 style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                             const SizedBox(width: 6),
-                            const Icon(Icons.arrow_forward_rounded, size: 18),
+                            Icon(widget.isOnline ? Icons.arrow_forward_rounded : Icons.lock_outline_rounded, size: 18),
                           ],
                         ),
                 ),

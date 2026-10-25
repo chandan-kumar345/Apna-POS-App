@@ -2975,6 +2975,51 @@ class DatabaseService extends ChangeNotifier {
     }
   }
 
+  bool? _isStorefrontOnlineMemory;
+  int? _storefrontThemeColorMemory;
+
+  /// Whether the public customer web storefront is taking online orders
+  bool get isStorefrontOnline {
+    if (_isStorefrontOnlineMemory != null) return _isStorefrontOnlineMemory!;
+    final cached = _prefs?.getBool(_businessKey('storefront_online'));
+    if (cached != null) return cached;
+    return restaurant?.isStorefrontOnline ?? true;
+  }
+
+  Future<void> setStorefrontOnline(bool isOnline) async {
+    _isStorefrontOnlineMemory = isOnline;
+    await _prefs?.setBool(_businessKey('storefront_online'), isOnline);
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(isStorefrontOnline: isOnline);
+      await _saveRestaurantToPrefs();
+      try {
+        await _firestoreService.saveRestaurant(restaurant!);
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
+  /// Theme color hex for the customer storefront (defaults to 0xFFE65100)
+  int get storefrontThemeColor {
+    if (_storefrontThemeColorMemory != null) return _storefrontThemeColorMemory!;
+    final cached = _prefs?.getInt(_businessKey('storefront_theme_color'));
+    if (cached != null) return cached;
+    return restaurant?.storefrontThemeColor ?? 0xFFE65100;
+  }
+
+  Future<void> setStorefrontThemeColor(int colorHex) async {
+    _storefrontThemeColorMemory = colorHex;
+    await _prefs?.setInt(_businessKey('storefront_theme_color'), colorHex);
+    if (restaurant != null) {
+      restaurant = restaurant!.copyWith(storefrontThemeColor: colorHex);
+      await _saveRestaurantToPrefs();
+      try {
+        await _firestoreService.saveRestaurant(restaurant!);
+      } catch (_) {}
+    }
+    notifyListeners();
+  }
+
   /// Customize or update the public storefront URL slug (e.g. apnaposs.vercel.app/my-brand)
   Future<void> updateStorefrontSlug(String newSlug) async {
     final clean = RestaurantModel.slugify(newSlug);

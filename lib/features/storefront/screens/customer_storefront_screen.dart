@@ -13,6 +13,7 @@ import '../models/storefront_model.dart';
 import '../services/storefront_service.dart';
 import '../widgets/item_customization_sheet.dart';
 import '../widgets/storefront_cart_sheet.dart';
+import '../widgets/storefront_video_player_dialog.dart';
 
 class CustomerStorefrontScreen extends StatefulWidget {
   final String slug;
@@ -116,6 +117,43 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
 
   int get _totalCartCount => _cartItems.fold(0, (sum, i) => sum + i.quantity);
   double get _totalCartAmount => _cartItems.fold(0.0, (sum, i) => sum + i.totalPrice);
+  Color get _themeColor => Color(_data?.themeColorHex ?? 0xFFE65100);
+  bool get _isStoreOnline => _data?.isOnline ?? true;
+
+  String _getCategoryImageUrl(String cat) {
+    if (_data == null) return '';
+    if (cat.toLowerCase() != 'all') {
+      final matchingItem = _data!.menuItems.where(
+        (i) => i.category.trim().toLowerCase() == cat.trim().toLowerCase() && i.imageUrl.trim().isNotEmpty
+      ).firstOrNull;
+      if (matchingItem != null) {
+        return matchingItem.imageUrl.trim();
+      }
+    } else {
+      final itemWithImg = _data!.menuItems.where((i) => i.imageUrl.trim().isNotEmpty).firstOrNull;
+      if (itemWithImg != null) {
+        return itemWithImg.imageUrl.trim();
+      }
+    }
+
+    final lower = cat.toLowerCase();
+    if (lower.contains('piz')) {
+      return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('burg')) {
+      return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('past') || lower.contains('nood') || lower.contains('spagh')) {
+      return 'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('side') || lower.contains('frie') || lower.contains('snack')) {
+      return 'https://images.unsplash.com/photo-1576107232684-1279f3908594?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('bev') || lower.contains('drink') || lower.contains('shake') || lower.contains('juice') || lower.contains('coffee')) {
+      return 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('dess') || lower.contains('cake') || lower.contains('ice') || lower.contains('sweet')) {
+      return 'https://images.unsplash.com/photo-1551024601-bec78aea704b?auto=format&fit=crop&w=200&q=80';
+    } else if (lower.contains('roll') || lower.contains('wrap') || lower.contains('sandwich')) {
+      return 'https://images.unsplash.com/photo-1509722747041-616f39b57569?auto=format&fit=crop&w=200&q=80';
+    }
+    return 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=200&q=80';
+  }
 
   void _openCustomizationModal(MenuItemModel item) {
     showModalBottomSheet(
@@ -124,6 +162,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       backgroundColor: Colors.transparent,
       builder: (ctx) => ItemCustomizationSheet(
         item: item,
+        themeColor: _themeColor,
+        isOnline: _isStoreOnline,
         onAddToCart: (cartItem) {
           setState(() {
             final existingIdx = _cartItems.indexWhere(
@@ -142,7 +182,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Added "${item.name}" to cart'),
-              backgroundColor: const Color(0xFFE65100),
+              backgroundColor: _themeColor,
               duration: const Duration(seconds: 1),
               behavior: SnackBarBehavior.floating,
             ),
@@ -163,6 +203,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         cartItems: _cartItems,
         initialOrderType: _orderType,
         deliveryAddress: _deliveryAddress,
+        themeColor: _themeColor,
+        isOnline: _isStoreOnline,
         onUpdateQuantity: (item, newQty) {
           setState(() {
             if (newQty <= 0) {
@@ -190,9 +232,9 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
         title: const Text('Change Delivery Location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             hintText: 'Enter area or city',
-            prefixIcon: Icon(Icons.location_on_rounded, color: Color(0xFFE65100)),
+            prefixIcon: Icon(Icons.location_on_rounded, color: _themeColor),
           ),
         ),
         actions: [
@@ -204,7 +246,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
               }
               Navigator.pop(ctx);
             },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE65100)),
+            style: ElevatedButton.styleFrom(backgroundColor: _themeColor),
             child: const Text('Confirm', style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -256,7 +298,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                 icon: const Icon(Icons.call_rounded),
                 label: const Text('Call Outlet'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE65100),
+                  backgroundColor: _themeColor,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -271,7 +313,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
   Widget _buildInfoRow(IconData icon, String text) {
     return Row(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFFE65100)),
+        Icon(icon, size: 18, color: _themeColor),
         const SizedBox(width: 10),
         Expanded(child: Text(text, style: const TextStyle(fontSize: 13.5, color: Color(0xFF0F172A)))),
       ],
@@ -289,7 +331,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFE65100), width: 1.5),
+        border: Border.all(color: _themeColor, width: 1.5),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.08),
@@ -372,13 +414,13 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),
         shape: BoxShape.circle,
-        border: Border.all(color: const Color(0xFFE65100), width: 1.5),
+        border: Border.all(color: _themeColor, width: 1.5),
       ),
       child: Center(
         child: Text(
           name.length > 2 ? name.substring(0, 2).toUpperCase() : 'POS',
           style: TextStyle(
-            color: const Color(0xFFE65100),
+            color: _themeColor,
             fontSize: size * 0.38,
             fontWeight: FontWeight.w900,
           ),
@@ -439,8 +481,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                   color: Color(0xFFFFF3E0),
                   shape: BoxShape.circle,
                 ),
-                child: const Center(
-                  child: CircularProgressIndicator(color: Color(0xFFE65100), strokeWidth: 3),
+                child: Center(
+                  child: CircularProgressIndicator(color: _themeColor, strokeWidth: 3),
                 ),
               ),
               const SizedBox(height: 18),
@@ -555,19 +597,19 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                       ],
                                     ),
 
-                                    // Open status badge
+                                    // Open / Offline status badge
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFDCFCE7),
+                                        color: _isStoreOnline ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Text(
-                                        'Open',
+                                      child: Text(
+                                        _isStoreOnline ? 'Open' : 'Offline',
                                         style: TextStyle(
                                           fontSize: 10,
                                           fontWeight: FontWeight.w700,
-                                          color: Color(0xFF16A34A),
+                                          color: _isStoreOnline ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                                         ),
                                       ),
                                     ),
@@ -584,15 +626,10 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           ),
                           const SizedBox(width: 6),
 
-                          // Top-Right Action Buttons (Search, Heart, More)
+                          // Top-Right Action Buttons (Heart, More)
                           Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              _buildCircularHeaderButton(
-                                icon: Icons.search_rounded,
-                                onTap: () => _searchFocusNode.requestFocus(),
-                              ),
-                              const SizedBox(width: 5),
                               _buildCircularHeaderButton(
                                 icon: _isFavorite ? Icons.favorite_rounded : Icons.favorite_border_rounded,
                                 iconColor: _isFavorite ? const Color(0xFFEF4444) : const Color(0xFF0F172A),
@@ -611,6 +648,36 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       ),
 
                       const SizedBox(height: 14),
+
+                      // Offline alert banner if store is not taking online orders
+                      if (!_isStoreOnline) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF2F2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFFCA5A5)),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.store_mall_directory_outlined, size: 16, color: Color(0xFFDC2626)),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Store is currently Offline • Online ordering is paused',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF991B1B),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
 
                       // 2. ORDER TYPE SWITCHER & LOCATION / ETA BAR
                       Column(
@@ -634,12 +701,12 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                     child: AnimatedContainer(
                                       duration: const Duration(milliseconds: 150),
                                       decoration: BoxDecoration(
-                                        color: _orderType == OrderType.delivery ? const Color(0xFFE65100) : Colors.transparent,
+                                        color: _orderType == OrderType.delivery ? _themeColor : Colors.transparent,
                                         borderRadius: BorderRadius.circular(18),
                                         boxShadow: _orderType == OrderType.delivery
                                             ? [
                                                 BoxShadow(
-                                                  color: const Color(0xFFE65100).withValues(alpha: 0.25),
+                                                  color: _themeColor.withValues(alpha: 0.25),
                                                   blurRadius: 4,
                                                   offset: const Offset(0, 2),
                                                 )
@@ -677,12 +744,12 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                     child: AnimatedContainer(
                                       duration: const Duration(milliseconds: 150),
                                       decoration: BoxDecoration(
-                                        color: _orderType == OrderType.takeaway ? const Color(0xFFE65100) : Colors.transparent,
+                                        color: _orderType == OrderType.takeaway ? _themeColor : Colors.transparent,
                                         borderRadius: BorderRadius.circular(18),
                                         boxShadow: _orderType == OrderType.takeaway
                                             ? [
                                                 BoxShadow(
-                                                  color: const Color(0xFFE65100).withValues(alpha: 0.25),
+                                                  color: _themeColor.withValues(alpha: 0.25),
                                                   blurRadius: 4,
                                                   offset: const Offset(0, 2),
                                                 )
@@ -765,11 +832,11 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                       color: const Color(0xFFF1F5F9),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: const Row(
+                                    child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        Text('Change', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFE65100))),
-                                        Icon(Icons.keyboard_arrow_right_rounded, size: 14, color: Color(0xFFE65100)),
+                                        Text('Change', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: _themeColor)),
+                                        Icon(Icons.keyboard_arrow_right_rounded, size: 14, color: _themeColor),
                                       ],
                                     ),
                                   ),
@@ -818,7 +885,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                               ? Image.network(
                                                   b.imageUrl,
                                                   fit: BoxFit.cover,
-                                                  errorBuilder: (_, __, ___) => Container(
+                                                  errorBuilder: (ctx, err, st) => Container(
                                                     color: Color(b.accentColorHex),
                                                   ),
                                                 )
@@ -896,7 +963,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                                   Container(
                                                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                                                     decoration: BoxDecoration(
-                                                      color: const Color(0xFFE65100),
+                                                      color: _themeColor,
                                                       borderRadius: BorderRadius.circular(20),
                                                     ),
                                                     child: Text(
@@ -961,7 +1028,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                               width: isActive ? 18 : 6,
                               height: 6,
                               decoration: BoxDecoration(
-                                color: isActive ? const Color(0xFFE65100) : const Color(0xFFCBD5E1),
+                                color: isActive ? _themeColor : const Color(0xFFCBD5E1),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                             );
@@ -970,17 +1037,18 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                         const SizedBox(height: 16),
                       ],
 
-                      // 4. CATEGORIES HORIZONTAL CIRCLE ICONS ROW
+                      // 4. CATEGORIES HORIZONTAL CIRCLE ICONS ROW (Displaying Product Default Image & Category Images)
                       SizedBox(
-                        height: 94,
+                        height: 98,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           physics: const BouncingScrollPhysics(),
                           itemCount: _data!.categories.length,
-                          separatorBuilder: (_, __) => const SizedBox(width: 14),
+                          separatorBuilder: (ctx, idx) => const SizedBox(width: 14),
                           itemBuilder: (context, catIdx) {
                             final cat = _data!.categories[catIdx];
                             final isSelected = _selectedCategory == cat;
+                            final catImageUrl = _getCategoryImageUrl(cat);
 
                             return InkWell(
                               borderRadius: BorderRadius.circular(30),
@@ -993,28 +1061,44 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   AnimatedContainer(
-                                    duration: const Duration(milliseconds: 150),
+                                    duration: const Duration(milliseconds: 180),
                                     width: 58,
                                     height: 58,
+                                    padding: const EdgeInsets.all(2.5),
                                     decoration: BoxDecoration(
-                                      color: isSelected ? const Color(0xFFE65100) : const Color(0xFFFFF3E0),
                                       shape: BoxShape.circle,
+                                      border: Border.all(
+                                        color: isSelected ? _themeColor : const Color(0xFFE2E8F0),
+                                        width: isSelected ? 2.5 : 1.2,
+                                      ),
                                       boxShadow: [
                                         BoxShadow(
                                           color: isSelected
-                                              ? const Color(0xFFE65100).withValues(alpha: 0.3)
-                                              : Colors.black.withValues(alpha: 0.03),
-                                          blurRadius: 8,
-                                          offset: const Offset(0, 3),
+                                              ? _themeColor.withValues(alpha: 0.3)
+                                              : Colors.black.withValues(alpha: 0.04),
+                                          blurRadius: isSelected ? 8 : 4,
+                                          offset: const Offset(0, 2),
                                         ),
                                       ],
                                     ),
-                                    child: Center(
-                                      child: Icon(
-                                        _getCategoryIcon(cat),
-                                        color: isSelected ? Colors.white : const Color(0xFFE65100),
-                                        size: 26,
-                                      ),
+                                    child: ClipOval(
+                                      child: catImageUrl.isNotEmpty
+                                          ? Image.network(
+                                              ApiEndpoints.resolveMediaUrl(catImageUrl),
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (ctx, err, st) => Container(
+                                                color: _themeColor.withValues(alpha: 0.1),
+                                                child: Center(
+                                                  child: Icon(_getCategoryIcon(cat), size: 24, color: _themeColor),
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: _themeColor.withValues(alpha: 0.1),
+                                              child: Center(
+                                                child: Icon(_getCategoryIcon(cat), size: 24, color: _themeColor),
+                                              ),
+                                            ),
                                     ),
                                   ),
                                   const SizedBox(height: 6),
@@ -1023,7 +1107,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                     style: TextStyle(
                                       fontSize: 12,
                                       fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                                      color: isSelected ? const Color(0xFFE65100) : const Color(0xFF0F172A),
+                                      color: isSelected ? _themeColor : const Color(0xFF0F172A),
                                     ),
                                   ),
                                 ],
@@ -1102,18 +1186,18 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                                 _searchController.clear();
                               });
                             },
-                            child: const Row(
+                            child: Row(
                               children: [
                                 Text(
                                   'View All',
                                   style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
-                                    color: Color(0xFFE65100),
+                                    color: _themeColor,
                                   ),
                                 ),
-                                SizedBox(width: 2),
-                                Icon(Icons.chevron_right_rounded, size: 18, color: Color(0xFFE65100)),
+                                const SizedBox(width: 2),
+                                Icon(Icons.chevron_right_rounded, size: 18, color: _themeColor),
                               ],
                             ),
                           ),
@@ -1145,7 +1229,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _filteredItems.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (ctx, idx) => const SizedBox(height: 12),
                           itemBuilder: (context, itemIdx) {
                             final item = _filteredItems[itemIdx];
                             return _buildProductCard(item);
@@ -1181,8 +1265,8 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                             children: [
                               Container(
                                 padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFFE65100),
+                                decoration: BoxDecoration(
+                                  color: _themeColor,
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(Icons.shopping_bag_rounded, color: Colors.white, size: 18),
@@ -1215,7 +1299,7 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                               ElevatedButton(
                                 onPressed: _openCartModal,
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE65100),
+                                  backgroundColor: _themeColor,
                                   foregroundColor: Colors.white,
                                   padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -1262,25 +1346,62 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Food Image on Left
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              width: 96,
-              height: 96,
-              color: const Color(0xFFF1F5F9),
-              child: (item.imageUrl.isNotEmpty)
-                  ? Image.network(
-                      ApiEndpoints.resolveMediaUrl(item.imageUrl),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
+          // Food Image on Left with optional Video badge
+          Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: 96,
+                  height: 96,
+                  color: const Color(0xFFF1F5F9),
+                  child: (item.imageUrl.isNotEmpty)
+                      ? Image.network(
+                          ApiEndpoints.resolveMediaUrl(item.imageUrl),
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, err, st) => Center(
+                            child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
+                          ),
+                        )
+                      : Center(
+                          child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
+                        ),
+                ),
+              ),
+
+              // Play Video Pill Badge over Product Image
+              if (item.videoUrl.trim().isNotEmpty)
+                Positioned(
+                  bottom: 4,
+                  right: 4,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(6),
+                      onTap: () => StorefrontVideoPlayerDialog.show(context, item, themeColor: _themeColor),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2.5),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.78),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Colors.white30, width: 0.8),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.play_circle_fill_rounded, size: 12, color: Colors.white),
+                            SizedBox(width: 3),
+                            Text(
+                              'Video',
+                              style: TextStyle(color: Colors.white, fontSize: 9.5, fontWeight: FontWeight.w800),
+                            ),
+                          ],
+                        ),
                       ),
-                    )
-                  : Center(
-                      child: Text(item.emoji.isNotEmpty ? item.emoji : '🍕', style: const TextStyle(fontSize: 32)),
                     ),
-            ),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(width: 14),
 
@@ -1316,6 +1437,39 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+
+                // Variants Count Pill Badge (only if product has variants)
+                if (item.variants.length > 1) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _themeColor.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: _themeColor.withValues(alpha: 0.25)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.tune_rounded, size: 11, color: _themeColor),
+                        const SizedBox(width: 3),
+                        Flexible(
+                          child: Text(
+                            '${item.variants.length} Sizes',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: _themeColor,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+
                 const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1329,23 +1483,30 @@ class _CustomerStorefrontScreenState extends State<CustomerStorefrontScreen> {
                       ),
                     ),
 
-                    // Add + Button
+                    // Add Button or Store Offline Disabled Button
                     ElevatedButton(
-                      onPressed: () => _openCustomizationModal(item),
+                      onPressed: _isStoreOnline ? () => _openCustomizationModal(item) : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE65100),
+                        backgroundColor: _isStoreOnline ? _themeColor : const Color(0xFFE2E8F0),
                         foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        disabledBackgroundColor: const Color(0xFFF1F5F9),
+                        disabledForegroundColor: const Color(0xFF94A3B8),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         elevation: 0,
                         visualDensity: VisualDensity.compact,
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text('Add', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                          SizedBox(width: 4),
-                          Icon(Icons.add_rounded, size: 16),
+                          Text(
+                            _isStoreOnline ? 'Add' : 'Offline',
+                            style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                          ),
+                          if (_isStoreOnline) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.add_rounded, size: 15),
+                          ],
                         ],
                       ),
                     ),

@@ -35,6 +35,8 @@ class RestaurantModel {
   final bool isSubscribed;
   final String companyName;
   final String slug;
+  final bool isStorefrontOnline;
+  final int storefrontThemeColor;
 
   static String slugify(String text) {
     final clean = text.trim().toLowerCase();
@@ -59,6 +61,8 @@ class RestaurantModel {
     required this.name,
     this.companyName = '',
     this.slug = '',
+    this.isStorefrontOnline = true,
+    this.storefrontThemeColor = 0xFFE65100,
     required this.tagline,
     required this.phone,
     required this.address,
@@ -93,6 +97,8 @@ class RestaurantModel {
         'name': name,
         'companyName': companyName,
         'slug': storefrontSlug,
+        'isStorefrontOnline': isStorefrontOnline,
+        'storefrontThemeColor': storefrontThemeColor,
         'tagline': tagline,
         'phone': phone,
         'address': address,
@@ -202,6 +208,10 @@ class RestaurantModel {
         slug: json['slug']?.toString() ??
             (json['profile'] is Map ? json['profile']['slug']?.toString() : null) ??
             '',
+        isStorefrontOnline: json['isStorefrontOnline'] is bool
+            ? json['isStorefrontOnline'] as bool
+            : (json['isOnline'] is bool ? json['isOnline'] as bool : true),
+        storefrontThemeColor: (json['storefrontThemeColor'] as num?)?.toInt() ?? 0xFFE65100,
       );
   }
 
@@ -212,6 +222,8 @@ class RestaurantModel {
     String? name,
     String? companyName,
     String? slug,
+    bool? isStorefrontOnline,
+    int? storefrontThemeColor,
     String? tagline,
     String? phone,
     String? address,
@@ -245,6 +257,8 @@ class RestaurantModel {
       name: name ?? this.name,
       companyName: companyName ?? this.companyName,
       slug: slug ?? this.slug,
+      isStorefrontOnline: isStorefrontOnline ?? this.isStorefrontOnline,
+      storefrontThemeColor: storefrontThemeColor ?? this.storefrontThemeColor,
       tagline: tagline ?? this.tagline,
       phone: phone ?? this.phone,
       address: address ?? this.address,

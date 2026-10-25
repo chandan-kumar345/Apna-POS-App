@@ -1,4 +1,7 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
 import '../../../core/models/menu_item_model.dart';
 import '../../../core/network/api_endpoints.dart';
 import '../models/storefront_model.dart';
@@ -6,11 +9,15 @@ import '../models/storefront_model.dart';
 class ItemCustomizationSheet extends StatefulWidget {
   final MenuItemModel item;
   final Function(StorefrontCartItem cartItem) onAddToCart;
+  final Color themeColor;
+  final bool isOnline;
 
   const ItemCustomizationSheet({
     super.key,
     required this.item,
     required this.onAddToCart,
+    this.themeColor = const Color(0xFFE65100),
+    this.isOnline = true,
   });
 
   @override
@@ -24,22 +31,82 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
   final TextEditingController _instructionsController = TextEditingController();
   int _quantity = 1;
 
+  VideoPlayerController? _videoController;
+  bool _isVideoPlaying = false;
+  bool _isVideoLoading = false;
+
   @override
   void initState() {
     super.initState();
     _initSizes();
     _initAddons();
+    if (widget.item.videoUrl.trim().isNotEmpty) {
+      _initVideo();
+    }
   }
 
   @override
   void dispose() {
     _instructionsController.dispose();
+    _videoController?.dispose();
     super.dispose();
   }
 
+  void _initVideo() async {
+    if (widget.item.videoUrl.trim().isEmpty) return;
+    setState(() => _isVideoLoading = true);
+    try {
+      final path = widget.item.videoUrl.trim();
+      VideoPlayerController controller;
+      if (!kIsWeb && File(path).existsSync()) {
+        controller = VideoPlayerController.file(File(path));
+      } else if (path.startsWith('assets/')) {
+        controller = VideoPlayerController.asset(path);
+      } else if (path.startsWith('http://') || path.startsWith('https://')) {
+        controller = VideoPlayerController.networkUrl(Uri.parse(path));
+      } else {
+        controller = VideoPlayerController.file(File(path));
+      }
+      await controller.initialize();
+      await controller.setLooping(true);
+      await controller.setVolume(1.0);
+      if (!mounted) {
+        controller.dispose();
+        return;
+      }
+      setState(() {
+        _videoController = controller;
+        _isVideoLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[ItemCustomizationSheet] Video init note: $e');
+      if (mounted) {
+        setState(() {
+          _isVideoLoading = false;
+        });
+      }
+    }
+  }
+
+  void _toggleVideo() async {
+    if (_videoController == null) {
+      _initVideo();
+    }
+    if (_videoController != null && _videoController!.value.isInitialized) {
+      if (_videoController!.value.isPlaying) {
+        await _videoController!.pause();
+        setState(() => _isVideoPlaying = false);
+      } else {
+        await _videoController!.play();
+        setState(() => _isVideoPlaying = true);
+      }
+    }
+  }
+
   void _initSizes() {
-    // If the item has variants, map from variants
-    if (widget.item.variants.isNotEmpty) {
+    // If product has multiple variants, map from variants.
+    // If the product does NOT have variants, do NOT show variants!
+    if (widget.item.variants.length > 1) {
       _sizes = widget.item.variants.map((v) {
         String desc = 'Standard serving';
         final lower = v.name.toLowerCase();
@@ -57,56 +124,11 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
           price: v.effectivePrice > 0 ? v.effectivePrice : v.price,
         );
       }).toList();
+      _selectedSize = _sizes.isNotEmpty ? _sizes.first : null;
     } else {
-      // Intelligent Pizza / Food sizes based on category
-      final basePrice = widget.item.effectivePrice > 0 ? widget.item.effectivePrice : 249.0;
-      final isPizza = widget.item.category.toLowerCase().contains('piz') ||
-          widget.item.name.toLowerCase().contains('pizza');
-
-      if (isPizza) {
-        _sizes = [
-          ProductSizeOption(
-            id: 'reg',
-            name: 'Regular',
-            description: '7" (1-2 servings)',
-            price: basePrice,
-          ),
-          ProductSizeOption(
-            id: 'med',
-            name: 'Medium',
-            description: '10" (2-3 servings)',
-            price: (basePrice * 1.4).roundToDouble(),
-          ),
-          ProductSizeOption(
-            id: 'large',
-            name: 'Large',
-            description: '12" (3-4 servings)',
-            price: (basePrice * 1.8).roundToDouble(),
-          ),
-        ];
-      } else {
-        _sizes = [
-          ProductSizeOption(
-            id: 'reg',
-            name: 'Regular',
-            description: 'Single portion',
-            price: basePrice,
-          ),
-          ProductSizeOption(
-            id: 'large',
-            name: 'Large',
-            description: 'Sharing portion',
-            price: (basePrice * 1.5).roundToDouble(),
-          ),
-        ];
-      }
-    }
-
-    // Default select Medium (as seen in image) or first available
-    if (_sizes.length > 1) {
-      _selectedSize = _sizes[1];
-    } else if (_sizes.isNotEmpty) {
-      _selectedSize = _sizes.first;
+      // Product has no variants -> do not synthesize or show variants
+      _sizes = [];
+      _selectedSize = null;
     }
   }
 
@@ -211,7 +233,7 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 2. Large Food Image with Bestseller Badge and Close (X) Button
+                  // 2. Large Food Image / Video with Bestseller Badge and Close (X) Button
                   Stack(
                     children: [
                       ClipRRect(
@@ -220,13 +242,25 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                           height: 135,
                           width: double.infinity,
                           color: const Color(0xFFF1F5F9),
-                          child: (widget.item.imageUrl.isNotEmpty)
-                              ? Image.network(
-                                  ApiEndpoints.resolveMediaUrl(widget.item.imageUrl),
+                          child: (_isVideoPlaying &&
+                                  _videoController != null &&
+                                  _videoController!.value.isInitialized)
+                              ? FittedBox(
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) => _buildFallbackBannerImage(),
+                                  clipBehavior: Clip.hardEdge,
+                                  child: SizedBox(
+                                    width: _videoController!.value.size.width > 0 ? _videoController!.value.size.width : 300,
+                                    height: _videoController!.value.size.height > 0 ? _videoController!.value.size.height : 200,
+                                    child: VideoPlayer(_videoController!),
+                                  ),
                                 )
-                              : _buildFallbackBannerImage(),
+                              : (widget.item.imageUrl.isNotEmpty)
+                                  ? Image.network(
+                                      ApiEndpoints.resolveMediaUrl(widget.item.imageUrl),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => _buildFallbackBannerImage(),
+                                    )
+                                  : _buildFallbackBannerImage(),
                         ),
                       ),
 
@@ -296,6 +330,60 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                           ),
                         ),
                       ),
+
+                      // Watch Video Badge (Bottom-Right)
+                      if (widget.item.videoUrl.trim().isNotEmpty)
+                        Positioned(
+                          bottom: 10,
+                          right: 10,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: _toggleVideo,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                                decoration: BoxDecoration(
+                                  color: widget.themeColor.withValues(alpha: 0.95),
+                                  borderRadius: BorderRadius.circular(16),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: 0.25),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_isVideoLoading)
+                                      const SizedBox(
+                                        width: 12,
+                                        height: 12,
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                      )
+                                    else
+                                      Icon(
+                                        _isVideoPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
+                                        size: 15,
+                                        color: Colors.white,
+                                      ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      _isVideoPlaying ? 'Pause' : 'Watch Video',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
 
@@ -363,81 +451,83 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                   const SizedBox(height: 16),
 
-                  // 4. Select Size Section
-                  const Text(
-                    'Select Size',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0F172A),
+                  // 4. Select Size Section (Only shown if product has variants)
+                  if (_sizes.isNotEmpty) ...[
+                    const Text(
+                      'Select Size',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 8),
+                    const SizedBox(height: 8),
 
-                  Row(
-                    children: _sizes.map((sizeOpt) {
-                      final isSelected = _selectedSize?.id == sizeOpt.id;
-                      return Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 6.0),
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(12),
-                            onTap: () {
-                              setState(() {
-                                _selectedSize = sizeOpt;
-                              });
-                            },
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 180),
-                              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: isSelected ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: isSelected ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
-                                  width: isSelected ? 1.8 : 1.0,
+                    Row(
+                      children: _sizes.map((sizeOpt) {
+                        final isSelected = _selectedSize?.id == sizeOpt.id;
+                        return Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6.0),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () {
+                                setState(() {
+                                  _selectedSize = sizeOpt;
+                                });
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected ? widget.themeColor.withValues(alpha: 0.12) : const Color(0xFFF8FAFC),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: isSelected ? widget.themeColor : const Color(0xFFE2E8F0),
+                                    width: isSelected ? 1.8 : 1.0,
+                                  ),
                                 ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    sizeOpt.name,
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: isSelected ? const Color(0xFFE65100) : const Color(0xFF0F172A),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      sizeOpt.name,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    sizeOpt.description,
-                                    style: TextStyle(
-                                      fontSize: 9.5,
-                                      height: 1.25,
-                                      color: isSelected ? const Color(0xFFE65100).withValues(alpha: 0.85) : const Color(0xFF64748B),
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      sizeOpt.description,
+                                      style: TextStyle(
+                                        fontSize: 9.5,
+                                        height: 1.25,
+                                        color: isSelected ? widget.themeColor.withValues(alpha: 0.85) : const Color(0xFF64748B),
+                                      ),
+                                      softWrap: true,
                                     ),
-                                    softWrap: true,
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '₹${sizeOpt.price.toStringAsFixed(0)}',
-                                    style: TextStyle(
-                                      fontSize: 13.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: isSelected ? const Color(0xFFE65100) : const Color(0xFF0F172A),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '₹${sizeOpt.price.toStringAsFixed(0)}',
+                                      style: TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: isSelected ? widget.themeColor : const Color(0xFF0F172A),
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+                        );
+                      }).toList(),
+                    ),
 
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
 
                   // 5. Add Ons (Optional) Section
                   const Text(
@@ -472,10 +562,10 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                             duration: const Duration(milliseconds: 150),
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                             decoration: BoxDecoration(
-                              color: isAdded ? const Color(0xFFFFF3E0) : const Color(0xFFF8FAFC),
+                              color: isAdded ? widget.themeColor.withValues(alpha: 0.12) : const Color(0xFFF8FAFC),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: isAdded ? const Color(0xFFE65100) : const Color(0xFFE2E8F0),
+                                color: isAdded ? widget.themeColor : const Color(0xFFE2E8F0),
                                 width: isAdded ? 1.5 : 1,
                               ),
                             ),
@@ -506,7 +596,7 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                                       style: TextStyle(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w700,
-                                        color: isAdded ? const Color(0xFFE65100) : const Color(0xFF0F172A),
+                                        color: isAdded ? widget.themeColor : const Color(0xFF0F172A),
                                       ),
                                     ),
                                     const SizedBox(height: 1),
@@ -647,24 +737,28 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
 
                   const SizedBox(width: 12),
 
-                  // Add to Cart Button (Large Vibrant Orange)
+                  // Add to Cart Button
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: () {
-                        final cartItem = StorefrontCartItem(
-                          uid: 'cart_${DateTime.now().millisecondsSinceEpoch}',
-                          item: widget.item,
-                          selectedSize: _selectedSize,
-                          selectedAddons: _addons.where((a) => a.isSelected).toList(),
-                          instructions: _instructionsController.text.trim(),
-                          quantity: _quantity,
-                        );
-                        widget.onAddToCart(cartItem);
-                        Navigator.pop(context);
-                      },
+                      onPressed: widget.isOnline
+                          ? () {
+                              final cartItem = StorefrontCartItem(
+                                uid: 'cart_${DateTime.now().millisecondsSinceEpoch}',
+                                item: widget.item,
+                                selectedSize: _selectedSize,
+                                selectedAddons: _addons.where((a) => a.isSelected).toList(),
+                                instructions: _instructionsController.text.trim(),
+                                quantity: _quantity,
+                              );
+                              widget.onAddToCart(cartItem);
+                              Navigator.pop(context);
+                            }
+                          : null,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE65100),
+                        backgroundColor: widget.isOnline ? widget.themeColor : const Color(0xFF94A3B8),
                         foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFFCBD5E1),
+                        disabledForegroundColor: const Color(0xFF64748B),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
@@ -674,13 +768,15 @@ class _ItemCustomizationSheetState extends State<ItemCustomizationSheet> {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.shopping_cart_rounded, size: 16),
+                          Icon(widget.isOnline ? Icons.shopping_cart_rounded : Icons.store_mall_directory_outlined, size: 16),
                           const SizedBox(width: 5),
                           Flexible(
                             child: FittedBox(
                               fit: BoxFit.scaleDown,
                               child: Text(
-                                'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}',
+                                widget.isOnline
+                                    ? 'Add to Cart • ₹${_currentTotalPrice.toStringAsFixed(0)}'
+                                    : 'Store Offline • Orders Paused',
                                 style: const TextStyle(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w800,

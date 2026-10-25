@@ -238,6 +238,8 @@ class StorefrontService {
       menuItems: menuItems,
       addOns: addOns,
       banners: banners,
+      isOnline: _db.isStorefrontOnline,
+      themeColorHex: _db.storefrontThemeColor,
     );
   }
 

@@ -4518,46 +4518,51 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
   // ==========================================
 
   Widget _buildCustomerStorefrontPreviewCard(RestaurantModel? restaurant, {required bool isMobile}) {
+    final db = DatabaseService();
     final slug = restaurant?.storefrontSlug ?? 'company-name';
     final storeUrl = 'https://apnaposs.vercel.app/$slug';
-    final displayUrl = 'apnaposs.vercel.app/$slug';
+    final displayUrl = 'https://apnaposs.vercel.app/$slug';
+    final isOnline = db.isStorefrontOnline;
+    final themeColorHex = db.storefrontThemeColor;
+    final themeColor = Color(themeColorHex);
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 14 : 18),
+      padding: EdgeInsets.all(isMobile ? 12 : 16),
       decoration: BoxDecoration(
         color: _NeumorphicTheme.surface,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         boxShadow: _NeumorphicTheme.raisedShadows,
-        border: Border.all(color: Colors.white, width: 1.8),
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top Row: Title, Icon Badge and Status Pill
+          // 1. Top Header Row: Storefront Icon + Titles + Online/Offline Toggle
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFE65100), Color(0xFFFF6D00)],
+                  gradient: LinearGradient(
+                    colors: [themeColor, themeColor.withValues(alpha: 0.8)],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                   ),
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(10),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFFE65100).withValues(alpha: 0.35),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                      color: themeColor.withValues(alpha: 0.3),
+                      blurRadius: 6,
+                      offset: const Offset(0, 2),
                     )
                   ],
                 ),
-                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 24),
+                child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 20),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -4568,7 +4573,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                           child: Text(
                             'Customer Web Storefront',
                             style: TextStyle(
-                              fontSize: isMobile ? 15 : 16.5,
+                              fontSize: isMobile ? 14 : 15,
                               fontWeight: FontWeight.w800,
                               color: _NeumorphicTheme.textDark,
                             ),
@@ -4576,31 +4581,32 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: 6),
+                        // Live / Offline Status Pill
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFDCFCE7),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: const Color(0xFF86EFAC)),
+                            color: isOnline ? const Color(0xFFDCFCE7) : const Color(0xFFFEE2E2),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: isOnline ? const Color(0xFF86EFAC) : const Color(0xFFFCA5A5)),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  color: Color(0xFF16A34A),
+                                width: 5,
+                                height: 5,
+                                decoration: BoxDecoration(
+                                  color: isOnline ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
                                   shape: BoxShape.circle,
                                 ),
                               ),
-                              const SizedBox(width: 4),
-                              const Text(
-                                'LIVE',
+                              const SizedBox(width: 3),
+                              Text(
+                                isOnline ? 'ONLINE' : 'OFFLINE',
                                 style: TextStyle(
-                                  color: Color(0xFF15803D),
-                                  fontSize: 10,
+                                  color: isOnline ? const Color(0xFF15803D) : const Color(0xFFB91C1C),
+                                  fontSize: 9.5,
                                   fontWeight: FontWeight.w800,
                                 ),
                               ),
@@ -4609,11 +4615,11 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 1),
                     Text(
-                      'Customer preview link to order takeaway and delivery',
+                      'Live ordering page for takeaway & delivery customers',
                       style: TextStyle(
-                        fontSize: isMobile ? 11.5 : 12.5,
+                        fontSize: isMobile ? 10.5 : 11.5,
                         color: _NeumorphicTheme.textMuted,
                       ),
                       maxLines: 1,
@@ -4622,23 +4628,65 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                   ],
                 ),
               ),
+
+              // Online / Offline Switch
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Transform.scale(
+                    scale: 0.75,
+                    child: Switch.adaptive(
+                      value: isOnline,
+                      activeTrackColor: const Color(0xFF86EFAC),
+                      activeThumbColor: const Color(0xFF16A34A),
+                      inactiveThumbColor: const Color(0xFFEF4444),
+                      inactiveTrackColor: const Color(0xFFFEE2E2),
+                      onChanged: (val) async {
+                        await db.setStorefrontOnline(val);
+                        if (!mounted) return;
+                        setState(() {});
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(val
+                                ? 'Storefront is now ONLINE — Customers can place orders!'
+                                : 'Storefront is now OFFLINE — Online orders paused.'),
+                            backgroundColor: val ? const Color(0xFF15803D) : const Color(0xFF991B1B),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  Text(
+                    isOnline ? 'Taking Orders' : 'Store Offline',
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w600,
+                      color: isOnline ? const Color(0xFF16A34A) : const Color(0xFFDC2626),
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
 
-          // URL Display Box (Sunken Neumorphic container)
+          // 2. URL Display Box: Visible fully and properly without truncation
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: _NeumorphicTheme.sunkenSurface,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.white.withValues(alpha: 0.8), width: 1.2),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(Icons.link_rounded, size: 20, color: Color(0xFFE65100)),
-                const SizedBox(width: 8),
+                Icon(Icons.link_rounded, size: 16, color: themeColor),
+                const SizedBox(width: 6),
                 Expanded(
                   child: InkWell(
                     onTap: () {
@@ -4651,23 +4699,24 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     },
                     child: Text(
                       displayUrl,
-                      style: const TextStyle(
-                        fontSize: 13.5,
+                      style: TextStyle(
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFFE65100),
+                        color: themeColor,
                         decoration: TextDecoration.underline,
-                        decorationColor: Color(0xFFE65100),
+                        decorationColor: themeColor,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                     ),
                   ),
                 ),
+                const SizedBox(width: 6),
+                // Copy Link Icon Button
                 IconButton(
                   tooltip: 'Copy Store Link',
-                  icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF64748B)),
+                  icon: const Icon(Icons.copy_rounded, size: 15, color: Color(0xFF64748B)),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: storeUrl));
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -4680,26 +4729,27 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     );
                   },
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 4),
+                // Edit Slug Icon Button
                 IconButton(
                   tooltip: 'Edit Store Slug',
-                  icon: const Icon(Icons.edit_outlined, size: 18, color: Color(0xFF64748B)),
+                  icon: const Icon(Icons.edit_outlined, size: 15, color: Color(0xFF64748B)),
                   padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
+                  constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                   onPressed: () => _showEditStorefrontSlugModal(slug),
                 ),
               ],
             ),
           ),
 
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
 
-          // Action Buttons Row
+          // 3. Compact, Cleanly Arranged Action Buttons
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: [
-              // 1. Primary "Customer Preview" Button
+              // 1. Customer Preview (Filled with Theme Color)
               ElevatedButton.icon(
                 onPressed: () {
                   Navigator.push(
@@ -4709,18 +4759,47 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     ),
                   );
                 },
-                icon: const Icon(Icons.remove_red_eye_rounded, size: 17),
-                label: const Text('Customer Preview', style: TextStyle(fontWeight: FontWeight.w800)),
+                icon: const Icon(Icons.remove_red_eye_rounded, size: 14),
+                label: const Text('Customer Preview', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5)),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFE65100),
+                  backgroundColor: themeColor,
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 16, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
 
-              // 2. Open in Website
+              // 2. Theme Color Picker Button
+              OutlinedButton.icon(
+                onPressed: () => _showStorefrontThemeColorPickerModal(themeColorHex),
+                icon: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: themeColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: themeColor.withValues(alpha: 0.4),
+                        blurRadius: 3,
+                      )
+                    ],
+                  ),
+                ),
+                label: const Text('Theme Color', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 11.5)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _NeumorphicTheme.textDark,
+                  side: const BorderSide(color: Color(0xFFCBD5E1)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+
+              // 3. Open Website
               OutlinedButton.icon(
                 onPressed: () async {
                   final uri = Uri.parse(storeUrl);
@@ -4737,47 +4816,240 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     }
                   }
                 },
-                icon: const Icon(Icons.open_in_new_rounded, size: 16),
-                label: const Text('Open Website'),
+                icon: const Icon(Icons.open_in_new_rounded, size: 13),
+                label: const Text('Open Web', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _NeumorphicTheme.textDark,
                   side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
 
-              // 3. Share
+              // 4. Share Link
               OutlinedButton.icon(
                 onPressed: () {
                   final shareMsg = 'Order delicious food directly from ${restaurant?.name ?? "our outlet"} online for takeaway & delivery!\n\n👉 $storeUrl';
                   SharePlus.instance.share(ShareParams(text: shareMsg));
                 },
-                icon: const Icon(Icons.share_rounded, size: 16),
-                label: const Text('Share'),
+                icon: const Icon(Icons.share_rounded, size: 13),
+                label: const Text('Share', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _NeumorphicTheme.textDark,
                   side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
 
-              // 4. QR Code
+              // 5. QR Code
               OutlinedButton.icon(
                 onPressed: () => _showStorefrontQrCodeDialog(storeUrl, restaurant?.name ?? 'Store'),
-                icon: const Icon(Icons.qr_code_2_rounded, size: 16),
-                label: const Text('QR Code'),
+                icon: const Icon(Icons.qr_code_2_rounded, size: 13),
+                label: const Text('QR Code', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: _NeumorphicTheme.textDark,
                   side: const BorderSide(color: Color(0xFFCBD5E1)),
-                  padding: EdgeInsets.symmetric(horizontal: isMobile ? 10 : 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  visualDensity: VisualDensity.compact,
                 ),
               ),
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  void _showStorefrontThemeColorPickerModal(int currentColorHex) {
+    final colors = [
+      {'name': 'Deep Orange (Pizzeria)', 'hex': 0xFFE65100, 'desc': 'Warm, energetic & appetite-boosting'},
+      {'name': 'Emerald Green (Healthy)', 'hex': 0xFF10B981, 'desc': 'Fresh, vegetarian, salad & vegan'},
+      {'name': 'Royal Blue (Bistro)', 'hex': 0xFF2563EB, 'desc': 'Clean, modern dining & cafés'},
+      {'name': 'Sunset Crimson (Spicy)', 'hex': 0xFFDC2626, 'desc': 'Bold, grills, burgers & fast food'},
+      {'name': 'Royal Purple (Dessert)', 'hex': 0xFF7C3AED, 'desc': 'Artisanal bakes, treats & lounge'},
+      {'name': 'Warm Amber (Bakery)', 'hex': 0xFFD97706, 'desc': 'Golden pastries, coffee & breakfast'},
+      {'name': 'Charcoal Dark (Fine Dining)', 'hex': 0xFF1E293B, 'desc': 'Upscale, elegant & contemporary'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) {
+          final db = DatabaseService();
+          final current = db.storefrontThemeColor;
+
+          return Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFCBD5E1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Color(current).withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(Icons.palette_rounded, color: Color(current), size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Storefront Theme Color',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          'Choose the accent palette for your customer web store',
+                          style: TextStyle(fontSize: 11.5, color: Color(0xFF64748B)),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Divider(height: 1, color: Color(0xFFE2E8F0)),
+                const SizedBox(height: 12),
+
+                ...colors.map((c) {
+                  final hex = c['hex'] as int;
+                  final isSelected = hex == current;
+                  final color = Color(hex);
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () async {
+                      await db.setStorefrontThemeColor(hex);
+                      setModalState(() {});
+                      setState(() {});
+                      if (context.mounted) {
+                        Navigator.pop(ctx);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Row(
+                              children: [
+                                Container(
+                                  width: 14,
+                                  height: 14,
+                                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 8),
+                                Text('Storefront theme updated to "${c['name']}"!'),
+                              ],
+                            ),
+                            backgroundColor: const Color(0xFF0F172A),
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isSelected ? color.withValues(alpha: 0.08) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isSelected ? color : const Color(0xFFE2E8F0),
+                          width: isSelected ? 1.8 : 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: color,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: color.withValues(alpha: 0.35),
+                                  blurRadius: 4,
+                                  offset: const Offset(0, 2),
+                                ),
+                              ],
+                            ),
+                            child: isSelected
+                                ? const Icon(Icons.check_rounded, color: Colors.white, size: 16)
+                                : null,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  c['name'] as String,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                                    color: const Color(0xFF0F172A),
+                                  ),
+                                ),
+                                const SizedBox(height: 1),
+                                Text(
+                                  c['desc'] as String,
+                                  style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (isSelected)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Text(
+                                'ACTIVE',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -4845,6 +5117,7 @@ class _BusinessSettingsHubScreenState extends State<BusinessSettingsHubScreen> {
                     final cleanSlug = RestaurantModel.slugify(controller.text.trim());
                     if (cleanSlug.isNotEmpty) {
                       await db.updateStorefrontSlug(cleanSlug);
+                      if (!mounted) return;
                       setState(() {});
                       if (ctx.mounted) Navigator.pop(ctx);
                       ScaffoldMessenger.of(context).showSnackBar(
